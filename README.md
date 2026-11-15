@@ -25,6 +25,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   across formatting but not across paragraphs; a replacement takes the formatting of the match's
   first character, as in Word; read-only content is never changed (the bar says how many matches
   it skipped there)
+- See what you can't edit, read-only and in plain language: the first page's header and footer in
+  the page margins; comments with their replies and resolved state in a side panel (click one to
+  highlight its text); numbered footnotes with their text on hover; fields labelled by what they
+  are ("Page number – Word updates it")
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
@@ -59,7 +63,12 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 5. **Find and replace** – `src/editor/find.js` searches runs of text nodes in the same paragraph
    and editing host, and highlights matches with the CSS Custom Highlight API, which doesn't
    change the DOM. Replacing edits the text nodes directly as one undoable step.
-6. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
+6. **Read-only companions** – `src/docx/annotations.js` loads comments (replies and resolved state
+   from `commentsExtended.xml`), footnote/endnote text and the first section's header and footer,
+   which are rendered with their own relationships outside the editable page, so they can never be
+   saved into the body. Comment ranges are highlighted with the CSS Custom Highlight API between
+   the hidden `commentRangeStart` / `commentRangeEnd` markers.
+7. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
    attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
    then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
@@ -100,7 +109,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting is plain text only
-- Tracked changes, fields and footnotes are preserved but can't be edited
+- Tracked changes, fields, footnotes, comments, headers and footers are preserved but can't be
+  edited; only the first page's header and footer are shown (not even-page or later sections' ones),
+  and Find doesn't search them
 - Content controls: locked and data-bound ones are read-only; check boxes, drop-downs and dates
   are changed with the mouse (not yet from the keyboard); controls around whole table cells or rows
   are kept but not shown

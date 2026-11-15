@@ -86,8 +86,11 @@ function paint() {
   if (!highlights) return;
   const all = new Highlight();
   for (const m of editableMatches.value) all.add(matchRange(m));
+  const now = current.value ? new Highlight(matchRange(current.value)) : new Highlight();
+  all.priority = 2; // above comment highlights
+  now.priority = 3;
   CSS.highlights.set('find-match', all);
-  CSS.highlights.set('find-current', current.value ? new Highlight(matchRange(current.value)) : new Highlight());
+  CSS.highlights.set('find-current', now);
 }
 
 function clearPaint() {

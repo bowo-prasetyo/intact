@@ -52,24 +52,35 @@
       <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
       </button>
+      <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
+        <span class="badge">{{ threads.length }}</span>
+      </button>
     </div>
 
     <FindBar v-if="findOpen" ref="findBar" :root="page" :edit="applyEdit" @close="onFindClosed" />
 
-    <div class="canvas" @mousedown.self="focusEnd">
-      <div
-        ref="page"
-        class="docx-page"
-        contenteditable="true"
-        spellcheck="true"
-        :style="pageStyle"
-        @beforeinput="onBeforeInput"
-        @input="onInput"
-        @keydown="onKeydown"
-        @paste="onPaste"
-        @drop="onDrop"
-        @click="onClick"
-      />
+    <div class="workspace">
+      <div class="canvas" @mousedown.self="focusEnd">
+        <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
+          <div v-if="doc.headerPart" ref="headerEl" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')" />
+          <div
+            ref="page"
+            class="docx-page"
+            contenteditable="true"
+            spellcheck="true"
+            :style="pageStyle"
+            @beforeinput="onBeforeInput"
+            @input="onInput"
+            @keydown="onKeydown"
+            @paste="onPaste"
+            @drop="onDrop"
+            @click="onClick"
+          />
+          <div v-if="doc.footerPart" ref="footerEl" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')" />
+        </div>
+      </div>
+      <CommentsPanel v-if="commentsOpen && threads.length" :threads="threads" :active="activeComment" @select="selectComment" @close="commentsOpen = false" />
     </div>
 
     <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" aria-label="Choose a value" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)">
@@ -92,6 +103,7 @@ import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'v
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
+import CommentsPanel from '../components/CommentsPanel.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
@@ -108,6 +120,9 @@ const baseName = ref(doc.name.replace(/\.docx$/i, ''));
 const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left', list: null });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
+const threads = ref([]);
+const commentsOpen = ref(false);
+const activeComment = ref(null);
 const findOpen = ref(false);
 const findBar = ref(null);
 const dateInput = ref(null);
@@ -124,17 +139,32 @@ const aligns = [
   { cmd: 'justifyFull', value: 'justify', title: 'Justify', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
 ];
 
+// The sheet is the page: header (in the top margin), the editable body, footer (bottom margin). As in
+// Word, the body starts at the top margin or below the header, whichever is lower.
+const headerEl = ref(null);
+const footerEl = ref(null);
+const sheetStyle = computed(() => ({ width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px` }));
 const pageStyle = computed(() => {
   const p = doc.page;
-  return {
-    width: `${p.width}px`,
-    minHeight: `${p.minHeight}px`,
-    padding: `${p.top}px ${p.right}px ${p.bottom}px ${p.left}px`,
-  };
+  return { padding: `${doc.headerPart ? 0 : p.top}px ${p.right}px ${doc.footerPart ? 0 : p.bottom}px ${p.left}px` };
+});
+const headerStyle = computed(() => {
+  const p = doc.page;
+  return { padding: `${p.header}px ${p.right}px 0 ${p.left}px`, minHeight: `${Math.max(0, p.top - p.header)}px` };
+});
+const footerStyle = computed(() => {
+  const p = doc.page;
+  return { padding: `0 ${p.right}px ${p.footer}px ${p.left}px`, minHeight: `${Math.max(0, p.bottom - p.footer)}px` };
 });
 
+function hfTitle(which) {
+  const part = which === 'header' ? doc.headerPart : doc.footerPart;
+  const name = `${part?.first ? 'First page ' : ''}${which}`;
+  return `${name[0].toUpperCase()}${name.slice(1)} – shown for reference; edit it in Word`;
+}
+
 function refreshCss() {
-  styleEl.textContent = doc.css('.docx-page');
+  styleEl.textContent = doc.css('.docx-sheet');
 }
 
 onMounted(() => {
@@ -142,6 +172,15 @@ onMounted(() => {
   document.head.append(styleEl);
   refreshCss();
   page.value.replaceChildren(doc.render());
+  for (const [el, which] of [[headerEl.value, 'header'], [footerEl.value, 'footer']]) {
+    if (!el) continue;
+    const content = doc.renderHeaderFooter(which);
+    if (content) el.replaceChildren(...content.childNodes);
+    else el.classList.add('empty');
+  }
+  threads.value = commentThreads();
+  commentsOpen.value = threads.value.length > 0 && window.innerWidth >= 1100;
+  paintComments();
   document.execCommand('defaultParagraphSeparator', false, 'p');
   document.execCommand('styleWithCSS', false, false);
   document.addEventListener('selectionchange', onSelectionChange);
@@ -162,6 +201,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload);
   undoStack?.dispose();
   styleEl?.remove();
+  if (canHighlight) {
+    CSS.highlights.delete('comment');
+    CSS.highlights.delete('comment-active');
+  }
 });
 
 onBeforeRouteLeave(() => {
@@ -264,6 +307,7 @@ function exec(cmd, value = null) {
 function afterHistory(changed) {
   if (!changed) return;
   savedRange = null;
+  paintComments(); // undo/redo replaced the DOM the comment ranges pointed into
   onSelectionChange();
   markDirty();
 }
@@ -502,6 +546,12 @@ function onDrop(e) {
 }
 
 function onClick(e) {
+  const marker = e.target.closest('.comment-ref');
+  if (marker) {
+    commentsOpen.value = true;
+    selectComment(marker.dataset.commentId, false);
+    return;
+  }
   const control = controlAt(e.target, page.value);
   if (control?.classList.contains('showing-placeholder') && e.target.closest('.sdt-content')) {
     selectCell(controlBox(control)); // the browser resets the selection on mouseup
@@ -583,6 +633,67 @@ function chooseDate(iso) {
     setControlText(el, doc.formatDate(el, iso));
     el.dataset.fullDate = iso;
   });
+}
+
+// ------------------------------------------------------------------ comments
+
+/** Top-level comments in the order they appear in the text, each with its replies. */
+function commentThreads() {
+  const ids = new Set(doc.comments.map((c) => c.id));
+  const order = (c) => doc.commentOrder.get(c.id) ?? Infinity;
+  return doc.comments
+    .filter((c) => !c.parentId || !ids.has(c.parentId))
+    .sort((a, b) => order(a) - order(b))
+    .map((c) => ({ ...c, n: doc.commentOrder.get(c.id) || null, replies: doc.comments.filter((r) => r.parentId === c.id) }));
+}
+
+/** The commented text: from the range start marker to the end marker (or the reference mark). */
+function commentRange(id) {
+  const q = (sel) => page.value.querySelector(`[${sel}="${CSS.escape(id)}"]`);
+  const start = q('data-comment-start');
+  const end = q('data-comment-end');
+  const ref = q('data-comment-id');
+  if (!start && !ref) return null;
+  const range = document.createRange();
+  if (start) range.setStartAfter(start);
+  else range.setStartBefore(ref);
+  if (end) range.setEndBefore(end);
+  else range.setEndAfter(ref);
+  return range;
+}
+
+const canHighlight = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
+
+function paintComments() {
+  if (!canHighlight || !threads.value.length) return;
+  const all = new Highlight();
+  const active = new Highlight();
+  active.priority = 1;
+  for (const t of threads.value) {
+    const range = commentRange(t.id);
+    if (!range) continue;
+    all.add(range);
+    if (t.id === activeComment.value) active.add(range);
+  }
+  CSS.highlights.set('comment', all);
+  CSS.highlights.set('comment-active', active);
+}
+
+function selectComment(id, reveal = true) {
+  activeComment.value = id;
+  paintComments();
+  if (reveal) {
+    const range = commentRange(id);
+    if (range) revealRect(range.getBoundingClientRect());
+  } else {
+    nextTick(() => document.querySelector('.comments .thread.active')?.scrollIntoView({ block: 'nearest' }));
+  }
+}
+
+function revealRect(rect) {
+  const canvas = page.value.closest('.canvas');
+  const box = canvas.getBoundingClientRect();
+  if (rect.top < box.top + 8 || rect.bottom > box.bottom - 8) canvas.scrollTop += rect.top - box.top - box.height / 3;
 }
 
 // ------------------------------------------------------------------ find and replace
@@ -696,12 +807,23 @@ async function close() {
 .toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }
 .sep { width: 1px; height: 22px; background: var(--border); margin: 0 6px; }
 
-.canvas { flex: 1; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
-.docx-page {
+.workspace { flex: 1; min-height: 0; display: flex; }
+.canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
+.docx-sheet {
   box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%); outline: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%);
+  display: flex; flex-direction: column;
+}
+.docx-page {
+  flex: 1; box-sizing: border-box; outline: none;
   white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; caret-color: #000;
 }
+.docx-hf { flex: none; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; opacity: .55; cursor: default; }
+.docx-hf.footer { display: flex; flex-direction: column; justify-content: flex-end; }
+.docx-hf:hover { opacity: .8; }
+.docx-hf.empty { padding-bottom: 0 !important; padding-top: 0 !important; }
+.comments-toggle { gap: 3px; padding: 0 6px; }
+.badge { font-size: 11px; color: var(--muted); }
 .chooser {
   position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;
   display: flex; flex-direction: column; padding: 4px; background: var(--surface); color: inherit;
@@ -718,41 +840,53 @@ async function close() {
 
 @media (max-width: 860px) {
   .canvas { padding: 0; }
-  .docx-page { padding: 24px 16px !important; min-height: 100% !important; width: 100% !important; box-shadow: none; }
+  .docx-sheet { min-height: 100% !important; width: 100% !important; box-shadow: none; }
+  .docx-page { padding: 24px 16px !important; }
+  .docx-hf { padding: 12px 16px !important; min-height: 0 !important; }
 }
 </style>
 
 <style>
 /* Unscoped: applies to the generated document HTML. */
-.docx-page :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
-.docx-page :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
-.docx-page .list::before {
+.docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
+.docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
+.docx-sheet .list::before {
   content: attr(data-marker); position: absolute; transform: translateX(calc(-100% - 0.5em));
   text-indent: 0; white-space: nowrap;
 }
-.docx-page a { color: #0563c1; }
-.docx-page img { max-width: 100%; vertical-align: bottom; }
-.docx-page .raw-hidden { display: none; }
-.docx-page .raw-block, .docx-page .raw-inline:not(:has(img)) {
+.docx-sheet a { color: #0563c1; }
+.docx-sheet img { max-width: 100%; vertical-align: bottom; }
+.docx-sheet .raw-hidden { display: none; }
+.docx-sheet .raw-block, .docx-sheet .raw-inline:not(:has(img)) {
   background: #f1f3f6; color: #555; border-radius: 3px; cursor: default; user-select: none;
 }
-.docx-page .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
-.docx-page .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
-.docx-page .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
-.docx-page .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
-.docx-page .raw-inline.note-ref { vertical-align: super; font-size: smaller; }
-.docx-page .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
-.docx-page div.sdt { box-shadow: 0 0 0 1px transparent; }
-.docx-page .sdt:not(.sdt-locked):hover, .docx-page .sdt:not(.sdt-locked):focus-within { background: #e8eef8; box-shadow: 0 0 0 1px #9db3d9; }
-.docx-page .sdt-content { outline: none; }
-.docx-page span.sdt-content:empty { padding: 0 1ch; }
-.docx-page .showing-placeholder { color: #767676; }
-.docx-page :is(.sdt-checkbox, .sdt-dropdown, .sdt-date) { cursor: pointer; }
-.docx-page :is(span.sdt-dropdown, span.sdt-combo, span.sdt-date)::after { content: '▾'; font-size: .8em; color: #5b6b85; margin-left: 2px; cursor: pointer; }
-.docx-page .sdt-locked { cursor: default; user-select: none; background: #f1f3f6; }
-.docx-page table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
-.docx-page table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
-.docx-page table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px #2b579a55; }
-.docx-page table.docx-table td.vmerge { border-top-color: transparent; }
-.docx-page table.docx-table td.vmerge > * { visibility: hidden; }
+.docx-sheet .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
+.docx-sheet .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
+.docx-sheet .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
+.docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
+.docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: #2b579a; }
+.docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
+.docx-sheet .raw-inline.symbol { background: transparent; color: inherit; }
+.docx-sheet .raw-inline.comment-ref { display: inline; cursor: pointer; user-select: none; background: transparent; padding: 0; }
+.docx-sheet .comment-ref::before {
+  content: attr(data-n); display: inline-block; min-width: 1.3em; margin: 0 1px; padding: 0 3px; border-radius: 7px;
+  font: 600 10px/1.4 system-ui, sans-serif; text-align: center; vertical-align: super; background: #d0705c; color: #fff;
+}
+.docx-sheet .field { border-bottom: 1px dotted #9aa6b8; }
+::highlight(comment) { background-color: #fbe3dc; }
+::highlight(comment-active) { background-color: #f6b9a8; }
+.docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
+.docx-sheet div.sdt { box-shadow: 0 0 0 1px transparent; }
+.docx-sheet .sdt:not(.sdt-locked):hover, .docx-sheet .sdt:not(.sdt-locked):focus-within { background: #e8eef8; box-shadow: 0 0 0 1px #9db3d9; }
+.docx-sheet .sdt-content { outline: none; }
+.docx-sheet span.sdt-content:empty { padding: 0 1ch; }
+.docx-sheet .showing-placeholder { color: #767676; }
+.docx-sheet :is(.sdt-checkbox, .sdt-dropdown, .sdt-date) { cursor: pointer; }
+.docx-sheet :is(span.sdt-dropdown, span.sdt-combo, span.sdt-date)::after { content: '▾'; font-size: .8em; color: #5b6b85; margin-left: 2px; cursor: pointer; }
+.docx-sheet .sdt-locked { cursor: default; user-select: none; background: #f1f3f6; }
+.docx-sheet table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
+.docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
+.docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px #2b579a55; }
+.docx-sheet table.docx-table td.vmerge { border-top-color: transparent; }
+.docx-sheet table.docx-table td.vmerge > * { visibility: hidden; }
 </style>

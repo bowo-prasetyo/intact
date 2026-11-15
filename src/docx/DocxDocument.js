@@ -20,6 +20,9 @@ import { StyleSheet, jcToCss } from './styles.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import {
+  loadPart, parseComments, parseNotes, firstPageReferences, fieldName, describe,
+} from './annotations.js';
+import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
 } from './contentControls.js';
 
@@ -95,6 +98,19 @@ export class DocxDocument {
       themeXml ? parseXml(themeXml) : null,
     );
     this.numberingXml = numXml ? parseXml(numXml) : null;
+
+    // Read-only companions of the body: comments, notes, and the first page's header and footer.
+    const partOf = (suffix) => loadPart(this, relOf(suffix));
+    const [comments, commentsExt, footnotes, endnotes] = await Promise.all(
+      ['/comments', '/commentsExtended', '/footnotes', '/endnotes'].map(partOf),
+    );
+    this.comments = parseComments(comments, commentsExt);
+    this.notes = { footnote: parseNotes(footnotes, 'footnote'), endnote: parseNotes(endnotes, 'endnote') };
+    const refs = firstPageReferences(this.body);
+    this.headerPart = refs.header && { ...(await loadPart(this, this.rels.get(refs.header.rid))), first: refs.header.first };
+    this.footerPart = refs.footer && { ...(await loadPart(this, this.rels.get(refs.footer.rid))), first: refs.footer.first };
+    if (!this.headerPart?.xml) this.headerPart = null;
+    if (!this.footerPart?.xml) this.footerPart = null;
     this.numberingPath = numPath || null;
     this.numberingChanged = false;
     this.listDefs = {}; // list definitions added this session: kind -> abstractNumId, plus the bullet numId
@@ -126,6 +142,8 @@ export class DocxDocument {
       bottom: px(wAttr(pgMar, 'bottom'), 96),
       left: px(wAttr(pgMar, 'left'), 96),
       right: px(wAttr(pgMar, 'right'), 96),
+      header: px(wAttr(pgMar, 'header'), 48),
+      footer: px(wAttr(pgMar, 'footer'), 48),
     };
   }
 
@@ -149,6 +167,8 @@ export class DocxDocument {
   render() {
     this.raw = [];
     this.numbering = new Numbering(this.numberingXml);
+    this.commentOrder = new Map(); // comment id -> marker number, in document order
+    this.noteCount = { footnote: 0, endnote: 0 };
     const frag = document.createDocumentFragment();
     this.renderBlocks(this.body, frag);
     if (!frag.childNodes.length) frag.append(this.emptyParagraph());
@@ -184,10 +204,11 @@ export class DocxDocument {
     const local = node.localName;
     if (HIDDEN_INLINE.has(local)) {
       div.className = 'raw-hidden';
+      markCommentRange(div, node);
       return div;
     }
     div.className = 'raw-block';
-    div.title = `Preserved content (<${node.nodeName}>) – not editable here`;
+    div.title = `${describe(node)} – kept as it is; edit it in Word`;
     div.textContent = plainText(node).trim() || `[${node.nodeName}]`;
     return div;
   }
@@ -285,10 +306,30 @@ export class DocxDocument {
     return el;
   }
 
-  renderInlines(container, parent) {
+  renderInlines(container, outer) {
+    // Complex fields are runs: begin, instruction, separate, result…, end. The markers are kept
+    // hidden and the result (still editable, as in Word) is wrapped to say what the field is.
+    const fields = [];
+    let parent = outer;
     for (const child of elementChildren(container)) {
       const local = child.namespaceURI === W ? child.localName : null;
       if (local === 'pPr' || local === 'proofErr') continue;
+      const mark = local === 'r' && fieldMarker(child);
+      if (mark) {
+        parent.append(this.hiddenRaw(child));
+        if (mark.type === 'begin') fields.push({ instr: '', outer: parent });
+        else if (mark.type === 'instr' && fields.length) fields[fields.length - 1].instr += mark.text;
+        else if (mark.type === 'separate' && fields.length) {
+          const wrap = document.createElement('span');
+          wrap.className = 'field';
+          wrap.title = `${fieldName(fields[fields.length - 1].instr)} – Word updates it`;
+          parent.append(wrap);
+          parent = wrap;
+        } else if (mark.type === 'end' && fields.length) {
+          parent = fields.pop().outer;
+        }
+        continue;
+      }
       if (local === 'r') this.renderRun(child, parent);
       else if (local === 'hyperlink') {
         const a = document.createElement('a');
@@ -312,15 +353,34 @@ export class DocxDocument {
     }
   }
 
-  rawInline(node) {
+  hiddenRaw(node) {
     const span = document.createElement('span');
     span.contentEditable = 'false';
     span.dataset.raw = this.keep(node);
+    span.className = 'raw-inline raw-hidden';
+    markCommentRange(span, node);
+    return span;
+  }
+
+  rawInline(node) {
     const local = node.localName;
-    if (HIDDEN_INLINE.has(local)) {
-      span.className = 'raw-inline raw-hidden';
+    if (HIDDEN_INLINE.has(local)) return this.hiddenRaw(node);
+    const commentRef = local === 'r' && onlyChild(node, 'commentReference');
+    if (commentRef) {
+      const id = wAttr(commentRef, 'id');
+      const comment = this.comments.find((c) => c.id === id);
+      if (comment?.parentId) return this.hiddenRaw(node); // replies are shown with their thread
+      const span = this.hiddenRaw(node);
+      span.className = 'raw-inline comment-ref';
+      span.dataset.commentId = id;
+      if (!this.commentOrder.has(id)) this.commentOrder.set(id, this.commentOrder.size + 1);
+      span.dataset.n = String(this.commentOrder.get(id));
+      span.title = comment ? `Comment by ${comment.author}: ${comment.paragraphs.join(' ')}` : 'Comment';
       return span;
     }
+    const span = document.createElement('span');
+    span.contentEditable = 'false';
+    span.dataset.raw = this.keep(node);
     span.className = 'raw-inline';
     // Images (DrawingML or legacy VML)
     const blips = [...node.getElementsByTagNameNS(NS.a, 'blip'), ...node.getElementsByTagNameNS(NS.v, 'imagedata')];
@@ -348,10 +408,24 @@ export class DocxDocument {
       span.title = 'Page break';
       return span;
     }
-    if (local === 'r' && wChild(node, 'footnoteReference')) {
+    const noteRef = local === 'r' && (wChild(node, 'footnoteReference') || wChild(node, 'endnoteReference'));
+    if (noteRef) {
+      const kind = noteRef.localName === 'footnoteReference' ? 'footnote' : 'endnote';
+      const n = ++this.noteCount[kind];
       span.classList.add('note-ref');
-      span.textContent = '*';
-      span.title = 'Footnote';
+      span.dataset.n = kind === 'footnote' ? String(n) : romanLower(n);
+      const text = this.notes[kind].get(wAttr(noteRef, 'id'));
+      span.title = `${kind === 'footnote' ? 'Footnote' : 'Endnote'} ${span.dataset.n}${text ? `: ${text}` : ''} – edit it in Word`;
+      return span;
+    }
+    const sym = local === 'r' && wChild(node, 'sym');
+    if (sym) {
+      const code = parseInt(wAttr(sym, 'char') || '', 16);
+      span.classList.add('symbol');
+      span.textContent = Number.isFinite(code) ? String.fromCodePoint(code >= 0xf000 ? code - 0xf000 : code) : '?';
+      const font = wAttr(sym, 'font');
+      if (font) span.style.fontFamily = `"${font}"`;
+      span.title = `Symbol${font ? ` (${font})` : ''}`;
       return span;
     }
     if (TRACKED_INLINE[local]) {
@@ -362,9 +436,31 @@ export class DocxDocument {
       span.textContent = plainText(node) || '⧉';
       return span;
     }
-    span.title = `Preserved content (<${node.nodeName}>)`;
+    span.title = `${describe(node)} – kept as it is; edit it in Word`;
     span.textContent = plainText(node) || '⧉';
     return span;
+  }
+
+  /** The first page's header or footer, rendered read-only, or null if it has nothing to show. */
+  renderHeaderFooter(which) {
+    const part = which === 'header' ? this.headerPart : this.footerPart;
+    if (!part) return null;
+    const [rels, numbering, order, notes] = [this.rels, this.numbering, this.commentOrder, this.noteCount];
+    this.rels = part.rels;
+    this.numbering = new Numbering(this.numberingXml);
+    this.commentOrder = new Map();
+    this.noteCount = { footnote: 0, endnote: 0 };
+    const frag = document.createDocumentFragment();
+    try {
+      this.renderBlocks(part.xml.documentElement, frag);
+    } finally {
+      [this.rels, this.numbering, this.commentOrder, this.noteCount] = [rels, numbering, order, notes];
+    }
+    for (const e of frag.querySelectorAll('[contenteditable]')) e.removeAttribute('contenteditable');
+    const holder = document.createElement('div');
+    holder.append(frag);
+    if (!holder.textContent.trim() && !holder.querySelector('img')) return null;
+    return holder;
   }
 
   renderRun(r, parent) {
@@ -832,6 +928,35 @@ export class DocxDocument {
     } else removeW(rPr, 'strike', 'dstrike');
     return isEmptyElement(rPr) ? null : rPr;
   }
+}
+
+/** If run `r` is only a field marker, its kind: begin / separate / end, or instr (with its text). */
+function fieldMarker(r) {
+  const kids = elementChildren(r).filter((k) => !(k.namespaceURI === W && (k.localName === 'rPr' || k.localName === 'lastRenderedPageBreak')));
+  if (kids.length !== 1 || kids[0].namespaceURI !== W) return null;
+  const k = kids[0];
+  if (k.localName === 'fldChar') return { type: wAttr(k, 'fldCharType') };
+  if (k.localName === 'instrText') return { type: 'instr', text: k.textContent };
+  return null;
+}
+
+/** The run's only content element if it is `local` (ignoring run properties). */
+function onlyChild(r, local) {
+  const kids = elementChildren(r).filter((k) => !(k.namespaceURI === W && k.localName === 'rPr'));
+  return kids.length === 1 && kids[0].namespaceURI === W && kids[0].localName === local ? kids[0] : null;
+}
+
+function markCommentRange(el, node) {
+  if (node.namespaceURI !== W) return;
+  if (node.localName === 'commentRangeStart') el.dataset.commentStart = wAttr(node, 'id');
+  if (node.localName === 'commentRangeEnd') el.dataset.commentEnd = wAttr(node, 'id');
+}
+
+function romanLower(n) {
+  const map = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
+  let s = '';
+  for (const [v, r] of map) while (n >= v) { s += r; n -= v; }
+  return s;
 }
 
 /** True if `br` is the browser's placeholder <br> at the very end of a block. */

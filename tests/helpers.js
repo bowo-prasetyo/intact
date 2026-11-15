@@ -29,8 +29,12 @@ export const FIELDS = `<w:sdt><w:sdtPr><w:rPr><w:b/></w:rPr><w:alias w:val="Clie
 // A 1×1 transparent PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
 
-/** Builds a .docx (as a Buffer) whose body is `bodyXml`, with numbering, a hyperlink target and an image. */
-export async function buildDocx(bodyXml) {
+/**
+ * Builds a .docx (as a Buffer) whose body is `bodyXml`, with numbering, a hyperlink target and an
+ * image. `parts` adds parts ({ 'word/header1.xml': xml }), `rels` relationships of the main document
+ * and `sectPr` the start of its section properties (such as header references).
+ */
+export async function buildDocx(bodyXml, { parts = {}, rels = '', sectPr = '' } = {}) {
   const zip = new JSZip();
   zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -51,7 +55,8 @@ export async function buildDocx(bodyXml) {
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
 <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/" TargetMode="External"/>
 <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>
-</Relationships>`);
+${rels}</Relationships>`);
+  for (const [path, content] of Object.entries(parts)) zip.file(path, content);
   zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles ${W_NS}>
 <w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
@@ -72,7 +77,7 @@ export async function buildDocx(bodyXml) {
   zip.file('word/media/image1.png', PNG);
   zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document ${W_NS}><w:body>${bodyXml}
-<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>
+<w:sectPr>${sectPr}<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>
 </w:body></w:document>`);
   return zip.generateAsync({ type: 'nodebuffer' });
 }
