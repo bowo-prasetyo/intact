@@ -183,8 +183,8 @@ test('Tab and Shift+Tab move between table cells instead of typing a tab', async
   await expect(page.locator('td')).toHaveText(['A1!', 'X', 'A2', 'B2']);
 
   await page.locator('td', { hasText: 'B2' }).click();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('.statusbar')).toContainText('Adding table rows isn’t supported yet');
+  await page.keyboard.press('Tab'); // the last cell: a new row (see tables.spec.js)
+  await expect(page.locator('td')).toHaveCount(6);
   const { xml } = await download(page);
   expect(xml).not.toContain('<w:tab/>');
 });

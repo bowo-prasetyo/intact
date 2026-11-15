@@ -38,6 +38,8 @@ const STYLES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 const NUMBERING_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering';
 const NUMBERING_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml';
 const NUMPR_ORDER = ['ilvl', 'numId', 'numberingChange', 'ins'];
+const COMMENTS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments';
+const COMMENTS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml';
 const SETTINGS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings';
 const SETTINGS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml';
 // The settings that come before <w:trackRevisions> in CT_Settings.
@@ -137,7 +139,10 @@ export class DocxDocument {
       const id = Number(el.getAttributeNS(W, 'id'));
       if (Number.isInteger(id) && id > maxId) maxId = id;
     }
-    this.firstRevisionId = maxId + 1;
+    // Annotations (comments, revisions, bookmarks) share one id space: new ones come from here.
+    for (const c of this.comments) if (Number(c.id) > maxId) maxId = Number(c.id);
+    this.nextId = maxId + 1;
+    this.newComments = []; // comments added this session (see addComment)
     const loadVariants = async (local) => {
       const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd).map(async (v) => {
         const part = await loadPart(this, this.rels.get(v.rid));
@@ -270,6 +275,53 @@ export class DocxDocument {
         el.dataset.revMark = rev.kind; // shown as ¶ (see EditorView), and accepted or rejected there
         el.dataset.revTitle = `${rev.kind === 'ins' ? 'Paragraph break inserted' : 'Paragraph break deleted'}${rev.author ? ` by ${rev.author}` : ''}${rev.date ? ` on ${rev.date.slice(0, 10)}` : ''}`;
       }
+    }
+  }
+
+  // ---------------------------------------------------------------- adding comments
+
+  /**
+   * Adds a comment of this session on the editor range `range` (a point if collapsed): its range
+   * markers and its mark go into the text, as Word writes them, and it joins this.comments.
+   */
+  addComment(range, { author, text, date }) {
+    const id = String(this.nextId++);
+    const initials = author.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+    const comment = {
+      id, author, initials, date, text, paraId: null, parentId: null, done: false, isNew: true,
+      paragraphs: text.split('\n').map((s) => s.trim()).filter(Boolean),
+    };
+    this.comments.push(comment);
+    this.newComments.push(comment);
+    // Like comments that were there: deleting its mark deletes it, and its range stays whole.
+    this.commentsInBody.add(id);
+    this.commentRangesInBody.add(id);
+    const marker = (local) => {
+      const el = createW(this.xml, local);
+      el.setAttributeNS(W, 'w:id', id);
+      return el;
+    };
+    const run = createW(this.xml, 'r');
+    run.appendChild(marker('commentReference'));
+    const mark = this.rawInline(run);
+    this.commentRefs.set(mark.dataset.raw, [id]);
+    const start = range.cloneRange();
+    start.collapse(true);
+    const end = range.cloneRange();
+    end.collapse(false);
+    end.insertNode(mark);
+    end.insertNode(this.hiddenRaw(marker('commentRangeEnd')));
+    start.insertNode(this.hiddenRaw(marker('commentRangeStart')));
+    return comment;
+  }
+
+  /** Numbers the comment marks under `root` in document order, as the panel lists them. */
+  renumberComments(root) {
+    this.commentOrder = new Map();
+    for (const el of root.querySelectorAll('.comment-ref')) {
+      const id = el.dataset.commentId;
+      if (!this.commentOrder.has(id)) this.commentOrder.set(id, this.commentOrder.size + 1);
+      el.dataset.n = String(this.commentOrder.get(id));
     }
   }
 
@@ -733,45 +785,96 @@ export class DocxDocument {
     if (tblStyle) table.dataset.tstyle = tblStyle;
     const tbody = document.createElement('tbody');
     table.append(tbody);
-    for (const { el: tr, wrappers: rowWrappers } of tableParts(tbl, 'tr')) {
-      const row = document.createElement('tr');
-      if (rowWrappers.length) {
-        row.classList.add('sdt-row');
-        row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
-      }
-      for (const { el: tc, wrappers: cellWrappers } of tableParts(tr, 'tc')) {
-        const td = document.createElement('td');
-        td.contentEditable = 'true';
-        // Content controls around whole rows or cells: the cell is the field. Anything but a text
-        // field (and anything locked or bound) stays read-only.
-        const wrappers = [...rowWrappers, ...cellWrappers];
-        if (wrappers.length) {
-          const infos = wrappers.map(controlInfo);
-          td.classList.add('sdt-cell');
-          if (cellWrappers.length) td.title = controlTitle(infos[infos.length - 1]);
-          if (infos.some((i) => i.readOnly || i.kind !== 'text')) {
-            td.contentEditable = 'false';
-            td.classList.add('sdt-locked');
-          } else if (infos[infos.length - 1].placeholder) {
-            td.classList.add('showing-placeholder');
-          }
-        }
-        const tcPr = wChild(tc, 'tcPr');
-        const span = Number(wAttr(wChild(tcPr, 'gridSpan'), 'val') || 1);
-        if (span > 1) td.colSpan = span;
-        const vMerge = wChild(tcPr, 'vMerge');
-        if (vMerge && wAttr(vMerge, 'val') !== 'restart') td.classList.add('vmerge');
-        const w = wChild(tcPr, 'tcW');
-        if (w && wAttr(w, 'type') === 'dxa') td.style.width = `${Number(wAttr(w, 'w')) / 15}px`;
-        const shd = wAttr(wChild(tcPr, 'shd'), 'fill');
-        if (shd && /^[0-9a-f]{6}$/i.test(shd)) td.style.backgroundColor = '#' + shd;
-        this.renderBlocks(tc, td);
-        if (!td.childNodes.length) td.append(this.emptyParagraph());
-        row.append(td);
-      }
-      tbody.append(row);
-    }
+    for (const { el: tr, wrappers: rowWrappers } of tableParts(tbl, 'tr')) tbody.append(this.renderRow(tr, rowWrappers));
     return table;
+  }
+
+  /** A table row (`rowWrappers`: content controls around it), its cells editable unless locked. */
+  renderRow(tr, rowWrappers = []) {
+    const row = document.createElement('tr');
+    if (rowWrappers.length) {
+      row.classList.add('sdt-row');
+      row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
+    }
+    for (const { el: tc, wrappers: cellWrappers } of tableParts(tr, 'tc')) {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      // Content controls around whole rows or cells: the cell is the field. Anything but a text
+      // field (and anything locked or bound) stays read-only.
+      const wrappers = [...rowWrappers, ...cellWrappers];
+      if (wrappers.length) {
+        const infos = wrappers.map(controlInfo);
+        td.classList.add('sdt-cell');
+        if (cellWrappers.length) td.title = controlTitle(infos[infos.length - 1]);
+        if (infos.some((i) => i.readOnly || i.kind !== 'text')) {
+          td.contentEditable = 'false';
+          td.classList.add('sdt-locked');
+        } else if (infos[infos.length - 1].placeholder) {
+          td.classList.add('showing-placeholder');
+        }
+      }
+      const tcPr = wChild(tc, 'tcPr');
+      const span = Number(wAttr(wChild(tcPr, 'gridSpan'), 'val') || 1);
+      if (span > 1) td.colSpan = span;
+      const vMerge = wChild(tcPr, 'vMerge');
+      if (vMerge && wAttr(vMerge, 'val') !== 'restart') td.classList.add('vmerge');
+      const w = wChild(tcPr, 'tcW');
+      if (w && wAttr(w, 'type') === 'dxa') td.style.width = `${Number(wAttr(w, 'w')) / 15}px`;
+      const shd = wAttr(wChild(tcPr, 'shd'), 'fill');
+      if (shd && /^[0-9a-f]{6}$/i.test(shd)) td.style.backgroundColor = '#' + shd;
+      this.renderBlocks(tc, td);
+      if (!td.childNodes.length) td.append(this.emptyParagraph());
+      row.append(td);
+    }
+    return row;
+  }
+
+  /**
+   * Tab in the last cell: a new row at the end of a table, as Word adds one. It copies the last
+   * row's cells (widths, merged columns, shading, paragraph formatting) with no text, but not a
+   * header row's repeat or vertical merges; while tracking (`tracked`: author and date), the row is
+   * a tracked insertion. The table gets a new copy of its XML, so Undo stays exact. Returns the new
+   * row, or null (with the reason) for rows inside a content control.
+   */
+  addTableRow(table, tracked = null) {
+    const tbl = this.raw[Number(table.dataset.raw)].cloneNode(true);
+    const rows = tableParts(tbl, 'tr');
+    const last = rows[rows.length - 1];
+    if (!last) return { row: null, reason: 'This table has no rows to copy' };
+    if (last.wrappers.length) return { row: null, reason: 'This table’s rows are in a field: add rows in Word' };
+    const tr = last.el.cloneNode(true);
+    const trPr = wChild(tr, 'trPr');
+    if (trPr) {
+      removeW(trPr, 'tblHeader', 'ins', 'del', 'trPrChange');
+      if (!elementChildren(trPr).length) tr.removeChild(trPr);
+    }
+    if (tracked) {
+      const props = wChild(tr, 'trPr') || tr.insertBefore(createW(this.xml, 'trPr'), wChildren(tr).find((c) => c.localName === 'tc' || c.localName === 'sdt') || null);
+      const ins = createW(this.xml, 'ins');
+      ins.setAttributeNS(W, 'w:id', String(this.nextId++));
+      ins.setAttributeNS(W, 'w:author', tracked.author);
+      if (tracked.date) ins.setAttributeNS(W, 'w:date', tracked.date);
+      props.appendChild(ins);
+    }
+    for (const { el: tc } of tableParts(tr, 'tc')) {
+      const tcPr = wChild(tc, 'tcPr');
+      removeW(tcPr, 'vMerge', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange');
+      // An empty paragraph with the formatting of the cell's first one.
+      const firstPPr = wChild(wChild(tc, 'p'), 'pPr');
+      for (const c of elementChildren(tc)) if (c.localName !== 'tcPr') tc.removeChild(c);
+      const p = tc.appendChild(createW(this.xml, 'p'));
+      if (firstPPr) {
+        const pPr = p.appendChild(firstPPr.cloneNode(true));
+        removeW(wChild(pPr, 'rPr'), 'ins', 'del', 'moveTo', 'moveFrom');
+      }
+    }
+    last.el.after(tr);
+    table.dataset.raw = this.keep(tbl);
+    const label = trackedChangeLabel(tbl);
+    if (label) table.dataset.tracked = label;
+    const row = this.renderRow(tr);
+    table.querySelector(':scope > tbody, :scope').append(row);
+    return { row, reason: null };
   }
 
   /**
@@ -925,7 +1028,7 @@ export class DocxDocument {
     const sectPr = wChild(this.body, 'sectPr');
     this.revisions = []; // <w:ins>/<w:del> written for this session's tracked changes
     const nodes = this.serializeBlocks(root);
-    this.revisions.forEach((rev, i) => rev.setAttributeNS(W, 'w:id', String(this.firstRevisionId + i)));
+    this.revisions.forEach((rev, i) => rev.setAttributeNS(W, 'w:id', String(this.nextId + i)));
     while (this.body.firstChild) this.body.removeChild(this.body.firstChild);
     for (const n of nodes) this.body.appendChild(n);
     if (!nodes.some((n) => n.localName === 'p')) this.body.appendChild(createW(this.xml, 'p'));
@@ -955,7 +1058,8 @@ export class DocxDocument {
     };
     return {
       paragraphs: reviewParagraphs(this.originalBody, this.body, { tracked: (p) => trackedParagraphs.has(p), styleName }),
-      commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id)),
+      commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id) && !c.isNew),
+      commentsAdded: this.newComments.filter((c) => commentIdsIn(this.body).has(c.id) && !this.commentsRemoved.has(c.id)),
       insertions: this.revisions.filter((r) => r.localName === 'ins').length,
       deletions: this.revisions.filter((r) => r.localName === 'del').length,
       tracking: this.tracking,
@@ -971,7 +1075,7 @@ export class DocxDocument {
     this.zip.file(this.mainPath, serializeXml(this.xml));
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
-    this.writeComments();
+    await this.writeComments();
     await this.writeSettings();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
   }
@@ -1013,12 +1117,25 @@ export class DocxDocument {
   }
 
   /** Takes removed comments out of the comment parts (or puts back the original parts if none). */
-  writeComments() {
-    if (!this.commentsRemoved.size && !this.commentPartsChanged) return;
-    for (const [path, xml] of Object.entries(pruneCommentParts(this.commentParts, this.comments, this.commentsRemoved))) {
-      this.zip.file(path, xml);
+  async writeComments() {
+    const present = commentIdsIn(this.body);
+    const added = this.newComments.filter((c) => present.has(c.id) && !this.commentsRemoved.has(c.id));
+    if (!this.commentsRemoved.size && !added.length && !this.commentPartsChanged) return;
+    const out = pruneCommentParts(this.commentParts, this.comments, this.commentsRemoved);
+    if (added.length) {
+      // New comments go at the end of comments.xml, which is created if the document has none.
+      if (!this.commentParts.comments) {
+        const empty = `${XML_HEADER}<w:comments xmlns:w="${W}"/>`;
+        const path = await this.addPart('comments.xml', empty, COMMENTS_REL, COMMENTS_CT);
+        this.commentParts.comments = { path, text: empty };
+      }
+      const { path, text } = this.commentParts.comments;
+      const doc = parseXml(out[path] ?? text);
+      for (const c of added) doc.documentElement.appendChild(commentXml(doc, c));
+      out[path] = serializeXml(doc);
     }
-    this.commentPartsChanged = this.commentsRemoved.size > 0;
+    for (const [path, xml] of Object.entries(out)) this.zip.file(path, xml);
+    this.commentPartsChanged = this.commentsRemoved.size > 0 || added.length > 0;
   }
 
   async writeNumbering() {
@@ -1414,4 +1531,24 @@ function cssToStyle(css) {
   const out = {};
   for (const [k, v] of Object.entries(css)) out[k.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
   return out;
+}
+
+/** A comment of this session as <w:comment>, its text one paragraph per line, as Word writes it. */
+function commentXml(doc, c) {
+  const el = createW(doc, 'comment');
+  el.setAttributeNS(W, 'w:id', c.id);
+  el.setAttributeNS(W, 'w:author', c.author);
+  el.setAttributeNS(W, 'w:date', c.date);
+  if (c.initials) el.setAttributeNS(W, 'w:initials', c.initials);
+  const lines = c.text.split('\n');
+  lines.forEach((line, i) => {
+    const p = el.appendChild(createW(doc, 'p'));
+    if (i === 0) p.appendChild(createW(doc, 'r')).appendChild(createW(doc, 'annotationRef'));
+    if (line) {
+      const t = p.appendChild(createW(doc, 'r')).appendChild(createW(doc, 't'));
+      t.setAttributeNS(NS.xml, 'xml:space', 'preserve');
+      t.textContent = line;
+    }
+  });
+  return el;
 }

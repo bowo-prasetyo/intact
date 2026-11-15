@@ -38,6 +38,8 @@ async function select(page, [a, ao], [b, bo] = [a, ao]) {
 async function startTracking(page, name = 'Rita') {
   await page.getByRole('button', { name: 'Track changes' }).click();
   const dialog = page.getByRole('dialog', { name: 'Your name on tracked changes' });
+  // Firefox's autocomplete list for earlier names would open over "Start tracking" and take the click.
+  await expect(dialog.getByRole('textbox')).toHaveAttribute('autocomplete', 'off');
   await dialog.getByRole('textbox').fill(name);
   await dialog.getByRole('button', { name: 'Start tracking' }).click();
   await expect(page.getByRole('button', { name: 'Track changes' })).toHaveAttribute('aria-pressed', 'true');

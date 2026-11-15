@@ -91,6 +91,9 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
       </button>
+      <button type="button" class="new-comment" title="New comment (Ctrl+Alt+M)" @click="startComment">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+      </button>
       <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="badge">{{ threads.length }}</span>
@@ -132,7 +135,19 @@
           </div>
         </div>
       </div>
-      <CommentsPanel v-if="threads.length" v-show="commentsOpen" :threads="threads" :active="activeComment" @select="selectComment" @close="commentsOpen = false" />
+      <CommentsPanel
+        v-if="threads.length || composer.open"
+        v-show="commentsOpen || composer.open"
+        :threads="threads"
+        :active="activeComment"
+        :composing="composer.open"
+        :ask-name="!named"
+        @select="selectComment"
+        @close="commentsOpen = false; cancelComment()"
+        @post="postComment"
+        @cancel="cancelComment"
+        @delete="deleteComment"
+      />
     </div>
 
     <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" aria-label="Choose a value" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)" @keydown="onChooserKeydown">
@@ -167,7 +182,9 @@
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
-      <input id="author-name" ref="authorInput" v-model="authorDialog.name" type="text" maxlength="100" autocomplete="name" required />
+      <!-- No browser autocomplete: Firefox's list of earlier entries opens over the buttons below and
+           takes the click meant for them. The name is remembered by Intact itself. -->
+      <input id="author-name" ref="authorInput" v-model="authorDialog.name" type="text" maxlength="100" autocomplete="off" required />
       <div class="actions">
         <button type="submit" class="confirm">{{ tracking ? 'Save' : 'Start tracking' }}</button>
         <button type="button" @click="closeAuthorDialog">Cancel</button>
@@ -656,7 +673,7 @@ function onTab(e) {
   if (cell && page.value.contains(cell)) {
     const target = adjacentCell(cell, e.shiftKey ? -1 : 1);
     if (target) selectCell(target);
-    else if (!e.shiftKey) message.value = 'Adding table rows isn’t supported yet';
+    else if (!e.shiftKey) addRow(cell); // Tab in the last cell, as in Word
     return;
   }
   const block = closestBlock(range.startContainer);
@@ -799,6 +816,101 @@ function hasContentAfter(node, block) {
   range.setEnd(block, block.childNodes.length);
   const frag = range.cloneContents();
   return !!frag.textContent || !!frag.querySelector('br, img, .raw-inline:not(.raw-hidden), .sdt');
+}
+
+// ------------------------------------------------------------------ table rows
+
+/** A new row at the end of the table (tracked while tracking), with the caret in its first cell. */
+function addRow(cell) {
+  const table = cell.closest('table');
+  undoStack.flush();
+  const { row, reason } = doc.addTableRow(table, trackedBy(cell));
+  if (!row) {
+    message.value = reason;
+    return;
+  }
+  undoStack.commit();
+  selectCell(row.querySelector('td[contenteditable="true"]') || row.cells[0]);
+  markDirty();
+}
+
+// ------------------------------------------------------------------ adding comments
+
+const composer = reactive({ open: false });
+let composerRange = null; // where the new comment goes
+
+/** With nothing selected, a comment goes on the word at the caret, as in Word. */
+function wordAround(range) {
+  const { startContainer: node, startOffset: offset } = range;
+  if (!range.collapsed || node.nodeType !== 3) return range;
+  const letter = /[\p{L}\p{N}_'’-]/u;
+  let s = offset;
+  let e = offset;
+  while (s > 0 && letter.test(node.data[s - 1])) s--;
+  while (e < node.length && letter.test(node.data[e])) e++;
+  if (s === e) return range;
+  const word = document.createRange();
+  word.setStart(node, s);
+  word.setEnd(node, e);
+  return word;
+}
+
+/** New comment (Ctrl+Alt+M): opens a box for it in the comments panel, on the selected text. */
+function startComment() {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text, or select some, to comment on it';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  const hostOf = (n) => (n.nodeType === 1 ? n : n.parentElement).closest('[contenteditable="true"]');
+  if (hostOf(range.startContainer) !== hostOf(range.endContainer)) {
+    message.value = 'A comment can’t run from a table cell into the text around it: select within one';
+    return;
+  }
+  composerRange = wordAround(range).cloneRange();
+  composer.open = true;
+  commentsOpen.value = true;
+  paintComments();
+}
+
+function postComment({ text, name }) {
+  if (name) {
+    author.value = name;
+    named.value = true;
+    try { localStorage.setItem(AUTHOR_KEY, name); } catch { /* this session only */ }
+  }
+  undoStack.flush();
+  const comment = doc.addComment(composerRange, { author: author.value, text, date: revisionDate() });
+  composer.open = false;
+  composerRange = null;
+  undoStack.commit();
+  markDirty();
+  refreshComments();
+  selectComment(comment.id, false);
+  page.value.focus();
+  message.value = 'Comment added';
+}
+
+function cancelComment() {
+  if (!composer.open) return;
+  composer.open = false;
+  composerRange = null;
+  paintComments();
+  page.value.focus();
+  restoreSelection();
+}
+
+/** Deletes a comment added this session (its marks go from the text); Undo brings it back. */
+function deleteComment(id) {
+  undoStack.flush();
+  for (const el of page.value.querySelectorAll(`[data-comment-start="${CSS.escape(id)}"], [data-comment-end="${CSS.escape(id)}"], [data-comment-ref="${CSS.escape(id)}"]`)) el.remove();
+  undoStack.commit();
+  markDirty();
+  refreshComments();
+  message.value = 'Comment deleted – Undo (Ctrl+Z) brings it back';
 }
 
 // ------------------------------------------------------------------ accepting and rejecting changes
@@ -1049,6 +1161,7 @@ function runShortcut(name) {
   if (name === 'superscript' || name === 'subscript') return toggleVertAlign(name);
   if (name === 'highlight') return applyHighlight(highlightColor.value, true);
   if (name === 'formattingMarks') return toggleMarks();
+  if (name === 'comment') return startComment();
   if (name === 'nonBreakingSpace') return typeText('\u00a0');
   if (name === 'pageBreak') return insertPageBreak();
 }
@@ -1683,13 +1796,19 @@ function commentThreads(removed = new Set()) {
 // text, and the status bar says so, since Undo is the way back.
 let removedComments = new Set();
 
+let commentsShown = 0; // how many comments the panel was built from
+
 function refreshComments() {
   if (!doc.comments.length) return;
+  doc.renumberComments(page.value); // marks may have been added, removed or brought back by Undo
   const removed = doc.removedComments(page.value);
   const added = [...removed].filter((id) => !removedComments.has(id));
-  const changed = added.length || removed.size !== removedComments.size;
+  const changed = added.length || removed.size !== removedComments.size || doc.comments.length !== commentsShown;
   removedComments = removed;
-  if (changed) threads.value = commentThreads(removed);
+  if (changed) {
+    threads.value = commentThreads(removed);
+    commentsShown = doc.comments.length;
+  }
   paintComments();
   if (added.length) message.value = commentRemovalMessage(added);
 }
@@ -1731,6 +1850,7 @@ function paintComments() {
     all.add(range);
     if (t.id === activeComment.value) active.add(range);
   }
+  if (composer.open && composerRange) active.add(composerRange); // the text a new comment will be on
   CSS.highlights.set('comment', all);
   CSS.highlights.set('comment-active', active);
 }

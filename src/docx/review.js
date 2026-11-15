@@ -168,6 +168,9 @@ function formattingChanges(before, after, styleName) {
   const val = (p, local) => wAttr(wChild(pPr(p), local), 'val');
   const out = [];
   if (revisions(before) > revisions(after)) return ['Tracked change accepted or rejected'];
+  const marks = (p) => p.getElementsByTagNameNS(W, 'commentReference').length;
+  if (marks(after) > marks(before)) return ['Comment added'];
+  if (marks(after) < marks(before)) return ['Comment removed'];
   const mark = (p, local) => !!wChild(wChild(pPr(p), 'rPr'), local);
   if (mark(after, 'del') && !mark(before, 'del')) out.push('Paragraph break deleted: it joins the next paragraph when accepted');
   if (mark(after, 'ins') && !mark(before, 'ins')) out.push('Paragraph break inserted');

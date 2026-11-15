@@ -11,6 +11,7 @@ export function shortcutFor(e) {
   if (!e.altKey && e.code === 'Equal') return e.shiftKey ? 'superscript' : 'subscript';
   if (!e.altKey && e.code === 'Digit8') return 'formattingMarks';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
+  if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyM') return 'comment';
   if (!e.shiftKey && !e.altKey) {
     // Bold, italic and underline too: not every browser does them in editable text by itself.
     return {
@@ -32,6 +33,8 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+=, Ctrl+=', 'Superscript, subscript'],
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
+  ['Ctrl+Alt+M', 'New comment'],
+  ['Tab in the last cell of a table', 'New row'],
   ['Ctrl+L, Ctrl+E, Ctrl+R, Ctrl+J', 'Align left, centre, right, justify'],
   ['Ctrl+Shift+N', 'Normal style'],
   ['Ctrl+Alt+1, 2, 3', 'Heading 1, 2, 3'],
