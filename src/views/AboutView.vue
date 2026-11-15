@@ -16,6 +16,11 @@
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
       </ul>
+      <h2>What you can see but not edit</h2>
+      <p>
+        The first page's header and footer, comments (with replies and whether they are resolved),
+        footnotes and fields are shown as they are, labelled in plain language, and saved unchanged.
+      </p>
       <h2>What is preserved</h2>
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,
