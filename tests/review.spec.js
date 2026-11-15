@@ -108,6 +108,14 @@ test('formatting, added and removed paragraphs and removed comments are all list
   ]);
 
   await openReview(page);
+  // The whole list first, so a failure shows what is listed.
+  // The whole list first, so a failure shows everything that is listed.
+  expect((await changes(page).allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()).sort()).toEqual([
+    'Paragraph 1 Changed The fee is due on the first working day of each month. Style: Normal → Heading 2',
+    'Paragraph 3 Added Brand new.',
+    'Paragraph 4 Changed Third paragraph. Text formatting changed (bold, italic, underline or strikethrough)',
+    'Paragraph 4 Removed Commented paragraph.',
+  ]);
   await expect(dialog(page).locator('.summary')).toHaveText('2 paragraphs changed, 1 added, 1 removed.');
   const entry = (text) => changes(page).filter({ hasText: text });
   await expect(entry('The fee is due')).toContainText('Style: Normal → Heading 2');
