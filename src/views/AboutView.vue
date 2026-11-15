@@ -10,12 +10,13 @@
       <h2>What you can edit</h2>
       <ul>
         <li>Text of paragraphs, headings and table cells</li>
-        <li>Bold, italic, underline, strikethrough</li>
+        <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
+        <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
         <li>Track Changes for your own edits, with your name, as Word records them</li>
         <li>Review your changes before downloading</li>
-        <li>Paste with bold, italic, underline, strikethrough and lists</li>
+        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript and lists</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
       </ul>

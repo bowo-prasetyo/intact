@@ -1,5 +1,6 @@
 // Paste with basic formatting. Clipboard HTML (from web pages, Google Docs or Word) is reduced to
-// paragraphs, list items, line breaks and runs that are bold, italic, underlined or struck through.
+// paragraphs, list items, line breaks and runs that are bold, italic, underlined, struck through,
+// superscript or subscript.
 // Everything else (fonts, colours, styles, links, pictures, data-* attributes) is dropped, because it
 // can't be mapped faithfully to the document's own formatting.
 
@@ -37,6 +38,8 @@ function formatOf(el, inherited) {
   if (tag === 'I' || tag === 'EM' || tag === 'CITE' || tag === 'DFN') f.i = true;
   if (tag === 'U' || tag === 'INS') f.u = true;
   if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL') f.s = true;
+  if (tag === 'SUP') f.va = 'superscript';
+  if (tag === 'SUB') f.va = 'subscript';
   if (/^H[1-6]$/.test(tag) || tag === 'TH') f.b = true;
   if (tag === 'PRE') f.pre = true;
   const st = el.style;
@@ -48,6 +51,9 @@ function formatOf(el, inherited) {
     if (/underline/.test(deco)) f.u = true;
     if (/line-through/.test(deco)) f.s = true;
     if (/\bnone\b/.test(deco) && !/underline|line-through/.test(deco)) { f.u = false; f.s = false; }
+    if (st.verticalAlign === 'super') f.va = 'superscript';
+    if (st.verticalAlign === 'sub') f.va = 'subscript';
+    if (st.verticalAlign === 'baseline') f.va = null;
   }
   return f;
 }
@@ -91,7 +97,7 @@ function walk(node, format, state) {
       let text = child.data;
       if (!format.pre) text = text.replace(/[\t\n\r ]+/g, ' ');
       text = text.replace(/ /g, ' ');
-      if (text) state.current.runs.push({ text, b: format.b, i: format.i, u: format.u, s: format.s });
+      if (text) state.current.runs.push({ text, b: format.b, i: format.i, u: format.u, s: format.s, va: format.va || null });
       continue;
     }
     if (child.nodeType !== 1) continue;
@@ -141,7 +147,7 @@ function tidy(block) {
   const runs = [];
   for (const r of block.runs) {
     const last = runs[runs.length - 1];
-    if (!r.br && last && !last.br && last.b === r.b && last.i === r.i && last.u === r.u && last.s === r.s) last.text += r.text;
+    if (!r.br && last && !last.br && last.b === r.b && last.i === r.i && last.u === r.u && last.s === r.s && (last.va || null) === (r.va || null)) last.text += r.text;
     else runs.push({ ...r });
   }
   const first = runs.find((r) => !r.br);
@@ -156,7 +162,7 @@ export function runNodes(runs) {
   return runs.map((r) => {
     if (r.br) return document.createElement('br');
     let node = document.createTextNode(r.text);
-    for (const [on, tag] of [[r.s, 's'], [r.u, 'u'], [r.i, 'em'], [r.b, 'strong']]) {
+    for (const [on, tag] of [[r.va === 'subscript', 'sub'], [r.va === 'superscript', 'sup'], [r.s, 's'], [r.u, 'u'], [r.i, 'em'], [r.b, 'strong']]) {
       if (!on) continue;
       const wrap = document.createElement(tag);
       wrap.append(node);

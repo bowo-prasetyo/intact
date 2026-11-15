@@ -174,7 +174,7 @@ function formattingChanges(before, after, styleName) {
   if (align(val(before, 'jc')) !== align(val(after, 'jc'))) out.push(`Alignment: ${align(val(before, 'jc'))} → ${align(val(after, 'jc'))}`);
   const list = (p) => { const n = wChild(pPr(p), 'numPr'); return n ? canon(n) : ''; };
   if (list(before) !== list(after)) out.push('List or list level changed');
-  if (!out.length) out.push('Text formatting changed (bold, italic, underline or strikethrough)');
+  if (!out.length) out.push('Text formatting changed (such as bold, italic, superscript or highlight)');
   return out;
 }
 

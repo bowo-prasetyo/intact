@@ -140,7 +140,10 @@ export class StyleSheet {
     return null;
   }
 
-  /** CSS declarations for run properties. `withToggles` includes bold/italic/underline/strike. */
+  /**
+   * CSS declarations for run properties. `withToggles` includes what the editor shows as tags
+   * instead: bold, italic, underline, strikethrough, superscript, subscript and highlight.
+   */
   rPrCss(rPr, withToggles = true) {
     const css = {};
     if (!rPr) return css;
@@ -151,12 +154,12 @@ export class StyleSheet {
     const color = wAttr(wChild(rPr, 'color'), 'val');
     if (color && /^[0-9a-f]{6}$/i.test(color)) css.color = '#' + color;
     const hl = wAttr(wChild(rPr, 'highlight'), 'val');
-    if (hl && hl !== 'none') css['background-color'] = HIGHLIGHT[hl] || hl;
+    if (withToggles && hl && hl !== 'none') css['background-color'] = HIGHLIGHT[hl] || hl;
     const shd = wAttr(wChild(rPr, 'shd'), 'fill');
     if (!hl && shd && /^[0-9a-f]{6}$/i.test(shd)) css['background-color'] = '#' + shd;
     const va = wAttr(wChild(rPr, 'vertAlign'), 'val');
-    if (va === 'superscript') Object.assign(css, { 'vertical-align': 'super', 'font-size': 'smaller' });
-    if (va === 'subscript') Object.assign(css, { 'vertical-align': 'sub', 'font-size': 'smaller' });
+    if (withToggles && va === 'superscript') Object.assign(css, { 'vertical-align': 'super', 'font-size': 'smaller' });
+    if (withToggles && va === 'subscript') Object.assign(css, { 'vertical-align': 'sub', 'font-size': 'smaller' });
     if (onOff(wChild(rPr, 'caps'))) css['text-transform'] = 'uppercase';
     if (onOff(wChild(rPr, 'smallCaps'))) css['font-variant'] = 'small-caps';
     if (onOff(wChild(rPr, 'vanish'))) css.opacity = '0.5';
@@ -248,7 +251,7 @@ export function jcToCss(jc) {
   return { start: 'left', left: 'left', end: 'right', right: 'right', center: 'center', both: 'justify', distribute: 'justify' }[jc] || 'left';
 }
 
-const HIGHLIGHT = {
+export const HIGHLIGHT = {
   yellow: '#ffff00', green: '#00ff00', cyan: '#00ffff', magenta: '#ff00ff', blue: '#0000ff',
   red: '#ff0000', darkBlue: '#000080', darkCyan: '#008080', darkGreen: '#008000',
   darkMagenta: '#800080', darkRed: '#800000', darkYellow: '#808000', darkGray: '#808080',

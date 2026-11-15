@@ -89,6 +89,7 @@ Saying no to these keeps the product small enough to keep its promises:
 **Later — only if the job demands it**
 - Track your own edits as tracked changes ✔; review your changes before downloading ✔; Word's
   keyboard shortcuts ✔
+- Superscript, subscript and highlight ✔; show formatting marks (¶) ✔
 - Accept or reject tracked changes
 - Edit headers, footers and footnotes
 - Installable offline app (PWA)

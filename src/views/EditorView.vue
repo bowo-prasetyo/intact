@@ -31,6 +31,14 @@
       <button type="button" title="Italic (Ctrl+I)" :class="{ on: state.italic }" @click="exec('italic')"><i>I</i></button>
       <button type="button" title="Underline (Ctrl+U)" :class="{ on: state.underline }" @click="exec('underline')"><u>U</u></button>
       <button type="button" title="Strikethrough" :class="{ on: state.strike }" @click="exec('strikeThrough')"><s>S</s></button>
+      <button type="button" title="Superscript (Ctrl+Shift+=)" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
+      <button type="button" title="Subscript (Ctrl+=)" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <span class="split">
+        <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
+        </button>
+        <button ref="paletteButton" type="button" class="arrow" title="Highlight colour" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
+      </span>
       <span class="sep" />
       <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
@@ -56,6 +64,7 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Track changes</span>
       </button>
+      <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
       <button type="button" class="review-toggle" title="Review your changes" @click="openReview">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
@@ -71,6 +80,7 @@
     <div class="workspace">
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
+          <div ref="marksEl" class="marks-layer" aria-hidden="true" />
           <div v-if="doc.headers.length" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')" @click="onHeaderFooterClick">
             <div v-if="doc.headers.length > 1" class="hf-tabs" role="tablist" aria-label="Headers">
               <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @click="hf.header = i">{{ v.label }}</button>
@@ -111,6 +121,13 @@
       </template>
     </div>
 
+    <div v-if="palette.open" ref="paletteEl" class="palette" role="dialog" aria-label="Highlight colour" :style="{ left: `${palette.x}px`, top: `${palette.y}px` }" @mousedown.prevent @keydown.esc="closePalette">
+      <div class="swatches">
+        <button v-for="[name, label] in HIGHLIGHT_COLORS" :key="name" type="button" class="swatch" :class="{ current: name === highlightColor }" :style="{ background: HIGHLIGHT[name] }" :title="label" :aria-label="label" @click="pickHighlight(name)" />
+      </div>
+      <button type="button" class="no-color" @click="pickHighlight(null)">No colour</button>
+    </div>
+
     <ReviewDialog v-if="reviewData" :review="reviewData" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
@@ -148,6 +165,9 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { shortcutFor } from '../editor/shortcuts.js';
+import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
+import { drawMarks } from '../editor/marks.js';
+import { HIGHLIGHT } from '../docx/styles.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -161,7 +181,7 @@ const saving = ref(false);
 const message = ref('');
 const words = ref(0);
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
-const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left', list: null });
+const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
 const threads = ref([]);
@@ -275,7 +295,57 @@ onMounted(() => {
   undoStack.commit();
 });
 
+// ------------------------------------------------------------------ formatting marks
+
+// Shown or not is remembered in this browser, as Word remembers it.
+const MARKS_KEY = 'intact.marks';
+const showMarks = ref((() => { try { return localStorage.getItem(MARKS_KEY) === '1'; } catch { return false; } })());
+const marksEl = ref(null);
+let marksFrame = 0;
+let marksObserver = null;
+
+/** Redraws the formatting marks on the next frame (once, however often it is asked). */
+function scheduleMarks() {
+  if (!showMarks.value || marksFrame) return;
+  marksFrame = requestAnimationFrame(() => {
+    marksFrame = 0;
+    if (showMarks.value && page.value && marksEl.value) drawMarks(page.value, marksEl.value, page.value.closest('.canvas').getBoundingClientRect());
+  });
+}
+
+function toggleMarks() {
+  showMarks.value = !showMarks.value;
+  try { localStorage.setItem(MARKS_KEY, showMarks.value ? '1' : '0'); } catch { /* this session only */ }
+  watchMarks();
+}
+
+/** Keeps the marks up to date while they are shown: the page changing, scrolling or resizing. */
+function watchMarks() {
+  const canvas = page.value?.closest('.canvas');
+  if (showMarks.value) {
+    marksObserver ||= new MutationObserver(scheduleMarks);
+    marksObserver.observe(page.value, { childList: true, subtree: true, characterData: true, attributes: true });
+    canvas?.addEventListener('scroll', scheduleMarks, { passive: true });
+    window.addEventListener('resize', scheduleMarks);
+    scheduleMarks();
+  } else {
+    marksObserver?.disconnect();
+    canvas?.removeEventListener('scroll', scheduleMarks);
+    window.removeEventListener('resize', scheduleMarks);
+    marksEl.value?.replaceChildren();
+  }
+}
+
+onMounted(() => {
+  if (showMarks.value) watchMarks();
+  document.fonts?.ready.then(scheduleMarks); // web fonts change where the text is
+});
+
 onBeforeUnmount(() => {
+  marksObserver?.disconnect();
+  cancelAnimationFrame(marksFrame);
+  window.removeEventListener('resize', scheduleMarks);
+
   document.removeEventListener('selectionchange', onSelectionChange);
   document.removeEventListener('mousedown', onDocumentMousedown, true);
   window.removeEventListener('keydown', onWindowKeydown, true);
@@ -339,6 +409,7 @@ function onSelectionChange() {
   state.italic = document.queryCommandState('italic');
   state.underline = document.queryCommandState('underline');
   state.strike = document.queryCommandState('strikeThrough');
+  Object.assign(state, (({ superscript, subscript, highlight }) => ({ sup: superscript, sub: subscript, highlight }))(formatState(range)));
   const block = startBlock(range);
   state.block = block ? doc.blockKind(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
@@ -689,6 +760,94 @@ function hasContentAfter(node, block) {
   return !!frag.textContent || !!frag.querySelector('br, img, .raw-inline:not(.raw-hidden), .sdt');
 }
 
+// ------------------------------------------------------------------ superscript, subscript, highlight
+
+/** Runs a change to character formatting of the selection as one undoable step; false if refused. */
+function formatSelection(change) {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range || inPlainField()) return false;
+  const locked = readOnlySelection();
+  if (locked) {
+    explainReadOnly(locked, true);
+    return false;
+  }
+  undoStack.flush();
+  const after = change(range);
+  if (after) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(after);
+  }
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  noteUntrackedFormatting();
+  return true;
+}
+
+/** Superscript or subscript on or off, as Word's buttons: one turns the other off. */
+function toggleVertAlign(kind) {
+  formatSelection((range) => {
+    if (range.collapsed) {
+      document.execCommand(kind); // for what is typed next
+      return null;
+    }
+    const on = formatState(range)[kind];
+    return setVertAlign(range, on ? null : kind);
+  });
+}
+
+// The highlight colour last chosen, remembered in this browser only.
+const HIGHLIGHT_KEY = 'intact.highlight';
+const highlightColor = ref((() => {
+  try {
+    const c = localStorage.getItem(HIGHLIGHT_KEY);
+    return HIGHLIGHT_COLORS.some(([name]) => name === c) ? c : 'yellow';
+  } catch { return 'yellow'; }
+})());
+const palette = reactive({ open: false, x: 0, y: 0 });
+const paletteEl = ref(null);
+const paletteButton = ref(null);
+const colorLabel = (name) => HIGHLIGHT_COLORS.find(([n]) => n === name)?.[1] || name;
+
+/** Highlights the selection in `color`, or removes highlight (null). `toggle`: off if it is that colour. */
+function applyHighlight(color, toggle = false) {
+  const range = selectionInPage() || savedRange;
+  if (!range || range.collapsed) {
+    message.value = 'Select the text to highlight first';
+    return;
+  }
+  formatSelection((r) => {
+    const off = !color || (toggle && formatState(r).highlight === color);
+    return setHighlight(r, off ? null : color);
+  });
+}
+
+function togglePalette() {
+  if (palette.open) return closePalette();
+  const rect = paletteButton.value.getBoundingClientRect();
+  Object.assign(palette, { open: true, x: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 200)), y: rect.bottom + 4 });
+  nextTick(() => paletteEl.value?.querySelector('.swatch.current, .swatch')?.focus());
+}
+
+function closePalette() {
+  palette.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+function pickHighlight(color) {
+  palette.open = false;
+  if (color) {
+    highlightColor.value = color;
+    try { localStorage.setItem(HIGHLIGHT_KEY, color); } catch { /* this session only */ }
+  }
+  page.value.focus();
+  restoreSelection();
+  applyHighlight(color);
+}
+
 // ------------------------------------------------------------------ keyboard shortcuts
 
 /** Runs one of Word's shortcuts (see editor/shortcuts.js). */
@@ -707,23 +866,31 @@ function runShortcut(name) {
     return changeLevel(name === 'indent' ? 1 : -1);
   }
   if (name === 'clearFormatting') return clearCharacterFormatting();
+  if (name === 'superscript' || name === 'subscript') return toggleVertAlign(name);
+  if (name === 'highlight') return applyHighlight(highlightColor.value, true);
+  if (name === 'formattingMarks') return toggleMarks();
   if (name === 'nonBreakingSpace') return typeText('\u00a0');
   if (name === 'pageBreak') return insertPageBreak();
 }
 
-/** Ctrl+Space: takes bold, italic, underline and strikethrough off the selection. */
+/**
+ * Ctrl+Space: takes bold, italic, underline, strikethrough, superscript and subscript off the
+ * selection. Highlight stays, as in Word.
+ */
 function clearCharacterFormatting() {
-  restoreSelection();
-  if (inPlainField()) return;
-  undoStack.flush();
-  for (const cmd of CHAR_FORMATS) {
-    // A mixed selection may first turn fully on; the second toggle then turns it off.
-    for (let i = 0; i < 2 && document.queryCommandState(cmd); i++) document.execCommand(cmd);
-  }
-  undoStack.commit();
-  onSelectionChange();
-  markDirty();
-  noteUntrackedFormatting();
+  formatSelection((range) => {
+    const after = range.collapsed ? null : setVertAlign(range, null);
+    if (after) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(after);
+    }
+    for (const cmd of CHAR_FORMATS) {
+      // A mixed selection may first turn fully on; the second toggle then turns it off.
+      for (let i = 0; i < 2 && document.queryCommandState(cmd); i++) document.execCommand(cmd);
+    }
+    return null;
+  });
 }
 
 /** Types `text` at the selection, as a key press would: tracked while tracking, never into read-only content. */
@@ -1292,6 +1459,7 @@ function markNearField(range) {
 
 function onDocumentMousedown(e) {
   if (chooser.open && !chooserEl.value?.contains(e.target) && !chooserTarget?.contains(e.target)) closeChooser();
+  if (palette.open && !paletteEl.value?.contains(e.target) && !paletteButton.value?.contains(e.target)) palette.open = false;
 }
 
 function choose(choice) {
@@ -1584,7 +1752,7 @@ async function close() {
 .workspace { flex: 1; min-height: 0; display: flex; }
 .canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
 .docx-sheet {
-  box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
+  position: relative; box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
   box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%);
   display: flex; flex-direction: column;
 }
@@ -1608,6 +1776,19 @@ async function close() {
 }
 .hf-tabs button[aria-selected="true"] { background: #2b579a; border-color: #2b579a; color: #fff; }
 .comments-toggle { gap: 3px; padding: 0 6px; }
+.script { font-size: 14px; line-height: 1; }
+.script sup, .script sub { font-size: 9px; }
+.split { display: inline-flex; }
+.split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
+.palette {
+  position: fixed; z-index: 10; width: 190px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.swatch { height: 24px; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; cursor: pointer; padding: 0; }
+.swatch.current, .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
+.marks-toggle { font-size: 16px !important; }
 .track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
 @media (max-width: 720px) { .track-toggle .label, .review-toggle .label { display: none; } }
 .tracking-status { border: 0; background: none; color: #6f2dbd; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
@@ -1664,6 +1845,20 @@ async function close() {
 .docx-sheet .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
 .docx-sheet .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
 .docx-sheet .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
+/* Formatting marks (editor/marks.js): a layer over the page that never takes clicks. */
+.docx-sheet .marks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.docx-sheet .fmark { position: absolute; color: #4f74b3; font-family: system-ui, sans-serif; white-space: pre; user-select: none; }
+.docx-sheet .fmark.space { transform: translateX(-50%); }
+/* Highlight, in Word's colours. */
+.docx-sheet mark { background: #ffff00; color: inherit; }
+.docx-sheet mark[data-color="green"] { background: #00ff00; } .docx-sheet mark[data-color="cyan"] { background: #00ffff; }
+.docx-sheet mark[data-color="magenta"] { background: #ff00ff; } .docx-sheet mark[data-color="blue"] { background: #0000ff; }
+.docx-sheet mark[data-color="red"] { background: #ff0000; } .docx-sheet mark[data-color="darkBlue"] { background: #000080; }
+.docx-sheet mark[data-color="darkCyan"] { background: #008080; } .docx-sheet mark[data-color="darkGreen"] { background: #008000; }
+.docx-sheet mark[data-color="darkMagenta"] { background: #800080; } .docx-sheet mark[data-color="darkRed"] { background: #800000; }
+.docx-sheet mark[data-color="darkYellow"] { background: #808000; } .docx-sheet mark[data-color="darkGray"] { background: #808080; }
+.docx-sheet mark[data-color="lightGray"] { background: #c0c0c0; } .docx-sheet mark[data-color="black"] { background: #000000; }
+.docx-sheet mark[data-color="white"] { background: #ffffff; }
 /* This session's tracked changes. */
 .docx-sheet .tc-ins { color: #6f2dbd; text-decoration: underline; }
 .docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }

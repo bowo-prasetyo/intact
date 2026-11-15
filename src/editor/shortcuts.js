@@ -6,6 +6,11 @@ export function shortcutFor(e) {
   if (!(e.ctrlKey || e.metaKey) || e.isComposing) return null;
   const key = e.key.toLowerCase();
   const space = e.code === 'Space' || key === ' ';
+  const altGr = e.getModifierState?.('AltGraph');
+  // Ctrl+= subscript, Ctrl+Shift+= (Ctrl++) superscript; Ctrl+Shift+8 (Ctrl+*, Cmd+8) formatting marks.
+  if (!e.altKey && e.code === 'Equal') return e.shiftKey ? 'superscript' : 'subscript';
+  if (!e.altKey && e.code === 'Digit8') return 'formattingMarks';
+  if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
   if (!e.shiftKey && !e.altKey) {
     // Bold, italic and underline too: not every browser does them in editable text by itself.
     return {
@@ -23,7 +28,10 @@ export function shortcutFor(e) {
 /** The shortcuts, as shown on the About page. */
 export const SHORTCUTS = [
   ['Ctrl+B, Ctrl+I, Ctrl+U', 'Bold, italic, underline'],
-  ['Ctrl+Space', 'Remove bold, italic, underline and strikethrough'],
+  ['Ctrl+Space', 'Remove bold, italic, underline, strikethrough, superscript and subscript'],
+  ['Ctrl+Shift+=, Ctrl+=', 'Superscript, subscript'],
+  ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
+  ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+L, Ctrl+E, Ctrl+R, Ctrl+J', 'Align left, centre, right, justify'],
   ['Ctrl+Shift+N', 'Normal style'],
   ['Ctrl+Alt+1, 2, 3', 'Heading 1, 2, 3'],
