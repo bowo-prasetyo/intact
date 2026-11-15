@@ -21,6 +21,7 @@
       <p>
         Headers and footers (all of them, one at a time), comments (with replies and whether they are resolved),
         footnotes and fields are shown as they are, labelled in plain language, and saved unchanged.
+        Click anything read-only, or try to type in it, and the status bar says what it is and where to edit it.
       </p>
       <h2>What is preserved</h2>
       <p>

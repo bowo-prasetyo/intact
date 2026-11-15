@@ -469,7 +469,10 @@ export class DocxDocument {
         span.append(img);
         break;
       }
-      if (span.childNodes.length) return span;
+      if (span.childNodes.length) {
+        span.title = `${describe(node)} – kept as it is; edit it in Word`;
+        return span;
+      }
     }
     if (local === 'r' && wChildren(node, 'br').some((b) => wAttr(b, 'type') === 'page')) {
       span.classList.add('page-break');

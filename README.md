@@ -30,7 +30,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - See what you can't edit, read-only and in plain language: headers and footers in the page
   margins (tabs switch between first page, other or even pages and sections when there are several); comments with their replies and resolved state in a side panel (click one to
   highlight its text); numbered footnotes with their text on hover; fields labelled by what they
-  are ("Page number – Word updates it")
+  are ("Page number – Word updates it"). Clicking read-only content (a tracked change, picture,
+  equation, locked field or cell) says in the status bar what it is and where to edit it, and puts
+  the caret beside it, as Word does; typing in it, or in a header, footer or comment, says why
+  nothing happens instead of doing nothing (or typing where the caret was before)
 - Paste with basic formatting, as Word's "merge formatting": bold, italic, underline,
   strikethrough, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
   Google Docs and Word; fonts, colours, styles, links and pictures don't (the status bar says when

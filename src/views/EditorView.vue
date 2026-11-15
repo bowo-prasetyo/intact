@@ -63,7 +63,7 @@
     <div class="workspace">
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
-          <div v-if="doc.headers.length" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')">
+          <div v-if="doc.headers.length" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')" @click="onHeaderFooterClick">
             <div v-if="doc.headers.length > 1" class="hf-tabs" role="tablist" aria-label="Headers">
               <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @click="hf.header = i">{{ v.label }}</button>
             </div>
@@ -80,9 +80,10 @@
             @keydown="onKeydown"
             @paste="onPaste"
             @drop="onDrop"
+            @mousedown="onPageMousedown"
             @click="onClick"
           />
-          <div v-if="doc.footers.length" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')">
+          <div v-if="doc.footers.length" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')" @click="onHeaderFooterClick">
             <div ref="footerEl" class="hf-variants" />
             <div v-if="doc.footers.length > 1" class="hf-tabs" role="tablist" aria-label="Footers">
               <button v-for="(v, i) in doc.footers" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @click="hf.footer = i">{{ v.label }}</button>
@@ -123,6 +124,7 @@ import {
   removesContent, rangesRemovedBy, trackedChangeAt, refusalMessage, commentMarkers, restoreCommentMarkers,
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
+import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -284,6 +286,7 @@ function closestBlock(node) {
 function onSelectionChange() {
   const range = selectionInPage();
   if (!range) return;
+  lastReadOnly = null;
   // Clicking into placeholder text selects all of it, so typing replaces it (as in Word).
   const control = range.collapsed ? controlAt(range.startContainer, page.value) : null;
   if (control?.classList.contains('showing-placeholder') && control.querySelector(':scope > .sdt-content')) {
@@ -546,6 +549,13 @@ function onBeforeInput(e) {
     return;
   }
   if (!removesContent(e)) return;
+  // Typing, deleting or pasting while the selection is in read-only content: say what it is.
+  const locked = readOnlySelection();
+  if (locked) {
+    e.preventDefault();
+    explainReadOnly(locked, true);
+    return;
+  }
   const ranges = rangesRemovedBy(e);
   // Backspace or Delete next to hidden markers (comment ranges, bookmarks, field codes) would remove
   // just the invisible marker: delete what is beyond it instead.
@@ -585,18 +595,108 @@ function refuseRemoving(ranges) {
   const el = trackedChangeAt(ranges, page.value);
   if (!el) return false;
   message.value = refusalMessage(el);
-  // Flash what is protected. An animation, not a class, so undo snapshots of the page don't change.
+  flash(el);
+  return true;
+}
+
+/** Flashes what an edit can't change. An animation, not a class, so undo snapshots don't change. */
+function flash(el) {
   el.animate?.([
     { outline: '2px solid #b3261e', outlineOffset: '1px', backgroundColor: 'rgb(179 38 30 / 15%)' },
     { outline: '2px solid transparent', outlineOffset: '1px' },
   ], { duration: 1200, easing: 'ease-out' });
-  return true;
+}
+
+// ------------------------------------------------------------------ read-only content
+
+// The read-only block or cell last clicked. The editor gives up focus then (the browser would make
+// up a caret for the next key otherwise), and keys typed next say why nothing happens.
+let lastReadOnly = null;
+let pointerDown = null;
+
+/** The read-only element the selection starts or ends in, or null. */
+function readOnlySelection() {
+  const range = selectionInPage();
+  return range && (readOnlyAt(range.startContainer, page.value) || readOnlyAt(range.endContainer, page.value));
+}
+
+/** Says in the status bar what read-only `el` is and where to edit it; `refused` flashes it too. */
+function explainReadOnly(el, refused = false) {
+  message.value = readOnlyMessage(el, page.value);
+  if (refused) flash(el);
+}
+
+function onPageMousedown(e) {
+  pointerDown = { x: e.clientX, y: e.clientY, range: selectionInPage()?.cloneRange() || null };
+}
+
+/**
+ * A click (not a drag) on read-only content says what it is. The browser leaves the caret where it
+ * was, so typing would land there, out of sight: put it beside inline content, on the side clicked,
+ * or clear it for a block or cell.
+ */
+function clickReadOnly(el, e) {
+  const down = pointerDown;
+  pointerDown = null;
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+  explainReadOnly(el);
+  const now = selectionInPage();
+  const moved = now && down?.range && !(now.startContainer === down.range.startContainer && now.startOffset === down.range.startOffset
+    && now.endContainer === down.range.endContainer && now.endOffset === down.range.endOffset);
+  if (moved && !readOnlyAt(now.startContainer, page.value)) return; // the browser placed the caret itself
+  const sel = window.getSelection();
+  const beside = caretBeside(el, e.clientX, e.clientY);
+  sel.removeAllRanges();
+  lastReadOnly = beside ? null : el;
+  if (!beside) {
+    document.activeElement?.blur();
+    return;
+  }
+  el.parentElement.closest('[contenteditable="true"]')?.focus({ preventScroll: true });
+  sel.addRange(beside);
+}
+
+function onHeaderFooterClick(e) {
+  if (!e.target.closest('button')) message.value = `Read-only: ${e.currentTarget.title}`;
+}
+
+/**
+ * Typing while the selection is in a header, footer or comment (outside the editable page), or
+ * after clicking a read-only block, does nothing; say why. True if the key was explained.
+ */
+function explainKeyOutsideText(e) {
+  if (!isEditingKey(e) || document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) return false;
+  if (lastReadOnly?.isConnected) {
+    explainReadOnly(lastReadOnly, true);
+    return true;
+  }
+  const node = window.getSelection().anchorNode;
+  const el = node?.nodeType === 1 ? node : node?.parentElement;
+  const hf = el?.closest('.docx-hf');
+  if (hf) {
+    message.value = `Read-only: ${hf.title}`;
+    flash(hf);
+    return true;
+  }
+  if (el?.closest('.comments') && e.key !== 'Enter') {
+    message.value = 'Read-only: comments are shown for reference – reply to or resolve them in Word';
+    return true;
+  }
+  return false;
 }
 
 function onKeydown(e) {
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   const range = selectionInPage();
+  if (isEditingKey(e) || (e.key === 'Tab' && !mod && !e.altKey)) {
+    const locked = readOnlySelection();
+    if (locked) {
+      e.preventDefault();
+      explainReadOnly(locked, true);
+      return;
+    }
+  }
   const field = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
   if ((e.altKey && !mod && e.key === 'ArrowDown') || (e.key === ' ' && !mod && !e.altKey && range && !range.collapsed)) {
     const near = fieldAtSelection(range, page.value);
@@ -641,6 +741,11 @@ function onKeydown(e) {
 function onPaste(e) {
   e.preventDefault();
   const range = selectionInPage();
+  const locked = readOnlySelection();
+  if (locked) {
+    explainReadOnly(locked, true);
+    return;
+  }
   if (!range || refuseRemoving([range])) return;
   undoStack.flush();
   const html = e.clipboardData.getData('text/html');
@@ -719,6 +824,11 @@ function onClick(e) {
   const placeholderCell = e.target.closest('td.sdt-cell.showing-placeholder');
   if (placeholderCell) {
     selectCell(placeholderCell); // a field around a table cell: typing replaces its placeholder
+    return;
+  }
+  const locked = readOnlyAt(e.target, page.value);
+  if (locked) {
+    clickReadOnly(locked, e);
     return;
   }
   const control = controlAt(e.target, page.value);
@@ -953,6 +1063,7 @@ function revealRect(rect) {
 
 /** Ctrl+F / Ctrl+H anywhere in the editor open Find (and Replace) instead of the browser's own. */
 function onWindowKeydown(e) {
+  if (explainKeyOutsideText(e)) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   if (!mod || e.altKey || e.shiftKey || (key !== 'f' && key !== 'h')) return;
