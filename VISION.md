@@ -91,10 +91,13 @@ Saying no to these keeps the product small enough to keep its promises:
 - **Trust:** users report that recipients didn't notice anything unusual about the file.
 - **Speed:** a user goes from opening the page to downloading an edited file in under a minute.
 
-## Open decision: the name
+## Name
 
-"Office" suggests a suite of applications (documents, spreadsheets, slides), which this product
-deliberately isn't. Together with the Word-blue colour and the phrase "Word documents", it may also
-invite trademark questions if the app is promoted widely. The app currently uses three names
-("Office", "Office – DOCX Editor", "Office Web Editor"). Pick one name that fits the narrow job and
-use it everywhere. This needs an owner decision and isn't changed yet.
+The product is called **Intact**, with the descriptor **"private .docx editor"** wherever there is
+room for it ("Intact — private .docx editor"). The name states the "Faithful" promise: the document
+comes back intact, with only your edits. It replaces "Office", which suggested a suite of
+applications and invited trademark questions. Use this one name everywhere: the header, the page
+title, the package name and the `Application` written into new documents.
+
+Still open: the Word-blue colour (`--brand` in `src/style.css` and the icon) and the phrase "Word
+documents" on the start page. Both are worth revisiting before the app is promoted widely.

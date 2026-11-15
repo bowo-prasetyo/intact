@@ -1,4 +1,4 @@
-# Office
+# Intact — private .docx editor
 
 Fix a Word document in seconds, privately: no install, no account, no upload — and nothing you
 didn't touch changes. Open a `.docx`, edit its text, and download it again. The file is unzipped,
