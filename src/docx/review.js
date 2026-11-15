@@ -149,6 +149,9 @@ export function wordDiff(before, after) {
   return out;
 }
 
+/** How many tracked changes a paragraph holds (its runs' and its break's). */
+const revisions = (p) => ['ins', 'del', 'moveFrom', 'moveTo'].reduce((n, local) => n + p.getElementsByTagNameNS(W, local).length, 0);
+
 /** How alike two texts are, from 0 to 1: the share of their characters in common words. */
 function similarity(a, b) {
   if (a === b) return 1;
@@ -164,6 +167,7 @@ function formattingChanges(before, after, styleName) {
   const pPr = (p) => wChild(p, 'pPr');
   const val = (p, local) => wAttr(wChild(pPr(p), local), 'val');
   const out = [];
+  if (revisions(before) > revisions(after)) return ['Tracked change accepted or rejected'];
   const mark = (p, local) => !!wChild(wChild(pPr(p), 'rPr'), local);
   if (mark(after, 'del') && !mark(before, 'del')) out.push('Paragraph break deleted: it joins the next paragraph when accepted');
   if (mark(after, 'ins') && !mark(before, 'ins')) out.push('Paragraph break inserted');
@@ -191,7 +195,7 @@ export function reviewParagraphs(beforeBody, afterBody, { tracked = () => false,
   const entries = [];
   let gone = [];
   let added = [];
-  const removed = (i) => ({ kind: 'removed', number: i + 1, inTable: A[i].inTable, words: [{ type: 'del', text: A[i].text }], formatting: null, tracked: false });
+  const removed = (i) => ({ kind: 'removed', number: i + 1, inTable: A[i].inTable, words: [{ type: 'del', text: A[i].text }], formatting: null, tracked: false, resolved: revisions(A[i].p) > 0 });
   const addition = (j) => ({ kind: 'added', number: j + 1, inTable: B[j].inTable, words: [{ type: 'ins', text: B[j].text }], formatting: null, tracked: tracked(B[j].p) });
   // Within a stretch of edits, a removed and an added paragraph are one changed paragraph only if
   // their text is alike (in order); the others were removed or added.
@@ -214,6 +218,7 @@ export function reviewParagraphs(beforeBody, afterBody, { tracked = () => false,
         words: same ? [{ type: 'same', text: b.text }] : wordDiff(a.text, b.text),
         formatting: same ? formattingChanges(a.p, b.p, styleName) : null,
         tracked: tracked(b.p),
+        resolved: revisions(a.p) > revisions(b.p), // a tracked change in it was accepted or rejected
       });
     }
     for (; g < gone.length; g++) entries.push(removed(gone[g]));

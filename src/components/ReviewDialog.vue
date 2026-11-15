@@ -16,6 +16,7 @@
             <span>Paragraph {{ c.number }}{{ c.inTable ? ' (in a table)' : '' }}</span>
             <span class="kind">{{ KIND[c.kind] }}</span>
             <span v-if="c.tracked" class="tag">Tracked</span>
+            <span v-else-if="c.resolved" class="tag resolved">Change accepted or rejected</span>
           </div>
           <p class="words">
             <template v-for="(w, k) in excerpt(c.words)" :key="k"><del v-if="w.type === 'del'">{{ w.text }}</del><ins v-else-if="w.type === 'ins'">{{ w.text }}</ins><span v-else-if="w.type === 'gap'" class="gap">…</span><span v-else>{{ w.text }}</span></template>
@@ -84,7 +85,11 @@ const notes = computed(() => {
     const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion')].filter(Boolean).join(' and ');
     out.push({ kind: 'good', text: `Recorded as tracked changes (${what}), so the recipient can accept or reject them in Word.` });
   }
-  if (r.paragraphs.some((p) => !p.tracked && !p.formatting)) {
+  if (r.resolved?.accepted || r.resolved?.rejected) {
+    const parts = [r.resolved.accepted && `accepted ${plural(r.resolved.accepted, 'tracked change')}`, r.resolved.rejected && `rejected ${plural(r.resolved.rejected, r.resolved.accepted ? 'change' : 'tracked change')}`].filter(Boolean);
+    out.push({ kind: 'info', text: `You ${parts.join(' and ')}. As in Word, accepting and rejecting aren’t themselves tracked.` });
+  }
+  if (r.paragraphs.some((p) => !p.tracked && !p.formatting && !p.resolved)) {
     out.push({ kind: 'warn', text: 'Some text changes aren’t tracked: the recipient won’t see them marked. Undo them and turn on Track changes to mark them.' });
   }
   if (r.paragraphs.some((p) => p.formatting && !/^Paragraph break/.test(p.formatting[0]))) {
@@ -142,6 +147,7 @@ h2 { margin: 0; font-size: 18px; }
 .where { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
 .kind { font-weight: 600; }
 .tag { padding: 0 6px; border-radius: 8px; background: #efe6fb; color: #6f2dbd; }
+.tag.resolved { background: #e6f2ea; color: #1e6b34; }
 .words { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 del { color: #b3261e; background: rgb(179 38 30 / 8%); }
 ins { color: #1e6b34; background: rgb(30 107 52 / 10%); text-decoration: underline; }

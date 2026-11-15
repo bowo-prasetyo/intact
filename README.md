@@ -49,6 +49,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   paragraph break shown as a struck ¶ without merging). Deleting your own insertion removes it.
   Word's setting is saved too, so the recipient keeps tracking; documents saved with Track Changes
   on open with it on. Your name is remembered in this browser only
+- Accept and reject tracked changes, anyone's and your own, as in Word's Review tab: when the
+  document has tracked changes, the toolbar shows Previous, Next, Accept and Reject. Accept and
+  Reject act on the change at the cursor (just click it) or every change in a selection, then go
+  to the next; their menus also accept or reject without moving on, or all changes at once. An
+  insertion accepted (or a deletion rejected) becomes ordinary text; a paragraph break removed
+  joins its paragraph with the next. Tracked paragraph breaks show as a coloured ¶. Changes only
+  Word can resolve (formatting, table rows, locked content) are counted, named and kept
 - Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
   changed, with the words deleted and inserted, which changes are tracked, a warning when some
   aren't, and anything else that changes (comments removed with their text, Track Changes switched,
@@ -63,8 +70,8 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
-  fields, equations, bookmarks, section settings and tracked changes (shown
-  read-only with their author, so they can still be accepted or rejected in Word). The test suite
+  fields, equations, bookmarks, section settings and tracked changes (shown with their author until
+  accepted or rejected, here or in Word). The test suite
   checks this on every pull request (see [Testing](#testing))
 - Undo/redo for every edit, including paragraph style changes; list numbers update as you edit
 - Deleting never quietly takes what you can't edit with it. An edit that would remove a tracked
@@ -160,9 +167,10 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 ## Limitations
 
-- Tracked changes can't be accepted or rejected here (Undo takes your own back); formatting changes
-  (bold, styles, alignment, lists) are applied directly, not tracked; edits inside form fields and
-  text moved by dragging aren't tracked (cut and paste is)
+- Tracked formatting changes, tracked table rows and tracked changes inside locked content can only
+  be accepted or rejected in Word (the toolbar counts them); your own formatting changes (bold,
+  styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
+  moved by dragging aren't tracked (cut and paste is)
 
 - Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
@@ -170,10 +178,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   lists (not highlight); pasted pictures
   and links (their text is kept) are not added
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
-  change in Word first, or select around it
+  change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)
-- Tracked changes, fields, footnotes, comments, headers and footers are preserved but can't be
-  edited
+- Fields, footnotes, comments, headers and footers are preserved but can't be edited
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save

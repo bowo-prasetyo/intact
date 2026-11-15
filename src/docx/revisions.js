@@ -35,3 +35,19 @@ export function paragraphMarkLabel(pPr) {
   if (!marks.length) return null;
   return `a tracked paragraph break${byAuthor(authorsOf(marks))}`;
 }
+
+/** If a paragraph's mark is a tracked change: { kind: 'ins' | 'del', local, author, date }; else null. */
+export function paragraphMarkRevision(pPr) {
+  const rPr = wChild(pPr, 'rPr');
+  for (const local of ['ins', 'del', 'moveTo', 'moveFrom']) {
+    const el = wChild(rPr, local);
+    if (el) return { kind: local === 'ins' || local === 'moveTo' ? 'ins' : 'del', local, author: wAttr(el, 'author'), date: wAttr(el, 'date') };
+  }
+  return null;
+}
+
+/** For an inline revision element (w:ins, w:del, w:moveTo, w:moveFrom): 'ins' or 'del'; else null. */
+export function inlineRevisionKind(node) {
+  if (node?.namespaceURI !== W) return null;
+  return { ins: 'ins', moveTo: 'ins', del: 'del', moveFrom: 'del' }[node.localName] || null;
+}

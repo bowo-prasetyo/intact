@@ -16,6 +16,7 @@
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
         <li>Track Changes for your own edits, with your name, as Word records them</li>
         <li>Review your changes before downloading</li>
+        <li>Accept and reject tracked changes, one at a time or all at once</li>
         <li>Paste with bold, italic, underline, strikethrough, superscript, subscript and lists</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
@@ -37,7 +38,7 @@
       <h2>Limitations</h2>
       <ul>
         <li>No adding images or tables; tables can't change shape.</li>
-        <li>Tracked changes are kept but can't be accepted or rejected here, so text holding someone's tracked change can't be deleted together with it.</li>
+        <li>Tracked formatting changes, table rows and changes inside locked content can only be accepted or rejected in Word; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
