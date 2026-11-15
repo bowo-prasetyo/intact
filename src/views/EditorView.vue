@@ -182,7 +182,9 @@
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
-      <input id="author-name" ref="authorInput" v-model="authorDialog.name" type="text" maxlength="100" autocomplete="name" required />
+      <!-- No browser autocomplete: Firefox's list of earlier entries opens over the buttons below and
+           takes the click meant for them. The name is remembered by Intact itself. -->
+      <input id="author-name" ref="authorInput" v-model="authorDialog.name" type="text" maxlength="100" autocomplete="off" required />
       <div class="actions">
         <button type="submit" class="confirm">{{ tracking ? 'Save' : 'Start tracking' }}</button>
         <button type="button" @click="closeAuthorDialog">Cancel</button>

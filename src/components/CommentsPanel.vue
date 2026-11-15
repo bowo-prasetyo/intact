@@ -6,8 +6,9 @@
     </header>
     <p class="note">Add comments here; reply to or resolve them in Word.</p>
     <form v-if="composing" class="composer" aria-label="New comment" @submit.prevent="post" @keydown.esc.stop="$emit('cancel')">
+      <!-- No browser autocomplete: its list of earlier entries would cover the buttons below. -->
       <label v-if="askName" class="field">Your name
-        <input ref="nameInput" v-model="nameDraft" type="text" maxlength="100" autocomplete="name" />
+        <input ref="nameInput" v-model="nameDraft" type="text" maxlength="100" autocomplete="off" />
       </label>
       <label class="field">New comment
         <textarea ref="textInput" v-model="text" rows="3" @keydown.enter.ctrl.prevent="post" @keydown.enter.meta.prevent="post" />
