@@ -1,0 +1,40 @@
+<template>
+  <div>
+    <AppHeader />
+    <main class="about">
+      <h1>About</h1>
+      <p>
+        A small, client-only editor for Microsoft Word <code>.docx</code> files. The file is unzipped and
+        parsed in your browser; no data is sent to any server.
+      </p>
+      <h2>What you can edit</h2>
+      <ul>
+        <li>Text of paragraphs, headings and table cells</li>
+        <li>Bold, italic, underline, strikethrough</li>
+        <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
+      </ul>
+      <h2>What is preserved</h2>
+      <p>
+        Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,
+        spacing, list numbering, images, tables layout, headers and footers, footnotes, fields, content
+        controls, equations, comments anchors and section settings. Such content is shown greyed out
+        and cannot be edited here.
+      </p>
+      <h2>Limitations</h2>
+      <ul>
+        <li>No adding images, tables or lists; tables can't change shape.</li>
+        <li>Tracked insertions are accepted when saving; tracked deletions are kept.</li>
+        <li>Legacy <code>.doc</code> files are not supported.</li>
+      </ul>
+      <p><RouterLink to="/">← Back to start</RouterLink></p>
+    </main>
+  </div>
+</template>
+
+<script setup>
+import AppHeader from '../components/AppHeader.vue';
+</script>
+
+<style scoped>
+.about { max-width: 720px; margin: 0 auto; padding: 32px 16px; line-height: 1.6; }
+</style>
