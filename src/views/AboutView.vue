@@ -12,14 +12,16 @@
         <li>Text of paragraphs, headings and table cells</li>
         <li>Bold, italic, underline, strikethrough</li>
         <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
+        <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
       </ul>
       <h2>What is preserved</h2>
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,
-        spacing, list numbering, images, tables layout, headers and footers, footnotes, fields, content
-        controls, equations, comment anchors, section settings and tracked changes. Such content is
-        shown greyed out (tracked changes with their author) and cannot be edited here.
+        spacing, list numbering, images, tables layout, headers and footers, footnotes, fields,
+        equations, comment anchors, section settings and tracked changes. Such content is shown greyed
+        out (tracked changes with their author) and cannot be edited here, and so are locked form
+        fields and fields linked to the document's data.
       </p>
       <h2>Limitations</h2>
       <ul>

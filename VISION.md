@@ -75,7 +75,7 @@ Saying no to these keeps the product small enough to keep its promises:
 - Add real-world fixture documents; test Firefox and Safari
 
 **Next — do the core job better**
-- Edit text inside content controls (templates and forms)
+- Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔
 - Start and end bulleted and numbered lists; Word's Enter, Backspace and Tab behaviour in lists and tables ✔
 - Paste with basic formatting (bold, italic, lists) instead of plain text only
 - Find and replace

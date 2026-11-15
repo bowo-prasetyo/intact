@@ -66,6 +66,14 @@
       />
     </div>
 
+    <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" aria-label="Choose a value" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)">
+      <input v-if="chooser.kind === 'date'" ref="dateInput" type="date" :value="chooser.date" aria-label="Date" @change="chooseDate($event.target.value)" />
+      <template v-else>
+        <button v-for="c in chooser.choices" :key="c.value" type="button" role="option" :aria-selected="c.text === chooser.current" @click="choose(c)">{{ c.text }}</button>
+        <p v-if="!chooser.choices.length" class="empty">No choices</p>
+      </template>
+    </div>
+
     <footer class="statusbar">
       <span>{{ words }} words</span>
       <span v-if="message">{{ message }}</span>
@@ -74,12 +82,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
+import { controlAt, controlBox, setControlText, clearPlaceholder } from '../editor/controls.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -90,6 +99,10 @@ const message = ref('');
 const words = ref(0);
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
 const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left', list: null });
+const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
+const chooserEl = ref(null);
+const dateInput = ref(null);
+let chooserTarget = null;
 let savedRange = null;
 let styleEl = null;
 let undoStack = null;
@@ -123,6 +136,7 @@ onMounted(() => {
   document.execCommand('defaultParagraphSeparator', false, 'p');
   document.execCommand('styleWithCSS', false, false);
   document.addEventListener('selectionchange', onSelectionChange);
+  document.addEventListener('mousedown', onDocumentMousedown, true);
   window.addEventListener('beforeunload', onBeforeUnload);
   countWords();
   page.value.focus();
@@ -133,6 +147,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', onSelectionChange);
+  document.removeEventListener('mousedown', onDocumentMousedown, true);
   window.removeEventListener('beforeunload', onBeforeUnload);
   undoStack?.dispose();
   styleEl?.remove();
@@ -165,6 +180,12 @@ function closestBlock(node) {
 function onSelectionChange() {
   const range = selectionInPage();
   if (!range) return;
+  // Clicking into placeholder text selects all of it, so typing replaces it (as in Word).
+  const control = range.collapsed ? controlAt(range.startContainer, page.value) : null;
+  if (control?.classList.contains('showing-placeholder') && control.querySelector(':scope > .sdt-content')) {
+    selectCell(controlBox(control));
+    return;
+  }
   savedRange = range.cloneRange();
   state.bold = document.queryCommandState('bold');
   state.italic = document.queryCommandState('italic');
@@ -209,8 +230,19 @@ function focusEnd() {
 
 // ------------------------------------------------------------------ editing commands
 
+const CHAR_FORMATS = new Set(['bold', 'italic', 'underline', 'strikeThrough']);
+
+/** Plain-text fields (as in Word) take no character formatting. */
+function inPlainField() {
+  const range = selectionInPage();
+  const box = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > [data-plain]');
+  if (box) message.value = 'Plain text fields can’t be formatted';
+  return !!box;
+}
+
 function exec(cmd, value = null) {
   restoreSelection();
+  if (CHAR_FORMATS.has(cmd) && inPlainField()) return;
   undoStack.flush();
   document.execCommand(cmd, false, value);
   undoStack.commit();
@@ -224,11 +256,11 @@ function afterHistory(changed) {
   onSelectionChange();
   markDirty();
 }
-const undo = () => afterHistory(undoStack.undo());
-const redo = () => afterHistory(undoStack.redo());
+const undo = () => { closeChooser(); afterHistory(undoStack.undo()); };
+const redo = () => { closeChooser(); afterHistory(undoStack.redo()); };
 
 function selectedBlocks(range) {
-  const all = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((b) => range.intersectsNode(b));
+  const all = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((b) => range.intersectsNode(b) && !b.closest('.sdt-locked'));
   if (all.length) return all;
   const one = closestBlock(range.startContainer);
   return one ? [one] : [];
@@ -378,6 +410,9 @@ function onInput() {
     page.value.append(p);
     placeCaret(p, true);
   }
+  const range = selectionInPage();
+  const control = range && controlAt(range.startContainer, page.value);
+  if (control) clearPlaceholder(control, (id) => doc.isPlaceholderStyle(id));
   doc.renumber(page.value);
   undoStack.schedule();
   markDirty();
@@ -395,6 +430,18 @@ function onBeforeInput(e) {
 function onKeydown(e) {
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
+  const range = selectionInPage();
+  const field = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
+  if (mod && !e.altKey && ['b', 'i', 'u'].includes(key) && inPlainField()) {
+    e.preventDefault();
+    return;
+  }
+  if (e.key === 'Enter' && field?.tagName === 'SPAN') {
+    // A field inside a line can't hold paragraphs; multi-line plain text fields take line breaks.
+    e.preventDefault();
+    if (e.shiftKey || field.dataset.plain === 'multi') document.execCommand('insertLineBreak');
+    return;
+  }
   if (mod && key === 's') {
     e.preventDefault();
     save();
@@ -421,7 +468,17 @@ function onPaste(e) {
   // Paste as plain text: foreign HTML can't be mapped faithfully to Word markup.
   e.preventDefault();
   undoStack.flush();
-  const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  const range = selectionInPage();
+  const field = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
+  if (field?.tagName === 'SPAN') {
+    // Fields inside a line keep pasted text on one line (or as line breaks in multi-line ones).
+    if (field.dataset.plain !== 'multi') text = text.replace(/\s*\n\s*/g, ' ');
+    document.execCommand('insertText', false, text);
+    undoStack.commit();
+    onInput();
+    return;
+  }
   text.split('\n').forEach((line, i) => {
     if (i) document.execCommand('insertParagraph');
     if (line) document.execCommand('insertText', false, line);
@@ -434,11 +491,87 @@ function onDrop(e) {
 }
 
 function onClick(e) {
+  const control = controlAt(e.target, page.value);
+  if (control?.classList.contains('showing-placeholder') && e.target.closest('.sdt-content')) {
+    selectCell(controlBox(control)); // the browser resets the selection on mouseup
+    return;
+  }
+  if (control && !e.target.closest('.sdt-content')) {
+    const kind = doc.control(control).kind;
+    if (kind === 'checkbox') toggleCheckbox(control);
+    else if (kind !== 'text') openChooser(control);
+    return;
+  }
   const a = e.target.closest('a[href]');
   if (a && (e.ctrlKey || e.metaKey) && /^(https?:|mailto:)/i.test(a.getAttribute('href'))) {
     e.preventDefault();
     window.open(a.href, '_blank', 'noopener');
   }
+}
+
+// ------------------------------------------------------------------ content controls
+
+/** Applies a change to a control as one undoable step. */
+function changeControl(el, change) {
+  undoStack.flush();
+  change();
+  clearPlaceholder(el, (id) => doc.isPlaceholderStyle(id));
+  undoStack.commit();
+  markDirty();
+}
+
+function toggleCheckbox(el) {
+  const { symbols } = doc.control(el);
+  changeControl(el, () => {
+    el.dataset.checked = el.dataset.checked === '1' ? '0' : '1';
+    setControlText(el, el.dataset.checked === '1' ? symbols.on : symbols.off);
+  });
+}
+
+function openChooser(el) {
+  const info = doc.control(el);
+  const box = el.getBoundingClientRect();
+  chooserTarget = el;
+  Object.assign(chooser, {
+    open: true,
+    kind: info.kind,
+    x: Math.max(8, Math.min(box.left, window.innerWidth - 240)),
+    y: box.bottom + 4,
+    choices: info.choices,
+    current: el.classList.contains('showing-placeholder') ? '' : controlBox(el).textContent,
+    date: info.date?.iso || new Date().toISOString().slice(0, 10),
+  });
+  nextTick(() => (dateInput.value || chooserEl.value?.querySelector('[aria-selected="true"], button'))?.focus());
+}
+
+function closeChooser(refocus = false) {
+  chooser.open = false;
+  if (refocus) page.value.focus();
+  chooserTarget = null;
+}
+
+function onDocumentMousedown(e) {
+  if (chooser.open && !chooserEl.value?.contains(e.target) && !chooserTarget?.contains(e.target)) closeChooser();
+}
+
+function choose(choice) {
+  const el = chooserTarget;
+  closeChooser(true);
+  if (!el?.isConnected) return;
+  changeControl(el, () => {
+    setControlText(el, choice.text);
+    el.dataset.value = choice.value;
+  });
+}
+
+function chooseDate(iso) {
+  const el = chooserTarget;
+  if (!iso || !el?.isConnected) return;
+  closeChooser(true);
+  changeControl(el, () => {
+    setControlText(el, doc.formatDate(el, iso));
+    el.dataset.fullDate = iso;
+  });
 }
 
 // ------------------------------------------------------------------ file actions
@@ -509,6 +642,15 @@ async function close() {
   box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%); outline: none;
   white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; caret-color: #000;
 }
+.chooser {
+  position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;
+  display: flex; flex-direction: column; padding: 4px; background: var(--surface); color: inherit;
+  border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.chooser button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chooser button:hover, .chooser button:focus-visible, .chooser button[aria-selected="true"] { background: var(--hover); }
+.chooser input { font: inherit; padding: 4px; }
+.chooser .empty { margin: 6px 10px; color: var(--muted); }
 .statusbar {
   display: flex; gap: 24px; padding: 4px 16px; font-size: 12px; color: var(--muted);
   background: var(--surface); border-top: 1px solid var(--border);
@@ -539,6 +681,15 @@ async function close() {
 .docx-page .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
 .docx-page .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
 .docx-page .raw-inline.note-ref { vertical-align: super; font-size: smaller; }
+.docx-page .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
+.docx-page div.sdt { box-shadow: 0 0 0 1px transparent; }
+.docx-page .sdt:not(.sdt-locked):hover, .docx-page .sdt:not(.sdt-locked):focus-within { background: #e8eef8; box-shadow: 0 0 0 1px #9db3d9; }
+.docx-page .sdt-content { outline: none; }
+.docx-page span.sdt-content:empty { padding: 0 1ch; }
+.docx-page .showing-placeholder { color: #767676; }
+.docx-page :is(.sdt-checkbox, .sdt-dropdown, .sdt-date) { cursor: pointer; }
+.docx-page :is(span.sdt-dropdown, span.sdt-combo, span.sdt-date)::after { content: '▾'; font-size: .8em; color: #5b6b85; margin-left: 2px; cursor: pointer; }
+.docx-page .sdt-locked { cursor: default; user-select: none; background: #f1f3f6; }
 .docx-page table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
 .docx-page table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
 .docx-page table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px #2b579a55; }
