@@ -13,8 +13,8 @@
     </AppHeader>
 
     <div class="toolbar" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
-      <button type="button" title="Undo (Ctrl+Z)" @click="exec('undo')">↶</button>
-      <button type="button" title="Redo (Ctrl+Y)" @click="exec('redo')">↷</button>
+      <button type="button" title="Undo (Ctrl+Z)" @click="undo">↶</button>
+      <button type="button" title="Redo (Ctrl+Y)" @click="redo">↷</button>
       <span class="sep" />
       <select :value="state.block" aria-label="Paragraph style" @change="applyBlockStyle($event.target.value)">
         <option value="normal">Normal</option>
@@ -44,6 +44,7 @@
         contenteditable="true"
         spellcheck="true"
         :style="pageStyle"
+        @beforeinput="onBeforeInput"
         @input="onInput"
         @keydown="onKeydown"
         @paste="onPaste"
@@ -64,6 +65,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import { currentDoc, setDocument } from '../store.js';
+import { createHistory } from '../editor/history.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -76,6 +78,7 @@ const baseName = ref(doc.name.replace(/\.docx$/i, ''));
 const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left' });
 let savedRange = null;
 let styleEl = null;
+let undoStack = null;
 
 const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li';
 const aligns = [
@@ -110,11 +113,14 @@ onMounted(() => {
   countWords();
   page.value.focus();
   placeCaret(page.value.querySelector(BLOCK_SELECTOR) || page.value, true);
+  undoStack = createHistory(page.value);
+  undoStack.commit();
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', onSelectionChange);
   window.removeEventListener('beforeunload', onBeforeUnload);
+  undoStack?.dispose();
   styleEl?.remove();
 });
 
@@ -190,10 +196,21 @@ function focusEnd() {
 
 function exec(cmd, value = null) {
   restoreSelection();
+  undoStack.flush();
   document.execCommand(cmd, false, value);
+  undoStack.commit();
   onSelectionChange();
   markDirty();
 }
+
+function afterHistory(changed) {
+  if (!changed) return;
+  savedRange = null;
+  onSelectionChange();
+  markDirty();
+}
+const undo = () => afterHistory(undoStack.undo());
+const redo = () => afterHistory(undoStack.redo());
 
 function selectedBlocks(range) {
   const all = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((b) => range.intersectsNode(b));
@@ -206,6 +223,7 @@ function applyBlockStyle(kind) {
   restoreSelection();
   const range = selectionInPage();
   if (!range) return;
+  undoStack.flush();
   const styleId = doc.styleIdFor(kind);
   refreshCss(); // a missing builtin style may just have been added
   const tag = kind === 'normal' ? 'p' : kind === 'title' ? 'h1' : kind;
@@ -229,6 +247,8 @@ function applyBlockStyle(kind) {
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(r);
+  doc.renumber(page.value);
+  undoStack.commit();
   onSelectionChange();
   markDirty();
 }
@@ -256,14 +276,30 @@ function onInput() {
     page.value.append(p);
     placeCaret(p, true);
   }
+  doc.renumber(page.value);
+  undoStack.schedule();
   markDirty();
+}
+
+function onBeforeInput(e) {
+  // Undo/redo from the browser's Edit or context menu: use our history, not the native stack.
+  if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
+    e.preventDefault();
+    if (e.inputType === 'historyUndo') undo();
+    else redo();
+  }
 }
 
 function onKeydown(e) {
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === 's') {
+  const key = e.key.toLowerCase();
+  if (mod && key === 's') {
     e.preventDefault();
     save();
+  } else if (mod && !e.altKey && (key === 'z' || key === 'y')) {
+    e.preventDefault();
+    if (key === 'y' || e.shiftKey) redo();
+    else undo();
   } else if (e.key === 'Tab' && !mod && !e.altKey) {
     e.preventDefault();
     document.execCommand('insertText', false, '\t');
@@ -273,11 +309,13 @@ function onKeydown(e) {
 function onPaste(e) {
   // Paste as plain text: foreign HTML can't be mapped faithfully to Word markup.
   e.preventDefault();
+  undoStack.flush();
   const text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
   text.split('\n').forEach((line, i) => {
     if (i) document.execCommand('insertParagraph');
     if (line) document.execCommand('insertText', false, line);
   });
+  undoStack.commit();
 }
 
 function onDrop(e) {
@@ -386,6 +424,7 @@ async function close() {
 }
 .docx-page .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
 .docx-page .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
+.docx-page .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
 .docx-page .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
 .docx-page .raw-inline.note-ref { vertical-align: super; font-size: smaller; }
 .docx-page table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }

@@ -1,8 +1,10 @@
 # Office
 
-A minimal, browser-only editor for Microsoft Word `.docx` files. Open a document, edit it, and
-download it again — the file is unzipped, parsed and rebuilt entirely in your browser. There is no
-server and nothing is uploaded.
+Fix a Word document in seconds, privately: no install, no account, no upload — and nothing you
+didn't touch changes. Open a `.docx`, edit its text, and download it again. The file is unzipped,
+parsed and rebuilt entirely in your browser.
+
+Where this is heading, and what it deliberately won't do, is in [VISION.md](VISION.md).
 
 Built with [Vue 3](https://vuejs.org/), [Vue Router](https://router.vuejs.org/) (hash mode, so it
 works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](https://stuk.github.io/jszip/).
@@ -15,7 +17,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
-  fields, content controls, equations, bookmarks and section settings
+  fields, content controls, equations, bookmarks, section settings and tracked changes (shown
+  read-only with their author, so they can still be accepted or rejected in Word). The test suite
+  checks this on every pull request (see [Testing](#testing))
+- Undo/redo for every edit, including paragraph style changes; list numbers update as you edit
 
 ## How it works
 
@@ -39,7 +44,23 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # production build in dist/
+npm test         # round-trip and editing tests in headless Chromium
 ```
+
+## Testing
+
+`tests/` drives the production build in a real browser with [Playwright](https://playwright.dev/),
+because editing depends on the browser's `contenteditable`. Fixtures are built from XML in the
+tests themselves (`tests/helpers.js`). The core checks are:
+
+- opening and downloading a document **without edits** gives back the same document;
+- saving a saved file again changes nothing;
+- editing one paragraph changes **only** that paragraph.
+
+"The same" is judged by meaning, not bytes (`canonicalize` in `tests/helpers.js` lists the
+normalisations, such as merging adjacent runs with identical formatting). A new feature that touches
+the document should add its case to the kitchen-sink fixture in `tests/roundtrip.spec.js`.
+First run: `npx playwright install chromium`.
 
 ## Deploying to GitHub Pages
 
@@ -51,5 +72,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 - Can't insert images, tables or lists, or change table structure
 - Pasting is plain text only
-- Tracked insertions are accepted on save; tracked deletions are preserved
+- Tracked changes, content controls, fields and footnotes are preserved but can't be edited
+- Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save
+  (their text is kept)
+- Only Chromium is covered by the tests so far; Firefox and Safari are untested
 - Legacy binary `.doc` files are not supported

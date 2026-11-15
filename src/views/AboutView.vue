@@ -17,13 +17,13 @@
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,
         spacing, list numbering, images, tables layout, headers and footers, footnotes, fields, content
-        controls, equations, comments anchors and section settings. Such content is shown greyed out
-        and cannot be edited here.
+        controls, equations, comment anchors, section settings and tracked changes. Such content is
+        shown greyed out (tracked changes with their author) and cannot be edited here.
       </p>
       <h2>Limitations</h2>
       <ul>
         <li>No adding images, tables or lists; tables can't change shape.</li>
-        <li>Tracked insertions are accepted when saving; tracked deletions are kept.</li>
+        <li>Tracked changes are kept but can't be accepted or rejected here.</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>
       <p><RouterLink to="/">← Back to start</RouterLink></p>
