@@ -78,7 +78,10 @@ export function trackedChangeAt(ranges, root) {
 
 /** The status-bar explanation for a refused edit. */
 export function refusalMessage(el) {
-  return `Not deleted: that would remove ${el.dataset.tracked}. Accept or reject it in Word first, or select only the text around it.`;
+  // Revisions shown on their own (and paragraph breaks) are accepted or rejected here; those inside
+  // tables' structure or locked content only in Word.
+  const here = el.matches('.inserted, .deleted, [data-rev-mark]');
+  return `Not deleted: that would remove ${el.dataset.tracked}. Accept or reject it first${here ? ' (on the toolbar)' : ' in Word'}, or select only the text around it.`;
 }
 
 /** The comment range markers under `root`: take this before an edit, for restoreCommentMarkers. */

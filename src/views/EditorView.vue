@@ -12,7 +12,7 @@
       <button class="ghost" type="button" @click="close">Close</button>
     </AppHeader>
 
-    <div class="toolbar" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
+    <div class="toolbar" :class="{ 'has-changes': changes.total || changes.wordOnly }" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
       <button type="button" title="Undo (Ctrl+Z)" @click="undo">↶</button>
       <button type="button" title="Redo (Ctrl+Y)" @click="redo">↷</button>
       <span class="sep" />
@@ -64,6 +64,28 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Track changes</span>
       </button>
+      <span v-if="changes.total || changes.wordOnly" class="changes-group" role="group" aria-label="Tracked changes">
+        <span class="sep" />
+        <button type="button" title="Previous change" :disabled="!changes.total" @click="gotoChange(-1)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
+        </button>
+        <button type="button" title="Next change" :disabled="!changes.total" @click="gotoChange(1)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
+        </button>
+        <span class="split">
+          <button type="button" class="labelled" title="Accept the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(true)">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" stroke="#2e7d32" stroke-width="1.8" fill="none" /></svg><span class="label">Accept</span>
+          </button>
+          <button ref="acceptMenuButton" type="button" class="arrow" title="More ways to accept" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'accept'" :disabled="!changes.total" @click="openChangeMenu('accept')">▾</button>
+        </span>
+        <span class="split">
+          <button type="button" class="labelled" title="Reject the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(false)">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="#b3261e" stroke-width="1.8" fill="none" /></svg><span class="label">Reject</span>
+          </button>
+          <button ref="rejectMenuButton" type="button" class="arrow" title="More ways to reject" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'reject'" :disabled="!changes.total" @click="openChangeMenu('reject')">▾</button>
+        </span>
+        <span class="badge" :title="changesTitle">{{ changes.total }}</span>
+      </span>
       <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
       <button type="button" class="review-toggle" title="Review your changes" @click="openReview">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
@@ -121,6 +143,19 @@
       </template>
     </div>
 
+    <div v-if="changeMenu.open" ref="changeMenuEl" class="change-menu" role="menu" :aria-label="changeMenu.open === 'accept' ? 'Accept' : 'Reject'" :style="{ left: `${changeMenu.x}px`, top: `${changeMenu.y}px` }" @mousedown.prevent @keydown.esc="closeChangeMenu">
+      <template v-if="changeMenu.open === 'accept'">
+        <button type="button" role="menuitem" @click="menuResolve(true, 'one')">Accept this change</button>
+        <button type="button" role="menuitem" @click="menuResolve(true, 'stay')">Accept, and stay here</button>
+        <button type="button" role="menuitem" @click="menuResolve(true, 'all')">Accept all changes</button>
+      </template>
+      <template v-else>
+        <button type="button" role="menuitem" @click="menuResolve(false, 'one')">Reject this change</button>
+        <button type="button" role="menuitem" @click="menuResolve(false, 'stay')">Reject, and stay here</button>
+        <button type="button" role="menuitem" @click="menuResolve(false, 'all')">Reject all changes</button>
+      </template>
+    </div>
+
     <div v-if="palette.open" ref="paletteEl" class="palette" role="dialog" aria-label="Highlight colour" :style="{ left: `${palette.x}px`, top: `${palette.y}px` }" @mousedown.prevent @keydown.esc="closePalette">
       <div class="swatches">
         <button v-for="[name, label] in HIGHLIGHT_COLORS" :key="name" type="button" class="swatch" :class="{ current: name === highlightColor }" :style="{ background: HIGHLIGHT[name] }" :title="label" :aria-label="label" @click="pickHighlight(name)" />
@@ -128,7 +163,7 @@
       <button type="button" class="no-color" @click="pickHighlight(null)">No colour</button>
     </div>
 
-    <ReviewDialog v-if="reviewData" :review="reviewData" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" />
+    <ReviewDialog v-if="reviewData" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -167,6 +202,7 @@ import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../edito
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
+import { changeItems, changesAt, adjacentChange, itemRange, wordOnlyChanges } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -289,6 +325,7 @@ onMounted(() => {
   window.addEventListener('keydown', onWindowKeydown, true);
   window.addEventListener('beforeunload', onBeforeUnload);
   countWords();
+  refreshChanges();
   page.value.focus();
   placeCaret(page.value.querySelector(BLOCK_SELECTOR) || page.value, true);
   undoStack = createHistory(page.value);
@@ -492,6 +529,7 @@ function alignBlocks(value) {
 function afterHistory(changed) {
   if (!changed) return;
   savedRange = null;
+  refreshChanges();
   refreshComments(); // undo/redo replaced the DOM the comment ranges pointed into
   onSelectionChange();
   markDirty();
@@ -646,7 +684,10 @@ function markDirty() {
   dirty.value = true;
   message.value = '';
   clearTimeout(wordTimer);
-  wordTimer = setTimeout(countWords, 300);
+  wordTimer = setTimeout(() => {
+    countWords();
+    refreshChanges();
+  }, 300);
 }
 
 function onInput(e) {
@@ -758,6 +799,145 @@ function hasContentAfter(node, block) {
   range.setEnd(block, block.childNodes.length);
   const frag = range.cloneContents();
   return !!frag.textContent || !!frag.querySelector('br, img, .raw-inline:not(.raw-hidden), .sdt');
+}
+
+// ------------------------------------------------------------------ accepting and rejecting changes
+
+const changes = reactive({ total: 0, wordOnly: 0, formatting: 0 });
+const resolved = reactive({ accepted: 0, rejected: 0 }); // this session, for the review
+const changeMenu = reactive({ open: null, x: 0, y: 0 });
+const changeMenuEl = ref(null);
+const acceptMenuButton = ref(null);
+const rejectMenuButton = ref(null);
+const changesTitle = computed(() => {
+  const parts = [`${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'} to accept or reject here`];
+  const word = changes.wordOnly + changes.formatting;
+  if (word) parts.push(`${word} more (formatting, table rows or locked content) only in Word`);
+  return parts.join('; ');
+});
+
+function refreshChanges() {
+  if (!page.value) return;
+  changes.total = changeItems(page.value).length;
+  changes.wordOnly = wordOnlyChanges(page.value);
+  changes.formatting = doc.formattingChanges(page.value);
+}
+
+/** "the insertion by Alice", "your deletion", "the paragraph break inserted by Bob". */
+function describeChange(el) {
+  const rev = doc.revisionOf(el);
+  if (!rev) return 'the change';
+  const who = rev.own ? 'your' : 'the';
+  const by = rev.own || !rev.author ? '' : ` by ${rev.author}`;
+  if (rev.mark) return `${who} paragraph break ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
+  return `${who} ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
+}
+
+/** Selects a change (an inline one, or the end of a paragraph whose break it is) and shows it. */
+function selectChange(item) {
+  const range = itemRange(item);
+  page.value.focus();
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  savedRange = range.cloneRange();
+  item.el.scrollIntoView?.({ block: 'nearest' });
+  flash(item.el);
+  message.value = `${describeChange(item.el).replace(/^./, (c) => c.toUpperCase())}${(() => {
+    const rev = doc.revisionOf(item.el);
+    return rev?.date ? `, ${rev.date.slice(0, 10)}` : '';
+  })()}`;
+}
+
+function gotoChange(dir) {
+  const items = changeItems(page.value);
+  const item = adjacentChange(selectionInPage() || savedRange, items, dir);
+  if (item) selectChange(item);
+  else message.value = 'There are no tracked changes to go to';
+}
+
+/**
+ * Accepts or rejects the changes at the selection (see changesAt), as one undoable step. `then`:
+ * 'next' goes on to the next change, as Word's Accept and Reject buttons do; 'stay' doesn't.
+ */
+function resolveCurrent(accept, then = 'next') {
+  const range = selectionInPage() || savedRange;
+  const items = changeItems(page.value);
+  const targets = changesAt(range, items);
+  if (!targets.length) {
+    message.value = 'Put the cursor on a tracked change (or select some), or use Next change';
+    return;
+  }
+  const what = targets.length === 1 ? describeChange(targets[0].el) : `${targets.length} changes`;
+  // Afterwards, the caret goes where the first change was.
+  const at = document.createRange();
+  if (targets[0].mark) at.setStart(targets[0].el, targets[0].el.childNodes.length);
+  else at.setStartBefore(targets[0].el);
+  at.collapse(true);
+  resolveItems(targets, accept);
+  const sel = window.getSelection();
+  if (at.startContainer.isConnected) {
+    sel.removeAllRanges();
+    sel.addRange(at);
+    savedRange = at.cloneRange();
+  }
+  message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}`;
+  if (then === 'next' && targets.length === 1) {
+    const next = adjacentChange(selectionInPage(), changeItems(page.value), 1);
+    if (next) {
+      selectChange(next);
+      message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}. Next: ${describeChange(next.el)}`;
+    } else {
+      message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}. No more tracked changes`;
+    }
+  }
+}
+
+function resolveAll(accept) {
+  const items = changeItems(page.value);
+  if (!items.length) return;
+  resolveItems(items, accept);
+  const word = changes.wordOnly + changes.formatting;
+  message.value = `${accept ? 'Accepted' : 'Rejected'} all ${items.length} ${items.length === 1 ? 'change' : 'changes'}`
+    + (word ? `. ${word} more (formatting, table rows or locked content) can only be ${accept ? 'accepted' : 'rejected'} in Word` : '');
+}
+
+/** Resolves changes, last first so earlier ones stay where they are, as one undoable step. */
+function resolveItems(items, accept) {
+  closeChooser();
+  undoStack.flush();
+  for (const item of [...items].reverse()) {
+    if (item.el.isConnected) doc.resolveRevision(item.el, accept);
+  }
+  resolved[accept ? 'accepted' : 'rejected'] += items.length;
+  doc.renumber(page.value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  refreshChanges();
+  refreshComments();
+}
+
+function openChangeMenu(which) {
+  if (changeMenu.open === which) return closeChangeMenu();
+  const button = which === 'accept' ? acceptMenuButton.value : rejectMenuButton.value;
+  const rect = button.getBoundingClientRect();
+  Object.assign(changeMenu, { open: which, x: Math.max(8, Math.min(rect.left - 150, window.innerWidth - 220)), y: rect.bottom + 4 });
+  nextTick(() => changeMenuEl.value?.querySelector('button')?.focus());
+}
+
+function closeChangeMenu() {
+  changeMenu.open = null;
+  page.value.focus();
+  restoreSelection();
+}
+
+function menuResolve(accept, how) {
+  changeMenu.open = null;
+  page.value.focus();
+  restoreSelection();
+  if (how === 'all') resolveAll(accept);
+  else resolveCurrent(accept, how === 'one' ? 'next' : 'stay');
 }
 
 // ------------------------------------------------------------------ superscript, subscript, highlight
@@ -1460,6 +1640,7 @@ function markNearField(range) {
 function onDocumentMousedown(e) {
   if (chooser.open && !chooserEl.value?.contains(e.target) && !chooserTarget?.contains(e.target)) closeChooser();
   if (palette.open && !paletteEl.value?.contains(e.target) && !paletteButton.value?.contains(e.target)) palette.open = false;
+  if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
 }
 
 function choose(choice) {
@@ -1780,6 +1961,15 @@ async function close() {
 .script sup, .script sub { font-size: 9px; }
 .split { display: inline-flex; }
 .split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
+.changes-group { display: inline-flex; align-items: center; gap: 2px; }
+.labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
+@media (max-width: 1400px) { .labelled .label, .has-changes .review-toggle .label { display: none; } }
+.change-menu {
+  position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
 .palette {
   position: fixed; z-index: 10; width: 190px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
@@ -1864,6 +2054,10 @@ async function close() {
 .docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }
 .docx-sheet [data-tc-mark]::after { content: '¶'; color: #6f2dbd; margin-left: 1px; }
 .docx-sheet [data-tc-mark="del"]::after { text-decoration: line-through; }
+/* Someone else's tracked paragraph break, in the colours of their insertions and deletions. */
+.docx-sheet [data-rev-mark]::after { content: '¶'; margin-left: 1px; }
+.docx-sheet [data-rev-mark="ins"]::after { color: #1e6b34; }
+.docx-sheet [data-rev-mark="del"]::after { color: #b3261e; text-decoration: line-through; }
 .docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
 .docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: #2b579a; }
 .docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }

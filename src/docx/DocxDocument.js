@@ -25,7 +25,7 @@ import {
 import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
 } from './contentControls.js';
-import { trackedChangeLabel, paragraphMarkLabel } from './revisions.js';
+import { trackedChangeLabel, paragraphMarkLabel, paragraphMarkRevision, inlineRevisionKind } from './revisions.js';
 import { reviewParagraphs } from './review.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
@@ -251,8 +251,8 @@ export class DocxDocument {
    * Labels everything that is or holds a tracked change (data-tracked), so the editor can refuse
    * edits that would remove it: deleting a revision would silently accept or reject it.
    */
-  markTracked(root) {
-    this.commentRefs = new Map(); // raw index -> ids of the comments it references (see removedComments)
+  markTracked(root, reset = true) {
+    if (reset) this.commentRefs = new Map(); // raw index -> ids of the comments it references (see removedComments)
     for (const el of root.querySelectorAll('[data-raw]')) {
       const node = this.raw[Number(el.dataset.raw)];
       const label = trackedChangeLabel(node);
@@ -262,9 +262,112 @@ export class DocxDocument {
       if (refs.length) this.commentRefs.set(el.dataset.raw, refs);
     }
     for (const el of root.querySelectorAll('[data-ppr]')) {
-      const label = paragraphMarkLabel(this.raw[Number(el.dataset.ppr)]);
+      const pPr = this.raw[Number(el.dataset.ppr)];
+      const label = paragraphMarkLabel(pPr);
       if (label) el.dataset.tracked = label;
+      const rev = paragraphMarkRevision(pPr);
+      if (rev) {
+        el.dataset.revMark = rev.kind; // shown as ¶ (see EditorView), and accepted or rejected there
+        el.dataset.revTitle = `${rev.kind === 'ins' ? 'Paragraph break inserted' : 'Paragraph break deleted'}${rev.author ? ` by ${rev.author}` : ''}${rev.date ? ` on ${rev.date.slice(0, 10)}` : ''}`;
+      }
     }
+  }
+
+  // ---------------------------------------------------------------- accepting and rejecting
+
+  /**
+   * The tracked change an element shows, or null: { kind: 'ins' | 'del', mark (a paragraph break),
+   * own (made this session), author, date }. Inline revisions are spans; a paragraph break is its
+   * paragraph.
+   */
+  revisionOf(el) {
+    if (el?.nodeType !== 1) return null;
+    const d = el.dataset;
+    if (d.tc) return { kind: d.tc, mark: false, own: true, author: d.tcAuthor, date: d.tcDate };
+    if (d.tcMark) return { kind: d.tcMark, mark: true, own: true, author: d.tcMarkAuthor, date: d.tcMarkDate };
+    if (d.revMark && d.ppr != null) {
+      const rev = paragraphMarkRevision(this.raw[Number(d.ppr)]);
+      return rev && { kind: rev.kind, mark: true, own: false, author: rev.author, date: rev.date };
+    }
+    if (d.raw != null && el.classList.contains('raw-inline')) {
+      const node = this.raw[Number(d.raw)];
+      const kind = inlineRevisionKind(node);
+      return kind && { kind, mark: false, own: false, author: wAttr(node, 'author'), date: wAttr(node, 'date') };
+    }
+    return null;
+  }
+
+  /**
+   * Accepts (or rejects) the tracked change shown by `el`, in the editor: an insertion accepted (or
+   * a deletion rejected) becomes ordinary, editable text; the other way round, its text goes. A
+   * paragraph break kept loses its revision; one removed joins its paragraph with the next, which
+   * keeps its own properties (its break is the one that stays), as in Word.
+   */
+  resolveRevision(el, accept) {
+    const rev = this.revisionOf(el);
+    if (!rev) return;
+    const keep = (rev.kind === 'ins') === accept;
+    if (rev.mark) {
+      this.resolveMark(el, rev, keep);
+    } else if (!keep) {
+      el.remove();
+    } else if (rev.own) {
+      el.replaceWith(...el.childNodes);
+    } else {
+      // Someone else's revision: render what it holds as ordinary text (deleted text undeleted).
+      const node = this.raw[Number(el.dataset.raw)].cloneNode(true);
+      if (rev.kind === 'del') {
+        for (const [from, to] of [['delText', 't'], ['delInstrText', 'instrText']]) {
+          for (const t of [...node.getElementsByTagNameNS(W, from)]) {
+            const r = createW(this.xml, to);
+            for (const a of [...t.attributes]) r.setAttributeNS(a.namespaceURI, a.name, a.value);
+            r.textContent = t.textContent;
+            t.replaceWith(r);
+          }
+        }
+      }
+      const holder = document.createElement('span');
+      this.renderInlines(node, holder);
+      this.markTracked(holder, false);
+      el.replaceWith(...holder.childNodes);
+    }
+  }
+
+  resolveMark(el, rev, keep) {
+    let next = el.nextElementSibling;
+    while (next?.classList.contains('raw-hidden')) next = next.nextElementSibling;
+    // Removing the last paragraph's break (or one before a table) isn't possible: it stays.
+    if (keep || !next?.matches('p, h1, h2, h3, h4, h5, h6')) {
+      if (rev.own) {
+        delete el.dataset.tcMark;
+        delete el.dataset.tcMarkAuthor;
+        delete el.dataset.tcMarkDate;
+        return;
+      }
+      const pPr = this.raw[Number(el.dataset.ppr)].cloneNode(true);
+      const rPr = wChild(pPr, 'rPr');
+      removeW(rPr, 'ins', 'del', 'moveTo', 'moveFrom');
+      if (rPr && !elementChildren(rPr).length) pPr.removeChild(rPr);
+      el.dataset.ppr = this.keep(pPr);
+      delete el.dataset.revMark;
+      delete el.dataset.revTitle;
+      delete el.dataset.tracked;
+      return;
+    }
+    const kids = [...el.childNodes].filter((n) => !(n.tagName === 'BR' && n === el.lastChild && !el.textContent));
+    if (next.lastChild?.tagName === 'BR' && !next.textContent && kids.length) next.lastChild.remove();
+    next.prepend(...kids);
+    el.remove();
+  }
+
+  /** How many tracked formatting changes the editor content holds (these are accepted in Word). */
+  formattingChanges(root) {
+    const seen = new Set();
+    for (const el of root.querySelectorAll('[data-rpr], [data-ppr]')) {
+      const node = this.raw[Number(el.dataset.rpr ?? el.dataset.ppr)];
+      if (wChild(node, 'rPrChange') || wChild(node, 'pPrChange')) seen.add(el.dataset.rpr ?? `p${el.dataset.ppr}`);
+    }
+    return seen.size;
   }
 
   keep(node) {
@@ -528,7 +631,7 @@ export class DocxDocument {
       span.classList.add(local === 'ins' || local === 'moveTo' ? 'inserted' : 'deleted');
       const author = wAttr(node, 'author');
       const date = wAttr(node, 'date');
-      span.title = `${TRACKED_INLINE[local]}${author ? ` by ${author}` : ''}${date ? ` on ${date.slice(0, 10)}` : ''} – tracked change, accept or reject it in Word`;
+      span.title = `${TRACKED_INLINE[local]}${author ? ` by ${author}` : ''}${date ? ` on ${date.slice(0, 10)}` : ''} – tracked change: Accept or Reject on the toolbar`;
       span.textContent = plainText(node) || '⧉';
       return span;
     }

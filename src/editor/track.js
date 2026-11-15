@@ -15,7 +15,7 @@ export function revisionDate() {
 }
 
 function revisionTitle(kind, author) {
-  return `${kind === 'ins' ? 'Inserted' : 'Deleted'} by ${author} – tracked change; Undo removes it, or accept or reject it in Word`;
+  return `${kind === 'ins' ? 'Inserted' : 'Deleted'} by ${author} – tracked change: Accept or Reject on the toolbar`;
 }
 
 function makeSpan(kind, { author, date = revisionDate() }) {

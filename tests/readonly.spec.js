@@ -39,7 +39,7 @@ test('clicking a tracked change says what it is and puts the caret beside it', a
   await openInEditor(page, await buildDocx(BODY, OPTS));
   const inserted = page.locator('.docx-page .inserted');
   await clickAt(page, inserted, 0.9);
-  await expect(status(page)).toHaveText('Read-only: Inserted by Alice on 2026-01-01 – tracked change, accept or reject it in Word');
+  await expect(status(page)).toHaveText('Read-only: Inserted by Alice on 2026-01-01 – tracked change: Accept or Reject on the toolbar');
   await page.keyboard.type('X');
   await clickAt(page, inserted, 0.1);
   await page.keyboard.type('Y');

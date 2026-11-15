@@ -46,7 +46,7 @@ test('Backspace and Delete next to a tracked change leave it alone and say why',
   await openInEditor(page, docx);
   await select(page, [' pay ', 0]);
   await page.keyboard.press('Backspace');
-  await expect(status(page)).toHaveText('Not deleted: that would remove a tracked insertion by Alice. Accept or reject it in Word first, or select only the text around it.');
+  await expect(status(page)).toHaveText('Not deleted: that would remove a tracked insertion by Alice. Accept or reject it first (on the toolbar), or select only the text around it.');
   await select(page, [' invoices.', 0]);
   await page.keyboard.press('Backspace');
   await expect(status(page)).toContainText('a tracked deletion by Bob');
