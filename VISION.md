@@ -72,6 +72,7 @@ Saying no to these keeps the product small enough to keep its promises:
 - Tracked changes preserved (read-only) ✔
 - Undo/redo for all edits; live list numbering ✔
 - Close the remaining known losses (inline `customXml`, `dir`/`bdo` wrappers)
+- Deleting text never silently drops tracked changes or leaves orphaned comments ✔
 - Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
 - Add real-world fixture documents (started: a letter written in Word ✔; more from Google Docs and
   LibreOffice welcome); test Safari

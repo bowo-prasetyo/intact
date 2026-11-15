@@ -103,7 +103,7 @@
 
     <footer class="statusbar">
       <span>{{ words }} words</span>
-      <span v-if="message">{{ message }}</span>
+      <span role="status" aria-live="polite">{{ message }}</span>
     </footer>
   </div>
 </template>
@@ -119,6 +119,10 @@ import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 import { controlAt, controlBox, setControlText, clearPlaceholder, fieldAtSelection } from '../editor/controls.js';
 import { parseClipboard, runNodes, insertAtCaret } from '../editor/paste.js';
+import {
+  removesContent, rangesRemovedBy, trackedChangeAt, refusalMessage, commentMarkers, restoreCommentMarkers,
+  onlyHiddenMarkers, beyondHiddenMarkers,
+} from '../editor/protect.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -354,7 +358,7 @@ function exec(cmd, value = null) {
 function afterHistory(changed) {
   if (!changed) return;
   savedRange = null;
-  paintComments(); // undo/redo replaced the DOM the comment ranges pointed into
+  refreshComments(); // undo/redo replaced the DOM the comment ranges pointed into
   onSelectionChange();
   markDirty();
 }
@@ -486,7 +490,12 @@ function onTab(e) {
     ? block && doc.listOf(block) && isAtBlockStart(range, block)
     : selectedBlocks(range).some((b) => doc.listOf(b));
   if (inList) changeLevel(e.shiftKey ? -1 : 1);
-  else if (!e.shiftKey) document.execCommand('insertText', false, '\t');
+  else if (!e.shiftKey) {
+    const range = selectionInPage();
+    if (range && !range.collapsed && refuseRemoving([range])) return;
+    if (range && !range.collapsed) deleteSelection();
+    document.execCommand('insertText', false, '\t');
+  }
 }
 
 // ------------------------------------------------------------------ events
@@ -505,6 +514,8 @@ function markDirty() {
 }
 
 function onInput() {
+  restoreCommentMarkers(markersBefore, page.value);
+  markersBefore = [];
   // Never leave the page completely empty: keep at least one paragraph to type into.
   if (!page.value.firstElementChild) {
     const p = document.createElement('p');
@@ -523,6 +534,7 @@ function onInput() {
   doc.renumber(page.value);
   undoStack.schedule();
   markDirty();
+  refreshComments();
 }
 
 function onBeforeInput(e) {
@@ -531,7 +543,54 @@ function onBeforeInput(e) {
     e.preventDefault();
     if (e.inputType === 'historyUndo') undo();
     else redo();
+    return;
   }
+  if (!removesContent(e)) return;
+  const ranges = rangesRemovedBy(e);
+  // Backspace or Delete next to hidden markers (comment ranges, bookmarks, field codes) would remove
+  // just the invisible marker: delete what is beyond it instead.
+  const sel = window.getSelection();
+  const step = { deleteContentBackward: true, deleteContentForward: false }[e.inputType];
+  if (step !== undefined && sel.isCollapsed && ranges.length === 1 && onlyHiddenMarkers(ranges[0])) {
+    e.preventDefault();
+    const target = beyondHiddenMarkers(ranges[0], step);
+    if (!target || refuseRemoving([target])) return;
+    markersBefore = commentMarkers(page.value);
+    sel.removeAllRanges();
+    sel.addRange(target);
+    document.execCommand('delete'); // fires input, so onInput puts the markers back
+    return;
+  }
+  // Typing over, deleting, cutting or dragging away a tracked change would drop it silently.
+  if (refuseRemoving(ranges)) e.preventDefault();
+  // Comment range ends deleted with the text are put back in onInput, at the caret: where the text
+  // was deleted. (After a drag the caret is at the drop instead; the cleanup on save covers that.)
+  else if (e.inputType !== 'deleteByDrag') markersBefore = commentMarkers(page.value);
+}
+
+let markersBefore = [];
+
+/** Deletes the selection with execCommand (which fires no beforeinput), keeping comment ranges. */
+function deleteSelection() {
+  const before = commentMarkers(page.value);
+  document.execCommand('delete');
+  restoreCommentMarkers(before, page.value);
+}
+
+/**
+ * Refuses an edit that would remove a tracked change, saying why: true if `ranges` (what the edit
+ * would delete) touch one. Edits made with execCommand fire no beforeinput, so call this first.
+ */
+function refuseRemoving(ranges) {
+  const el = trackedChangeAt(ranges, page.value);
+  if (!el) return false;
+  message.value = refusalMessage(el);
+  // Flash what is protected. An animation, not a class, so undo snapshots of the page don't change.
+  el.animate?.([
+    { outline: '2px solid #b3261e', outlineOffset: '1px', backgroundColor: 'rgb(179 38 30 / 15%)' },
+    { outline: '2px solid transparent', outlineOffset: '1px' },
+  ], { duration: 1200, easing: 'ease-out' });
+  return true;
 }
 
 function onKeydown(e) {
@@ -582,7 +641,7 @@ function onKeydown(e) {
 function onPaste(e) {
   e.preventDefault();
   const range = selectionInPage();
-  if (!range) return;
+  if (!range || refuseRemoving([range])) return;
   undoStack.flush();
   const html = e.clipboardData.getData('text/html');
   let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
@@ -598,7 +657,7 @@ function onPaste(e) {
   }
   const { blocks, skippedImages } = parseClipboard(html, text);
   if (!blocks.length) return;
-  if (!range.collapsed) document.execCommand('delete');
+  if (!range.collapsed) deleteSelection();
   pasteBlocks(blocks);
   onInput();
   undoStack.commit();
@@ -803,14 +862,42 @@ function chooseDate(iso) {
 
 // ------------------------------------------------------------------ comments
 
-/** Top-level comments in the order they appear in the text, each with its replies. */
-function commentThreads() {
-  const ids = new Set(doc.comments.map((c) => c.id));
+/**
+ * Top-level comments in the order they appear in the text, each with its replies, leaving out those
+ * whose text was deleted (ids in `removed`).
+ */
+function commentThreads(removed = new Set()) {
+  const comments = doc.comments.filter((c) => !removed.has(c.id));
+  const ids = new Set(comments.map((c) => c.id));
   const order = (c) => doc.commentOrder.get(c.id) ?? Infinity;
-  return doc.comments
+  return comments
     .filter((c) => !c.parentId || !ids.has(c.parentId))
     .sort((a, b) => order(a) - order(b))
-    .map((c) => ({ ...c, n: doc.commentOrder.get(c.id) || null, replies: doc.comments.filter((r) => r.parentId === c.id) }));
+    .map((c) => ({ ...c, n: doc.commentOrder.get(c.id) || null, replies: comments.filter((r) => r.parentId === c.id) }));
+}
+
+// As in Word, deleting the text a comment is attached to deletes the comment. The panel follows the
+// text, and the status bar says so, since Undo is the way back.
+let removedComments = new Set();
+
+function refreshComments() {
+  if (!doc.comments.length) return;
+  const removed = doc.removedComments(page.value);
+  const added = [...removed].filter((id) => !removedComments.has(id));
+  const changed = added.length || removed.size !== removedComments.size;
+  removedComments = removed;
+  if (changed) threads.value = commentThreads(removed);
+  paintComments();
+  if (added.length) message.value = commentRemovalMessage(added);
+}
+
+function commentRemovalMessage(ids) {
+  const removed = doc.comments.filter((c) => ids.includes(c.id));
+  const top = removed.filter((c) => !c.parentId || !ids.includes(c.parentId));
+  const what = top.length === 1
+    ? `the comment by ${top[0].author}${removed.length > 1 ? ` and ${removed.length - 1 === 1 ? 'its reply' : `its ${removed.length - 1} replies`}` : ''}`
+    : `${removed.length} comments`;
+  return `Deleted ${what} with the text ${removed.length === 1 ? 'it was' : 'they were'} attached to – Undo (Ctrl+Z) brings ${removed.length === 1 ? 'it' : 'them'} back`;
 }
 
 /** The commented text: from the range start marker to the end marker (or the reference mark). */
@@ -831,7 +918,7 @@ function commentRange(id) {
 const canHighlight = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
 
 function paintComments() {
-  if (!canHighlight || !threads.value.length) return;
+  if (!canHighlight) return;
   const all = new Highlight();
   const active = new Highlight();
   active.priority = 1;
@@ -954,7 +1041,8 @@ async function save() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     dirty.value = false;
-    message.value = `Saved ${name}`;
+    const n = doc.commentsRemoved.size;
+    message.value = `Saved ${name}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`;
   } catch (e) {
     console.error(e);
     message.value = `Save failed: ${e.message}`;
@@ -1062,7 +1150,10 @@ async function close() {
 }
 .docx-sheet a { color: #0563c1; }
 .docx-sheet img { max-width: 100%; vertical-align: bottom; }
+/* Hidden markers (comment ranges, bookmarks, field codes) are empty: shown inline, not display:none,
+   because the browser's editing drops unrendered nodes when it moves text, as in merging paragraphs. */
 .docx-sheet .raw-hidden { display: none; }
+.docx-sheet span.raw-hidden { display: inline; }
 .docx-sheet .raw-block, .docx-sheet .raw-inline:not(:has(img)) {
   background: #f1f3f6; color: #555; border-radius: 3px; cursor: default; user-select: none;
 }

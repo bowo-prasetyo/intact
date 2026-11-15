@@ -25,6 +25,10 @@ import {
 import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
 } from './contentControls.js';
+import { trackedChangeLabel, paragraphMarkLabel } from './revisions.js';
+import {
+  COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
+} from './commentRemoval.js';
 
 const W = NS.w;
 const MAIN_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
@@ -105,6 +109,7 @@ export class DocxDocument {
       ['/comments', '/commentsExtended', '/footnotes', '/endnotes'].map(partOf),
     );
     this.comments = parseComments(comments, commentsExt);
+    await this.initCommentRemoval(relOf);
     this.notes = { footnote: parseNotes(footnotes, 'footnote'), endnote: parseNotes(endnotes, 'endnote') };
     const settings = await partOf('/settings');
     const evenAndOdd = onOff(wChild(settings?.xml.documentElement, 'evenAndOddHeaders')) === true;
@@ -128,6 +133,40 @@ export class DocxDocument {
       const blob = new Blob([await f.async('uint8array')], { type: IMAGE_TYPES[ext] || 'application/octet-stream' });
       this.mediaUrls.set(f.name, URL.createObjectURL(blob));
     }));
+  }
+
+  /**
+   * What deleting a comment's text needs: the original comment parts, which comments the body
+   * references (and which with a complete range), and which are referenced from other parts.
+   */
+  async initCommentRemoval(relOf) {
+    this.commentParts = {};
+    for (const [key, suffix] of Object.entries(COMMENT_PART_RELS)) {
+      const path = relOf(suffix)?.path;
+      const text = path && (await this.text(path));
+      if (text) this.commentParts[key] = { path, text };
+    }
+    this.commentsInBody = commentIdsIn(this.body);
+    this.commentRangesInBody = pairedCommentRanges(this.body);
+    this.commentsElsewhere = new Set();
+    if (!this.commentsInBody.size) return;
+    const stories = Object.values(this.zip.files).filter((f) => !f.dir && /(^|\/)(header|footer|footnotes|endnotes)\d*\.xml$/.test(f.name));
+    for (const f of stories) {
+      const text = await f.async('string');
+      if (text.includes('commentReference')) for (const id of commentIdsIn(parseXml(text))) this.commentsElsewhere.add(id);
+    }
+  }
+
+  /**
+   * The comments that would be removed if the editor content `root` were saved now (a Set of ids):
+   * their reference was deleted with the text they were attached to.
+   */
+  removedComments(root) {
+    const present = new Set();
+    for (const el of root.querySelectorAll('[data-raw]')) {
+      for (const id of this.commentRefs.get(el.dataset.raw) || []) present.add(id);
+    }
+    return removedComments(this.comments, { wasInBody: this.commentsInBody, present, elsewhere: this.commentsElsewhere });
   }
 
   dispose() {
@@ -179,7 +218,28 @@ export class DocxDocument {
     this.renderBlocks(this.body, frag);
     if (!frag.childNodes.length) frag.append(this.emptyParagraph());
     this.applyContextualSpacing(frag);
+    this.markTracked(frag);
     return frag;
+  }
+
+  /**
+   * Labels everything that is or holds a tracked change (data-tracked), so the editor can refuse
+   * edits that would remove it: deleting a revision would silently accept or reject it.
+   */
+  markTracked(root) {
+    this.commentRefs = new Map(); // raw index -> ids of the comments it references (see removedComments)
+    for (const el of root.querySelectorAll('[data-raw]')) {
+      const node = this.raw[Number(el.dataset.raw)];
+      const label = trackedChangeLabel(node);
+      if (label) el.dataset.tracked = label;
+      // A table's cells are rendered (and saved) on their own, so its references are counted there.
+      const refs = node.localName === 'tbl' ? [] : [...commentIdsIn(node)];
+      if (refs.length) this.commentRefs.set(el.dataset.raw, refs);
+    }
+    for (const el of root.querySelectorAll('[data-ppr]')) {
+      const label = paragraphMarkLabel(this.raw[Number(el.dataset.ppr)]);
+      if (label) el.dataset.tracked = label;
+    }
   }
 
   keep(node) {
@@ -376,8 +436,9 @@ export class DocxDocument {
     if (commentRef) {
       const id = wAttr(commentRef, 'id');
       const comment = this.comments.find((c) => c.id === id);
-      if (comment?.parentId) return this.hiddenRaw(node); // replies are shown with their thread
       const span = this.hiddenRaw(node);
+      span.dataset.commentRef = id; // the comment's mark: deleting it deletes the comment
+      if (comment?.parentId) return span; // replies are shown with their thread
       span.className = 'raw-inline comment-ref';
       span.dataset.commentId = id;
       if (!this.commentOrder.has(id)) this.commentOrder.set(id, this.commentOrder.size + 1);
@@ -716,6 +777,10 @@ export class DocxDocument {
     for (const n of nodes) this.body.appendChild(n);
     if (!nodes.some((n) => n.localName === 'p')) this.body.appendChild(createW(this.xml, 'p'));
     if (sectPr) this.body.appendChild(sectPr);
+    this.commentsRemoved = removedComments(this.comments, {
+      wasInBody: this.commentsInBody, present: commentIdsIn(this.body), elsewhere: this.commentsElsewhere,
+    });
+    pruneCommentMarkers(this.body, this.commentsRemoved, this.commentRangesInBody);
   }
 
   /** Produces a .docx Blob from the current editor content. */
@@ -724,6 +789,7 @@ export class DocxDocument {
     this.zip.file(this.mainPath, serializeXml(this.xml));
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
+    this.writeComments();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
   }
 
@@ -734,6 +800,15 @@ export class DocxDocument {
     const xml = serializeXml(this.styles.doc);
     if (this.stylesPath) this.zip.file(this.stylesPath, xml);
     else this.stylesPath = await this.addPart('styles.xml', xml, STYLES_REL, STYLES_CT);
+  }
+
+  /** Takes removed comments out of the comment parts (or puts back the original parts if none). */
+  writeComments() {
+    if (!this.commentsRemoved.size && !this.commentPartsChanged) return;
+    for (const [path, xml] of Object.entries(pruneCommentParts(this.commentParts, this.comments, this.commentsRemoved))) {
+      this.zip.file(path, xml);
+    }
+    this.commentPartsChanged = this.commentsRemoved.size > 0;
   }
 
   async writeNumbering() {

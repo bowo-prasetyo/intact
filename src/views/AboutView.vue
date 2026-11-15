@@ -33,7 +33,8 @@
       <h2>Limitations</h2>
       <ul>
         <li>No adding images or tables; tables can't change shape.</li>
-        <li>Tracked changes are kept but can't be accepted or rejected here.</li>
+        <li>Tracked changes are kept but can't be accepted or rejected here, so text holding someone's tracked change can't be deleted together with it.</li>
+        <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>
       <p><RouterLink to="/">← Back to start</RouterLink></p>
