@@ -13,7 +13,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 
 - Open `.docx` (file picker or drag & drop) or start a blank document
 - Edit text in paragraphs, headings, lists and table cells
-- Bold, italic, underline, strikethrough; paragraph styles (Normal, Title, Heading 1–3); alignment
+- Bold, italic, underline, strikethrough, superscript and subscript (each turns the other off, as in
+  Word), and highlight in Word's 15 highlight colours (the last colour chosen is remembered; existing
+  highlight shows and can be removed); paragraph styles (Normal, Title, Heading 1–3); alignment
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
@@ -34,8 +36,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   equation, locked field or cell) says in the status bar what it is and where to edit it, and puts
   the caret beside it, as Word does; typing in it, or in a header, footer or comment, says why
   nothing happens instead of doing nothing (or typing where the caret was before)
+- Show formatting marks (¶ button, Ctrl+Shift+8), as in Word: · for spaces, ° for non-breaking
+  spaces, → for tabs, ↵ for line breaks and ¶ at each paragraph end. They are drawn over the page,
+  never in it, so they can't change the document; the choice is remembered in this browser
 - Paste with basic formatting, as Word's "merge formatting": bold, italic, underline,
-  strikethrough, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
+  strikethrough, superscript, subscript, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
   Google Docs and Word; fonts, colours, styles, links and pictures don't (the status bar says when
   pictures were skipped)
 - Track Changes for your own edits (toolbar button or Ctrl+Shift+E), as in Word: typing, deleting,
@@ -50,8 +55,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   styles or lists added). An untouched document says "No changes". The review can be skipped, and
   opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S)
-- Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Space (remove bold, italic, underline and
-  strikethrough), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
+- Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Shift+= / Ctrl+= (superscript / subscript),
+  Ctrl+Alt+H (highlight), Ctrl+Space (remove bold, italic, underline, strikethrough, superscript and
+  subscript; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
   (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+F/H,
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
@@ -160,7 +166,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 - Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
-- Pasting keeps only bold, italic, underline, strikethrough, paragraphs and lists; pasted pictures
+- Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
+  lists (not highlight); pasted pictures
   and links (their text is kept) are not added
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change in Word first, or select around it

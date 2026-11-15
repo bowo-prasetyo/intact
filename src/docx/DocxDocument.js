@@ -597,6 +597,14 @@ export class DocxDocument {
       const u = wChild(rPr, 'u');
       if (u && wAttr(u, 'val') !== 'none') wrap('u');
       if (onOff(wChild(rPr, 'strike')) || onOff(wChild(rPr, 'dstrike'))) wrap('s');
+      const va = wAttr(wChild(rPr, 'vertAlign'), 'val');
+      if (va === 'superscript') wrap('sup');
+      if (va === 'subscript') wrap('sub');
+      const hl = wAttr(wChild(rPr, 'highlight'), 'val');
+      if (hl && hl !== 'none') {
+        wrap('mark');
+        target.dataset.color = hl;
+      }
     }
     let text = '';
     const flush = () => { if (text) { target.append(document.createTextNode(text)); text = ''; } };
@@ -1079,13 +1087,16 @@ export class DocxDocument {
     const next = { ...ctx };
     if (el.dataset.rpr != null) {
       next.rpr = el.dataset.rpr;
-      next.b = next.i = next.u = next.s = undefined; // the run's own tags/styles define these
+      next.b = next.i = next.u = next.s = next.va = next.hl = undefined; // the run's own tags/styles define these
     }
     switch (el.tagName) {
       case 'B': case 'STRONG': next.b = true; break;
       case 'I': case 'EM': next.i = true; break;
       case 'U': case 'INS': next.u = true; break;
       case 'S': case 'STRIKE': case 'DEL': next.s = true; break;
+      case 'SUP': next.va = 'superscript'; break;
+      case 'SUB': next.va = 'subscript'; break;
+      case 'MARK': next.hl = el.dataset.color || 'yellow'; break;
       default: break;
     }
     const st = el.style;
@@ -1183,7 +1194,7 @@ export class DocxDocument {
 
   /** Appends a run child, merging into the previous run when formatting is identical. */
   emitRunChild(child, out, ctx, state) {
-    const key = `${ctx.rpr ?? ''}|${ctx.b}|${ctx.i}|${ctx.u}|${ctx.s}`;
+    const key = `${ctx.rpr ?? ''}|${ctx.b}|${ctx.i}|${ctx.u}|${ctx.s}|${ctx.va}|${ctx.hl}`;
     if (state.last && state.last.key === key && state.last.run.parentNode === out && out.lastChild === state.last.run) {
       state.last.run.appendChild(child);
       return;
@@ -1216,6 +1227,14 @@ export class DocxDocument {
         toggle('strike', true);
       }
     } else removeW(rPr, 'strike', 'dstrike');
+    // Superscript/subscript and highlight are tags (<sup>, <sub>, <mark>): without one, they are off,
+    // but an explicit "baseline" or "none" (overriding the style) is kept.
+    const va = wChild(rPr, 'vertAlign');
+    if (ctx.va) ensureOrdered(rPr, 'vertAlign', RPR_ORDER).setAttributeNS(W, 'w:val', ctx.va);
+    else if (va && wAttr(va, 'val') !== 'baseline') removeW(rPr, 'vertAlign');
+    const hl = wChild(rPr, 'highlight');
+    if (ctx.hl) ensureOrdered(rPr, 'highlight', RPR_ORDER).setAttributeNS(W, 'w:val', ctx.hl);
+    else if (hl && wAttr(hl, 'val') !== 'none') removeW(rPr, 'highlight');
     return isEmptyElement(rPr) ? null : rPr;
   }
 }
