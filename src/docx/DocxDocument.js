@@ -172,6 +172,7 @@ export class DocxDocument {
     const frag = document.createDocumentFragment();
     this.renderBlocks(this.body, frag);
     if (!frag.childNodes.length) frag.append(this.emptyParagraph());
+    this.applyContextualSpacing(frag);
     return frag;
   }
 
@@ -511,6 +512,8 @@ export class DocxDocument {
     table.className = 'docx-table';
     table.contentEditable = 'false';
     table.dataset.raw = this.keep(tbl);
+    const tblStyle = wAttr(wChild(wChild(tbl, 'tblPr'), 'tblStyle'), 'val');
+    if (tblStyle) table.dataset.tstyle = tblStyle;
     const tbody = document.createElement('tbody');
     table.append(tbody);
     for (const tr of wChildren(tbl, 'tr')) {
@@ -541,6 +544,7 @@ export class DocxDocument {
    * restyling paragraphs keeps "1. 2. 3." correct while editing.
    */
   renumber(root) {
+    this.applyContextualSpacing(root);
     if (!this.numberingXml && !root.querySelector('.list')) return;
     const numbering = new Numbering(this.numberingXml);
     this.numbering = numbering;
@@ -564,6 +568,29 @@ export class DocxDocument {
         el.style.paddingLeft = css['padding-left'] || '';
         el.style.textIndent = css['text-indent'] || '';
       }
+    }
+  }
+
+  /**
+   * Word's "Don't add space between paragraphs of the same style" (w:contextualSpacing): such a
+   * paragraph drops its space before / after when the paragraph above / below has the same style.
+   * This is what keeps list items tight. Shown with classes; the document itself is unchanged.
+   */
+  applyContextualSpacing(root) {
+    const blocks = root.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+    const styleOf = (el) => el.dataset.style || this.styles.defaultParagraph || '';
+    const sibling = (el, dir) => {
+      let s = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+      while (s?.classList.contains('raw-hidden')) s = dir < 0 ? s.previousElementSibling : s.nextElementSibling;
+      return s?.matches('p, h1, h2, h3, h4, h5, h6') ? s : null;
+    };
+    for (const el of blocks) {
+      const pPr = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
+      const own = onOff(wChild(pPr, 'contextualSpacing'));
+      const on = own !== undefined ? own : this.styles.contextualSpacing(el.dataset.style);
+      const sameStyle = (other) => !!other && styleOf(other) === styleOf(el);
+      el.classList.toggle('cs-before', !!on && sameStyle(sibling(el, -1)));
+      el.classList.toggle('cs-after', !!on && sameStyle(sibling(el, 1)));
     }
   }
 

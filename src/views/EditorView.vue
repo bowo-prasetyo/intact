@@ -108,6 +108,7 @@ import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 import { controlAt, controlBox, setControlText, clearPlaceholder } from '../editor/controls.js';
+import { parseClipboard, runNodes, insertAtCaret } from '../editor/paste.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -520,25 +521,70 @@ function onKeydown(e) {
 }
 
 function onPaste(e) {
-  // Paste as plain text: foreign HTML can't be mapped faithfully to Word markup.
   e.preventDefault();
-  undoStack.flush();
-  let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
   const range = selectionInPage();
-  const field = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
-  if (field?.tagName === 'SPAN') {
-    // Fields inside a line keep pasted text on one line (or as line breaks in multi-line ones).
-    if (field.dataset.plain !== 'multi') text = text.replace(/\s*\n\s*/g, ' ');
+  if (!range) return;
+  undoStack.flush();
+  const html = e.clipboardData.getData('text/html');
+  let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  const field = controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
+  if (field?.tagName === 'SPAN' || field?.dataset.plain) {
+    // Fields inside a line, and plain-text fields, take text only; inside a line it stays on one
+    // line (or becomes line breaks in multi-line fields).
+    if (field.tagName === 'SPAN' && field.dataset.plain !== 'multi') text = text.replace(/\s*\n\s*/g, ' ');
     document.execCommand('insertText', false, text);
     undoStack.commit();
     onInput();
     return;
   }
-  text.split('\n').forEach((line, i) => {
-    if (i) document.execCommand('insertParagraph');
-    if (line) document.execCommand('insertText', false, line);
-  });
+  const { blocks, skippedImages } = parseClipboard(html, text);
+  if (!blocks.length) return;
+  if (!range.collapsed) document.execCommand('delete');
+  pasteBlocks(blocks);
+  onInput();
   undoStack.commit();
+  if (skippedImages) {
+    message.value = `${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted – pictures can't be added here yet`;
+  }
+}
+
+/**
+ * Inserts parsed blocks with Word's "merge formatting": text takes the formatting where it lands plus
+ * its own bold/italic/underline/strike. The first block joins the paragraph at the caret; each
+ * further one starts a new paragraph that keeps the destination paragraph's settings, unless it is
+ * a list item, which joins the destination list if it is of the same kind or else a new list.
+ */
+function pasteBlocks(blocks) {
+  const startRange = selectionInPage();
+  const dest = startRange && closestBlock(startRange.startContainer);
+  const destWasEmpty = !!dest && isEmptyBlock(dest);
+  const destNum = dest ? { numId: dest.dataset.numId, ilvl: dest.dataset.ilvl } : {};
+  const destList = dest ? doc.listOf(dest) : null;
+  const destKind = doc.listKind(destList);
+  const newLists = {};
+
+  const applyList = (el, block) => {
+    if (block.list) {
+      const { kind, level } = block.list;
+      const numId = destList && destKind === kind ? destList.numId : (newLists[kind] ||= doc.newList(kind));
+      doc.setList(el, numId, doc.hasListLevel(numId, level) ? level : 0);
+    } else if (destNum.numId != null) {
+      el.dataset.numId = destNum.numId;
+      el.dataset.ilvl = destNum.ilvl ?? '0';
+    } else {
+      delete el.dataset.numId;
+      delete el.dataset.ilvl;
+    }
+  };
+
+  blocks.forEach((block, i) => {
+    if (i > 0) document.execCommand('insertParagraph');
+    const here = selectionInPage();
+    const el = here && closestBlock(here.startContainer);
+    if (el && (i > 0 || destWasEmpty)) applyList(el, block);
+    insertAtCaret(runNodes(block.runs));
+  });
+  doc.renumber(page.value);
 }
 
 function onDrop(e) {
@@ -850,6 +896,8 @@ async function close() {
 /* Unscoped: applies to the generated document HTML. */
 .docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
 .docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
+.docx-sheet .cs-before { margin-top: 0 !important; }
+.docx-sheet .cs-after { margin-bottom: 0 !important; }
 .docx-sheet .list::before {
   content: attr(data-marker); position: absolute; transform: translateX(calc(-100% - 0.5em));
   text-indent: 0; white-space: nowrap;

@@ -92,6 +92,16 @@ export class StyleSheet {
     return m ? `h${m[1]}` : null;
   }
 
+  /** Whether the style (or its basedOn chain) ignores spacing next to paragraphs of the same style. */
+  contextualSpacing(styleId) {
+    const chain = this.chain(styleId || this.defaultParagraph);
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const v = onOff(wChild(chain[i].pPr, 'contextualSpacing'));
+      if (v !== undefined) return v;
+    }
+    return !!onOff(wChild(this.defaultPPr, 'contextualSpacing'));
+  }
+
   isListParagraph(styleId) {
     return this.byId.get(styleId)?.name.toLowerCase() === 'list paragraph';
   }
@@ -215,6 +225,14 @@ export class StyleSheet {
         rules.push(`${scope} [data-style="${sel}"] { ${decl(merged(s.id))} }`);
       } else if (s.type === 'character') {
         rules.push(`${scope} [data-rstyle="${sel}"] { ${decl(merged(s.id))} }`);
+      } else if (s.type === 'table') {
+        // A table style's paragraph settings (often "no space after") apply to the Normal-style
+        // paragraphs in its cells, as Word shows them.
+        const pCss = {};
+        for (const t of this.chain(s.id)) Object.assign(pCss, this.pPrCss(t.pPr));
+        if (Object.keys(pCss).length) {
+          rules.push(`${scope} table[data-tstyle="${sel}"] td :is(p,h1,h2,h3,h4,h5,h6):not([data-style]) { ${decl(pCss)} }`);
+        }
       }
     }
     if (this.defaultParagraph) {
