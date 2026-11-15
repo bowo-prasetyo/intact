@@ -21,6 +21,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
   choices. Locked fields and fields linked to the document's data stay read-only and say why
+- Find and replace (Ctrl/Cmd+F, Ctrl/Cmd+H), with match case and whole words. Matches are found
+  across formatting but not across paragraphs; a replacement takes the formatting of the match's
+  first character, as in Word; read-only content is never changed (the bar says how many matches
+  it skipped there)
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
@@ -52,7 +56,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    Placeholder text left alone or cleared is written back verbatim. Locked fields, fields bound to
    custom XML (Word would overwrite edits from the data on open), tables of contents, citations,
    pictures and groups stay read-only and are written back verbatim.
-5. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
+5. **Find and replace** – `src/editor/find.js` searches runs of text nodes in the same paragraph
+   and editing host, and highlights matches with the CSS Custom Highlight API, which doesn't
+   change the DOM. Replacing edits the text nodes directly as one undoable step.
+6. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
    attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
    then dropped so the list level's applies, as in Word. New lists get Word's default nine-level

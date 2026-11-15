@@ -48,7 +48,13 @@
       <button type="button" title="Increase list level (Tab)" :disabled="!state.list" @click="changeLevel(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
+      <span class="sep" />
+      <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+      </button>
     </div>
+
+    <FindBar v-if="findOpen" ref="findBar" :root="page" :edit="applyEdit" @close="onFindClosed" />
 
     <div class="canvas" @mousedown.self="focusEnd">
       <div
@@ -85,6 +91,7 @@
 import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
+import FindBar from '../components/FindBar.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
@@ -101,6 +108,8 @@ const baseName = ref(doc.name.replace(/\.docx$/i, ''));
 const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left', list: null });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
+const findOpen = ref(false);
+const findBar = ref(null);
 const dateInput = ref(null);
 let chooserTarget = null;
 let savedRange = null;
@@ -137,6 +146,7 @@ onMounted(() => {
   document.execCommand('styleWithCSS', false, false);
   document.addEventListener('selectionchange', onSelectionChange);
   document.addEventListener('mousedown', onDocumentMousedown, true);
+  window.addEventListener('keydown', onWindowKeydown, true);
   window.addEventListener('beforeunload', onBeforeUnload);
   countWords();
   page.value.focus();
@@ -148,6 +158,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', onSelectionChange);
   document.removeEventListener('mousedown', onDocumentMousedown, true);
+  window.removeEventListener('keydown', onWindowKeydown, true);
   window.removeEventListener('beforeunload', onBeforeUnload);
   undoStack?.dispose();
   styleEl?.remove();
@@ -572,6 +583,55 @@ function chooseDate(iso) {
     setControlText(el, doc.formatDate(el, iso));
     el.dataset.fullDate = iso;
   });
+}
+
+// ------------------------------------------------------------------ find and replace
+
+/** Ctrl+F / Ctrl+H anywhere in the editor open Find (and Replace) instead of the browser's own. */
+function onWindowKeydown(e) {
+  const mod = e.ctrlKey || e.metaKey;
+  const key = e.key.toLowerCase();
+  if (!mod || e.altKey || e.shiftKey || (key !== 'f' && key !== 'h')) return;
+  e.preventDefault();
+  openFind(key === 'h');
+}
+
+async function openFind(replace) {
+  const range = selectionInPage() || savedRange;
+  const selected = range && !range.collapsed ? range.toString() : '';
+  const text = selected && selected.length <= 200 && !/\n/.test(selected) ? selected : '';
+  const from = range ? { node: range.startContainer, offset: range.startOffset } : null;
+  findOpen.value = true;
+  await nextTick();
+  findBar.value?.open({ replace, text, from });
+}
+
+function closeFind() {
+  findOpen.value = false;
+  page.value.focus();
+}
+
+/** Closing Find leaves the current match selected in the document, as in Word. */
+function onFindClosed(range) {
+  closeFind();
+  if (range) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+/** Runs a change made outside the browser's editing (such as Replace) as one undoable edit. */
+function applyEdit(change) {
+  undoStack.flush();
+  const touched = change() || [];
+  for (const node of touched) {
+    const control = controlAt(node, page.value);
+    if (control) clearPlaceholder(control, (id) => doc.isPlaceholderStyle(id));
+  }
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
 }
 
 // ------------------------------------------------------------------ file actions
