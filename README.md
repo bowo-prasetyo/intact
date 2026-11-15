@@ -19,7 +19,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
-- Tab and Shift+Tab move between table cells
+- Tab and Shift+Tab move between table cells; Tab in the last cell adds a row, as in Word (a copy of
+  the last row's cells, empty: widths, merged columns, shading and paragraph formatting, but not a
+  header row's repeat or vertical merges), tracked while tracking changes
+- Add comments (toolbar button or Ctrl+Alt+M) on the selected text, or the word at the caret, with
+  your name (asked once, shared with Track Changes): they appear in the comments panel and are
+  written to `comments.xml` (created if the document has none) next to the comments already there.
+  Comments added this session can be deleted; deleting their text deletes them too
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
@@ -172,7 +178,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
-- Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
+- Can't insert images or tables; rows can be added at the end of a table (Tab in the last cell),
+  but not elsewhere, and columns can't be added or removed
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
   lists (not highlight); pasted pictures
@@ -180,7 +187,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)
-- Fields, footnotes, comments, headers and footers are preserved but can't be edited
+- Fields, footnotes, headers and footers are preserved but can't be edited; existing comments can't
+  be edited, replied to or resolved here (new ones can be added)
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save

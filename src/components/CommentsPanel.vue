@@ -4,7 +4,20 @@
       <h2>Comments <span class="count">{{ threads.length }}</span></h2>
       <button type="button" class="close" title="Hide comments" aria-label="Hide comments" @click="$emit('close')">✕</button>
     </header>
-    <p class="note">Shown read-only – reply to or resolve comments in Word.</p>
+    <p class="note">Add comments here; reply to or resolve them in Word.</p>
+    <form v-if="composing" class="composer" aria-label="New comment" @submit.prevent="post" @keydown.esc.stop="$emit('cancel')">
+      <label v-if="askName" class="field">Your name
+        <input ref="nameInput" v-model="nameDraft" type="text" maxlength="100" autocomplete="name" />
+      </label>
+      <label class="field">New comment
+        <textarea ref="textInput" v-model="text" rows="3" @keydown.enter.ctrl.prevent="post" @keydown.enter.meta.prevent="post" />
+      </label>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <div class="actions">
+        <button type="button" @click="$emit('cancel')">Cancel</button>
+        <button type="submit" class="primary" title="Comment (Ctrl+Enter)">Comment</button>
+      </div>
+    </form>
     <ol>
       <li v-for="t in threads" :key="t.id">
         <article
@@ -28,6 +41,8 @@
             <span v-if="t.n" class="tag">{{ t.n }}</span>
             <span v-else class="tag muted">Not anchored in the text</span>
             <span v-if="t.done" class="tag resolved">Resolved</span>
+            <span v-if="t.isNew" class="tag new">New</span>
+            <button v-if="t.isNew" type="button" class="delete" title="Delete this comment (Undo brings it back)" @click.stop="$emit('delete', t.id)">Delete</button>
           </div>
         </article>
       </li>
@@ -36,11 +51,43 @@
 </template>
 
 <script setup>
-defineProps({
-  threads: { type: Array, required: true }, // [{ id, n, author, date, paragraphs, done, replies: [...] }]
+import { nextTick, ref, watch } from 'vue';
+
+const props = defineProps({
+  threads: { type: Array, required: true }, // [{ id, n, author, date, paragraphs, done, isNew, replies: [...] }]
   active: { type: String, default: null },
+  composing: { type: Boolean, default: false }, // show the box for a new comment
+  askName: { type: Boolean, default: false }, // the author's name isn't known yet
 });
-defineEmits(['select', 'close']);
+const emit = defineEmits(['select', 'close', 'post', 'cancel', 'delete']);
+
+const text = ref('');
+const nameDraft = ref('');
+const error = ref('');
+const textInput = ref(null);
+const nameInput = ref(null);
+
+watch(() => props.composing, async (on) => {
+  if (!on) return;
+  text.value = '';
+  error.value = '';
+  await nextTick();
+  (props.askName ? nameInput.value : textInput.value)?.focus();
+}, { immediate: true });
+
+function post() {
+  if (props.askName && !nameDraft.value.trim()) {
+    error.value = 'Your name goes on the comment';
+    nameInput.value?.focus();
+    return;
+  }
+  if (!text.value.trim()) {
+    error.value = 'Write the comment first';
+    textInput.value?.focus();
+    return;
+  }
+  emit('post', { text: text.value.trim(), name: nameDraft.value.trim() });
+}
 
 function initials(c) {
   if (c.initials) return c.initials.slice(0, 3);
@@ -87,6 +134,16 @@ time { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 9px; background: #f9ddd6; color: #7a2e1f; }
 .tag.muted { background: var(--hover); color: var(--muted); }
 .tag.resolved { background: #dcefe0; color: #1e6b34; }
+.tag.new { background: #e3ecfa; color: #2b579a; }
+.delete { margin-left: auto; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 4px; border-radius: 4px; }
+.delete:hover { background: var(--hover); color: inherit; }
+.composer { margin: 0 8px 8px; padding: 8px 10px; border: 1px solid #d0705c; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+.field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.field input, .field textarea { font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; resize: vertical; }
+.error { margin: 0; color: var(--danger); font-size: 12px; }
+.actions { display: flex; justify-content: flex-end; gap: 6px; }
+.actions button { border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.actions .primary { background: #d0705c; border-color: #d0705c; color: #fff; }
 
 @media (max-width: 860px) {
   .comments {

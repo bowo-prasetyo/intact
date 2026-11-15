@@ -72,7 +72,7 @@ const summary = computed(() => {
   if (count.changed) parts.push(`${plural(count.changed, 'paragraph')} changed`);
   if (count.added) parts.push(`${count.added} added`);
   if (count.removed) parts.push(`${count.removed} removed`);
-  if (!parts.length) return props.review.trackingSwitched || props.review.commentsRemoved.length
+  if (!parts.length) return props.review.trackingSwitched || props.review.commentsRemoved.length || props.review.commentsAdded?.length
     ? 'The text is unchanged.'
     : 'No changes: the file is the same as the one you opened.';
   return `${parts.join(', ')}.`;
@@ -92,11 +92,14 @@ const notes = computed(() => {
   if (r.paragraphs.some((p) => !p.tracked && !p.formatting && !p.resolved)) {
     out.push({ kind: 'warn', text: 'Some text changes aren’t tracked: the recipient won’t see them marked. Undo them and turn on Track changes to mark them.' });
   }
-  if (r.paragraphs.some((p) => p.formatting && !/^Paragraph break/.test(p.formatting[0]))) {
+  if (r.paragraphs.some((p) => p.formatting && !/^(Paragraph break|Comment|Tracked change)/.test(p.formatting[0]))) {
     out.push({ kind: 'info', text: 'Formatting changes are applied directly, never tracked.' });
   }
   if (r.trackingSwitched) {
     out.push({ kind: 'info', text: r.tracking ? 'Track Changes will be on when the file is opened in Word.' : 'Track Changes will be off when the file is opened in Word.' });
+  }
+  for (const c of r.commentsAdded || []) {
+    out.push({ kind: 'good', text: `Comment added by ${c.author}: “${c.text.length > 80 ? `${c.text.slice(0, 80)}…` : c.text}”` });
   }
   for (const c of r.commentsRemoved) {
     out.push({ kind: 'info', text: `Comment by ${c.author} removed, with the text it was attached to.` });

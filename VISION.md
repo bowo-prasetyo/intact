@@ -91,6 +91,8 @@ Saying no to these keeps the product small enough to keep its promises:
   keyboard shortcuts ✔
 - Superscript, subscript and highlight ✔; show formatting marks (¶) ✔
 - Accept or reject tracked changes ✔ (formatting changes and table rows: still in Word)
+- Add a comment ✔; add a table row with Tab in the last cell ✔ (replying to and resolving comments:
+  still in Word)
 - Edit headers, footers and footnotes
 - Installable offline app (PWA)
 
