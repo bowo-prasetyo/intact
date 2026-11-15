@@ -108,7 +108,6 @@ test('formatting, added and removed paragraphs and removed comments are all list
   ]);
 
   await openReview(page);
-  // The whole list first, so a failure shows what is listed.
   // The whole list first, so a failure shows everything that is listed.
   expect((await changes(page).allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()).sort()).toEqual([
     'Paragraph 1 Changed The fee is due on the first working day of each month. Style: Normal → Heading 2',

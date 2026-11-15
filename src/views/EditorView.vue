@@ -646,7 +646,7 @@ function onBeforeInput(e) {
   // A deletion across paragraphs must join them; see joinLeftParagraphs.
   const first = ranges[0] && closestBlock(ranges[0].startContainer);
   const last = ranges[0] && closestBlock(ranges[0].endContainer);
-  pendingJoin = first && last && first !== last ? { first, last } : null;
+  pendingJoin = first && last && first !== last ? { first, last, breaks: new Set(first.querySelectorAll('br')) } : null;
   // Typing over, deleting, cutting or dragging away a tracked change would drop it silently.
   if (refuseRemoving(ranges)) e.preventDefault();
   // Comment range ends deleted with the text are put back in onInput, at the caret: where the text
@@ -662,16 +662,31 @@ let pendingJoin = null;
  * bookmark start), so deleting from its start into the next paragraph left an invisible empty
  * paragraph behind. Join what the deletion left of the two, as the browser's own merge would.
  */
-function joinLeftParagraphs({ first, last }) {
-  if (!first.isConnected || !last.isConnected || first.parentElement !== last.parentElement) return;
+function joinLeftParagraphs({ first, last, breaks }) {
+  if (!first.isConnected) return;
   let next = first.nextElementSibling;
   while (next?.classList.contains('raw-hidden')) next = next.nextElementSibling;
-  if (next !== last) return;
-  const placeholder = (el) => el.lastChild?.tagName === 'BR' && !el.textContent;
-  if (placeholder(first)) first.lastChild.remove();
-  const kids = [...last.childNodes].filter((n) => !(n.tagName === 'BR' && n === last.lastChild && !last.textContent));
-  first.append(...kids);
-  last.remove();
+  if (last.isConnected && next === last && first.parentElement === last.parentElement) {
+    const placeholder = (el) => el.lastChild?.tagName === 'BR' && !el.textContent;
+    if (placeholder(first)) first.lastChild.remove();
+    const kids = [...last.childNodes].filter((n) => !(n.tagName === 'BR' && n === last.lastChild && !last.textContent));
+    first.append(...kids);
+    last.remove();
+  }
+  // A browser fills a paragraph it has emptied with a placeholder <br> (Firefox keeps it when the
+  // next paragraph joins on): one that now has text after it would be saved as a line break.
+  for (const br of first.querySelectorAll('br')) {
+    if (!breaks.has(br) && hasContentAfter(br, first)) br.remove();
+  }
+}
+
+/** True if anything visible comes after `node` in `block`. */
+function hasContentAfter(node, block) {
+  const range = document.createRange();
+  range.setStartAfter(node);
+  range.setEnd(block, block.childNodes.length);
+  const frag = range.cloneContents();
+  return !!frag.textContent || !!frag.querySelector('br, img, .raw-inline:not(.raw-hidden), .sdt');
 }
 
 // ------------------------------------------------------------------ keyboard shortcuts
