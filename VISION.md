@@ -77,7 +77,8 @@ Saying no to these keeps the product small enough to keep its promises:
 **Next — do the core job better**
 - Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔
 - Start and end bulleted and numbered lists; Word's Enter, Backspace and Tab behaviour in lists and tables ✔
-- Paste with basic formatting (bold, italic, lists) instead of plain text only
+- Paste with basic formatting (bold, italic, lists) instead of plain text only ✔
+- Show list and table spacing as Word does ✔
 - Find and replace ✔
 - Show comments, headers, footers and notes read-only, in plain language ✔
 

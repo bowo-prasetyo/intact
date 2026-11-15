@@ -29,6 +29,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   the page margins; comments with their replies and resolved state in a side panel (click one to
   highlight its text); numbered footnotes with their text on hover; fields labelled by what they
   are ("Page number – Word updates it")
+- Paste with basic formatting, as Word's "merge formatting": bold, italic, underline,
+  strikethrough, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
+  Google Docs and Word; fonts, colours, styles, links and pictures don't (the status bar says when
+  pictures were skipped)
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
@@ -108,7 +112,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 - Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
-- Pasting is plain text only
+- Pasting keeps only bold, italic, underline, strikethrough, paragraphs and lists; pasted pictures
+  and links (their text is kept) are not added
 - Tracked changes, fields, footnotes, comments, headers and footers are preserved but can't be
   edited; only the first page's header and footer are shown (not even-page or later sections' ones),
   and Find doesn't search them
