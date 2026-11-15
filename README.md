@@ -103,6 +103,10 @@ tests themselves (`tests/helpers.js`). The core checks are:
 "The same" is judged by meaning, not bytes (`canonicalize` in `tests/helpers.js` lists the
 normalisations, such as merging adjacent runs with identical formatting). A new feature that touches
 the document should add its case to the kitchen-sink fixture in `tests/roundtrip.spec.js`.
+
+Real documents written by Word and other applications live in `tests/fixtures/` (anonymized; see the
+README there) and go through the same promises, with every part other than `document.xml` required
+to come back byte for byte. A `.docx` added there is tested automatically.
 First run: `npx playwright install chromium firefox`. To run one browser:
 `npm test -- --project=chromium` (or `firefox`).
 

@@ -134,6 +134,7 @@ export function canonicalize(page, xml) {
     const inlines = (container) => {
       const out = [];
       const pushText = (rPr, t) => {
+        if (!t) return; // empty runs are dropped before merging, so they don't keep neighbours apart
         const last = out[out.length - 1];
         if (last && last.text !== undefined && last.rPr === rPr) last.text += t;
         else out.push({ rPr, text: t });

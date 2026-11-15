@@ -728,6 +728,9 @@ export class DocxDocument {
   }
 
   async writeStyles() {
+    // Only when a style was added: re-serializing an untouched styles.xml would still reorder its
+    // namespace declarations and the like, and nothing the user didn't touch should change.
+    if (!this.styles.changed) return;
     const xml = serializeXml(this.styles.doc);
     if (this.stylesPath) this.zip.file(this.stylesPath, xml);
     else this.stylesPath = await this.addPart('styles.xml', xml, STYLES_REL, STYLES_CT);
