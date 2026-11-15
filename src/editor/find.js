@@ -2,6 +2,8 @@
 // same paragraph and the same editing host, so matches cross formatting ("**John** Smith") but
 // never paragraphs, line breaks, fields or preserved content.
 
+import { replaceTracked } from './track.js';
+
 const STRUCTURAL = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TD', 'TR', 'TABLE', 'LI', 'BR', 'IMG']);
 const BLOCK = 'p, h1, h2, h3, h4, h5, h6, td, div';
 
@@ -72,7 +74,9 @@ export function matchRange(match) {
  * Replaces a match's text. The replacement goes into the first text node of the match, so it takes
  * the formatting of the match's first character, as in Word. Returns the point just after it.
  */
-export function replaceMatch(match, text) {
+export function replaceMatch(match, text, tracked = null) {
+  // While tracking changes: the match becomes a deletion, followed by the replacement as an insertion.
+  if (tracked) return replaceTracked(matchRange(match), text, tracked);
   const { segment, start, end } = match;
   let after = null;
   for (const { node, start: nodeStart } of segment.nodes) {

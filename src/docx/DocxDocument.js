@@ -14,7 +14,7 @@
 import JSZip from 'jszip';
 import {
   NS, parseXml, serializeXml, wChild, wChildren, wAttr, onOff, createW, ensureOrdered, removeW,
-  RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren,
+  RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren, XML_HEADER,
 } from './xml.js';
 import { StyleSheet, jcToCss } from './styles.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
@@ -26,6 +26,7 @@ import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
 } from './contentControls.js';
 import { trackedChangeLabel, paragraphMarkLabel } from './revisions.js';
+import { reviewParagraphs } from './review.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
 } from './commentRemoval.js';
@@ -37,6 +38,17 @@ const STYLES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 const NUMBERING_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering';
 const NUMBERING_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml';
 const NUMPR_ORDER = ['ilvl', 'numId', 'numberingChange', 'ins'];
+const SETTINGS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings';
+const SETTINGS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml';
+// The settings that come before <w:trackRevisions> in CT_Settings.
+const BEFORE_TRACK_REVISIONS = new Set([
+  'writeProtection', 'view', 'zoom', 'removePersonalInformation', 'removeDateAndTime', 'doNotDisplayPageBoundaries',
+  'displayBackgroundShape', 'printPostScriptOverText', 'printFractionalCharacterWidth', 'printFormsData',
+  'embedTrueTypeFonts', 'embedSystemFonts', 'saveSubsetFonts', 'saveFormsData', 'mirrorMargins', 'alignBordersAndEdges',
+  'bordersDoNotSurroundHeader', 'bordersDoNotSurroundFooter', 'gutterAtTop', 'hideSpellingErrors', 'hideGrammaticalErrors',
+  'activeWritingStyle', 'proofState', 'formsDesign', 'attachedTemplate', 'linkStyles', 'stylePaneFormatFilter',
+  'stylePaneSortMethod', 'documentType', 'mailMerge', 'revisionView',
+]);
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 const SIMPLE_RUN_CHILDREN = new Set(['rPr', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen', 'lastRenderedPageBreak']);
@@ -83,6 +95,7 @@ export class DocxDocument {
     this.xml = parseXml(docXml);
     this.body = this.xml.getElementsByTagNameNS(W, 'body')[0];
     if (!this.body) throw new Error('The document has no body.');
+    this.originalBody = this.body.cloneNode(true); // what "Review my changes" compares with
 
     const slash = this.mainPath.lastIndexOf('/');
     this.mainDir = slash >= 0 ? this.mainPath.slice(0, slash) : '';
@@ -113,6 +126,18 @@ export class DocxDocument {
     this.notes = { footnote: parseNotes(footnotes, 'footnote'), endnote: parseNotes(endnotes, 'endnote') };
     const settings = await partOf('/settings');
     const evenAndOdd = onOff(wChild(settings?.xml.documentElement, 'evenAndOddHeaders')) === true;
+    // Track Changes: on when the document says so, as in Word. Saved back only if it was switched.
+    this.settingsPath = settings?.path || null;
+    this.settingsText = settings ? await this.text(settings.path) : null;
+    this.trackRevisions = onOff(wChild(settings?.xml.documentElement, 'trackRevisions')) === true;
+    this.tracking = this.trackRevisions;
+    // New revisions get ids above every id in the document.
+    let maxId = 0;
+    for (const el of this.xml.getElementsByTagName('*')) {
+      const id = Number(el.getAttributeNS(W, 'id'));
+      if (Number.isInteger(id) && id > maxId) maxId = id;
+    }
+    this.firstRevisionId = maxId + 1;
     const loadVariants = async (local) => {
       const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd).map(async (v) => {
         const part = await loadPart(this, this.rels.get(v.rid));
@@ -512,6 +537,18 @@ export class DocxDocument {
     return span;
   }
 
+  /** A new page break (<w:r><w:br w:type="page"/></w:r>), rendered as rawInline renders one. */
+  newPageBreak() {
+    const r = createW(this.xml, 'r');
+    r.appendChild(createW(this.xml, 'br')).setAttributeNS(W, 'w:type', 'page');
+    const span = document.createElement('span');
+    span.contentEditable = 'false';
+    span.dataset.raw = this.keep(r);
+    span.className = 'raw-inline page-break';
+    span.title = 'Page break';
+    return span;
+  }
+
   /** A header or footer (an entry of this.headers / this.footers), rendered read-only, or null if empty. */
   renderHeaderFooter(part) {
     if (!part) return null;
@@ -775,7 +812,9 @@ export class DocxDocument {
   /** Writes the editor content back into document.xml (in memory). */
   update(root) {
     const sectPr = wChild(this.body, 'sectPr');
+    this.revisions = []; // <w:ins>/<w:del> written for this session's tracked changes
     const nodes = this.serializeBlocks(root);
+    this.revisions.forEach((rev, i) => rev.setAttributeNS(W, 'w:id', String(this.firstRevisionId + i)));
     while (this.body.firstChild) this.body.removeChild(this.body.firstChild);
     for (const n of nodes) this.body.appendChild(n);
     if (!nodes.some((n) => n.localName === 'p')) this.body.appendChild(createW(this.xml, 'p'));
@@ -786,6 +825,35 @@ export class DocxDocument {
     pruneCommentMarkers(this.body, this.commentsRemoved, this.commentRangesInBody);
   }
 
+  /**
+   * What saving the editor content now would change, for "Review my changes": the paragraphs that
+   * differ, comments removed with their text, this session's tracked changes, and the other parts
+   * that would change.
+   */
+  review(root) {
+    this.update(root);
+    const trackedParagraphs = new Set();
+    for (const rev of this.revisions) {
+      for (let n = rev.parentNode; n?.nodeType === 1; n = n.parentNode) {
+        if (n.namespaceURI === W && n.localName === 'p') { trackedParagraphs.add(n); break; }
+      }
+    }
+    const styleName = (id) => {
+      const name = (id ? this.styles.byId.get(id)?.name || id : this.styles.byId.get(this.styles.defaultParagraph)?.name) || 'Normal';
+      return name[0].toUpperCase() + name.slice(1); // built-in names are stored as "heading 1"
+    };
+    return {
+      paragraphs: reviewParagraphs(this.originalBody, this.body, { tracked: (p) => trackedParagraphs.has(p), styleName }),
+      commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id)),
+      insertions: this.revisions.filter((r) => r.localName === 'ins').length,
+      deletions: this.revisions.filter((r) => r.localName === 'del').length,
+      tracking: this.tracking,
+      trackingSwitched: this.tracking !== this.trackRevisions,
+      stylesAdded: this.styles.changed,
+      listsAdded: this.numberingChanged,
+    };
+  }
+
   /** Produces a .docx Blob from the current editor content. */
   async save(root) {
     this.update(root);
@@ -793,6 +861,7 @@ export class DocxDocument {
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
     this.writeComments();
+    await this.writeSettings();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
   }
 
@@ -803,6 +872,33 @@ export class DocxDocument {
     const xml = serializeXml(this.styles.doc);
     if (this.stylesPath) this.zip.file(this.stylesPath, xml);
     else this.stylesPath = await this.addPart('styles.xml', xml, STYLES_REL, STYLES_CT);
+  }
+
+  /**
+   * Saves whether Track Changes is on (w:trackRevisions), so Word keeps tracking for the recipient.
+   * settings.xml is only rewritten when it was switched; switched back, the original goes back.
+   */
+  async writeSettings() {
+    if (this.tracking === this.trackRevisions) {
+      if (this.settingsChanged) this.zip.file(this.settingsPath, this.settingsText);
+      this.settingsChanged = false;
+      return;
+    }
+    this.settingsChanged = true;
+    if (!this.settingsPath) {
+      this.settingsPath = await this.addPart('settings.xml', `${XML_HEADER}<w:settings xmlns:w="${W}"><w:trackRevisions/></w:settings>`, SETTINGS_REL, SETTINGS_CT);
+      this.settingsText = `${XML_HEADER}<w:settings xmlns:w="${W}"/>`;
+      return;
+    }
+    const doc = parseXml(this.settingsText);
+    const root = doc.documentElement;
+    if (this.tracking) {
+      const before = wChildren(root).filter((c) => BEFORE_TRACK_REVISIONS.has(c.localName)).pop();
+      root.insertBefore(createW(doc, 'trackRevisions'), before ? before.nextSibling : root.firstChild);
+    } else {
+      removeW(root, 'trackRevisions');
+    }
+    this.zip.file(this.settingsPath, serializeXml(doc));
   }
 
   /** Takes removed comments out of the comment parts (or puts back the original parts if none). */
@@ -929,6 +1025,14 @@ export class DocxDocument {
         ensureOrdered(numPr, 'numId', NUMPR_ORDER).setAttributeNS(W, 'w:val', el.dataset.numId);
       }
     }
+    const mark = el?.dataset.tcMark;
+    if (mark === 'ins' || mark === 'del') {
+      // The paragraph's break is a tracked change of this session: <w:pPr><w:rPr><w:ins|del/>.
+      const rPr = ensureOrdered(pPr, 'rPr', PPR_ORDER);
+      const rev = this.newRevision(mark, el.dataset.tcMarkAuthor, el.dataset.tcMarkDate);
+      const ins = wChild(rPr, 'ins');
+      rPr.insertBefore(rev, mark === 'del' && ins ? ins.nextSibling : rPr.firstChild);
+    }
     if (!isEmptyElement(pPr)) p.appendChild(pPr);
     const state = { last: null };
     for (const n of nodes) this.serializeInline(n, p, {}, el, state);
@@ -947,6 +1051,10 @@ export class DocxDocument {
     const el = node;
     if (el.tagName === 'BR') {
       if (!isTrailing(el, block)) this.emitRunChild(createW(this.xml, 'br'), out, ctx, state);
+      return;
+    }
+    if (el.dataset.tc === 'ins' || el.dataset.tc === 'del') {
+      this.serializeRevision(el, out, ctx, block, state);
       return;
     }
     if (el.dataset.raw != null) {
@@ -989,6 +1097,44 @@ export class DocxDocument {
       if (deco.includes('line-through')) next.s = true;
     }
     for (const c of el.childNodes) this.serializeInline(c, out, next, block, state);
+  }
+
+  /** A revision of this session, for <w:ins>, <w:del> or a paragraph mark (its id is set in update). */
+  newRevision(kind, author, date) {
+    const rev = createW(this.xml, kind);
+    rev.setAttributeNS(W, 'w:id', '0');
+    rev.setAttributeNS(W, 'w:author', author || 'Author');
+    if (date) rev.setAttributeNS(W, 'w:date', date);
+    this.revisions.push(rev);
+    return rev;
+  }
+
+  /**
+   * A tracked insertion or deletion of this session (see editor/track.js) as <w:ins> / <w:del>,
+   * joined with the one just written by the same author. Deleted text is <w:delText>.
+   */
+  serializeRevision(el, out, ctx, block, state) {
+    const kind = el.dataset.tc;
+    const author = el.dataset.tcAuthor || 'Author';
+    const prev = state.revision;
+    const wrap = prev && prev.kind === kind && prev.author === author && out.lastChild === prev.el
+      ? prev.el : this.newRevision(kind, author, el.dataset.tcDate);
+    const inner = { last: null };
+    for (const c of el.childNodes) this.serializeInline(c, wrap, ctx, block, inner);
+    if (kind === 'del') {
+      for (const [from, to] of [['t', 'delText'], ['instrText', 'delInstrText']]) {
+        for (const t of [...wrap.getElementsByTagNameNS(W, from)]) {
+          const d = createW(this.xml, to);
+          for (const a of [...t.attributes]) d.setAttributeNS(a.namespaceURI, a.name, a.value);
+          d.textContent = t.textContent;
+          t.replaceWith(d);
+        }
+      }
+    }
+    if (wrap.childNodes.length && wrap.parentNode !== out) out.appendChild(wrap);
+    else if (!wrap.childNodes.length) this.revisions.splice(this.revisions.indexOf(wrap), 1);
+    state.last = null;
+    state.revision = { kind, author, el: wrap };
   }
 
   /** Rebuilds a content control's <w:sdtContent> from the editor, keeping its properties. */

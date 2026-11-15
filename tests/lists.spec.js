@@ -3,7 +3,7 @@
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import fs from 'node:fs';
-import { buildDocx, openInEditor, download } from './helpers.js';
+import { buildDocx, openInEditor, download, downloadFile } from './helpers.js';
 
 const NUM = '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
 const LIST = `<w:p>${NUM}<w:r><w:t>Alpha</w:t></w:r></w:p><w:p>${NUM}<w:r><w:t>Beta</w:t></w:r></w:p><w:p><w:r><w:t>After the list</w:t></w:r></w:p>`;
@@ -82,11 +82,11 @@ test('Tab inside the text of a list item types a tab, as in Word', async ({ page
 test('the level buttons work on selected list items', async ({ page }) => {
   await openInEditor(page, await buildDocx(LIST));
   await caretAt(page, 'After the list');
-  await expect(page.getByTitle('Increase list level (Tab)')).toBeDisabled();
+  await expect(page.getByTitle('Increase list level (Tab, Ctrl+M)')).toBeDisabled();
   await caretAt(page, 'Beta');
-  await page.getByTitle('Increase list level (Tab)').click();
+  await page.getByTitle('Increase list level (Tab, Ctrl+M)').click();
   await expect.poll(() => markers(page)).toEqual(['1. Alpha', 'a. Beta']);
-  await page.getByTitle('Decrease list level (Shift+Tab)').click();
+  await page.getByTitle('Decrease list level (Shift+Tab, Ctrl+Shift+M)').click();
   await expect.poll(() => markers(page)).toEqual(['1. Alpha', '2. Beta']);
 });
 
@@ -144,8 +144,7 @@ test('Bullets and Numbering start and end lists, adding numbering to a document 
   await page.getByTitle('Bullets').click();
   await expect.poll(() => markers(page)).toEqual(['• One', '• Two']);
 
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download' }).click()]);
-  const zip = await JSZip.loadAsync(fs.readFileSync(await dl.path()));
+  const zip = await JSZip.loadAsync(fs.readFileSync(await downloadFile(page)));
   const xml = await zip.file('word/document.xml').async('string');
   const numbering = await zip.file('word/numbering.xml')?.async('string');
   expect(numbering).toContain('<w:numFmt w:val="bullet"/>');

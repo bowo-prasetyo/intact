@@ -38,7 +38,23 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   strikethrough, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
   Google Docs and Word; fonts, colours, styles, links and pictures don't (the status bar says when
   pictures were skipped)
+- Track Changes for your own edits (toolbar button or Ctrl+Shift+E), as in Word: typing, deleting,
+  Enter, Shift+Enter, paste, Replace and page breaks are recorded as tracked changes with your name
+  and the date, shown in colour as you work (deleted text struck through and kept, a deleted
+  paragraph break shown as a struck ¶ without merging). Deleting your own insertion removes it.
+  Word's setting is saved too, so the recipient keeps tracking; documents saved with Track Changes
+  on open with it on. Your name is remembered in this browser only
+- Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
+  changed, with the words deleted and inserted, which changes are tracked, a warning when some
+  aren't, and anything else that changes (comments removed with their text, Track Changes switched,
+  styles or lists added). An untouched document says "No changes". The review can be skipped, and
+  opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S)
+- Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Space (remove bold, italic, underline and
+  strikethrough), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
+  Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
+  (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+F/H,
+  Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
   fields, equations, bookmarks, section settings and tracked changes (shown
@@ -137,6 +153,10 @@ Enable it once under **Settings → Pages → Build and deployment → Source: G
 The build uses relative asset paths (`base: './'`), so it works under any repository sub-path.
 
 ## Limitations
+
+- Tracked changes can't be accepted or rejected here (Undo takes your own back); formatting changes
+  (bold, styles, alignment, lists) are applied directly, not tracked; edits inside form fields and
+  text moved by dragging aren't tracked (cut and paste is)
 
 - Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented

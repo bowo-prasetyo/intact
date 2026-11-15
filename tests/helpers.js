@@ -26,6 +26,44 @@ export const FIELDS = `<w:sdt><w:sdtPr><w:rPr><w:b/></w:rPr><w:alias w:val="Clie
   + `<w:sdt><w:sdtPr><w:alias w:val="Company"/><w:id w:val="105"/><w:dataBinding w:xpath="/root/company" w:storeItemID="{00000000-0000-0000-0000-000000000001}"/><w:text/></w:sdtPr>`
   + `<w:sdtContent><w:r><w:t>ACME Corp</w:t></w:r></w:sdtContent></w:sdt>`;
 
+const KS_NUM = '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
+
+// One paragraph per feature, so a failure points at the feature.
+/** A document with one paragraph per feature, for round-trip and review tests. */
+export const KITCHEN_SINK = `
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Heading</w:t></w:r></w:p>
+<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:after="120"/></w:pPr>
+  <w:r><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/><w:b w:val="1"/><w:color w:val="C00000"/><w:sz w:val="28"/></w:rPr><w:t>Bold red Georgia</w:t></w:r>
+  <w:r><w:t xml:space="preserve"> plain </w:t></w:r>
+  <w:r><w:rPr><w:i/><w:u w:val="double"/></w:rPr><w:t>italic double-underline</w:t></w:r>
+  <w:r><w:rPr><w:rStyle w:val="Strong"/><w:b w:val="0"/></w:rPr><w:t xml:space="preserve"> style with bold off</w:t></w:r>
+  <w:r><w:rPr><w:dstrike/></w:rPr><w:t xml:space="preserve"> double strike</w:t></w:r>
+  <w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:t>2</w:t></w:r></w:p>
+<w:p><w:r><w:t xml:space="preserve">Tab:</w:t></w:r><w:r><w:tab/><w:t>after tab, line</w:t><w:br/><w:t>break, §\u00a05 (non-breaking space) and a ZWSP\u200bhere</w:t></w:r></w:p>
+<w:p>${KS_NUM}<w:r><w:t>First item</w:t></w:r></w:p>
+<w:p>${KS_NUM}<w:r><w:t>Second item</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr><w:r><w:t>Bullet from a list style</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="ListBullet"/><w:numPr><w:ilvl w:val="0"/></w:numPr><w:ind w:left="500"/></w:pPr><w:r><w:t>Style bullet with its own level and indent</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="ListBullet"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr></w:pPr><w:r><w:t>List style with numbering switched off</w:t></w:r></w:p>
+<w:p><w:r><w:t xml:space="preserve">Link: </w:t></w:r><w:hyperlink r:id="rId3" w:history="1"><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>example</w:t></w:r></w:hyperlink><w:bookmarkStart w:id="0" w:name="mark"/><w:r><w:t xml:space="preserve"> bookmarked</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
+<w:p><w:r><w:t xml:space="preserve">Kept </w:t></w:r><w:ins w:id="1" w:author="Ann" w:date="2026-01-01T00:00:00Z"><w:r><w:t>inserted by Ann</w:t></w:r></w:ins><w:del w:id="2" w:author="Ann" w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> deleted by Ann</w:delText></w:r></w:del></w:p>
+<w:p><w:r><w:t xml:space="preserve">Page: </w:t></w:r><w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple><w:r><w:t xml:space="preserve"> of </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>3</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>
+<w:p><w:r><w:t xml:space="preserve">Image: </w:t></w:r><w:r><w:drawing><wp:inline><wp:extent cx="95250" cy="95250"/><wp:docPr id="1" name="Picture 1"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:blipFill><a:blip r:embed="rId4"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>
+<w:p><w:r><w:t>Before break</w:t></w:r><w:r><w:br w:type="page"/></w:r><w:r><w:t>After break</w:t></w:r></w:p>
+<w:sdt><w:sdtPr><w:alias w:val="Clause"/><w:tag w:val="clause"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Clause in a content control</w:t></w:r></w:p></w:sdtContent></w:sdt>
+<w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Locked clause</w:t></w:r></w:p></w:sdtContent></w:sdt>
+<w:p><w:r><w:t xml:space="preserve">Fields: </w:t></w:r>${FIELDS}</w:p>
+<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>
+  <w:tr><w:tc><w:tcPr><w:tcW w:w="6000" w:type="dxa"/><w:gridSpan w:val="2"/><w:shd w:val="clear" w:fill="D9E2F3"/></w:tcPr><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Merged header</w:t></w:r></w:p></w:tc></w:tr>
+  <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Tall</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B2</w:t></w:r></w:p></w:tc></w:tr>
+  <w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>B3</w:t></w:r></w:p></w:tc></w:tr>
+</w:tbl>
+<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>
+  <w:sdt><w:sdtPr><w:alias w:val="Rows"/><w:id w:val="301"/></w:sdtPr><w:sdtContent><w:tr><w:tc><w:p><w:r><w:t>Row field</w:t></w:r></w:p></w:tc>
+  <w:sdt><w:sdtPr><w:alias w:val="Cell"/><w:showingPlcHdr/><w:text/></w:sdtPr><w:sdtContent><w:tc><w:p><w:r><w:rPr><w:rStyle w:val="PlaceholderText"/></w:rPr><w:t>Cell field</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt></w:tr></w:sdtContent></w:sdt>
+</w:tbl>
+<w:p><w:r><w:t>Last paragraph</w:t></w:r></w:p>`;
+
 // A 1×1 transparent PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
 
@@ -94,10 +132,18 @@ export async function documentXmlOf(buffer) {
   return (await JSZip.loadAsync(buffer)).file('word/document.xml').async('string');
 }
 
-/** Clicks Download and returns the saved package's word/document.xml. */
+/** Clicks Download, then Download in "Review your changes", and returns the downloaded file's path. */
+export async function downloadFile(page) {
+  await page.locator('.app-header').getByRole('button', { name: 'Download' }).click();
+  const review = page.getByRole('dialog', { name: 'Review your changes' });
+  const [dl] = await Promise.all([page.waitForEvent('download'), review.getByRole('button', { name: 'Download' }).click()]);
+  return dl.path();
+}
+
+/** Clicks Download (through the review) and returns the saved package and its word/document.xml. */
 export async function download(page) {
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download' }).click()]);
-  const zip = await JSZip.loadAsync(fs.readFileSync(await dl.path()));
+  const path = await downloadFile(page);
+  const zip = await JSZip.loadAsync(fs.readFileSync(path));
   return { zip, xml: await zip.file('word/document.xml').async('string') };
 }
 
