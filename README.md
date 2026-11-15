@@ -42,6 +42,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   read-only with their author, so they can still be accepted or rejected in Word). The test suite
   checks this on every pull request (see [Testing](#testing))
 - Undo/redo for every edit, including paragraph style changes; list numbers update as you edit
+- Deleting never quietly takes what you can't edit with it. An edit that would remove a tracked
+  change (someone's insertion, deletion or move, a tracked paragraph break, a table with tracked
+  rows) is refused, and the status bar says whose change it is and what to do. Deleting the text a
+  comment is attached to deletes the comment, as in Word: the comments panel and status bar say so,
+  Undo brings it back, and on save it is removed completely (with its replies, from every comment
+  part). A comment whose mark survives keeps its range, shrunk to the text that is left. Backspace
+  and Delete next to invisible markers (comment ranges, bookmarks, field codes) delete the text
+  beyond them, not the marker
 
 ## How it works
 
@@ -79,6 +87,12 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
    then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
    bullet or numbering definitions.
+8. **Protected deletions** – everything that is or holds a tracked change is labelled when rendered
+   (`data-tracked`, see `src/docx/revisions.js`); `src/editor/protect.js` checks what each edit would
+   remove (`beforeinput` target ranges, or the selection) and refuses edits that would take a
+   labelled element away. Comments follow their mark: `src/docx/commentRemoval.js` removes, on save,
+   comments whose mark was deleted from `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`
+   and `commentsExtensible.xml`, and those parts are only rewritten when a comment was removed.
 
 ## Development
 
@@ -125,6 +139,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, paragraphs and lists; pasted pictures
   and links (their text is kept) are not added
+- Text that holds someone's tracked change can't be deleted together with it; accept or reject the
+  change in Word first, or select around it
+- Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)
 - Tracked changes, fields, footnotes, comments, headers and footers are preserved but can't be
   edited
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
