@@ -34,6 +34,10 @@ const KITCHEN_SINK = `
   <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Tall</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B2</w:t></w:r></w:p></w:tc></w:tr>
   <w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>B3</w:t></w:r></w:p></w:tc></w:tr>
 </w:tbl>
+<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>
+  <w:sdt><w:sdtPr><w:alias w:val="Rows"/><w:id w:val="301"/></w:sdtPr><w:sdtContent><w:tr><w:tc><w:p><w:r><w:t>Row field</w:t></w:r></w:p></w:tc>
+  <w:sdt><w:sdtPr><w:alias w:val="Cell"/><w:showingPlcHdr/><w:text/></w:sdtPr><w:sdtContent><w:tc><w:p><w:r><w:rPr><w:rStyle w:val="PlaceholderText"/></w:rPr><w:t>Cell field</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt></w:tr></w:sdtContent></w:sdt>
+</w:tbl>
 <w:p><w:r><w:t>Last paragraph</w:t></w:r></w:p>`;
 
 test('opening and downloading without edits keeps the document unchanged', async ({ page }) => {

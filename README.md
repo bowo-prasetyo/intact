@@ -20,13 +20,15 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Tab and Shift+Tab move between table cells
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
-  choices. Locked fields and fields linked to the document's data stay read-only and say why
+  choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
+  date picker for the field at the caret. Fields around whole table cells or rows work too. Locked
+  fields and fields linked to the document's data stay read-only and say why
 - Find and replace (Ctrl/Cmd+F, Ctrl/Cmd+H), with match case and whole words. Matches are found
   across formatting but not across paragraphs; a replacement takes the formatting of the match's
-  first character, as in Word; read-only content is never changed (the bar says how many matches
-  it skipped there)
-- See what you can't edit, read-only and in plain language: the first page's header and footer in
-  the page margins; comments with their replies and resolved state in a side panel (click one to
+  first character, as in Word. Headers, footers, comments and locked fields are searched too, but
+  their matches are read-only and never replaced
+- See what you can't edit, read-only and in plain language: headers and footers in the page
+  margins (tabs switch between first page, other or even pages and sections when there are several); comments with their replies and resolved state in a side panel (click one to
   highlight its text); numbered footnotes with their text on hover; fields labelled by what they
   are ("Page number – Word updates it")
 - Paste with basic formatting, as Word's "merge formatting": bold, italic, underline,
@@ -115,11 +117,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Pasting keeps only bold, italic, underline, strikethrough, paragraphs and lists; pasted pictures
   and links (their text is kept) are not added
 - Tracked changes, fields, footnotes, comments, headers and footers are preserved but can't be
-  edited; only the first page's header and footer are shown (not even-page or later sections' ones),
-  and Find doesn't search them
-- Content controls: locked and data-bound ones are read-only; check boxes, drop-downs and dates
-  are changed with the mouse (not yet from the keyboard); controls around whole table cells or rows
-  are kept but not shown
+  edited
+- Content controls: locked and data-bound ones, and anything but text fields around table cells
+  or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save
   (their text is kept)
 - Only Chromium is covered by the tests so far; Firefox and Safari are untested

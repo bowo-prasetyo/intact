@@ -142,3 +142,93 @@ test('locked and data-bound fields are read-only and say why', async ({ page }) 
   await expect(control(page, 'Company')).toHaveAttribute('title', /linked to document data/);
   await expect(control(page, 'Company').locator('.sdt-content')).toHaveCount(0);
 });
+
+// ------------------------------------------------------------------ keyboard
+
+/** Puts the caret just before (or after) the field whose title contains `label`. */
+async function caretBy(page, label, after = false) {
+  await page.evaluate(({ label, after }) => {
+    const el = [...document.querySelectorAll('.docx-page .sdt')].find((e) => e.title.includes(label));
+    document.querySelector('.docx-page').focus();
+    const range = document.createRange();
+    if (after) range.setStartAfter(el);
+    else range.setStartBefore(el);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+  }, { label, after });
+}
+
+const near = (page) => page.evaluate(() => [...(CSS.highlights.get('field-near') || [])].map((r) => r.toString()).join());
+
+test('Alt+Down ticks a check box the caret is next to', async ({ page }) => {
+  await openInEditor(page, await buildDocx(FORM));
+  await caretBy(page, 'Check box');
+  await expect.poll(() => near(page)).toBe('☐'); // the field the keys will act on is marked
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(page.locator('.sdt-checkbox')).toHaveText('☒');
+});
+
+test('Space ticks a selected check box', async ({ page }) => {
+  await openInEditor(page, await buildDocx(FORM));
+  await caretBy(page, 'Check box');
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.keyboard.press(' ');
+  await expect(page.locator('.sdt-checkbox')).toHaveText('☒');
+});
+
+test('a drop-down list is chosen from with the keyboard, and typing carries on after it', async ({ page }) => {
+  await openInEditor(page, await buildDocx(FORM));
+  await caretBy(page, 'Plan');
+  await page.keyboard.press('Alt+ArrowDown');
+  const options = page.getByRole('listbox').getByRole('option');
+  await expect(options.first()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(1)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(control(page, 'Plan')).toHaveText('Premium plan');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await page.keyboard.type('!');
+  expect(await control(page, 'Plan').evaluate((el) => el.nextSibling?.textContent?.startsWith('!'))).toBe(true);
+});
+
+test('a typed date is taken on Enter, not halfway through the year', async ({ page }) => {
+  await openInEditor(page, await buildDocx(FORM));
+  await caretBy(page, 'Start date');
+  await page.keyboard.press('Alt+ArrowDown');
+  const input = page.getByLabel('Date', { exact: true });
+  await expect(input).toBeFocused();
+  await page.keyboard.type('03052');
+  await expect(input).toBeVisible(); // "0002-03-05" is a complete date, but not what is meant
+  await page.keyboard.type('026');
+  await page.keyboard.press('Enter');
+  await expect(control(page, 'Start date')).toHaveText('5 March 2026');
+});
+
+// ------------------------------------------------------------------ fields around table cells and rows
+
+const TABLE_FIELDS = `<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>
+<w:tr><w:tc><w:p><w:r><w:t>Fee</w:t></w:r></w:p></w:tc><w:sdt><w:sdtPr><w:alias w:val="Fee amount"/><w:showingPlcHdr/><w:text/></w:sdtPr><w:sdtContent><w:tc><w:p><w:r><w:rPr><w:rStyle w:val="PlaceholderText"/></w:rPr><w:t>Amount</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt></w:tr>
+<w:sdt><w:sdtPr><w:alias w:val="Signatures"/><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent><w:tr><w:tc><w:p><w:r><w:t>Signed</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Locked row</w:t></w:r></w:p></w:tc></w:tr></w:sdtContent></w:sdt>
+<w:tr><w:tc><w:p><w:r><w:t>Last</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Row</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`;
+
+test('fields around table cells and rows are shown; cell fields are filled in like other fields', async ({ page }) => {
+  await openInEditor(page, await buildDocx(TABLE_FIELDS));
+  await expect(page.locator('td')).toHaveText(['Fee', 'Amount', 'Signed', 'Locked row', 'Last', 'Row']);
+  const fee = page.locator('td').nth(1);
+  await expect(fee).toHaveAttribute('title', /Fee amount/);
+  await expect(page.locator('td', { hasText: 'Locked row' })).toHaveAttribute('contenteditable', 'false');
+
+  await fee.click();
+  await page.keyboard.type('EUR 900');
+  await expect(fee).toHaveText('EUR 900');
+  await page.locator('td', { hasText: 'Last' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' one');
+
+  const { xml } = await download(page);
+  const feeField = savedControl(xml, 'Fee amount');
+  expect(feeField).not.toContain('showingPlcHdr');
+  expect(feeField).toMatch(/<w:sdtContent><w:tc><w:p><w:r><w:t xml:space="preserve">EUR 900<\/w:t><\/w:r><\/w:p><\/w:tc><\/w:sdtContent>/);
+  expect(savedControl(xml, 'Signatures')).toContain('<w:t>Locked row</w:t>');
+  expect(xml).toContain('>Last one</w:t>'); // the rows after the wrapped row still line up
+});

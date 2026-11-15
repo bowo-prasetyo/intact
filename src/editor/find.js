@@ -37,12 +37,12 @@ function pattern(query, { matchCase, wholeWord }) {
   return new RegExp(source, matchCase ? 'gu' : 'giu');
 }
 
-/** All matches of `query`: { segment, start, end, editable }. */
-export function findMatches(root, query, options = {}) {
+/** All matches of `query` in `roots` (an element or a list, in order): { segment, start, end, editable }. */
+export function findMatches(roots, query, options = {}) {
   if (!query) return [];
   const re = pattern(query, options);
   const out = [];
-  for (const segment of textSegments(root)) {
+  for (const segment of [roots].flat().flatMap(textSegments)) {
     for (const m of segment.text.matchAll(re)) {
       if (m[0]) out.push({ segment, start: m.index, end: m.index + m[0].length, editable: segment.editable });
     }

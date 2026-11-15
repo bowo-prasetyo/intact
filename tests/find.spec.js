@@ -27,31 +27,34 @@ test('Ctrl+F finds text across formatting, but not across paragraphs or line bre
   await page.keyboard.press('ControlOrMeta+f');
   await expect(findBox(page)).toBeFocused();
   await page.keyboard.type('john smith');
-  // Paragraph 1 (bold "John" + " Smith"), "john smith ltd", the table cell; the locked field is
-  // counted separately; "John" / "Smith" split by a paragraph or a line break are not matches.
-  await expect(status(page)).toHaveText('1 of 3 · 1 in read-only content');
-  expect(await highlighted(page)).toEqual(['John Smith', 'john smith', 'John Smith']);
+  // Paragraph 1 (bold "John" + " Smith"), "john smith ltd", the table cell, and the locked field
+  // (found, but read-only); "John" / "Smith" split by a paragraph or a line break are not matches.
+  await expect(status(page)).toHaveText('1 of 4 · 1 read-only');
+  expect(await highlighted(page)).toEqual(['John Smith', 'john smith', 'John Smith', 'John Smith']);
   expect(await currentMatch(page)).toBe('John Smith');
 
   await page.keyboard.press('Enter');
-  await expect(status(page)).toHaveText('2 of 3 · 1 in read-only content');
+  await expect(status(page)).toHaveText('2 of 4 · 1 read-only');
   expect(await currentMatch(page)).toBe('john smith');
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
-  await expect(status(page)).toHaveText('1 of 3 · 1 in read-only content'); // wraps around
+  await page.keyboard.press('Enter');
+  await expect(status(page)).toHaveText('1 of 4 · 1 read-only'); // wraps around
   await page.keyboard.press('Shift+Enter');
-  await expect(status(page)).toHaveText('3 of 3 · 1 in read-only content');
+  await expect(status(page)).toHaveText('4 of 4 · 1 read-only'); // the locked field
+  await page.keyboard.press('ControlOrMeta+h');
+  await expect(page.getByRole('button', { name: 'Replace', exact: true })).toBeDisabled();
 });
 
 test('Match case and Whole words narrow the search', async ({ page }) => {
   await open(page);
   await page.keyboard.press('ControlOrMeta+f');
   await page.keyboard.type('John');
-  await expect(status(page)).toHaveText('1 of 6 · 1 in read-only content'); // includes "john" and "Johnson"
+  await expect(status(page)).toHaveText('1 of 7 · 1 read-only'); // includes "john" and "Johnson"
   await page.getByLabel('Match case').check();
-  await expect(status(page)).toHaveText('1 of 5 · 1 in read-only content');
+  await expect(status(page)).toHaveText('1 of 6 · 1 read-only');
   await page.getByLabel('Whole words').check();
-  await expect(status(page)).toHaveText('1 of 4 · 1 in read-only content');
+  await expect(status(page)).toHaveText('1 of 5 · 1 read-only');
 });
 
 test('Replace takes the formatting of the first matched character and moves on', async ({ page }) => {
@@ -62,7 +65,7 @@ test('Replace takes the formatting of the first matched character and moves on',
   await page.getByRole('textbox', { name: 'Replace with' }).fill('Jane Doe');
   await page.getByRole('button', { name: 'Replace', exact: true }).click();
   await expect(page.locator('.docx-page p').first()).toHaveText('Agreement between ACME and Jane Doe.');
-  await expect(status(page)).toHaveText('1 of 1 · 1 in read-only content'); // now on the table cell
+  await expect(status(page)).toHaveText('1 of 2 · 1 read-only'); // now on the table cell
 
   const { xml } = await download(page);
   expect(xml).toContain('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Jane Doe</w:t></w:r><w:r><w:t xml:space="preserve">.</w:t></w:r>');
@@ -75,7 +78,7 @@ test('Replace all is one undo step and never touches read-only content', async (
   await findBox(page).fill('john smith');
   await page.getByRole('textbox', { name: 'Replace with' }).fill('Jane Doe');
   await page.getByRole('button', { name: 'Replace all' }).click();
-  await expect(status(page)).toHaveText('Replaced 3 matches');
+  await expect(status(page)).toHaveText('Replaced 3 matches · 1 read-only left as it is');
   await expect(page.locator('td')).toHaveText('Signed: Jane Doe');
   await expect(page.locator('.sdt-locked')).toHaveText('Locked: John Smith');
 

@@ -58,12 +58,17 @@
       </button>
     </div>
 
-    <FindBar v-if="findOpen" ref="findBar" :root="page" :edit="applyEdit" @close="onFindClosed" />
+    <FindBar v-if="findOpen" ref="findBar" :root="page" :roots="searchRoots" :edit="applyEdit" @close="onFindClosed" @reveal="revealRange" />
 
     <div class="workspace">
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
-          <div v-if="doc.headerPart" ref="headerEl" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')" />
+          <div v-if="doc.headers.length" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')">
+            <div v-if="doc.headers.length > 1" class="hf-tabs" role="tablist" aria-label="Headers">
+              <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @click="hf.header = i">{{ v.label }}</button>
+            </div>
+            <div ref="headerEl" class="hf-variants" />
+          </div>
           <div
             ref="page"
             class="docx-page"
@@ -77,14 +82,19 @@
             @drop="onDrop"
             @click="onClick"
           />
-          <div v-if="doc.footerPart" ref="footerEl" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')" />
+          <div v-if="doc.footers.length" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')">
+            <div ref="footerEl" class="hf-variants" />
+            <div v-if="doc.footers.length > 1" class="hf-tabs" role="tablist" aria-label="Footers">
+              <button v-for="(v, i) in doc.footers" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @click="hf.footer = i">{{ v.label }}</button>
+            </div>
+          </div>
         </div>
       </div>
-      <CommentsPanel v-if="commentsOpen && threads.length" :threads="threads" :active="activeComment" @select="selectComment" @close="commentsOpen = false" />
+      <CommentsPanel v-if="threads.length" v-show="commentsOpen" :threads="threads" :active="activeComment" @select="selectComment" @close="commentsOpen = false" />
     </div>
 
-    <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" aria-label="Choose a value" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)">
-      <input v-if="chooser.kind === 'date'" ref="dateInput" type="date" :value="chooser.date" aria-label="Date" @change="chooseDate($event.target.value)" />
+    <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" aria-label="Choose a value" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)" @keydown="onChooserKeydown">
+      <input v-if="chooser.kind === 'date'" ref="dateInput" type="date" :value="chooser.date" aria-label="Date" @keydown="onDateKeydown" @change="onDateChange" />
       <template v-else>
         <button v-for="c in chooser.choices" :key="c.value" type="button" role="option" :aria-selected="c.text === chooser.current" @click="choose(c)">{{ c.text }}</button>
         <p v-if="!chooser.choices.length" class="empty">No choices</p>
@@ -99,7 +109,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
@@ -107,7 +117,7 @@ import CommentsPanel from '../components/CommentsPanel.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
-import { controlAt, controlBox, setControlText, clearPlaceholder } from '../editor/controls.js';
+import { controlAt, controlBox, setControlText, clearPlaceholder, fieldAtSelection } from '../editor/controls.js';
 import { parseClipboard, runNodes, insertAtCaret } from '../editor/paste.js';
 
 const router = useRouter();
@@ -147,7 +157,7 @@ const footerEl = ref(null);
 const sheetStyle = computed(() => ({ width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px` }));
 const pageStyle = computed(() => {
   const p = doc.page;
-  return { padding: `${doc.headerPart ? 0 : p.top}px ${p.right}px ${doc.footerPart ? 0 : p.bottom}px ${p.left}px` };
+  return { padding: `${doc.headers.length ? 0 : p.top}px ${p.right}px ${doc.footers.length ? 0 : p.bottom}px ${p.left}px` };
 });
 const headerStyle = computed(() => {
   const p = doc.page;
@@ -158,11 +168,39 @@ const footerStyle = computed(() => {
   return { padding: `0 ${p.right}px ${p.footer}px ${p.left}px`, minHeight: `${Math.max(0, p.bottom - p.footer)}px` };
 });
 
+// Which header / footer is shown, when the document has several (first page, even pages, sections).
+const hf = reactive({ header: 0, footer: 0 });
+
 function hfTitle(which) {
-  const part = which === 'header' ? doc.headerPart : doc.footerPart;
-  const name = `${part?.first ? 'First page ' : ''}${which}`;
+  const variant = (which === 'header' ? doc.headers : doc.footers)[hf[which]];
+  const label = variant?.label || '';
+  const name = label === 'All pages' || !label ? which : `${label} ${which}`;
   return `${name[0].toUpperCase()}${name.slice(1)} – shown for reference; edit it in Word`;
 }
+
+/** Renders every header (or footer) variant once; only the selected one is visible. */
+function renderVariants(el, which) {
+  if (!el) return;
+  const variants = which === 'header' ? doc.headers : doc.footers;
+  const nodes = variants.map((v, i) => {
+    const div = document.createElement('div');
+    div.className = 'hf-variant';
+    div.dataset.which = which;
+    div.dataset.variant = String(i);
+    div.hidden = i !== hf[which];
+    const content = doc.renderHeaderFooter(v);
+    if (content) div.append(...content.childNodes);
+    return div;
+  });
+  el.replaceChildren(...nodes);
+  el.parentElement.classList.toggle('empty', variants.length === 1 && !nodes[0].childNodes.length);
+}
+
+watch(() => ({ ...hf }), () => {
+  for (const el of [headerEl.value, footerEl.value]) {
+    for (const v of el?.children || []) v.hidden = Number(v.dataset.variant) !== hf[v.dataset.which];
+  }
+});
 
 function refreshCss() {
   styleEl.textContent = doc.css('.docx-sheet');
@@ -173,12 +211,8 @@ onMounted(() => {
   document.head.append(styleEl);
   refreshCss();
   page.value.replaceChildren(doc.render());
-  for (const [el, which] of [[headerEl.value, 'header'], [footerEl.value, 'footer']]) {
-    if (!el) continue;
-    const content = doc.renderHeaderFooter(which);
-    if (content) el.replaceChildren(...content.childNodes);
-    else el.classList.add('empty');
-  }
+  renderVariants(headerEl.value, 'header');
+  renderVariants(footerEl.value, 'footer');
   threads.value = commentThreads();
   commentsOpen.value = threads.value.length > 0 && window.innerWidth >= 1100;
   paintComments();
@@ -205,6 +239,7 @@ onBeforeUnmount(() => {
   if (canHighlight) {
     CSS.highlights.delete('comment');
     CSS.highlights.delete('comment-active');
+    CSS.highlights.delete('field-near');
   }
 });
 
@@ -242,6 +277,7 @@ function onSelectionChange() {
     return;
   }
   savedRange = range.cloneRange();
+  markNearField(range);
   state.bold = document.queryCommandState('bold');
   state.italic = document.queryCommandState('italic');
   state.underline = document.queryCommandState('underline');
@@ -469,6 +505,11 @@ function onInput() {
   const range = selectionInPage();
   const control = range && controlAt(range.startContainer, page.value);
   if (control) clearPlaceholder(control, (id) => doc.isPlaceholderStyle(id));
+  const cell = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('td.showing-placeholder');
+  if (cell) {
+    cell.classList.remove('showing-placeholder');
+    for (const s of cell.querySelectorAll('[data-rstyle]')) if (doc.isPlaceholderStyle(s.dataset.rstyle)) delete s.dataset.rstyle;
+  }
   doc.renumber(page.value);
   undoStack.schedule();
   markDirty();
@@ -488,6 +529,14 @@ function onKeydown(e) {
   const key = e.key.toLowerCase();
   const range = selectionInPage();
   const field = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
+  if ((e.altKey && !mod && e.key === 'ArrowDown') || (e.key === ' ' && !mod && !e.altKey && range && !range.collapsed)) {
+    const near = fieldAtSelection(range, page.value);
+    if (near) {
+      e.preventDefault();
+      activateField(near);
+      return;
+    }
+  }
   if (mod && !e.altKey && ['b', 'i', 'u'].includes(key) && inPlainField()) {
     e.preventDefault();
     return;
@@ -598,6 +647,11 @@ function onClick(e) {
     selectComment(marker.dataset.commentId, false);
     return;
   }
+  const placeholderCell = e.target.closest('td.sdt-cell.showing-placeholder');
+  if (placeholderCell) {
+    selectCell(placeholderCell); // a field around a table cell: typing replaces its placeholder
+    return;
+  }
   const control = controlAt(e.target, page.value);
   if (control?.classList.contains('showing-placeholder') && e.target.closest('.sdt-content')) {
     selectCell(controlBox(control)); // the browser resets the selection on mouseup
@@ -652,9 +706,65 @@ function openChooser(el) {
 }
 
 function closeChooser(refocus = false) {
+  const el = chooserTarget;
   chooser.open = false;
-  if (refocus) page.value.focus();
   chooserTarget = null;
+  if (refocus) {
+    // Back to the document, with the caret just after the field.
+    page.value.focus();
+    if (el?.isConnected) {
+      const range = document.createRange();
+      range.setStartAfter(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+}
+
+/** ↑ / ↓ / Home / End move between the items of a drop-down list. */
+function onChooserKeydown(e) {
+  if (chooser.kind === 'date' || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const items = [...chooserEl.value.querySelectorAll('button')];
+  const i = items.indexOf(document.activeElement);
+  const next = { ArrowDown: Math.min(i + 1, items.length - 1), ArrowUp: Math.max(i - 1, 0), Home: 0, End: items.length - 1 }[e.key];
+  items[next]?.focus();
+}
+
+// A date typed digit by digit is "complete" (and fires change) before the year is finished, so typed
+// dates are taken on Enter; a date picked from the calendar is taken at once.
+let lastDateKey = 0;
+function onDateKeydown(e) {
+  lastDateKey = Date.now();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    chooseDate(e.target.value);
+  }
+}
+function onDateChange(e) {
+  if (Date.now() - lastDateKey > 400) chooseDate(e.target.value);
+}
+
+/** Alt+↓, or Space on a selected field: tick a check box, or open a list or date picker. */
+function activateField(el) {
+  if (doc.control(el).kind === 'checkbox') toggleCheckbox(el);
+  else openChooser(el);
+}
+
+const canMarkFields = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
+
+/** Marks the field the caret is touching, so it's clear that Alt+↓ will act on it. */
+function markNearField(range) {
+  if (!canMarkFields) return;
+  const field = fieldAtSelection(range, page.value);
+  if (!field) {
+    CSS.highlights.delete('field-near');
+    return;
+  }
+  const r = document.createRange();
+  r.selectNodeContents(field);
+  CSS.highlights.set('field-near', new Highlight(r));
 }
 
 function onDocumentMousedown(e) {
@@ -757,7 +867,8 @@ async function openFind(replace) {
   const range = selectionInPage() || savedRange;
   const selected = range && !range.collapsed ? range.toString() : '';
   const text = selected && selected.length <= 200 && !/\n/.test(selected) ? selected : '';
-  const from = range ? { node: range.startContainer, offset: range.startOffset } : null;
+  // Re-pressing Ctrl+F / Ctrl+H while Find is open keeps the current match.
+  const from = range && !findOpen.value ? { node: range.startContainer, offset: range.startOffset } : null;
   findOpen.value = true;
   await nextTick();
   findBar.value?.open({ replace, text, from });
@@ -768,10 +879,34 @@ function closeFind() {
   page.value.focus();
 }
 
+/** What Find searches, in order: headers, the document, footers, then comment texts. */
+function searchRoots() {
+  return [
+    ...(headerEl.value?.children || []),
+    page.value,
+    ...(footerEl.value?.children || []),
+    ...document.querySelectorAll('.comments .comment .text'),
+  ];
+}
+
+/** Brings a match into view, switching to its header/footer tab or opening Comments if need be. */
+async function revealRange(range) {
+  const el = range.startContainer.parentElement;
+  const variant = el?.closest('.hf-variant');
+  if (variant?.hidden) hf[variant.dataset.which] = Number(variant.dataset.variant);
+  if (el?.closest('.comments') && !commentsOpen.value) commentsOpen.value = true;
+  await nextTick();
+  const scroller = el?.closest('.canvas, .comments');
+  if (!scroller) return;
+  const rect = range.getBoundingClientRect();
+  const box = scroller.getBoundingClientRect();
+  if (rect.top < box.top + 8 || rect.bottom > box.bottom - 8) scroller.scrollTop += rect.top - box.top - box.height / 3;
+}
+
 /** Closing Find leaves the current match selected in the document, as in Word. */
 function onFindClosed(range) {
   closeFind();
-  if (range) {
+  if (range && page.value.contains(range.startContainer)) {
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
@@ -868,6 +1003,17 @@ async function close() {
 .docx-hf.footer { display: flex; flex-direction: column; justify-content: flex-end; }
 .docx-hf:hover { opacity: .8; }
 .docx-hf.empty { padding-bottom: 0 !important; padding-top: 0 !important; }
+.docx-hf { position: relative; }
+.hf-tabs {
+  position: absolute; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px;
+  font: 11px/1.4 system-ui, sans-serif; white-space: normal;
+}
+.header .hf-tabs { top: 6px; }
+.footer .hf-tabs { bottom: 6px; }
+.hf-tabs button {
+  padding: 1px 8px; border: 1px solid #c9d1de; border-radius: 9px; background: #fff; color: #44516a; cursor: pointer;
+}
+.hf-tabs button[aria-selected="true"] { background: #2b579a; border-color: #2b579a; color: #fff; }
 .comments-toggle { gap: 3px; padding: 0 6px; }
 .badge { font-size: 11px; color: var(--muted); }
 .chooser {
@@ -889,6 +1035,8 @@ async function close() {
   .docx-sheet { min-height: 100% !important; width: 100% !important; box-shadow: none; }
   .docx-page { padding: 24px 16px !important; }
   .docx-hf { padding: 12px 16px !important; min-height: 0 !important; }
+  .docx-hf.header:has(.hf-tabs) { padding-top: 34px !important; }
+  .docx-hf.footer:has(.hf-tabs) { padding-bottom: 34px !important; }
 }
 </style>
 
@@ -922,6 +1070,7 @@ async function close() {
 }
 .docx-sheet .field { border-bottom: 1px dotted #9aa6b8; }
 ::highlight(comment) { background-color: #fbe3dc; }
+::highlight(field-near) { background-color: #d6e2f5; }
 ::highlight(comment-active) { background-color: #f6b9a8; }
 .docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
 .docx-sheet div.sdt { box-shadow: 0 0 0 1px transparent; }

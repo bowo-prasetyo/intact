@@ -55,7 +55,12 @@ const KIND_NAMES = { text: 'Text field', checkbox: 'Check box', dropdown: 'Drop-
 export function controlTitle(info) {
   const name = info.label ? `“${info.label}”` : KIND_NAMES[info.kind].toLowerCase();
   if (info.readOnly) return `Content control ${name} – ${info.readOnly}`;
-  const how = { checkbox: 'click to tick or clear', dropdown: 'click to choose', date: 'click to pick a date', combo: 'type, or click ▾ to choose' }[info.kind];
+  const how = {
+    checkbox: 'click or press Alt+↓ to tick or clear',
+    dropdown: 'click or press Alt+↓ to choose',
+    date: 'click or press Alt+↓ to pick a date',
+    combo: 'type, or click ▾ / press Alt+↓ to choose',
+  }[info.kind];
   return `${KIND_NAMES[info.kind]}${info.label ? ` “${info.label}”` : ''}${how ? ` – ${how}` : ''}`;
 }
 

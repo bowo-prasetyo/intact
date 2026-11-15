@@ -36,9 +36,10 @@ const highlighted = (page, name) => page.evaluate((n) => [...(CSS.highlights.get
 test('the first page\'s header and footer are shown, read-only and outside the editable text', async ({ page }) => {
   const docx = await buildDocx('<w:p><w:r><w:t>Body text</w:t></w:r></w:p>', { ...HEADERS, sectPr: `${HEADERS.sectPr}<w:titlePg/>` });
   await openInEditor(page, docx);
-  const header = page.locator('.docx-hf.header');
+  const header = page.locator('.docx-hf.header .hf-variant:not([hidden])');
+  await expect(page.getByRole('tablist', { name: 'Headers' }).getByRole('tab')).toHaveText(['First page', 'Other pages']);
   await expect(header).toHaveText('First page header ');
-  await expect(header).toHaveAttribute('title', 'First page header – shown for reference; edit it in Word');
+  await expect(page.locator('.docx-hf.header')).toHaveAttribute('title', 'First page header – shown for reference; edit it in Word');
   await expect(header.locator('img')).toHaveCount(1); // the header's own relationships resolve its image
   await expect(page.locator('.docx-hf.footer')).toContainText('Page 1');
   await expect(page.locator('.docx-page')).toHaveText('Body text');
@@ -51,7 +52,8 @@ test('the first page\'s header and footer are shown, read-only and outside the e
 
 test('without a different first page, the default header is shown', async ({ page }) => {
   await openInEditor(page, await buildDocx('<w:p><w:r><w:t>Body</w:t></w:r></w:p>', HEADERS));
-  await expect(page.locator('.docx-hf.header')).toHaveText('Default header');
+  await expect(page.locator('.docx-hf.header .hf-variant')).toHaveText('Default header');
+  await expect(page.getByRole('tablist', { name: 'Headers' })).toHaveCount(0);
   await expect(page.locator('.docx-hf.header')).toHaveAttribute('title', /^Header – /);
 });
 
@@ -113,4 +115,54 @@ test('preserved content is described in plain language', async ({ page }) => {
   await expect(page.locator('.docx-page p').nth(1)).toHaveText('Recieved on time. Page 4ü');
   await expect(page.locator('.docx-page .symbol')).toHaveAttribute('title', 'Symbol (Wingdings)');
   await expect(page.locator('.docx-page [title*="Preserved content"]')).toHaveCount(0);
+});
+
+test('documents with several headers offer them as tabs: sections, first page, even pages', async ({ page }) => {
+  const h = (n) => part('hdr', `<w:p><w:r><w:t>Header ${n}</w:t></w:r></w:p>`);
+  const docx = await buildDocx(
+    `<w:p><w:pPr><w:sectPr><w:headerReference w:type="default" r:id="rIdA"/><w:headerReference w:type="even" r:id="rIdB"/></w:sectPr></w:pPr><w:r><w:t>Section one</w:t></w:r></w:p><w:p><w:r><w:t>Section two</w:t></w:r></w:p>`,
+    {
+      parts: {
+        'word/header1.xml': h('A'), 'word/header2.xml': h('B'), 'word/header3.xml': h('C'), 'word/header4.xml': h('D'),
+        'word/settings.xml': part('settings', '<w:evenAndOddHeaders/>'),
+      },
+      rels: `<Relationship Id="rIdA" Type="${REL}/header" Target="header1.xml"/><Relationship Id="rIdB" Type="${REL}/header" Target="header2.xml"/><Relationship Id="rIdC" Type="${REL}/header" Target="header3.xml"/><Relationship Id="rIdD" Type="${REL}/header" Target="header4.xml"/><Relationship Id="rIdS" Type="${REL}/settings" Target="settings.xml"/>`,
+      // Section 2 has its own first-page and default headers, and inherits section 1's even one.
+      sectPr: '<w:headerReference w:type="default" r:id="rIdC"/><w:headerReference w:type="first" r:id="rIdD"/><w:titlePg/>',
+    },
+  );
+  await openInEditor(page, docx);
+  const tabs = page.getByRole('tablist', { name: 'Headers' }).getByRole('tab');
+  await expect(tabs).toHaveText(['Section 1: odd pages', 'Section 1: even pages', 'Section 2: first page', 'Section 2: odd pages']);
+  const shown = page.locator('.docx-hf.header .hf-variant:not([hidden])');
+  await expect(shown).toHaveText('Header A');
+  await tabs.nth(2).click();
+  await expect(shown).toHaveText('Header D');
+  await expect(page.locator('.docx-hf.header')).toHaveAttribute('title', /^Section 2: first page header/);
+});
+
+test('Find also searches headers, footers and comments, read-only', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 }); // comments start closed
+  const docx = await buildDocx(COMMENTED.replace('The fee is ', 'The fee per Page is '), {
+    parts: { ...HEADERS.parts, ...COMMENTS.parts },
+    rels: HEADERS.rels + COMMENTS.rels,
+    sectPr: `${HEADERS.sectPr}<w:titlePg/>`,
+  });
+  await openInEditor(page, docx);
+  await expect(page.getByRole('complementary', { name: 'Comments' })).toHaveCount(0);
+  await page.locator('.docx-page p').first().click();
+  await page.keyboard.press('ControlOrMeta+f');
+  await page.keyboard.type('page');
+  // Header (first page, "First page header"), the body twice, the footer ("Page 1"), no comment.
+  const status = page.locator('.findbar .status');
+  await expect(status).toHaveText(/ of 4 · 2 read-only$/);
+
+  await page.getByRole('textbox', { name: 'Find' }).fill('Default');
+  await expect(status).toHaveText('1 of 1 · 1 read-only');
+  // The match is in the "Other pages" header, so that tab is shown.
+  await expect(page.locator('.docx-hf.header .hf-variant:not([hidden])')).toHaveText('Default header');
+
+  await page.getByRole('textbox', { name: 'Find' }).fill('finance');
+  await expect(status).toHaveText('1 of 1 · 1 read-only');
+  await expect(page.getByRole('complementary', { name: 'Comments' })).toBeVisible(); // opened to show it
 });

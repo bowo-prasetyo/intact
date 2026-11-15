@@ -19,7 +19,7 @@
       </ul>
       <h2>What you can see but not edit</h2>
       <p>
-        The first page's header and footer, comments (with replies and whether they are resolved),
+        Headers and footers (all of them, one at a time), comments (with replies and whether they are resolved),
         footnotes and fields are shown as they are, labelled in plain language, and saved unchanged.
       </p>
       <h2>What is preserved</h2>

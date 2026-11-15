@@ -20,7 +20,7 @@ import { StyleSheet, jcToCss } from './styles.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import {
-  loadPart, parseComments, parseNotes, firstPageReferences, fieldName, describe,
+  loadPart, parseComments, parseNotes, headerFooterVariants, fieldName, describe,
 } from './annotations.js';
 import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
@@ -106,11 +106,17 @@ export class DocxDocument {
     );
     this.comments = parseComments(comments, commentsExt);
     this.notes = { footnote: parseNotes(footnotes, 'footnote'), endnote: parseNotes(endnotes, 'endnote') };
-    const refs = firstPageReferences(this.body);
-    this.headerPart = refs.header && { ...(await loadPart(this, this.rels.get(refs.header.rid))), first: refs.header.first };
-    this.footerPart = refs.footer && { ...(await loadPart(this, this.rels.get(refs.footer.rid))), first: refs.footer.first };
-    if (!this.headerPart?.xml) this.headerPart = null;
-    if (!this.footerPart?.xml) this.footerPart = null;
+    const settings = await partOf('/settings');
+    const evenAndOdd = onOff(wChild(settings?.xml.documentElement, 'evenAndOddHeaders')) === true;
+    const loadVariants = async (local) => {
+      const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd).map(async (v) => {
+        const part = await loadPart(this, this.rels.get(v.rid));
+        return part && { ...v, ...part };
+      }));
+      return variants.filter(Boolean);
+    };
+    this.headers = await loadVariants('headerReference');
+    this.footers = await loadVariants('footerReference');
     this.numberingPath = numPath || null;
     this.numberingChanged = false;
     this.listDefs = {}; // list definitions added this session: kind -> abstractNumId, plus the bullet numId
@@ -442,9 +448,8 @@ export class DocxDocument {
     return span;
   }
 
-  /** The first page's header or footer, rendered read-only, or null if it has nothing to show. */
-  renderHeaderFooter(which) {
-    const part = which === 'header' ? this.headerPart : this.footerPart;
+  /** A header or footer (an entry of this.headers / this.footers), rendered read-only, or null if empty. */
+  renderHeaderFooter(part) {
     if (!part) return null;
     const [rels, numbering, order, notes] = [this.rels, this.numbering, this.commentOrder, this.noteCount];
     this.rels = part.rels;
@@ -516,11 +521,29 @@ export class DocxDocument {
     if (tblStyle) table.dataset.tstyle = tblStyle;
     const tbody = document.createElement('tbody');
     table.append(tbody);
-    for (const tr of wChildren(tbl, 'tr')) {
+    for (const { el: tr, wrappers: rowWrappers } of tableParts(tbl, 'tr')) {
       const row = document.createElement('tr');
-      for (const tc of wChildren(tr, 'tc')) {
+      if (rowWrappers.length) {
+        row.classList.add('sdt-row');
+        row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
+      }
+      for (const { el: tc, wrappers: cellWrappers } of tableParts(tr, 'tc')) {
         const td = document.createElement('td');
         td.contentEditable = 'true';
+        // Content controls around whole rows or cells: the cell is the field. Anything but a text
+        // field (and anything locked or bound) stays read-only.
+        const wrappers = [...rowWrappers, ...cellWrappers];
+        if (wrappers.length) {
+          const infos = wrappers.map(controlInfo);
+          td.classList.add('sdt-cell');
+          if (cellWrappers.length) td.title = controlTitle(infos[infos.length - 1]);
+          if (infos.some((i) => i.readOnly || i.kind !== 'text')) {
+            td.contentEditable = 'false';
+            td.classList.add('sdt-locked');
+          } else if (infos[infos.length - 1].placeholder) {
+            td.classList.add('showing-placeholder');
+          }
+        }
         const tcPr = wChild(tc, 'tcPr');
         const span = Number(wAttr(wChild(tcPr, 'gridSpan'), 'val') || 1);
         if (span > 1) td.colSpan = span;
@@ -769,19 +792,32 @@ export class DocxDocument {
   }
 
   serializeTable(table) {
-    const tbl = this.rawClone(table.dataset.raw);
+    const original = this.raw[Number(table.dataset.raw)];
+    const tbl = original.cloneNode(true);
     const rows = [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
-    wChildren(tbl, 'tr').forEach((tr, i) => {
+    // Rows and cells are matched by the same walk as rendering, through row/cell-level wrappers.
+    tableParts(tbl, 'tr').forEach(({ el: tr }, i) => {
       const cells = rows[i] ? [...rows[i].children].filter((c) => c.tagName === 'TD') : [];
-      wChildren(tr, 'tc').forEach((tc, j) => {
+      tableParts(tr, 'tc').forEach(({ el: tc }, j) => {
         const td = cells[j];
-        if (!td) return; // structure changed unexpectedly: keep original cell content
+        if (!td || td.contentEditable === 'false') return; // read-only, or structure changed: keep it
         for (const c of elementChildren(tc)) if (c.localName !== 'tcPr') tc.removeChild(c);
         const blocks = this.serializeBlocks(td);
         for (const b of blocks) tc.appendChild(b);
         // A cell must end with a paragraph.
         if (!blocks.length || blocks[blocks.length - 1].localName !== 'p') tc.appendChild(createW(this.xml, 'p'));
       });
+    });
+    // Placeholders of row/cell fields: replaced text drops the placeholder state; untouched or
+    // cleared placeholder text is written back as it was.
+    const before = structuralControls(original);
+    structuralControls(tbl).forEach((sdt, i) => {
+      const orig = before[i];
+      if (!orig || !controlInfo(orig).placeholder) return;
+      const was = plainText(wChild(orig, 'sdtContent'));
+      const now = plainText(wChild(sdt, 'sdtContent'));
+      if (now === was || !now.trim()) sdt.replaceChild(wChild(orig, 'sdtContent').cloneNode(true), wChild(sdt, 'sdtContent'));
+      else updateControlProperties(sdt, { dataset: {} }, { placeholderReplaced: true, isPlaceholderStyle: (id) => this.isPlaceholderStyle(id) });
     });
     return tbl;
   }
@@ -955,6 +991,33 @@ export class DocxDocument {
     } else removeW(rPr, 'strike', 'dstrike');
     return isEmptyElement(rPr) ? null : rPr;
   }
+}
+
+/**
+ * The rows of a table (local 'tr') or cells of a row ('tc') in order, looking through content
+ * controls and customXml wrapped around them: [{ el, wrappers: [<w:sdt>…] }].
+ */
+function tableParts(parent, local, wrappers = []) {
+  const out = [];
+  for (const c of elementChildren(parent)) {
+    if (c.namespaceURI !== W) continue;
+    if (c.localName === local) out.push({ el: c, wrappers });
+    else if (c.localName === 'sdt') {
+      const content = wChild(c, 'sdtContent');
+      if (content) out.push(...tableParts(content, local, [...wrappers, c]));
+    } else if (c.localName === 'customXml') out.push(...tableParts(c, local, wrappers));
+  }
+  return out;
+}
+
+/** Content controls wrapped around rows or cells of a table, in document order. */
+function structuralControls(tbl) {
+  const out = [];
+  for (const { el: tr, wrappers } of tableParts(tbl, 'tr')) {
+    for (const w of wrappers) if (!out.includes(w)) out.push(w);
+    for (const { wrappers: cw } of tableParts(tr, 'tc')) for (const w of cw) if (!out.includes(w)) out.push(w);
+  }
+  return out;
 }
 
 /** If run `r` is only a field marker, its kind: begin / separate / end, or instr (with its text). */
