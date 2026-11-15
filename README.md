@@ -14,6 +14,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Open `.docx` (file picker or drag & drop) or start a blank document
 - Edit text in paragraphs, headings, lists and table cells
 - Bold, italic, underline, strikethrough; paragraph styles (Normal, Title, Heading 1–3); alignment
+- Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
+  end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
+  the start of an item change its level
+- Tab and Shift+Tab move between table cells
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
@@ -36,7 +40,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 3. **Save** – the editor DOM is walked back into WordprocessingML: stored properties are cloned,
    toggles are merged in (respecting the schema order of `CT_RPr`/`CT_PPr`), adjacent runs with the
    same formatting are merged, and placeholders are written back verbatim. Only
-   `word/document.xml` (and `styles.xml`, if a heading style had to be added) change.
+   `word/document.xml` changes, plus `styles.xml` if a heading style had to be added and
+   `numbering.xml` if a new list was started.
+4. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
+   attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
+   `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
+   then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
+   bullet or numbering definitions.
 
 ## Development
 
@@ -70,7 +80,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 ## Limitations
 
-- Can't insert images, tables or lists, or change table structure
+- Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
+- Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting is plain text only
 - Tracked changes, content controls, fields and footnotes are preserved but can't be edited
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save

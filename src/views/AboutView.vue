@@ -12,6 +12,7 @@
         <li>Text of paragraphs, headings and table cells</li>
         <li>Bold, italic, underline, strikethrough</li>
         <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
+        <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
       </ul>
       <h2>What is preserved</h2>
       <p>
@@ -22,7 +23,7 @@
       </p>
       <h2>Limitations</h2>
       <ul>
-        <li>No adding images, tables or lists; tables can't change shape.</li>
+        <li>No adding images or tables; tables can't change shape.</li>
         <li>Tracked changes are kept but can't be accepted or rejected here.</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>

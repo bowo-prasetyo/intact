@@ -35,6 +35,19 @@
       <button v-for="a in aligns" :key="a.cmd" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="exec(a.cmd)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
+      <span class="sep" />
+      <button type="button" title="Bullets" :class="{ on: state.list === 'bullet' }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
+      </button>
+      <button type="button" title="Numbering" :class="{ on: state.list === 'number' }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
+      </button>
+      <button type="button" title="Decrease list level (Shift+Tab)" :disabled="!state.list" @click="changeLevel(-1)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
+      </button>
+      <button type="button" title="Increase list level (Tab)" :disabled="!state.list" @click="changeLevel(1)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
+      </button>
     </div>
 
     <div class="canvas" @mousedown.self="focusEnd">
@@ -66,6 +79,7 @@ import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
+import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -75,7 +89,7 @@ const saving = ref(false);
 const message = ref('');
 const words = ref(0);
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
-const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left' });
+const state = reactive({ bold: false, italic: false, underline: false, strike: false, block: 'normal', align: 'left', list: null });
 let savedRange = null;
 let styleEl = null;
 let undoStack = null;
@@ -160,6 +174,7 @@ function onSelectionChange() {
   state.block = block ? doc.blockKind(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
   state.align = { start: 'left', end: 'right' }[align] || align;
+  state.list = block ? doc.listKind(doc.listOf(block)) : null;
 }
 
 function restoreSelection() {
@@ -253,6 +268,93 @@ function applyBlockStyle(kind) {
   markDirty();
 }
 
+// ------------------------------------------------------------------ lists
+
+/** Runs a change to list membership as one undoable step. */
+function changeLists(change) {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) return;
+  undoStack.flush();
+  if (change(selectedBlocks(range)) === false) return;
+  doc.renumber(page.value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+}
+
+/** The list next to `block` (before or after it), if it is of `kind`. */
+function adjacentList(block, before, kind) {
+  let el = before ? block.previousElementSibling : block.nextElementSibling;
+  while (el?.classList.contains('raw-hidden')) el = before ? el.previousElementSibling : el.nextElementSibling;
+  const list = el?.matches(BLOCK_SELECTOR) ? doc.listOf(el) : null;
+  return list && doc.listKind(list) === kind ? list : null;
+}
+
+/**
+ * Bullets / Numbering, as in Word: turns the selected paragraphs into a list of that kind (joining
+ * a list of the same kind right before or after them), or takes them out of it if they already are.
+ */
+function toggleList(kind) {
+  changeLists((blocks) => {
+    if (!blocks.length) return false;
+    const lists = blocks.map((b) => doc.listOf(b));
+    if (lists.every((l) => doc.listKind(l) === kind)) {
+      blocks.forEach((b) => doc.removeList(b));
+      return true;
+    }
+    const join = adjacentList(blocks[0], true, kind) || adjacentList(blocks[blocks.length - 1], false, kind);
+    const numId = join?.numId ?? doc.newList(kind);
+    blocks.forEach((b, i) => {
+      const ilvl = lists[i]?.ilvl ?? join?.ilvl ?? 0;
+      doc.setList(b, numId, doc.hasListLevel(numId, ilvl) ? ilvl : 0);
+    });
+    return true;
+  });
+}
+
+/** Moves the selected list items one level down (+1) or up (-1). */
+function changeLevel(delta) {
+  changeLists((blocks) => {
+    const items = blocks.map((b) => [b, doc.listOf(b)]).filter(([, l]) => l && doc.hasListLevel(l.numId, l.ilvl + delta));
+    if (!items.length) {
+      if (delta > 0 && blocks.some((b) => doc.listOf(b))) message.value = 'This list has no further levels';
+      return false;
+    }
+    items.forEach(([b, l]) => doc.setList(b, l.numId, l.ilvl + delta));
+    return true;
+  });
+}
+
+/** Enter on an empty list item moves it up a level, and out of the list from the top level. */
+function endListItem(block) {
+  const list = doc.listOf(block);
+  changeLists(() => {
+    if (list.ilvl > 0) doc.setList(block, list.numId, list.ilvl - 1);
+    else doc.removeList(block);
+  });
+}
+
+/** Tab / Shift+Tab: next or previous table cell, else list level, else a tab character. */
+function onTab(e) {
+  const range = selectionInPage();
+  if (!range) return;
+  const start = range.startContainer;
+  const cell = (start.nodeType === 1 ? start : start.parentElement).closest('td');
+  if (cell && page.value.contains(cell)) {
+    const target = adjacentCell(cell, e.shiftKey ? -1 : 1);
+    if (target) selectCell(target);
+    else if (!e.shiftKey) message.value = 'Adding table rows isn’t supported yet';
+    return;
+  }
+  const block = closestBlock(range.startContainer);
+  const inList = range.collapsed
+    ? block && doc.listOf(block) && isAtBlockStart(range, block)
+    : selectedBlocks(range).some((b) => doc.listOf(b));
+  if (inList) changeLevel(e.shiftKey ? -1 : 1);
+  else if (!e.shiftKey) document.execCommand('insertText', false, '\t');
+}
+
 // ------------------------------------------------------------------ events
 
 let wordTimer = 0;
@@ -302,7 +404,16 @@ function onKeydown(e) {
     else undo();
   } else if (e.key === 'Tab' && !mod && !e.altKey) {
     e.preventDefault();
-    document.execCommand('insertText', false, '\t');
+    onTab(e);
+  } else if ((e.key === 'Enter' || e.key === 'Backspace') && !mod && !e.altKey && !e.shiftKey && !e.isComposing) {
+    // Word: Enter on an empty list item, or Backspace at the start of one, ends the item's list.
+    const range = selectionInPage();
+    const block = range?.collapsed && closestBlock(range.startContainer);
+    if (!block || !doc.listOf(block)) return;
+    if (e.key === 'Enter' ? !isEmptyBlock(block) : !isAtBlockStart(range, block)) return;
+    e.preventDefault();
+    if (e.key === 'Enter') endListItem(block);
+    else changeLists(() => doc.removeList(block));
   }
 }
 
@@ -386,7 +497,8 @@ async function close() {
   min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font-size: 15px; cursor: pointer;
 }
-.toolbar button:hover { background: var(--hover); }
+.toolbar button:hover:not(:disabled) { background: var(--hover); }
+.toolbar button:disabled { opacity: .4; cursor: default; }
 .toolbar button.on { background: var(--active); border-color: var(--border); }
 .toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }
 .sep { width: 1px; height: 22px; background: var(--border); margin: 0 6px; }

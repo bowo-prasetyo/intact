@@ -92,6 +92,10 @@ export class StyleSheet {
     return m ? `h${m[1]}` : null;
   }
 
+  isListParagraph(styleId) {
+    return this.byId.get(styleId)?.name.toLowerCase() === 'list paragraph';
+  }
+
   /** Walks the basedOn chain (most-derived last). */
   chain(styleId) {
     const out = [];
