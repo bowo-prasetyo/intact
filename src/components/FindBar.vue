@@ -48,6 +48,8 @@ const props = defineProps({
   roots: { type: Function, default: null },
   /** Runs a document change as one undoable edit; the change returns the text nodes it touched. */
   edit: { type: Function, required: true },
+  /** The author and date if a replacement in `node` is a tracked change, or null. */
+  tracked: { type: Function, default: () => null },
 });
 // reveal(range): bring a match into view (switching header tabs or opening comments if need be).
 const emit = defineEmits(['close', 'reveal']);
@@ -146,7 +148,7 @@ function replaceOne() {
   const m = current.value;
   if (!m?.editable) return;
   props.edit(() => {
-    const after = replaceMatch(m, replacement.value);
+    const after = replaceMatch(m, replacement.value, props.tracked(matchRange(m).startContainer));
     setAnchor(after.node, after.offset); // continue with the next match after the replaced text
     return [after.node];
   });
@@ -161,7 +163,7 @@ function replaceAll() {
   props.edit(() => {
     const touched = [];
     // Last to first, so that earlier matches' offsets stay valid.
-    for (let i = list.length - 1; i >= 0; i--) touched.push(replaceMatch(list[i], replacement.value).node);
+    for (let i = list.length - 1; i >= 0; i--) touched.push(replaceMatch(list[i], replacement.value, props.tracked(matchRange(list[i]).startContainer)).node);
     return touched;
   });
   anchor = null;

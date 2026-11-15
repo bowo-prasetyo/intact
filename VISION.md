@@ -87,6 +87,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - Show comments, headers, footers and notes read-only, in plain language ✔
 
 **Later — only if the job demands it**
+- Track your own edits as tracked changes ✔; review your changes before downloading ✔; Word's
+  keyboard shortcuts ✔
 - Accept or reject tracked changes
 - Edit headers, footers and footnotes
 - Installable offline app (PWA)

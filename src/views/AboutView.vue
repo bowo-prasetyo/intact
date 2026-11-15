@@ -13,6 +13,8 @@
         <li>Bold, italic, underline, strikethrough</li>
         <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
+        <li>Track Changes for your own edits, with your name, as Word records them</li>
+        <li>Review your changes before downloading</li>
         <li>Paste with bold, italic, underline, strikethrough and lists</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
@@ -35,9 +37,15 @@
       <ul>
         <li>No adding images or tables; tables can't change shape.</li>
         <li>Tracked changes are kept but can't be accepted or rejected here, so text holding someone's tracked change can't be deleted together with it.</li>
+        <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>
+      <h2>Keyboard shortcuts</h2>
+      <p>The ones from Word for what you can do here (Cmd for Ctrl on a Mac):</p>
+      <table class="shortcuts">
+        <tr v-for="[keys, what] in SHORTCUTS" :key="keys"><th scope="row"><kbd>{{ keys }}</kbd></th><td>{{ what }}</td></tr>
+      </table>
       <p><RouterLink to="/">← Back to start</RouterLink></p>
     </main>
   </div>
@@ -45,8 +53,12 @@
 
 <script setup>
 import AppHeader from '../components/AppHeader.vue';
+import { SHORTCUTS } from '../editor/shortcuts.js';
 </script>
 
 <style scoped>
 .about { max-width: 720px; margin: 0 auto; padding: 32px 16px; line-height: 1.6; }
+.shortcuts { border-collapse: collapse; }
+.shortcuts th, .shortcuts td { text-align: left; vertical-align: top; padding: 4px 16px 4px 0; border-bottom: 1px solid var(--border); font-weight: normal; }
+kbd { font-family: inherit; font-size: .92em; white-space: nowrap; }
 </style>

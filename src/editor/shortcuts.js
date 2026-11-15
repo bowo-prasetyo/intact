@@ -1,0 +1,39 @@
+// Word's keyboard shortcuts, for what Intact can do. Cmd works for Ctrl on a Mac. Keys are matched
+// by their position where the layout matters (digits, Space), so other keyboard layouts work too.
+
+/** The command a key press asks for, or null. See SHORTCUTS for the list. */
+export function shortcutFor(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.isComposing) return null;
+  const key = e.key.toLowerCase();
+  const space = e.code === 'Space' || key === ' ';
+  if (!e.shiftKey && !e.altKey) {
+    // Bold, italic and underline too: not every browser does them in editable text by itself.
+    return {
+      b: 'bold', i: 'italic', u: 'underline', e: 'center', l: 'left', r: 'right', j: 'justify', m: 'indent', enter: 'pageBreak',
+    }[key] || (space ? 'clearFormatting' : null);
+  }
+  if (e.shiftKey && !e.altKey) {
+    return { n: 'normal', l: 'bullets', m: 'outdent' }[key] || (space ? 'nonBreakingSpace' : null);
+  }
+  // Ctrl+Alt+digit; not AltGr (Ctrl+Alt on some layouts), which types characters.
+  if (e.altKey && !e.shiftKey && /^Digit[123]$/.test(e.code) && !e.getModifierState?.('AltGraph')) return `heading${e.code.slice(-1)}`;
+  return null;
+}
+
+/** The shortcuts, as shown on the About page. */
+export const SHORTCUTS = [
+  ['Ctrl+B, Ctrl+I, Ctrl+U', 'Bold, italic, underline'],
+  ['Ctrl+Space', 'Remove bold, italic, underline and strikethrough'],
+  ['Ctrl+L, Ctrl+E, Ctrl+R, Ctrl+J', 'Align left, centre, right, justify'],
+  ['Ctrl+Shift+N', 'Normal style'],
+  ['Ctrl+Alt+1, 2, 3', 'Heading 1, 2, 3'],
+  ['Ctrl+Shift+L', 'Bulleted list'],
+  ['Tab, Shift+Tab or Ctrl+M, Ctrl+Shift+M', 'List level down or up'],
+  ['Ctrl+Enter', 'Page break'],
+  ['Shift+Enter', 'Line break'],
+  ['Ctrl+Shift+Space', 'Non-breaking space'],
+  ['Ctrl+Shift+E', 'Track Changes on or off'],
+  ['Ctrl+F, Ctrl+H', 'Find, replace'],
+  ['Ctrl+Z, Ctrl+Y', 'Undo, redo'],
+  ['Ctrl+S', 'Review changes and download'],
+];

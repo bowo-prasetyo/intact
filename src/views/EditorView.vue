@@ -6,7 +6,7 @@
         <span class="ext">.docx</span>
         <span v-if="dirty" class="dirty" title="Unsaved changes">●</span>
       </div>
-      <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="save">
+      <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="requestDownload">
         {{ saving ? 'Saving…' : 'Download' }}
       </button>
       <button class="ghost" type="button" @click="close">Close</button>
@@ -16,7 +16,7 @@
       <button type="button" title="Undo (Ctrl+Z)" @click="undo">↶</button>
       <button type="button" title="Redo (Ctrl+Y)" @click="redo">↷</button>
       <span class="sep" />
-      <select :value="state.block" aria-label="Paragraph style" @change="applyBlockStyle($event.target.value)">
+      <select :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="applyBlockStyle($event.target.value)">
         <option value="normal">Normal</option>
         <option value="title">Title</option>
         <option value="h1">Heading 1</option>
@@ -32,25 +32,33 @@
       <button type="button" title="Underline (Ctrl+U)" :class="{ on: state.underline }" @click="exec('underline')"><u>U</u></button>
       <button type="button" title="Strikethrough" :class="{ on: state.strike }" @click="exec('strikeThrough')"><s>S</s></button>
       <span class="sep" />
-      <button v-for="a in aligns" :key="a.cmd" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="exec(a.cmd)">
+      <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
-      <button type="button" title="Bullets" :class="{ on: state.list === 'bullet' }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
+      <button type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet' }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
       </button>
       <button type="button" title="Numbering" :class="{ on: state.list === 'number' }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
-      <button type="button" title="Decrease list level (Shift+Tab)" :disabled="!state.list" @click="changeLevel(-1)">
+      <button type="button" title="Decrease list level (Shift+Tab, Ctrl+Shift+M)" :disabled="!state.list" @click="changeLevel(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <button type="button" title="Increase list level (Tab)" :disabled="!state.list" @click="changeLevel(1)">
+      <button type="button" title="Increase list level (Tab, Ctrl+M)" :disabled="!state.list" @click="changeLevel(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
       <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+      </button>
+      <button ref="trackButton" type="button" class="track-toggle" title="Track Changes (Ctrl+Shift+E)" :class="{ on: tracking }" :aria-pressed="tracking" @click="toggleTracking">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
+        <span class="label">Track changes</span>
+      </button>
+      <button type="button" class="review-toggle" title="Review your changes" @click="openReview">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
+        <span class="label">Review</span>
       </button>
       <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
@@ -58,7 +66,7 @@
       </button>
     </div>
 
-    <FindBar v-if="findOpen" ref="findBar" :root="page" :roots="searchRoots" :edit="applyEdit" @close="onFindClosed" @reveal="revealRange" />
+    <FindBar v-if="findOpen" ref="findBar" :root="page" :roots="searchRoots" :edit="applyEdit" :tracked="trackedBy" @close="onFindClosed" @reveal="revealRange" />
 
     <div class="workspace">
       <div class="canvas" @mousedown.self="focusEnd">
@@ -81,6 +89,7 @@
             @paste="onPaste"
             @drop="onDrop"
             @mousedown="onPageMousedown"
+            @compositionend="onCompositionEnd"
             @click="onClick"
           />
           <div v-if="doc.footers.length" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')" @click="onHeaderFooterClick">
@@ -102,8 +111,20 @@
       </template>
     </div>
 
+    <ReviewDialog v-if="reviewData" :review="reviewData" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" />
+
+    <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
+      <label for="author-name">Your name on tracked changes</label>
+      <input id="author-name" ref="authorInput" v-model="authorDialog.name" type="text" maxlength="100" autocomplete="name" required />
+      <div class="actions">
+        <button type="submit" class="confirm">{{ tracking ? 'Save' : 'Start tracking' }}</button>
+        <button type="button" @click="closeAuthorDialog">Cancel</button>
+      </div>
+    </form>
+
     <footer class="statusbar">
       <span>{{ words }} words</span>
+      <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span role="status" aria-live="polite">{{ message }}</span>
     </footer>
   </div>
@@ -115,6 +136,7 @@ import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
 import CommentsPanel from '../components/CommentsPanel.vue';
+import ReviewDialog from '../components/ReviewDialog.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
@@ -125,6 +147,11 @@ import {
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
+import { shortcutFor } from '../editor/shortcuts.js';
+import {
+  revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
+  inField,
+} from '../editor/track.js';
 
 const router = useRouter();
 const doc = currentDoc.value;
@@ -141,6 +168,19 @@ const threads = ref([]);
 const commentsOpen = ref(false);
 const activeComment = ref(null);
 const findOpen = ref(false);
+
+// Track Changes: on when the document says so (as in Word), or when switched on here. The author's
+// name is remembered in this browser only.
+const AUTHOR_KEY = 'intact.author';
+const stored = (() => { try { return localStorage.getItem(AUTHOR_KEY) || ''; } catch { return ''; } })();
+const tracking = ref(doc.tracking);
+const author = ref(stored || 'Author');
+const named = ref(!!stored); // the user has given a name
+const authorDialog = reactive({ open: false, name: '', x: 0, y: 0, start: false });
+const trackButton = ref(null);
+const authorEl = ref(null);
+const authorInput = ref(null);
+watch(tracking, (on) => { doc.tracking = on; });
 const findBar = ref(null);
 const dateInput = ref(null);
 let chooserTarget = null;
@@ -150,10 +190,10 @@ let undoStack = null;
 
 const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li';
 const aligns = [
-  { cmd: 'justifyLeft', value: 'left', title: 'Align left', icon: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8' },
-  { cmd: 'justifyCenter', value: 'center', title: 'Center', icon: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8' },
-  { cmd: 'justifyRight', value: 'right', title: 'Align right', icon: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' },
-  { cmd: 'justifyFull', value: 'justify', title: 'Justify', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
+  { value: 'left', title: 'Align left (Ctrl+L)', icon: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8' },
+  { value: 'center', title: 'Center (Ctrl+E)', icon: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8' },
+  { value: 'right', title: 'Align right (Ctrl+R)', icon: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' },
+  { value: 'justify', title: 'Justify (Ctrl+J)', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
 ];
 
 // The sheet is the page: header (in the top margin), the editable body, footer (bottom margin). As in
@@ -356,6 +396,26 @@ function exec(cmd, value = null) {
   undoStack.commit();
   onSelectionChange();
   markDirty();
+  noteUntrackedFormatting();
+}
+
+/**
+ * Aligns the selected paragraphs. Done here rather than with the browser's justify commands, which
+ * Firefox carries out with an align attribute instead of the text-align style that is saved.
+ */
+function alignBlocks(value) {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) return;
+  undoStack.flush();
+  for (const block of selectedBlocks(range)) {
+    block.style.textAlign = value;
+    block.removeAttribute('align');
+  }
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  noteUntrackedFormatting();
 }
 
 function afterHistory(changed) {
@@ -407,6 +467,7 @@ function applyBlockStyle(kind) {
   undoStack.commit();
   onSelectionChange();
   markDirty();
+  noteUntrackedFormatting();
 }
 
 // ------------------------------------------------------------------ lists
@@ -422,6 +483,7 @@ function changeLists(change) {
   undoStack.commit();
   onSelectionChange();
   markDirty();
+  noteUntrackedFormatting();
 }
 
 /** The list next to `block` (before or after it), if it is of `kind`. */
@@ -516,9 +578,17 @@ function markDirty() {
   wordTimer = setTimeout(countWords, 300);
 }
 
-function onInput() {
+function onInput(e) {
   restoreCommentMarkers(markersBefore, page.value);
   markersBefore = [];
+  if (pendingJoin) {
+    joinLeftParagraphs(pendingJoin);
+    pendingJoin = null;
+  }
+  if (pendingSplit) {
+    markSplit(pendingSplit); // Enter while tracking: the new paragraph break is an insertion
+    pendingSplit = null;
+  }
   // Never leave the page completely empty: keep at least one paragraph to type into.
   if (!page.value.firstElementChild) {
     const p = document.createElement('p');
@@ -538,6 +608,7 @@ function onInput() {
   undoStack.schedule();
   markDirty();
   refreshComments();
+  if (e?.inputType?.startsWith('format')) noteUntrackedFormatting();
 }
 
 function onBeforeInput(e) {
@@ -556,6 +627,7 @@ function onBeforeInput(e) {
     explainReadOnly(locked, true);
     return;
   }
+  if (trackedBeforeInput(e)) return;
   const ranges = rangesRemovedBy(e);
   // Backspace or Delete next to hidden markers (comment ranges, bookmarks, field codes) would remove
   // just the invisible marker: delete what is beyond it instead.
@@ -571,6 +643,10 @@ function onBeforeInput(e) {
     document.execCommand('delete'); // fires input, so onInput puts the markers back
     return;
   }
+  // A deletion across paragraphs must join them; see joinLeftParagraphs.
+  const first = ranges[0] && closestBlock(ranges[0].startContainer);
+  const last = ranges[0] && closestBlock(ranges[0].endContainer);
+  pendingJoin = first && last && first !== last ? { first, last, breaks: new Set(first.querySelectorAll('br')) } : null;
   // Typing over, deleting, cutting or dragging away a tracked change would drop it silently.
   if (refuseRemoving(ranges)) e.preventDefault();
   // Comment range ends deleted with the text are put back in onInput, at the caret: where the text
@@ -579,6 +655,260 @@ function onBeforeInput(e) {
 }
 
 let markersBefore = [];
+let pendingJoin = null;
+
+/**
+ * The browser won't merge into a paragraph left holding only a hidden marker (a comment range or
+ * bookmark start), so deleting from its start into the next paragraph left an invisible empty
+ * paragraph behind. Join what the deletion left of the two, as the browser's own merge would.
+ */
+function joinLeftParagraphs({ first, last, breaks }) {
+  if (!first.isConnected) return;
+  let next = first.nextElementSibling;
+  while (next?.classList.contains('raw-hidden')) next = next.nextElementSibling;
+  if (last.isConnected && next === last && first.parentElement === last.parentElement) {
+    const placeholder = (el) => el.lastChild?.tagName === 'BR' && !el.textContent;
+    if (placeholder(first)) first.lastChild.remove();
+    const kids = [...last.childNodes].filter((n) => !(n.tagName === 'BR' && n === last.lastChild && !last.textContent));
+    first.append(...kids);
+    last.remove();
+  }
+  // A browser fills a paragraph it has emptied with a placeholder <br> (Firefox keeps it when the
+  // next paragraph joins on): one that now has text after it would be saved as a line break.
+  for (const br of first.querySelectorAll('br')) {
+    if (!breaks.has(br) && hasContentAfter(br, first)) br.remove();
+  }
+}
+
+/** True if anything visible comes after `node` in `block`. */
+function hasContentAfter(node, block) {
+  const range = document.createRange();
+  range.setStartAfter(node);
+  range.setEnd(block, block.childNodes.length);
+  const frag = range.cloneContents();
+  return !!frag.textContent || !!frag.querySelector('br, img, .raw-inline:not(.raw-hidden), .sdt');
+}
+
+// ------------------------------------------------------------------ keyboard shortcuts
+
+/** Runs one of Word's shortcuts (see editor/shortcuts.js). */
+function runShortcut(name) {
+  if (['left', 'center', 'right', 'justify'].includes(name)) return alignBlocks(name);
+  if (['bold', 'italic', 'underline'].includes(name)) return exec(name);
+  if (name === 'normal') return applyBlockStyle('normal');
+  if (name.startsWith('heading')) return applyBlockStyle(`h${name.slice(-1)}`);
+  if (name === 'bullets') return toggleList('bullet');
+  if (name === 'indent' || name === 'outdent') {
+    const range = selectionInPage();
+    if (range && !selectedBlocks(range).some((b) => doc.listOf(b))) {
+      message.value = 'Indenting works on list items here';
+      return;
+    }
+    return changeLevel(name === 'indent' ? 1 : -1);
+  }
+  if (name === 'clearFormatting') return clearCharacterFormatting();
+  if (name === 'nonBreakingSpace') return typeText('\u00a0');
+  if (name === 'pageBreak') return insertPageBreak();
+}
+
+/** Ctrl+Space: takes bold, italic, underline and strikethrough off the selection. */
+function clearCharacterFormatting() {
+  restoreSelection();
+  if (inPlainField()) return;
+  undoStack.flush();
+  for (const cmd of CHAR_FORMATS) {
+    // A mixed selection may first turn fully on; the second toggle then turns it off.
+    for (let i = 0; i < 2 && document.queryCommandState(cmd); i++) document.execCommand(cmd);
+  }
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  noteUntrackedFormatting();
+}
+
+/** Types `text` at the selection, as a key press would: tracked while tracking, never into read-only content. */
+function typeText(text) {
+  const range = selectionInPage();
+  if (!range) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (!range.collapsed && refuseRemoving([range])) return;
+  undoStack.flush();
+  const opts = trackedBy(range.startContainer);
+  if (opts) {
+    if (!range.collapsed) deleteTracked(range, false, opts);
+    if (typeTracked(text, opts)) onInput();
+    else document.execCommand('insertText', false, text);
+  } else {
+    if (!range.collapsed) deleteSelection();
+    if (typeUntracked(text)) onInput();
+    else document.execCommand('insertText', false, text);
+  }
+}
+
+/** Ctrl+Enter: a page break at the caret (tracked while tracking). Not inside form fields. */
+function insertPageBreak() {
+  const range = selectionInPage();
+  if (!range) return;
+  if (inField(range.startContainer)) {
+    message.value = 'A page break can’t go inside a field';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (!range.collapsed && refuseRemoving([range])) return;
+  undoStack.flush();
+  const opts = trackedBy(range.startContainer);
+  if (!range.collapsed) {
+    if (opts) deleteTracked(range, false, opts);
+    else deleteSelection();
+  }
+  const pageBreak = doc.newPageBreak();
+  if (opts) insertTracked([pageBreak], opts);
+  else insertAtCaret([pageBreak]);
+  onInput();
+}
+
+// ------------------------------------------------------------------ track changes
+
+let pendingSplit = null; // the author of a paragraph break being inserted while tracking
+
+/** The author and date for a tracked edit made now, or null when this edit isn't tracked. */
+function trackedBy(node) {
+  return tracking.value && node && !inField(node) ? { author: author.value, date: revisionDate() } : null;
+}
+
+/**
+ * Typing, deleting, Enter and Shift+Enter while tracking: recorded as tracked changes instead of
+ * changing the text (see editor/track.js). True if the event was dealt with here.
+ */
+function trackedBeforeInput(e) {
+  const range = selectionInPage();
+  const opts = trackedBy(range?.startContainer);
+  if (!opts) {
+    // Track Changes off: text typed in (or right after) one of this session's insertions is plain.
+    if (e.inputType === 'insertText' && e.data && range?.collapsed && typeUntracked(e.data)) {
+      e.preventDefault();
+      onInput();
+      return true;
+    }
+    return false;
+  }
+  const type = e.inputType;
+  if (type === 'insertFromDrop' || type === 'deleteByDrag') {
+    e.preventDefault();
+    message.value = 'Dragging text isn’t tracked – cut and paste it instead while tracking changes';
+    return true;
+  }
+  if (type === 'insertCompositionText') return true; // wrapped as an insertion on compositionend
+  const deleting = type.startsWith('delete');
+  if (!deleting && !['insertText', 'insertReplacementText', 'insertParagraph', 'insertLineBreak'].includes(type)) return false;
+  let removal = null;
+  if (!range.collapsed) removal = range.cloneRange();
+  else if (type === 'deleteContentBackward' || type === 'deleteContentForward') removal = unitRange(type === 'deleteContentBackward');
+  else if (deleting) removal = rangesRemovedBy(e)[0] || null;
+  if (deleting && !removal) {
+    e.preventDefault(); // at the very start (or end): nothing to delete
+    return true;
+  }
+  if (removal && refuseRemoving([removal])) {
+    e.preventDefault();
+    return true;
+  }
+  if (type === 'insertParagraph' && !removal) {
+    pendingSplit = opts; // the browser splits the paragraph; onInput marks the new break
+    return true;
+  }
+  if (type === 'insertText' && !removal && !typeTracked(e.data || '', opts)) return true; // extends an insertion
+  e.preventDefault();
+  if (removal) deleteTracked(removal, /Backward$/.test(type), opts);
+  if (type === 'insertText' || type === 'insertReplacementText') {
+    const text = e.data ?? e.dataTransfer?.getData('text/plain') ?? '';
+    if (removal && text && !typeTracked(text, opts)) {
+      document.execCommand('insertText', false, text); // into an insertion; fires input
+      return true;
+    }
+  } else if (type === 'insertParagraph') {
+    pendingSplit = opts;
+    document.execCommand('insertParagraph'); // fires input, which marks the break
+    return true;
+  } else if (type === 'insertLineBreak') {
+    document.execCommand('insertLineBreak');
+    wrapInsertedBreak(opts);
+    undoStack.schedule();
+    return true;
+  }
+  onInput();
+  return true;
+}
+
+/** Text from an input method can't be intercepted: it becomes an insertion once it is complete. */
+function onCompositionEnd(e) {
+  const range = selectionInPage();
+  const opts = trackedBy(range?.startContainer);
+  if (!opts) return;
+  wrapComposedText(e.data, opts);
+  undoStack.schedule();
+}
+
+function noteUntrackedFormatting() {
+  if (tracking.value) message.value = 'Formatting isn’t tracked – it’s applied directly';
+}
+
+function toggleTracking() {
+  if (tracking.value) {
+    tracking.value = false;
+    message.value = 'Track Changes is off: your edits change the text directly';
+  } else if (named.value) {
+    startTracking();
+  } else {
+    openAuthorDialog(true);
+  }
+}
+
+function startTracking() {
+  tracking.value = true;
+  message.value = `Track Changes is on: your edits are marked as ${author.value}’s`;
+  page.value.focus();
+  restoreSelection();
+}
+
+async function openAuthorDialog(start = false) {
+  start = start === true; // not a click event
+  const anchor = (start ? trackButton.value : document.querySelector('.tracking-status')) || trackButton.value;
+  const rect = anchor.getBoundingClientRect();
+  Object.assign(authorDialog, {
+    open: true,
+    start,
+    name: named.value ? author.value : '',
+    x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)),
+    y: start ? rect.bottom + 4 : Math.max(8, rect.top - 140),
+  });
+  await nextTick();
+  authorInput.value?.focus();
+  authorInput.value?.select();
+}
+
+function closeAuthorDialog() {
+  authorDialog.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+function confirmAuthor() {
+  const name = authorDialog.name.trim();
+  if (!name) return;
+  author.value = name;
+  try { localStorage.setItem(AUTHOR_KEY, name); } catch { /* remembered for this session only */ }
+  named.value = true;
+  authorDialog.open = false;
+  if (authorDialog.start) startTracking();
+  else {
+    message.value = `Your new tracked changes are marked as ${name}’s`;
+    page.value.focus();
+    restoreSelection();
+  }
+}
 
 /** Deletes the selection with execCommand (which fires no beforeinput), keeping comment ranges. */
 function deleteSelection() {
@@ -710,6 +1040,12 @@ function onKeydown(e) {
     e.preventDefault();
     return;
   }
+  const shortcut = shortcutFor(e);
+  if (shortcut) {
+    e.preventDefault();
+    runShortcut(shortcut);
+    return;
+  }
   if (e.key === 'Enter' && field?.tagName === 'SPAN') {
     // A field inside a line can't hold paragraphs; multi-line plain text fields take line breaks.
     e.preventDefault();
@@ -718,7 +1054,7 @@ function onKeydown(e) {
   }
   if (mod && key === 's') {
     e.preventDefault();
-    save();
+    requestDownload();
   } else if (mod && !e.altKey && (key === 'z' || key === 'y')) {
     e.preventDefault();
     if (key === 'y' || e.shiftKey) redo();
@@ -762,8 +1098,12 @@ function onPaste(e) {
   }
   const { blocks, skippedImages } = parseClipboard(html, text);
   if (!blocks.length) return;
-  if (!range.collapsed) deleteSelection();
-  pasteBlocks(blocks);
+  const tracked = trackedBy(range.startContainer);
+  if (!range.collapsed) {
+    if (tracked) deleteTracked(range, false, tracked);
+    else deleteSelection();
+  }
+  pasteBlocks(blocks, tracked);
   onInput();
   undoStack.commit();
   if (skippedImages) {
@@ -777,7 +1117,7 @@ function onPaste(e) {
  * further one starts a new paragraph that keeps the destination paragraph's settings, unless it is
  * a list item, which joins the destination list if it is of the same kind or else a new list.
  */
-function pasteBlocks(blocks) {
+function pasteBlocks(blocks, tracked = null) {
   const startRange = selectionInPage();
   const dest = startRange && closestBlock(startRange.startContainer);
   const destWasEmpty = !!dest && isEmptyBlock(dest);
@@ -801,11 +1141,15 @@ function pasteBlocks(blocks) {
   };
 
   blocks.forEach((block, i) => {
-    if (i > 0) document.execCommand('insertParagraph');
+    if (i > 0) {
+      document.execCommand('insertParagraph');
+      if (tracked) markSplit(tracked);
+    }
     const here = selectionInPage();
     const el = here && closestBlock(here.startContainer);
     if (el && (i > 0 || destWasEmpty)) applyList(el, block);
-    insertAtCaret(runNodes(block.runs));
+    if (tracked && block.runs.length) insertTracked(runNodes(block.runs), tracked);
+    else insertAtCaret(runNodes(block.runs));
   });
   doc.renumber(page.value);
 }
@@ -1066,6 +1410,11 @@ function onWindowKeydown(e) {
   if (explainKeyOutsideText(e)) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
+  if (mod && e.shiftKey && !e.altKey && key === 'e') {
+    e.preventDefault(); // Word's Track Changes shortcut, wherever the focus is in the editor
+    toggleTracking();
+    return;
+  }
   if (!mod || e.altKey || e.shiftKey || (key !== 'f' && key !== 'h')) return;
   e.preventDefault();
   openFind(key === 'h');
@@ -1135,6 +1484,41 @@ function applyEdit(change) {
 }
 
 // ------------------------------------------------------------------ file actions
+
+// "Review my changes" before Download: what will go back to the recipient. It can be skipped; the
+// choice is remembered in this browser only, and the toolbar's Review button still shows it.
+const SKIP_REVIEW_KEY = 'intact.skipReview';
+const reviewData = ref(null);
+const skipReview = ref((() => { try { return localStorage.getItem(SKIP_REVIEW_KEY) === '1'; } catch { return false; } })());
+
+function requestDownload() {
+  if (skipReview.value) save();
+  else openReview();
+}
+
+function openReview() {
+  closeChooser();
+  undoStack.flush();
+  reviewData.value = doc.review(page.value);
+}
+
+function closeReview() {
+  reviewData.value = null;
+  page.value.focus();
+  restoreSelection();
+}
+
+function downloadReviewed() {
+  reviewData.value = null;
+  page.value.focus(); // carry on editing where you were
+  restoreSelection();
+  save();
+}
+
+function setSkipReview(on) {
+  skipReview.value = on;
+  try { localStorage.setItem(SKIP_REVIEW_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+}
 
 async function save() {
   if (saving.value) return;
@@ -1224,6 +1608,15 @@ async function close() {
 }
 .hf-tabs button[aria-selected="true"] { background: #2b579a; border-color: #2b579a; color: #fff; }
 .comments-toggle { gap: 3px; padding: 0 6px; }
+.track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
+@media (max-width: 720px) { .track-toggle .label, .review-toggle .label { display: none; } }
+.tracking-status { border: 0; background: none; color: #6f2dbd; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
+.author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
+.author-dialog label { font-size: 13px; }
+.author-dialog input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+.author-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.author-dialog .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; text-align: center; }
+.author-dialog .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
 .badge { font-size: 11px; color: var(--muted); }
 .chooser {
   position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;
@@ -1271,6 +1664,11 @@ async function close() {
 .docx-sheet .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
 .docx-sheet .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
 .docx-sheet .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
+/* This session's tracked changes. */
+.docx-sheet .tc-ins { color: #6f2dbd; text-decoration: underline; }
+.docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }
+.docx-sheet [data-tc-mark]::after { content: '¶'; color: #6f2dbd; margin-left: 1px; }
+.docx-sheet [data-tc-mark="del"]::after { text-decoration: line-through; }
 .docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
 .docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: #2b579a; }
 .docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
