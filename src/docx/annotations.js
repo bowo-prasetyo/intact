@@ -127,7 +127,8 @@ export function describe(node) {
   if (has(NS.a, 'blip') || has(NS.v, 'imagedata')) return 'Picture';
   if (has(W, 'object')) return 'Embedded object';
   if (has(W, 'pict') || has(NS.v, 'shape')) return 'Shape';
-  if (has('http://schemas.openxmlformats.org/officeDocument/2006/math', 'oMath')) return 'Equation';
+  const MATH = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
+  if (has(MATH, 'oMath') || (node.namespaceURI === MATH && /^oMath(Para)?$/.test(node.localName))) return 'Equation';
   if (node.localName === 'fldSimple') return fieldName(wAttr(node, 'instr'));
   if (has(W, 'fldChar') || has(W, 'instrText')) return 'Field';
   if (has(W, 'ptab')) return 'Tab';
