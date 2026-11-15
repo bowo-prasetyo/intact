@@ -8,6 +8,8 @@
 //    on save they are merged back into the stored rPr.
 //  * Anything the editor does not understand (images, fields, content controls, equations,
 //    bookmarks, ...) becomes a non-editable placeholder that is written back verbatim.
+//  * Tracked changes (insertions and deletions) are shown read-only and written back verbatim, so
+//    their author and date survive and the reviewer can still accept or reject them in Word.
 //  * Tables keep their structure (read-only) while each cell's content is editable.
 import JSZip from 'jszip';
 import {
@@ -26,7 +28,8 @@ export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordproc
 
 const SIMPLE_RUN_CHILDREN = new Set(['rPr', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen', 'lastRenderedPageBreak']);
 const HIDDEN_INLINE = new Set(['bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd', 'permStart', 'permEnd', 'moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd']);
-const FLATTEN_INLINE = new Set(['ins', 'moveTo', 'smartTag', 'customXml', 'dir', 'bdo']);
+const FLATTEN_INLINE = new Set(['smartTag', 'customXml', 'dir', 'bdo']);
+const TRACKED_INLINE = { ins: 'Inserted', moveTo: 'Moved here', del: 'Deleted', moveFrom: 'Moved away' };
 const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TABLE', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER']);
 const HEADING_TAG = { title: 'h1', h1: 'h1', h2: 'h2', h3: 'h3', h4: 'h4', h5: 'h5', h6: 'h6' };
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
@@ -223,7 +226,7 @@ export class DocxDocument {
         this.renderInlines(child, a);
         parent.append(a);
       } else if (local && FLATTEN_INLINE.has(local)) {
-        // Accept tracked insertions / unwrap smart tags: render their runs as normal text.
+        // Unwrap smart tags and similar containers: render their runs as normal text.
         this.renderInlines(child, parent);
       } else {
         parent.append(this.rawInline(child));
@@ -273,7 +276,14 @@ export class DocxDocument {
       span.title = 'Footnote';
       return span;
     }
-    if (local === 'del' || local === 'moveFrom') span.classList.add('deleted');
+    if (TRACKED_INLINE[local]) {
+      span.classList.add(local === 'ins' || local === 'moveTo' ? 'inserted' : 'deleted');
+      const author = wAttr(node, 'author');
+      const date = wAttr(node, 'date');
+      span.title = `${TRACKED_INLINE[local]}${author ? ` by ${author}` : ''}${date ? ` on ${date.slice(0, 10)}` : ''} – tracked change, accept or reject it in Word`;
+      span.textContent = plainText(node) || '⧉';
+      return span;
+    }
     span.title = `Preserved content (<${node.nodeName}>)`;
     span.textContent = plainText(node) || '⧉';
     return span;
@@ -350,6 +360,27 @@ export class DocxDocument {
       tbody.append(row);
     }
     return table;
+  }
+
+  /**
+   * Recomputes list markers for the editor content in document order, so that adding, removing or
+   * restyling paragraphs keeps "1. 2. 3." correct while editing.
+   */
+  renumber(root) {
+    if (!this.numberingXml && !root.querySelector('.list')) return;
+    const numbering = new Numbering(this.numberingXml);
+    for (const el of root.querySelectorAll('p,h1,h2,h3,h4,h5,h6')) {
+      const pPr = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
+      const numPr = wChild(pPr, 'numPr') || this.styles.styleNumPr(el.dataset.style);
+      const num = numPr && numbering.next(numPr);
+      if (num) {
+        el.classList.add('list');
+        if (el.dataset.marker !== num.marker) el.dataset.marker = num.marker;
+      } else if (el.classList.contains('list')) {
+        el.classList.remove('list');
+        delete el.dataset.marker;
+      }
+    }
   }
 
   // ---------------------------------------------------------------- HTML -> XML
@@ -467,7 +498,9 @@ export class DocxDocument {
 
   serializeInline(node, out, ctx, block, state) {
     if (node.nodeType === 3) {
-      const text = node.data.replace(/ /g, ' ').replace(/​/g, '');
+      // Text is written exactly as it is: non-breaking and zero-width spaces are meaningful in Word,
+      // and the editor uses white-space: pre-wrap, so typed spaces are ordinary spaces.
+      const text = node.data;
       if (text) this.emitText(text, out, ctx, state);
       return;
     }
