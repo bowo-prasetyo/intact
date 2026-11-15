@@ -71,20 +71,32 @@ export function parseNotes(part, local) {
 }
 
 /**
- * The header and footer references of the first section, choosing what page 1 shows: the
- * "first page" ones when the section has a different first page, else the default ones.
+ * Every header (local 'headerReference') or footer in use, as [{ rid, label, type }], in the order
+ * Word uses them: per section, first page / other (or odd) pages / even pages. A section without its
+ * own reference of a type inherits the previous section's, as in Word. "First page" counts only
+ * where the section has a different first page; "even pages" only with odd/even headers on.
+ * The first entry is what page 1 shows.
  */
-export function firstPageReferences(body) {
-  const firstSect = [...body.getElementsByTagNameNS(W, 'sectPr')][0];
-  if (!firstSect) return {};
-  const titlePg = onOff(wChild(firstSect, 'titlePg')) === true;
-  const pick = (local) => {
-    const refs = wChildren(firstSect, local);
-    const first = titlePg && refs.find((r) => wAttr(r, 'type') === 'first');
-    const ref = first || refs.find((r) => (wAttr(r, 'type') || 'default') === 'default');
-    return ref ? { rid: ref.getAttributeNS(NS.r, 'id'), first: !!first } : null;
-  };
-  return { header: pick('headerReference'), footer: pick('footerReference') };
+export function headerFooterVariants(body, local, evenAndOdd) {
+  const sections = [...body.getElementsByTagNameNS(W, 'sectPr')];
+  const inherited = {};
+  const out = [];
+  sections.forEach((sect, i) => {
+    for (const ref of wChildren(sect, local)) inherited[wAttr(ref, 'type') || 'default'] = ref.getAttributeNS(NS.r, 'id');
+    const titlePg = onOff(wChild(sect, 'titlePg')) === true;
+    const used = [];
+    if (titlePg && inherited.first) used.push(['first', 'First page']);
+    if (inherited.default) used.push(['default', evenAndOdd ? 'Odd pages' : titlePg ? 'Other pages' : 'All pages']);
+    if (evenAndOdd && inherited.even) used.push(['even', 'Even pages']);
+    for (const [type, label] of used) {
+      const rid = inherited[type];
+      if (out.some((v) => v.rid === rid)) continue;
+      out.push({ rid, type, label, section: i + 1 });
+    }
+  });
+  const multi = out.some((v) => v.section > 1);
+  for (const v of out) if (multi) v.label = `Section ${v.section}: ${v.label.toLowerCase()}`;
+  return out;
 }
 
 // ------------------------------------------------------------------ plain-language names

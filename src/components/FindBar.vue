@@ -12,8 +12,8 @@
         @keydown.enter.prevent="$event.shiftKey ? go(-1) : go(1)"
       />
       <span class="status" aria-live="polite">{{ status }}</span>
-      <button type="button" title="Previous (Shift+Enter)" aria-label="Previous match" :disabled="!editableMatches.length" @click="go(-1)">↑</button>
-      <button type="button" title="Next (Enter)" aria-label="Next match" :disabled="!editableMatches.length" @click="go(1)">↓</button>
+      <button type="button" title="Previous (Shift+Enter)" aria-label="Previous match" :disabled="!matches.length" @click="go(-1)">↑</button>
+      <button type="button" title="Next (Enter)" aria-label="Next match" :disabled="!matches.length" @click="go(1)">↓</button>
       <label class="opt"><input v-model="matchCase" type="checkbox" /> Match case</label>
       <label class="opt"><input v-model="wholeWord" type="checkbox" /> Whole words</label>
       <button type="button" class="toggle" :aria-expanded="showReplace" title="Replace (Ctrl+H)" @click="toggleReplace">Replace…</button>
@@ -30,7 +30,7 @@
         spellcheck="false"
         @keydown.enter.prevent="replaceOne"
       />
-      <button type="button" :disabled="!current" @click="replaceOne">Replace</button>
+      <button type="button" :disabled="!current?.editable" :title="current && !current.editable ? 'This match is in read-only content' : ''" @click="replaceOne">Replace</button>
       <button type="button" :disabled="!editableMatches.length" @click="replaceAll">Replace all</button>
     </div>
   </div>
@@ -43,11 +43,14 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { findMatches, matchRange, replaceMatch, compareToPoint } from '../editor/find.js';
 
 const props = defineProps({
-  root: { type: Object, required: true }, // the editor page element
+  root: { type: Object, required: true }, // the editor page element: watched for changes
+  /** The elements to search, in order (header, page, footer, comment texts); defaults to the page. */
+  roots: { type: Function, default: null },
   /** Runs a document change as one undoable edit; the change returns the text nodes it touched. */
   edit: { type: Function, required: true },
 });
-const emit = defineEmits(['close']);
+// reveal(range): bring a match into view (switching header tabs or opening comments if need be).
+const emit = defineEmits(['close', 'reveal']);
 
 const query = ref('');
 const replacement = ref('');
@@ -68,16 +71,19 @@ function setAnchor(node, offset) {
   anchor.setStart(node, offset);
 }
 
+// Matches in read-only content (headers, footers, comments, locked fields) are found and shown too,
+// but Replace leaves them alone.
 const editableMatches = computed(() => matches.value.filter((m) => m.editable));
-const current = computed(() => editableMatches.value[currentIndex.value] || null);
+const current = computed(() => matches.value[currentIndex.value] || null);
 const readOnlyCount = computed(() => matches.value.length - editableMatches.value.length);
 
 const status = computed(() => {
   if (note.value) return note.value;
   if (!query.value) return '';
-  const n = editableMatches.value.length;
-  const main = n ? `${currentIndex.value + 1} of ${n}` : 'No results';
-  return readOnlyCount.value ? `${main} · ${readOnlyCount.value} in read-only content` : main;
+  const n = matches.value.length;
+  if (!n) return 'No results';
+  const ro = readOnlyCount.value ? ` · ${readOnlyCount.value} read-only` : '';
+  return `${currentIndex.value + 1} of ${n}${ro}`;
 });
 
 const highlights = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
@@ -85,7 +91,7 @@ const highlights = typeof CSS !== 'undefined' && CSS.highlights && typeof Highli
 function paint() {
   if (!highlights) return;
   const all = new Highlight();
-  for (const m of editableMatches.value) all.add(matchRange(m));
+  for (const m of matches.value) all.add(matchRange(m));
   const now = current.value ? new Highlight(matchRange(current.value)) : new Highlight();
   all.priority = 2; // above comment highlights
   now.priority = 3;
@@ -101,8 +107,9 @@ function clearPaint() {
 
 /** Re-runs the search, keeping the current match at the anchor point. */
 function refresh() {
-  matches.value = findMatches(props.root, query.value, { matchCase: matchCase.value, wholeWord: wholeWord.value });
-  const list = editableMatches.value;
+  const roots = props.roots ? props.roots() : [props.root];
+  matches.value = findMatches(roots, query.value, { matchCase: matchCase.value, wholeWord: wholeWord.value });
+  const list = matches.value;
   if (!list.length) currentIndex.value = -1;
   else if (anchor?.startContainer.isConnected && props.root.contains(anchor.startContainer)) {
     const i = list.findIndex((m) => compareToPoint(m, anchor.startContainer, anchor.startOffset) >= 0);
@@ -119,21 +126,13 @@ function setAnchorToCurrent() {
 }
 
 function reveal() {
-  const m = current.value;
-  if (!m) return;
-  const rect = matchRange(m).getBoundingClientRect();
-  const canvas = props.root.closest('.canvas');
-  if (!canvas) return;
-  const box = canvas.getBoundingClientRect();
-  if (rect.top < box.top + 8 || rect.bottom > box.bottom - 8) {
-    canvas.scrollTop += rect.top - box.top - box.height / 3;
-  }
+  if (current.value) emit('reveal', matchRange(current.value));
 }
 
 function go(step) {
   note.value = '';
   refresh();
-  const n = editableMatches.value.length;
+  const n = matches.value.length;
   if (!n) return;
   currentIndex.value = (currentIndex.value + step + n) % n;
   setAnchorToCurrent();
@@ -145,7 +144,7 @@ function replaceOne() {
   note.value = '';
   refresh();
   const m = current.value;
-  if (!m) return;
+  if (!m?.editable) return;
   props.edit(() => {
     const after = replaceMatch(m, replacement.value);
     setAnchor(after.node, after.offset); // continue with the next match after the replaced text
@@ -167,7 +166,8 @@ function replaceAll() {
   });
   anchor = null;
   refresh();
-  note.value = `Replaced ${list.length} ${list.length === 1 ? 'match' : 'matches'}`;
+  const left = readOnlyCount.value ? ` · ${readOnlyCount.value} read-only left as ${readOnlyCount.value === 1 ? 'it is' : 'they are'}` : '';
+  note.value = `Replaced ${list.length} ${list.length === 1 ? 'match' : 'matches'}${left}`;
 }
 
 function toggleReplace() {

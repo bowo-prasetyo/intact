@@ -34,3 +34,43 @@ export function clearPlaceholder(el, isPlaceholderStyle) {
     if (isPlaceholderStyle(s.dataset.rstyle)) delete s.dataset.rstyle;
   }
 }
+
+/** The node right before (dir -1) or after (dir 1) a DOM position, looking out of inline wrappers. */
+function neighbour(container, offset, dir, root) {
+  let node = container;
+  let off = offset;
+  while (node && node !== root) {
+    if (node.nodeType === 3) {
+      if (dir > 0 ? off < node.data.length : off > 0) return null; // inside text
+    } else {
+      const child = node.childNodes[dir > 0 ? off : off - 1];
+      if (child) return child;
+    }
+    if (node.nodeType === 1 && /^(P|H[1-6]|TD|DIV|LI)$/.test(node.tagName)) return null; // don't leave the paragraph
+    const parent = node.parentNode;
+    off = Array.prototype.indexOf.call(parent.childNodes, node) + (dir > 0 ? 1 : 0);
+    node = parent;
+  }
+  return null;
+}
+
+const CHOICE = '.sdt[data-sdt]:is(.sdt-checkbox, .sdt-dropdown, .sdt-date, .sdt-combo)';
+
+/**
+ * The check box, drop-down, date or combo box field the selection is on: selected (alone), holding
+ * the caret (a combo box's text), or touching the caret on either side.
+ */
+export function fieldAtSelection(range, root) {
+  if (!range) return null;
+  const inside = controlAt(range.startContainer, root);
+  if (inside?.matches(CHOICE)) return inside;
+  if (!range.collapsed) {
+    const hits = [...root.querySelectorAll(CHOICE)].filter((el) => range.intersectsNode(el));
+    return hits.length === 1 && range.toString().trim() === hits[0].textContent.trim() ? hits[0] : null;
+  }
+  for (const dir of [1, -1]) {
+    const n = neighbour(range.startContainer, range.startOffset, dir, root);
+    if (n?.nodeType === 1 && n.matches(CHOICE)) return n;
+  }
+  return null;
+}
