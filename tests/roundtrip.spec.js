@@ -18,6 +18,9 @@ const KITCHEN_SINK = `
 <w:p><w:r><w:t xml:space="preserve">Tab:</w:t></w:r><w:r><w:tab/><w:t>after tab, line</w:t><w:br/><w:t>break, §\u00a05 (non-breaking space) and a ZWSP\u200bhere</w:t></w:r></w:p>
 <w:p>${NUM}<w:r><w:t>First item</w:t></w:r></w:p>
 <w:p>${NUM}<w:r><w:t>Second item</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr><w:r><w:t>Bullet from a list style</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="ListBullet"/><w:numPr><w:ilvl w:val="0"/></w:numPr><w:ind w:left="500"/></w:pPr><w:r><w:t>Style bullet with its own level and indent</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="ListBullet"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr></w:pPr><w:r><w:t>List style with numbering switched off</w:t></w:r></w:p>
 <w:p><w:r><w:t xml:space="preserve">Link: </w:t></w:r><w:hyperlink r:id="rId3" w:history="1"><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>example</w:t></w:r></w:hyperlink><w:bookmarkStart w:id="0" w:name="mark"/><w:r><w:t xml:space="preserve"> bookmarked</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>
 <w:p><w:r><w:t xml:space="preserve">Kept </w:t></w:r><w:ins w:id="1" w:author="Ann" w:date="2026-01-01T00:00:00Z"><w:r><w:t>inserted by Ann</w:t></w:r></w:ins><w:del w:id="2" w:author="Ann" w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> deleted by Ann</w:delText></w:r></w:del></w:p>
 <w:p><w:r><w:t xml:space="preserve">Page: </w:t></w:r><w:fldSimple w:instr=" PAGE "><w:r><w:t>1</w:t></w:r></w:fldSimple><w:r><w:t xml:space="preserve"> of </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>3</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>

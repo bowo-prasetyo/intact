@@ -17,13 +17,16 @@ import {
   RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren,
 } from './xml.js';
 import { StyleSheet, jcToCss } from './styles.js';
-import { Numbering } from './numbering.js';
+import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 
 const W = NS.w;
 const MAIN_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
 const STYLES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles';
 const STYLES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml';
+const NUMBERING_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering';
+const NUMBERING_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml';
+const NUMPR_ORDER = ['ilvl', 'numId', 'numberingChange', 'ins'];
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 const SIMPLE_RUN_CHILDREN = new Set(['rPr', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen', 'lastRenderedPageBreak']);
@@ -89,6 +92,9 @@ export class DocxDocument {
       themeXml ? parseXml(themeXml) : null,
     );
     this.numberingXml = numXml ? parseXml(numXml) : null;
+    this.numberingPath = numPath || null;
+    this.numberingChanged = false;
+    this.listDefs = {}; // list definitions added this session: kind -> abstractNumId, plus the bullet numId
 
     // Pre-create blob URLs for all images so rendering can stay synchronous.
     const mediaFiles = Object.values(this.zip.files).filter((f) => !f.dir && /\.(png|jpe?g|gif|bmp|svg|webp|tiff?)$/i.test(f.name));
@@ -192,15 +198,19 @@ export class DocxDocument {
       el.dataset.ppr = this.keep(pPr);
       Object.assign(el.style, cssToStyle(this.styles.pPrCss(pPr)));
     }
-    const numPr = wChild(pPr, 'numPr') || this.styles.styleNumPr(styleId);
-    const num = numPr && this.numbering.next(numPr);
+    const direct = wChild(pPr, 'numPr');
+    if (direct) {
+      // The paragraph's own list membership is editable state: see listOf() and listEdited().
+      const list = this.originalList(el, pPr);
+      el.dataset.numId = list?.numId ?? '0';
+      el.dataset.ilvl = String(list?.ilvl ?? 0);
+    }
+    const list = this.listOf(el);
+    const num = list && this.numbering.next(list.numId, list.ilvl);
     if (num) {
       el.classList.add('list');
       el.dataset.marker = num.marker;
-      if (num.pPr && !wChild(pPr, 'ind')) {
-        const { 'padding-left': pl } = this.styles.pPrCss(num.pPr);
-        if (pl) el.style.paddingLeft = pl;
-      }
+      if (num.pPr && !wChild(pPr, 'ind')) this.indentForList(el, num, list.ilvl);
       if (!el.style.paddingLeft) el.style.paddingLeft = '36pt';
       el.style.textIndent = '';
     }
@@ -369,18 +379,117 @@ export class DocxDocument {
   renumber(root) {
     if (!this.numberingXml && !root.querySelector('.list')) return;
     const numbering = new Numbering(this.numberingXml);
+    this.numbering = numbering;
     for (const el of root.querySelectorAll('p,h1,h2,h3,h4,h5,h6')) {
-      const pPr = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
-      const numPr = wChild(pPr, 'numPr') || this.styles.styleNumPr(el.dataset.style);
-      const num = numPr && numbering.next(numPr);
+      const list = this.listOf(el);
+      const num = list && numbering.next(list.numId, list.ilvl);
+      // Indentation follows the list level, unless the paragraph keeps its own (as when rendered).
+      const edited = this.listEdited(el);
       if (num) {
         el.classList.add('list');
         if (el.dataset.marker !== num.marker) el.dataset.marker = num.marker;
+        const pPr = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
+        if (edited || !wChild(pPr, 'ind')) this.indentForList(el, num, list.ilvl);
+        else el.style.paddingLeft = this.styles.pPrCss(pPr)['padding-left'] || '36pt';
       } else if (el.classList.contains('list')) {
+        // Out of the list: back to the paragraph's own indentation (none once its list was edited).
         el.classList.remove('list');
         delete el.dataset.marker;
+        const pPr = el.dataset.ppr != null && !edited ? this.raw[Number(el.dataset.ppr)] : null;
+        const css = this.styles.pPrCss(pPr);
+        el.style.paddingLeft = css['padding-left'] || '';
+        el.style.textIndent = css['text-indent'] || '';
       }
     }
+  }
+
+  indentForList(el, num, ilvl) {
+    const { 'padding-left': pl } = num.pPr ? this.styles.pPrCss(num.pPr) : {};
+    el.style.paddingLeft = pl || `${36 * (ilvl + 1)}pt`;
+    el.style.textIndent = '';
+  }
+
+  // ---------------------------------------------------------------- lists
+
+  /** The list a block is in, as { numId, ilvl }, or null. Direct numbering wins over the style's. */
+  listOf(el) {
+    if (el.dataset.numId != null) {
+      return el.dataset.numId === '0' ? null : { numId: el.dataset.numId, ilvl: Number(el.dataset.ilvl || 0) };
+    }
+    return this.styleList(el.dataset.style);
+  }
+
+  styleList(styleId) {
+    const numPr = this.styles.styleNumPr(styleId);
+    const numId = wAttr(wChild(numPr, 'numId'), 'val');
+    if (!numId || numId === '0') return null;
+    return { numId, ilvl: Number(wAttr(wChild(numPr, 'ilvl'), 'val') ?? 0) };
+  }
+
+  /** The list given by a paragraph's stored numPr (falling back to its style for missing parts). */
+  originalList(el, pPr) {
+    const numPr = wChild(pPr, 'numPr');
+    if (!numPr) return undefined;
+    const styleNumPr = this.styles.styleNumPr(el.dataset.style);
+    const numId = wAttr(wChild(numPr, 'numId'), 'val') ?? wAttr(wChild(styleNumPr, 'numId'), 'val');
+    const ilvl = wAttr(wChild(numPr, 'ilvl'), 'val') ?? wAttr(wChild(styleNumPr, 'ilvl'), 'val') ?? '0';
+    return !numId || numId === '0' ? null : { numId, ilvl: Number(ilvl) };
+  }
+
+  /** True if the user changed which list, or which level, the paragraph is in. */
+  listEdited(el) {
+    const pPr = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
+    const orig = this.originalList(el, pPr);
+    if (el.dataset.numId == null) return orig !== undefined; // direct numbering was removed
+    if (orig === undefined) return true; // direct numbering was added
+    const now = this.listOf(el);
+    return (orig?.numId ?? '0') !== (now?.numId ?? '0') || (orig?.ilvl ?? 0) !== (now?.ilvl ?? 0);
+  }
+
+  listKind(list) {
+    if (!list) return null;
+    this.kinds ||= new Numbering(this.numberingXml);
+    return this.kinds.kind(list.numId, list.ilvl);
+  }
+
+  /** True if list `numId` defines level `ilvl` (Word's "List Bullet" style, for one, has only one). */
+  hasListLevel(numId, ilvl) {
+    this.kinds ||= new Numbering(this.numberingXml);
+    return ilvl >= 0 && ilvl <= MAX_LEVEL && this.kinds.hasLevel(numId, ilvl);
+  }
+
+  /** Puts a block in list `numId` at level `ilvl`. */
+  setList(el, numId, ilvl = 0) {
+    el.dataset.numId = numId;
+    el.dataset.ilvl = String(Math.max(0, Math.min(MAX_LEVEL, ilvl)));
+  }
+
+  /**
+   * Takes a block out of its list, as Word does when you press Enter on an empty item: a paragraph
+   * whose list came from a list style ("List Bullet", "List Paragraph") goes back to Normal.
+   */
+  removeList(el) {
+    const styleId = el.dataset.style;
+    const isHeading = !!this.styles.kindOf(styleId);
+    if (styleId && !isHeading && (this.styleList(styleId) || this.styles.isListParagraph(styleId))) delete el.dataset.style;
+    if (this.styleList(el.dataset.style)) {
+      el.dataset.numId = '0'; // e.g. a numbered heading style: switch its numbering off
+      el.dataset.ilvl = '0';
+    } else {
+      delete el.dataset.numId;
+      delete el.dataset.ilvl;
+    }
+  }
+
+  /** A numId for a new list of `kind` ('bullet' or 'number'); bullets share one list. */
+  newList(kind) {
+    if (kind === 'bullet' && this.listDefs.bulletNumId) return this.listDefs.bulletNumId;
+    if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);
+    const numId = addList(this.numberingXml, kind, this.listDefs);
+    if (kind === 'bullet') this.listDefs.bulletNumId = numId;
+    this.numberingChanged = true;
+    this.kinds = null;
+    return numId;
   }
 
   // ---------------------------------------------------------------- HTML -> XML
@@ -400,34 +509,44 @@ export class DocxDocument {
     this.update(root);
     this.zip.file(this.mainPath, serializeXml(this.xml));
     await this.writeStyles();
+    if (this.numberingChanged) await this.writeNumbering();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
   }
 
   async writeStyles() {
     const xml = serializeXml(this.styles.doc);
-    if (this.stylesPath) {
-      this.zip.file(this.stylesPath, xml);
-      return;
-    }
-    // The package had no styles part: add one plus its relationship and content type.
-    this.stylesPath = `${this.mainDir ? this.mainDir + '/' : ''}styles.xml`;
-    this.zip.file(this.stylesPath, xml);
+    if (this.stylesPath) this.zip.file(this.stylesPath, xml);
+    else this.stylesPath = await this.addPart('styles.xml', xml, STYLES_REL, STYLES_CT);
+  }
+
+  async writeNumbering() {
+    const xml = serializeXml(this.numberingXml);
+    if (this.numberingPath) this.zip.file(this.numberingPath, xml);
+    else this.numberingPath = await this.addPart('numbering.xml', xml, NUMBERING_REL, NUMBERING_CT);
+  }
+
+  /** Adds a part next to the main document, with its relationship and content type. */
+  async addPart(name, xml, relType, contentType) {
+    const path = `${this.mainDir ? this.mainDir + '/' : ''}${name}`;
+    this.zip.file(path, xml);
     const relsXml = await this.text(this.relsPath);
     const rels = parseXml(relsXml || `<Relationships xmlns="${NS.pr}"/>`);
     const rel = rels.createElementNS(NS.pr, 'Relationship');
+    const prefix = `rId${name[0].toUpperCase()}${name.slice(1, name.indexOf('.'))}`;
     let n = 1;
-    while ([...rels.documentElement.children].some((r) => r.getAttribute('Id') === `rIdStyles${n}`)) n++;
-    rel.setAttribute('Id', `rIdStyles${n}`);
-    rel.setAttribute('Type', STYLES_REL);
-    rel.setAttribute('Target', 'styles.xml');
+    while ([...rels.documentElement.children].some((r) => r.getAttribute('Id') === `${prefix}${n}`)) n++;
+    rel.setAttribute('Id', `${prefix}${n}`);
+    rel.setAttribute('Type', relType);
+    rel.setAttribute('Target', name);
     rels.documentElement.appendChild(rel);
     this.zip.file(this.relsPath, serializeXml(rels));
     const ct = parseXml(await this.text('[Content_Types].xml'));
     const ov = ct.createElementNS(NS.ct, 'Override');
-    ov.setAttribute('PartName', '/' + this.stylesPath);
-    ov.setAttribute('ContentType', STYLES_CT);
+    ov.setAttribute('PartName', '/' + path);
+    ov.setAttribute('ContentType', contentType);
     ct.documentElement.appendChild(ov);
     this.zip.file('[Content_Types].xml', serializeXml(ct));
+    return path;
   }
 
   rawClone(index) {
@@ -489,6 +608,17 @@ export class DocxDocument {
     } else if (!jc || jcToCss(wAttr(jc, 'val')) !== align) {
       const val = { left: 'left', center: 'center', right: 'right', justify: 'both', end: 'right' }[align] || 'left';
       ensureOrdered(pPr, 'jc', PPR_ORDER).setAttributeNS(W, 'w:val', val);
+    }
+    if (el && this.listEdited(el)) {
+      // Write the new list membership; the list level's indentation replaces direct indentation.
+      removeW(pPr, 'ind');
+      if (el.dataset.numId == null) {
+        removeW(pPr, 'numPr');
+      } else {
+        const numPr = ensureOrdered(pPr, 'numPr', PPR_ORDER);
+        ensureOrdered(numPr, 'ilvl', NUMPR_ORDER).setAttributeNS(W, 'w:val', el.dataset.ilvl || '0');
+        ensureOrdered(numPr, 'numId', NUMPR_ORDER).setAttributeNS(W, 'w:val', el.dataset.numId);
+      }
     }
     if (!isEmptyElement(pPr)) p.appendChild(pPr);
     const state = { last: null };
