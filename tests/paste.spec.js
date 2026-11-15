@@ -5,9 +5,26 @@ import { buildDocx, openInEditor, download } from './helpers.js';
 
 const DOC = '<w:p><w:r><w:t xml:space="preserve">Start  end</w:t></w:r></w:p><w:p><w:r><w:t>Other</w:t></w:r></w:p>';
 
+/**
+ * Defines window.pasteEvent(dataTransfer) in the page: a paste event carrying that data. The data is
+ * attached to the event itself, because Firefox ignores `clipboardData` passed to the constructor of
+ * a scripted ClipboardEvent (Chromium honours it).
+ */
+async function definePasteEvent(page) {
+  await page.evaluate(() => {
+    window.pasteEvent = (dt) => {
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: dt });
+      return event;
+    };
+  });
+}
+
 /** Puts the caret after "Start " and pastes `html` (and `text`) as the browser would. */
 async function pasteAt(page, { html = '', text = '' }, where = 'Start ') {
+  await definePasteEvent(page);
   await page.evaluate(({ html, text, where }) => {
+    document.querySelector('.docx-page').focus(); // a real paste happens in the focused editor
     const p = [...document.querySelectorAll('.docx-page p')].find((e) => e.textContent.includes(where.trim()));
     const node = [...p.childNodes].find((n) => n.nodeType === 3 && n.data.includes(where)) || p.firstChild;
     const range = document.createRange();
@@ -17,7 +34,7 @@ async function pasteAt(page, { html = '', text = '' }, where = 'Start ') {
     const dt = new DataTransfer();
     if (html) dt.setData('text/html', html);
     dt.setData('text/plain', text);
-    p.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    p.dispatchEvent(pasteEvent(dt));
   }, { html, text, where });
 }
 
@@ -95,7 +112,9 @@ test('pictures are not pasted, and the status bar says so; plain text still past
 test('list items copied from Intact paste as list items', async ({ page }) => {
   // Into an empty paragraph, so the first item becomes a list item too.
   await openInEditor(page, await buildDocx('<w:p><w:r><w:t>Before</w:t></w:r></w:p><w:p/><w:p><w:r><w:t>After</w:t></w:r></w:p>'));
+  await definePasteEvent(page);
   await page.evaluate(() => {
+    document.querySelector('.docx-page').focus();
     const empty = document.querySelectorAll('.docx-page p')[1];
     const range = document.createRange();
     range.setStart(empty, 0);
@@ -103,7 +122,7 @@ test('list items copied from Intact paste as list items', async ({ page }) => {
     getSelection().addRange(range);
     const dt = new DataTransfer();
     dt.setData('text/html', '<p class="list" data-marker="•" data-style="ListBullet" data-ppr="5">Copied one</p><p class="list" data-marker="a." data-num-id="7" data-ilvl="1">Copied two</p>');
-    empty.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    empty.dispatchEvent(pasteEvent(dt));
   });
   await expect.poll(() => markers(page)).toEqual(['• Copied one', 'a. Copied two']);
   await expect(page.locator('.docx-page [data-ppr="5"], .docx-page [data-style="ListBullet"]')).toHaveCount(0);

@@ -72,7 +72,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - Tracked changes preserved (read-only) ✔
 - Undo/redo for all edits; live list numbering ✔
 - Close the remaining known losses (inline `customXml`, `dir`/`bdo` wrappers)
-- Add real-world fixture documents; test Firefox and Safari
+- Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
+- Add real-world fixture documents; test Safari
 
 **Next — do the core job better**
 - Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔

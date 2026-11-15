@@ -65,8 +65,13 @@ export function fieldAtSelection(range, root) {
   const inside = controlAt(range.startContainer, root);
   if (inside?.matches(CHOICE)) return inside;
   if (!range.collapsed) {
+    // A selection of fields only (no other text): the first one. Browsers differ in how far
+    // Shift+Arrow extends over a non-editable field, so don't insist on an exact match.
     const hits = [...root.querySelectorAll(CHOICE)].filter((el) => range.intersectsNode(el));
-    return hits.length === 1 && range.toString().trim() === hits[0].textContent.trim() ? hits[0] : null;
+    if (!hits.length) return null;
+    const rest = range.cloneContents();
+    for (const el of rest.querySelectorAll('.sdt')) el.remove();
+    return rest.textContent.trim() ? null : hits[0];
   }
   for (const dir of [1, -1]) {
     const n = neighbour(range.startContainer, range.startOffset, dir, root);

@@ -261,6 +261,16 @@ function selectionInPage() {
   return page.value?.contains(range.commonAncestorContainer) ? range : null;
 }
 
+/**
+ * The paragraph a selection starts in. Firefox starts a Select All at the page itself (offset 0)
+ * rather than inside the first paragraph, so look down into the node the offset points at.
+ */
+function startBlock(range) {
+  const { startContainer: c, startOffset: o } = range;
+  const at = c.nodeType === 1 ? c.childNodes[o] || c : c;
+  return closestBlock(at) || (at.nodeType === 1 ? at.querySelector(BLOCK_SELECTOR) : null);
+}
+
 function closestBlock(node) {
   const el = node.nodeType === 1 ? node : node.parentElement;
   const block = el?.closest(BLOCK_SELECTOR);
@@ -282,7 +292,7 @@ function onSelectionChange() {
   state.italic = document.queryCommandState('italic');
   state.underline = document.queryCommandState('underline');
   state.strike = document.queryCommandState('strikeThrough');
-  const block = closestBlock(range.startContainer);
+  const block = startBlock(range);
   state.block = block ? doc.blockKind(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
   state.align = { start: 'left', end: 'right' }[align] || align;

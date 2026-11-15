@@ -86,13 +86,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # production build in dist/
-npm test         # round-trip and editing tests in headless Chromium
+npm test         # round-trip and editing tests in headless Chromium and Firefox
 ```
 
 ## Testing
 
-`tests/` drives the production build in a real browser with [Playwright](https://playwright.dev/),
-because editing depends on the browser's `contenteditable`. Fixtures are built from XML in the
+`tests/` drives the production build in real browsers (Chromium and Firefox) with
+[Playwright](https://playwright.dev/), because editing depends on the browser's `contenteditable`,
+which differs between engines. Fixtures are built from XML in the
 tests themselves (`tests/helpers.js`). The core checks are:
 
 - opening and downloading a document **without edits** gives back the same document;
@@ -102,7 +103,11 @@ tests themselves (`tests/helpers.js`). The core checks are:
 "The same" is judged by meaning, not bytes (`canonicalize` in `tests/helpers.js` lists the
 normalisations, such as merging adjacent runs with identical formatting). A new feature that touches
 the document should add its case to the kitchen-sink fixture in `tests/roundtrip.spec.js`.
-First run: `npx playwright install chromium`.
+First run: `npx playwright install chromium firefox`. To run one browser:
+`npm test -- --project=chromium` (or `firefox`).
+
+Checked by hand as well: documents edited in Intact open correctly in Microsoft Word, and the
+editor works in Firefox (November 2026).
 
 ## Deploying to GitHub Pages
 
@@ -122,5 +127,6 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save
   (their text is kept)
-- Only Chromium is covered by the tests so far; Firefox and Safari are untested
+- The tests cover Chromium and Firefox; Safari is untested (find and comment highlighting need
+  Safari 17.2 or later)
 - Legacy binary `.doc` files are not supported
