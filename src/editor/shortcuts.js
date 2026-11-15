@@ -7,8 +7,9 @@ export function shortcutFor(e) {
   const key = e.key.toLowerCase();
   const space = e.code === 'Space' || key === ' ';
   if (!e.shiftKey && !e.altKey) {
+    // Bold, italic and underline too: not every browser does them in editable text by itself.
     return {
-      e: 'center', l: 'left', r: 'right', j: 'justify', m: 'indent', enter: 'pageBreak',
+      b: 'bold', i: 'italic', u: 'underline', e: 'center', l: 'left', r: 'right', j: 'justify', m: 'indent', enter: 'pageBreak',
     }[key] || (space ? 'clearFormatting' : null);
   }
   if (e.shiftKey && !e.altKey) {

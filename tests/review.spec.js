@@ -109,13 +109,12 @@ test('formatting, added and removed paragraphs and removed comments are all list
 
   await openReview(page);
   await expect(dialog(page).locator('.summary')).toHaveText('2 paragraphs changed, 1 added, 1 removed.');
-  const list = changes(page);
-  await expect(list.nth(0)).toContainText('Style: Normal → Heading 2');
-  await expect(list.nth(1)).toContainText('Brand new.');
-  await expect(list.nth(1).locator('.kind')).toHaveText('Added');
-  await expect(list.nth(2)).toContainText('Text formatting changed');
-  await expect(list.nth(3).locator('.kind')).toHaveText('Removed');
-  await expect(list.nth(3).locator('del')).toHaveText('Commented paragraph.');
+  const entry = (text) => changes(page).filter({ hasText: text });
+  await expect(entry('The fee is due')).toContainText('Style: Normal → Heading 2');
+  await expect(entry('Brand new.').locator('.kind')).toHaveText('Added');
+  await expect(entry('Third paragraph.')).toContainText('Text formatting changed');
+  await expect(entry('Commented paragraph.').locator('.kind')).toHaveText('Removed');
+  await expect(entry('Commented paragraph.').locator('del')).toHaveText('Commented paragraph.');
   const notes = dialog(page).locator('.notes');
   await expect(notes).toContainText('Comment by Ann Lee removed, with the text it was attached to.');
   await expect(notes).toContainText('Formatting changes are applied directly, never tracked.');

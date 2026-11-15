@@ -125,3 +125,12 @@ test('toolbar tooltips name the shortcuts', async ({ page }) => {
     await expect(page.getByTitle(title, { exact: true })).toHaveCount(1);
   }
 });
+
+test('the alignment buttons are saved, in every browser', async ({ page }) => {
+  await openInEditor(page, await buildDocx(DOC));
+  await caretIn(page, 'Alpha');
+  await page.getByTitle('Center (Ctrl+E)', { exact: true }).click();
+  await expect(page.getByTitle('Center (Ctrl+E)', { exact: true })).toHaveClass(/on/);
+  const { xml } = await download(page);
+  expect(firstParagraph(xml)).toContain('<w:pPr><w:jc w:val="center"/></w:pPr>');
+});

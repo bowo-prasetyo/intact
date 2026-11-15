@@ -32,7 +32,7 @@
       <button type="button" title="Underline (Ctrl+U)" :class="{ on: state.underline }" @click="exec('underline')"><u>U</u></button>
       <button type="button" title="Strikethrough" :class="{ on: state.strike }" @click="exec('strikeThrough')"><s>S</s></button>
       <span class="sep" />
-      <button v-for="a in aligns" :key="a.cmd" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="exec(a.cmd)">
+      <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
@@ -190,10 +190,10 @@ let undoStack = null;
 
 const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li';
 const aligns = [
-  { cmd: 'justifyLeft', value: 'left', title: 'Align left (Ctrl+L)', icon: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8' },
-  { cmd: 'justifyCenter', value: 'center', title: 'Center (Ctrl+E)', icon: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8' },
-  { cmd: 'justifyRight', value: 'right', title: 'Align right (Ctrl+R)', icon: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' },
-  { cmd: 'justifyFull', value: 'justify', title: 'Justify (Ctrl+J)', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
+  { value: 'left', title: 'Align left (Ctrl+L)', icon: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8' },
+  { value: 'center', title: 'Center (Ctrl+E)', icon: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8' },
+  { value: 'right', title: 'Align right (Ctrl+R)', icon: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' },
+  { value: 'justify', title: 'Justify (Ctrl+J)', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
 ];
 
 // The sheet is the page: header (in the top margin), the editable body, footer (bottom margin). As in
@@ -393,6 +393,25 @@ function exec(cmd, value = null) {
   if (CHAR_FORMATS.has(cmd) && inPlainField()) return;
   undoStack.flush();
   document.execCommand(cmd, false, value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  noteUntrackedFormatting();
+}
+
+/**
+ * Aligns the selected paragraphs. Done here rather than with the browser's justify commands, which
+ * Firefox carries out with an align attribute instead of the text-align style that is saved.
+ */
+function alignBlocks(value) {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) return;
+  undoStack.flush();
+  for (const block of selectedBlocks(range)) {
+    block.style.textAlign = value;
+    block.removeAttribute('align');
+  }
   undoStack.commit();
   onSelectionChange();
   markDirty();
@@ -659,8 +678,8 @@ function joinLeftParagraphs({ first, last }) {
 
 /** Runs one of Word's shortcuts (see editor/shortcuts.js). */
 function runShortcut(name) {
-  const align = { left: 'justifyLeft', center: 'justifyCenter', right: 'justifyRight', justify: 'justifyFull' }[name];
-  if (align) return exec(align);
+  if (['left', 'center', 'right', 'justify'].includes(name)) return alignBlocks(name);
+  if (['bold', 'italic', 'underline'].includes(name)) return exec(name);
   if (name === 'normal') return applyBlockStyle('normal');
   if (name.startsWith('heading')) return applyBlockStyle(`h${name.slice(-1)}`);
   if (name === 'bullets') return toggleList('bullet');
