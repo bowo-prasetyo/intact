@@ -73,7 +73,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - Undo/redo for all edits; live list numbering ✔
 - Close the remaining known losses (inline `customXml`, `dir`/`bdo` wrappers)
 - Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
-- Add real-world fixture documents; test Safari
+- Add real-world fixture documents (started: a letter written in Word ✔; more from Google Docs and
+  LibreOffice welcome); test Safari
 
 **Next — do the core job better**
 - Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔

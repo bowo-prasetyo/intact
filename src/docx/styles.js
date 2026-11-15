@@ -22,6 +22,7 @@ export const BUILTIN_STYLES = {
 export class StyleSheet {
   constructor(stylesDoc, themeDoc) {
     this.doc = stylesDoc;
+    this.changed = false; // set when a style is added; styles.xml is only rewritten then
     this.fonts = { major: 'Calibri Light', minor: 'Calibri' };
     if (themeDoc) {
       const major = themeDoc.getElementsByTagNameNS(NS.a, 'majorFont')[0];
@@ -78,6 +79,7 @@ export class StyleSheet {
     const frag = parseXml(`<root xmlns:w="${NS.w}">${xml}</root>`).documentElement;
     const el = this.doc.importNode(wChild(frag, 'style'), true);
     this.doc.documentElement.appendChild(el);
+    this.changed = true;
     this.reindex();
     return id;
   }
