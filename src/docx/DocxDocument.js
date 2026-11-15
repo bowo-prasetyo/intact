@@ -19,6 +19,9 @@ import {
 import { StyleSheet, jcToCss } from './styles.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
+import {
+  controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
+} from './contentControls.js';
 
 const W = NS.w;
 const MAIN_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument';
@@ -169,6 +172,7 @@ export class DocxDocument {
       if (local === 'p') parent.append(this.renderParagraph(child));
       else if (local === 'tbl') parent.append(this.renderTable(child));
       else if (local === 'sectPr' || local === 'tblPr' || local === 'tcPr' || local === 'trPr') continue;
+      else if (local === 'sdt') parent.append(this.renderControl(child, true));
       else parent.append(this.rawBlock(child));
     }
   }
@@ -186,6 +190,68 @@ export class DocxDocument {
     div.title = `Preserved content (<${node.nodeName}>) – not editable here`;
     div.textContent = plainText(node).trim() || `[${node.nodeName}]`;
     return div;
+  }
+
+  /**
+   * A content control: a frame (not editable itself) around its rendered content. Text controls hold
+   * an editable `.sdt-content`; checkbox, drop-down and date controls change through clicks. Read-only
+   * controls are kept verbatim (data-raw), the others are rebuilt on save (data-sdt).
+   */
+  renderControl(sdt, block) {
+    const info = controlInfo(sdt);
+    const content = wChild(sdt, 'sdtContent');
+    const el = document.createElement(block ? 'div' : 'span');
+    el.contentEditable = 'false';
+    el.className = `sdt sdt-${info.kind}`;
+    el.title = controlTitle(info);
+    const render = (into) => {
+      if (content) {
+        if (block) this.renderBlocks(content, into);
+        else this.renderInlines(content, into);
+      }
+      if (block && !into.firstChild) into.append(this.emptyParagraph());
+    };
+    if (info.readOnly) {
+      el.dataset.raw = this.keep(sdt);
+      el.classList.add('sdt-locked');
+      render(el);
+      for (const e of el.querySelectorAll('[contenteditable="true"]')) e.contentEditable = 'false';
+      return el;
+    }
+    el.dataset.sdt = this.keep(sdt);
+    if (info.placeholder) el.classList.add('showing-placeholder');
+    if (info.kind === 'checkbox') el.dataset.checked = info.checked ? '1' : '0';
+    if (info.kind === 'text' || info.kind === 'combo') {
+      const box = document.createElement(block ? 'div' : 'span');
+      box.className = 'sdt-content';
+      box.contentEditable = 'true';
+      if (info.plain) box.dataset.plain = info.multiLine ? 'multi' : 'single';
+      render(box);
+      el.append(box);
+    } else {
+      render(el);
+    }
+    return el;
+  }
+
+  /** The control settings behind a rendered `.sdt` element. */
+  control(el) {
+    const sdt = this.raw[Number(el.dataset.sdt ?? el.dataset.raw)];
+    const info = controlInfo(sdt);
+    return {
+      ...info,
+      choices: controlChoices(sdt),
+      date: info.kind === 'date' ? controlDate(sdt) : null,
+    };
+  }
+
+  formatDate(el, iso) {
+    const { format, locale } = this.control(el).date;
+    return formatWordDate(iso, format, locale);
+  }
+
+  isPlaceholderStyle(styleId) {
+    return this.styles.byId.get(styleId)?.name.toLowerCase() === 'placeholder text';
   }
 
   renderParagraph(p) {
@@ -235,6 +301,8 @@ export class DocxDocument {
         a.title = (rel ? rel.target : anchor || '') + ' (Ctrl+click to open)';
         this.renderInlines(child, a);
         parent.append(a);
+      } else if (local === 'sdt') {
+        parent.append(this.renderControl(child, false));
       } else if (local && FLATTEN_INLINE.has(local)) {
         // Unwrap smart tags and similar containers: render their runs as normal text.
         this.renderInlines(child, parent);
@@ -566,6 +634,7 @@ export class DocxDocument {
         if (node.tagName === 'TABLE' && node.dataset.raw != null) out.push(this.serializeTable(node));
         else if (node.tagName === 'TABLE') out.push(...this.serializeBlocks(node.querySelector('tbody') || node));
         else if (node.dataset.raw != null) out.push(this.rawClone(node.dataset.raw));
+        else if (node.dataset.sdt != null) out.push(this.serializeControl(node));
         else if ([...node.children].some((c) => BLOCK_TAGS.has(c.tagName))) out.push(...this.serializeBlocks(node));
         else out.push(this.serializeParagraph(node, [...node.childNodes]));
       } else if (node.nodeType === 1 || node.nodeType === 3) {
@@ -645,6 +714,11 @@ export class DocxDocument {
       state.last = null;
       return;
     }
+    if (el.dataset.sdt != null) {
+      out.appendChild(this.serializeControl(el, ctx, block));
+      state.last = null;
+      return;
+    }
     if (el.tagName === 'A' && el.dataset.hl != null) {
       const hl = this.rawClone(el.dataset.hl);
       const inner = { last: null };
@@ -675,6 +749,35 @@ export class DocxDocument {
       if (deco.includes('line-through')) next.s = true;
     }
     for (const c of el.childNodes) this.serializeInline(c, out, next, block, state);
+  }
+
+  /** Rebuilds a content control's <w:sdtContent> from the editor, keeping its properties. */
+  serializeControl(el, ctx = {}, block = null) {
+    const original = this.raw[Number(el.dataset.sdt)];
+    const sdt = original.cloneNode(true);
+    const info = controlInfo(original);
+    const box = el.querySelector(':scope > .sdt-content') || el;
+    const text = box.textContent;
+    const before = plainText(wChild(original, 'sdtContent') || original);
+    // Placeholder text left alone, or cleared, is written back as it was so Word shows it again.
+    if (info.placeholder && (text === before || !text.trim())) return sdt;
+
+    let content = wChild(sdt, 'sdtContent');
+    if (!content) content = sdt.appendChild(createW(this.xml, 'sdtContent'));
+    while (content.firstChild) content.removeChild(content.firstChild);
+    if (el.tagName === 'DIV') {
+      const blocks = this.serializeBlocks(box);
+      for (const b of blocks) content.appendChild(b);
+      if (!blocks.some((b) => b.localName === 'p' || b.localName === 'tbl')) content.appendChild(createW(this.xml, 'p'));
+    } else if (text || box.querySelector('img, [data-raw], [data-sdt]')) {
+      const state = { last: null };
+      for (const c of box.childNodes) this.serializeInline(c, content, ctx, block, state);
+    }
+    updateControlProperties(sdt, el, {
+      placeholderReplaced: info.placeholder,
+      isPlaceholderStyle: (id) => this.isPlaceholderStyle(id),
+    });
+    return sdt;
   }
 
   emitText(text, out, ctx, state) {

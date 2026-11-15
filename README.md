@@ -18,10 +18,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
 - Tab and Shift+Tab move between table cells
+- Fill in templates and forms: text fields (content controls) are editable, with placeholder text
+  replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
+  choices. Locked fields and fields linked to the document's data stay read-only and say why
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
-  fields, content controls, equations, bookmarks, section settings and tracked changes (shown
+  fields, equations, bookmarks, section settings and tracked changes (shown
   read-only with their author, so they can still be accepted or rejected in Word). The test suite
   checks this on every pull request (see [Testing](#testing))
 - Undo/redo for every edit, including paragraph style changes; list numbers update as you edit
@@ -42,7 +45,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    same formatting are merged, and placeholders are written back verbatim. Only
    `word/document.xml` changes, plus `styles.xml` if a heading style had to be added and
    `numbering.xml` if a new list was started.
-4. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
+4. **Content controls** – a `<w:sdt>` is shown as a frame around its rendered content. Text and
+   combo box fields hold an editable `.sdt-content` island; check boxes, drop-downs and dates
+   change through clicks. On save its `<w:sdtContent>` is rebuilt and its properties kept, updating
+   only what the user changed (`showingPlcHdr`, `w14:checked`, `lastValue`, `fullDate`).
+   Placeholder text left alone or cleared is written back verbatim. Locked fields, fields bound to
+   custom XML (Word would overwrite edits from the data on open), tables of contents, citations,
+   pictures and groups stay read-only and are written back verbatim.
+5. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
    attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
    then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
@@ -83,7 +93,10 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Can't insert images or tables, or change table structure (Tab in the last cell doesn't add a row)
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting is plain text only
-- Tracked changes, content controls, fields and footnotes are preserved but can't be edited
+- Tracked changes, fields and footnotes are preserved but can't be edited
+- Content controls: locked and data-bound ones are read-only; check boxes, drop-downs and dates
+  are changed with the mouse (not yet from the keyboard); controls around whole table cells or rows
+  are kept but not shown
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save
   (their text is kept)
 - Only Chromium is covered by the tests so far; Firefox and Safari are untested

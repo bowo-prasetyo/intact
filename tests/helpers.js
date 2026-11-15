@@ -8,7 +8,23 @@ export const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml
   + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
   + 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
   + 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
-  + 'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  + 'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
+  + 'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
+
+const PLACEHOLDER = '<w:rPr><w:rStyle w:val="PlaceholderText"/></w:rPr>';
+
+/** One inline content control of each kind, as Word writes them in a form. */
+export const FIELDS = `<w:sdt><w:sdtPr><w:rPr><w:b/></w:rPr><w:alias w:val="Client name"/><w:tag w:val="client"/><w:id w:val="101"/><w:showingPlcHdr/><w:text/></w:sdtPr>`
+  + `<w:sdtContent><w:r>${PLACEHOLDER}<w:t>Click or tap here to enter text.</w:t></w:r></w:sdtContent></w:sdt>`
+  + `<w:r><w:t xml:space="preserve"> </w:t></w:r>`
+  + `<w:sdt><w:sdtPr><w:id w:val="102"/><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr>`
+  + `<w:sdtContent><w:r><w:rPr><w:rFonts w:ascii="MS Gothic" w:hAnsi="MS Gothic"/></w:rPr><w:t>☐</w:t></w:r></w:sdtContent></w:sdt>`
+  + `<w:sdt><w:sdtPr><w:alias w:val="Plan"/><w:id w:val="103"/><w:showingPlcHdr/><w:dropDownList w:lastValue=""><w:listItem w:displayText="Basic plan" w:value="basic"/><w:listItem w:displayText="Premium plan" w:value="premium"/></w:dropDownList></w:sdtPr>`
+  + `<w:sdtContent><w:r>${PLACEHOLDER}<w:t>Choose an item.</w:t></w:r></w:sdtContent></w:sdt>`
+  + `<w:sdt><w:sdtPr><w:alias w:val="Start date"/><w:id w:val="104"/><w:showingPlcHdr/><w:date><w:dateFormat w:val="d MMMM yyyy"/><w:lid w:val="en-GB"/><w:storeMappedDataAs w:val="dateTime"/><w:calendar w:val="gregorian"/></w:date></w:sdtPr>`
+  + `<w:sdtContent><w:r>${PLACEHOLDER}<w:t>Click or tap to enter a date.</w:t></w:r></w:sdtContent></w:sdt>`
+  + `<w:sdt><w:sdtPr><w:alias w:val="Company"/><w:id w:val="105"/><w:dataBinding w:xpath="/root/company" w:storeItemID="{00000000-0000-0000-0000-000000000001}"/><w:text/></w:sdtPr>`
+  + `<w:sdtContent><w:r><w:t>ACME Corp</w:t></w:r></w:sdtContent></w:sdt>`;
 
 // A 1×1 transparent PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAwS2OUAAAAABJRU5ErkJggg==', 'base64');
@@ -42,6 +58,7 @@ export async function buildDocx(bodyXml) {
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
 <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="ListBullet"><w:name w:val="List Bullet"/><w:basedOn w:val="Normal"/><w:pPr><w:numPr><w:numId w:val="2"/></w:numPr><w:ind w:left="360" w:hanging="360"/></w:pPr></w:style>
+<w:style w:type="character" w:styleId="PlaceholderText"><w:name w:val="Placeholder Text"/><w:rPr><w:color w:val="808080"/></w:rPr></w:style>
 <w:style w:type="character" w:styleId="Strong"><w:name w:val="Strong"/><w:rPr><w:b/></w:rPr></w:style>
 </w:styles>`);
   zip.file('word/numbering.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -130,6 +147,10 @@ export function canonicalize(page, xml) {
           }
         } else if (isW(c, 'hyperlink')) {
           out.push({ hyperlink: attrs(c), kids: inlines(c) });
+        } else if (isW(c, 'sdt')) {
+          const pr = kids(c).find((k) => isW(k, 'sdtPr'));
+          const content = kids(c).find((k) => isW(k, 'sdtContent'));
+          out.push({ sdt: pr ? generic(pr) : null, kids: content ? inlines(content) : [] });
         } else {
           out.push(generic(c));
         }

@@ -1,7 +1,7 @@
 // The product promise: "nothing you didn't touch changes". These tests open documents, save them
 // (with and without edits) and check that everything the user did not edit means the same thing.
 import { test, expect } from '@playwright/test';
-import { buildDocx, openInEditor, download, canonicalize, documentXmlOf } from './helpers.js';
+import { buildDocx, openInEditor, download, canonicalize, documentXmlOf, FIELDS } from './helpers.js';
 
 const NUM = '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
 
@@ -27,6 +27,8 @@ const KITCHEN_SINK = `
 <w:p><w:r><w:t xml:space="preserve">Image: </w:t></w:r><w:r><w:drawing><wp:inline><wp:extent cx="95250" cy="95250"/><wp:docPr id="1" name="Picture 1"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:blipFill><a:blip r:embed="rId4"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>
 <w:p><w:r><w:t>Before break</w:t></w:r><w:r><w:br w:type="page"/></w:r><w:r><w:t>After break</w:t></w:r></w:p>
 <w:sdt><w:sdtPr><w:alias w:val="Clause"/><w:tag w:val="clause"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Clause in a content control</w:t></w:r></w:p></w:sdtContent></w:sdt>
+<w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Locked clause</w:t></w:r></w:p></w:sdtContent></w:sdt>
+<w:p><w:r><w:t xml:space="preserve">Fields: </w:t></w:r>${FIELDS}</w:p>
 <w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>
   <w:tr><w:tc><w:tcPr><w:tcW w:w="6000" w:type="dxa"/><w:gridSpan w:val="2"/><w:shd w:val="clear" w:fill="D9E2F3"/></w:tcPr><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Merged header</w:t></w:r></w:p></w:tc></w:tr>
   <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>Tall</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B2</w:t></w:r></w:p></w:tc></w:tr>
