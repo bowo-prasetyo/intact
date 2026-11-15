@@ -1,0 +1,100 @@
+# Vision
+
+> **Fix a Word document in seconds, privately: no install, no account, no upload — and nothing you
+> didn't touch changes.**
+
+This document says who the product is for, what it promises, and what it deliberately won't do.
+Use it to decide feature requests: a change that doesn't serve the job below, or that weakens a
+promise, needs a very good reason.
+
+## The problem
+
+People regularly get a `.docx` that needs a small change: a typo in a contract, a name in a
+template, a date in a letter, a sentence in a CV. The usual options all have a cost:
+
+- **Microsoft Word** needs a licence and an install, which many people don't have on the device in
+  front of them (Chromebooks, Linux, borrowed or locked-down machines).
+- **Google Docs and Word for the web** need an account and an upload. That's a real barrier for
+  confidential documents such as contracts, HR files, medical or legal letters.
+- **LibreOffice and other converters** often change things you didn't touch: fonts, spacing,
+  numbering, tracked changes. That's a problem when the file goes back to someone who uses Word.
+
+## Who it's for
+
+1. **Privacy-conscious professionals** (legal, HR, finance, healthcare, public sector) who
+   mustn't upload a document but need to correct it.
+2. **People without Word** on the device they're using.
+3. **Anyone sending a file back** to a Word user who will notice if anything else changed.
+
+## The job
+
+Open a Word file, change some text and basic formatting, and get back a file that is the original
+with **only those edits**. Success is when the recipient can't tell another tool was used.
+
+## Promises
+
+These are product requirements, not aspirations. A release that breaks one is a bug.
+
+1. **Private.** The document never leaves the device. No server, no account, no analytics, and no
+   third-party requests while a document is open.
+2. **Faithful.** Anything the user did not edit is written back with the same meaning: formatting,
+   images, tables, fields, content controls, comments, footnotes and tracked changes. Content the
+   editor can't edit is shown read-only and kept, never silently changed or dropped. The round-trip
+   tests (`tests/roundtrip.spec.js`) enforce this; every new capability adds cases to them.
+3. **Instant.** Opening the page and a document takes seconds, with nothing to install or set up.
+4. **Honest.** When something can't be edited or preserved, the user is told. The README and About
+   page list known limitations, and the headline claims stay true.
+
+## Non-goals
+
+Saying no to these keeps the product small enough to keep its promises:
+
+- **Writing documents from scratch.** A blank document exists for quick notes, but this is not a
+  word processor. Page layout, styles management and advanced typesetting are out of scope.
+- **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
+  a server, and they conflict with "private".
+- **Other formats.** No spreadsheets, slides, PDF or legacy `.doc`. Do one format well.
+- **Pixel-perfect pagination.** The editor shows content faithfully, not exact Word page breaks.
+
+## Principles for deciding what's next
+
+- **Fidelity over features.** A feature that risks the round-trip waits until it can be tested.
+- **Unlock what's locked before adding what's new.** The most valuable work is making preserved
+  content editable where it matters for the job (for example the text inside content controls in
+  templates), not adding new kinds of content.
+- **Real documents decide.** Grow the test fixtures with documents written by Word, Google Docs and
+  LibreOffice, and check output in Microsoft Word before each release.
+
+## Direction
+
+**Now — make the promises true and provable**
+- Round-trip test suite in CI, gating deploys ✔
+- Tracked changes preserved (read-only) ✔
+- Undo/redo for all edits; live list numbering ✔
+- Close the remaining known losses (inline `customXml`, `dir`/`bdo` wrappers)
+- Add real-world fixture documents; test Firefox and Safari
+
+**Next — do the core job better**
+- Edit text inside content controls (templates and forms)
+- Start and end bulleted and numbered lists
+- Paste with basic formatting (bold, italic, lists) instead of plain text only
+- Find and replace
+
+**Later — only if the job demands it**
+- Accept or reject tracked changes
+- Edit headers, footers and footnotes
+- Installable offline app (PWA)
+
+## How we'll know it's working
+
+- **Fidelity:** zero known round-trip regressions; the fixture set keeps growing.
+- **Trust:** users report that recipients didn't notice anything unusual about the file.
+- **Speed:** a user goes from opening the page to downloading an edited file in under a minute.
+
+## Open decision: the name
+
+"Office" suggests a suite of applications (documents, spreadsheets, slides), which this product
+deliberately isn't. Together with the Word-blue colour and the phrase "Word documents", it may also
+invite trademark questions if the app is promoted widely. The app currently uses three names
+("Office", "Office – DOCX Editor", "Office Web Editor"). Pick one name that fits the narrow job and
+use it everywhere. This needs an owner decision and isn't changed yet.
