@@ -19,7 +19,7 @@ const router = createRouter({
 });
 
 router.afterEach((to) => {
-  document.title = to.name === 'edit' && currentDoc.value ? `${currentDoc.value.name} – Office` : 'Office – DOCX Editor';
+  document.title = to.name === 'edit' && currentDoc.value ? `${currentDoc.value.name} – Intact` : 'Intact — private .docx editor';
 });
 
 export default router;

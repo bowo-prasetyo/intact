@@ -2,7 +2,7 @@
   <header class="app-header">
     <RouterLink to="/" class="brand">
       <img :src="icon" alt="" width="24" height="24" />
-      <span>Office</span>
+      <span>Intact</span>
     </RouterLink>
     <slot />
     <nav class="nav">
