@@ -84,8 +84,8 @@ const summary = computed(() => {
 const notes = computed(() => {
   const r = props.review;
   const out = [];
-  if (r.insertions || r.deletions || r.rowsTracked) {
-    const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion'), r.rowsTracked && plural(r.rowsTracked, 'table row')]
+  if (r.insertions || r.deletions || r.rowsTracked || r.cellsTracked) {
+    const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion'), r.rowsTracked && plural(r.rowsTracked, 'table row'), r.cellsTracked && plural(r.cellsTracked, 'table cell')]
       .filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
     out.push({ kind: 'good', text: `Recorded as tracked changes (${what}), so the recipient can accept or reject them in Word.` });
   }

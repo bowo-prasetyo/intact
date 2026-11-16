@@ -4,7 +4,9 @@
 //   run     a tracked formatting change of a run (data-fmt);
 //   mark    a tracked paragraph break (the paragraph; data-tc-mark or data-rev-mark);
 //   para    a tracked change to a paragraph's formatting (data-fmt-para);
-//   row     a tracked table row (data-rev-row); the changes in a deleted row are part of it.
+//   row     a tracked table row (data-rev-row); the changes in a deleted row are part of it;
+//   cells   a tracked column: the cells inserted or deleted together (data-rev-cell, one data-rev-key),
+//           listed once, at its first cell; the changes in deleted cells are part of it.
 // Changes inside content saved verbatim (locked fields and cells, preserved blocks) can only be
 // accepted or rejected in Word, and aren't listed (DocxDocument.wordOnlyChanges counts them).
 
@@ -12,6 +14,12 @@ const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li';
 
 const isInline = (el) => !!el.dataset.tc || (el.classList.contains('raw-inline') && (el.classList.contains('inserted') || el.classList.contains('deleted')));
 const isMark = (el) => el.matches(BLOCKS) && (!!el.dataset.tcMark || !!el.dataset.revMark);
+
+/** The cells of the tracked column `td` belongs to: same table, same data-rev-key. */
+export function cellGroup(td) {
+  const table = td.closest('table');
+  return [...table.querySelectorAll(':scope > tbody > tr > td, :scope > tr > td')].filter((c) => c.dataset.revKey === td.dataset.revKey);
+}
 
 /** True unless `el` sits in content that is saved verbatim (so a change there wouldn't be kept). */
 function resolvable(el) {
@@ -22,9 +30,19 @@ function resolvable(el) {
 /** The tracked changes under `root`, in document order (a paragraph's own changes after its text). */
 export function changeItems(root) {
   const out = [];
+  const seen = new Set(); // tracked columns listed: table + key
   const add = (el, kind) => { if (resolvable(el)) out.push({ el, kind, mark: kind === 'mark' }); };
   const walk = (node) => {
     for (const el of node.children) {
+      if (el.tagName === 'TD' && el.dataset.revCell) {
+        const key = el.dataset.revKey;
+        const table = el.closest('table');
+        if (![...seen].some(([t, k]) => t === table && k === key)) {
+          seen.add([table, key]);
+          add(el, 'cells');
+        }
+        if (el.dataset.revCell === 'del') continue;
+      }
       if (isInline(el)) {
         add(el, 'inline');
         continue;
@@ -56,6 +74,11 @@ export function itemRange(item) {
     range.collapse(false);
   } else if (kind === 'run' || kind === 'para') {
     range.selectNodeContents(el);
+  } else if (kind === 'cells') {
+    const cells = cellGroup(el);
+    const last = cells[cells.length - 1];
+    range.setStart(cells[0], 0);
+    range.setEnd(last, last.childNodes.length);
   } else if (kind === 'row') {
     const cells = [...el.cells];
     range.setStart(cells[0], 0);
@@ -95,7 +118,7 @@ export function changesAt(range, items) {
   if (!range.collapsed) {
     return items.filter(({ el, kind }) => (kind === 'mark' || kind === 'para'
       ? range.comparePoint(el, el.childNodes.length) === 0
-      : range.intersectsNode(el)));
+      : kind === 'cells' ? cellGroup(el).some((td) => range.intersectsNode(td)) : range.intersectsNode(el)));
   }
   const { startContainer: node, startOffset: offset } = range;
   const el = node.nodeType === 1 ? node : node.parentElement;
@@ -118,6 +141,9 @@ export function changesAt(range, items) {
   }
   const para = block && find((i) => i.kind === 'para' && i.el === block);
   if (para) return [para];
+  const cell = el.closest('td[data-rev-cell]');
+  const column = cell && find((i) => i.kind === 'cells' && cellGroup(i.el).includes(cell));
+  if (column) return [column];
   const row = find((i) => i.kind === 'row' && i.el.contains(el));
   return row ? [row] : [];
 }

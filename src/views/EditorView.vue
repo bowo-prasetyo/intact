@@ -117,6 +117,12 @@
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
           <div ref="marksEl" class="marks-layer" aria-hidden="true" />
+          <div v-if="picture.el" class="picture-frame" :class="{ floating: picture.wrap !== 'inline' }" :style="{ left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.w}px`, height: `${picture.h}px` }">
+            <span v-for="h in HANDLES" :key="h" class="handle" :class="h" :title="h.length === 2 ? 'Drag to resize' : 'Drag to stretch'" @pointerdown.prevent.stop="startResize($event, h)" />
+          </div>
+          <button v-if="picture.el" ref="layoutOptionsButton" type="button" class="layout-options" title="Layout Options: wrapping, position, size and alt text" aria-haspopup="dialog" :aria-expanded="picturePanel.open" :style="{ left: `${picture.x + picture.w + 6}px`, top: `${picture.y}px` }" @mousedown.prevent @click="togglePicturePanel">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="3" width="6" height="5" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M10 4h4M10 7h4M2 11h12M2 14h12" stroke="currentColor" stroke-width="1.3" /></svg>
+          </button>
           <div v-if="doc.headers.length" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')" @click="onHeaderFooterClick">
             <div v-if="doc.headers.length > 1" class="hf-tabs" role="tablist" aria-label="Headers">
               <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @click="hf.header = i">{{ v.label }}</button>
@@ -185,16 +191,71 @@
       </template>
     </div>
 
+    <form v-if="picturePanel.open" ref="picturePanelEl" class="picture-panel" role="dialog" aria-label="Layout Options" :style="{ left: `${picturePanel.x}px`, top: `${picturePanel.y}px` }" @submit.prevent @keydown.esc="closePicturePanel">
+      <fieldset class="wraps">
+        <legend>Text wrapping</legend>
+        <label v-for="[value, label] in WRAPS" :key="value"><input type="radio" name="wrap" :value="value" :checked="picturePanel.wrap === value" @change="applyWrap(value)" /> {{ label }}</label>
+      </fieldset>
+      <fieldset :disabled="picturePanel.wrap === 'inline'">
+        <legend>Position</legend>
+        <label>Horizontal
+          <select v-model="picturePanel.hAlign" @change="applyPosition('h')">
+            <option value="left">Left of the margins</option>
+            <option value="center">Centred between the margins</option>
+            <option value="right">Right of the margins</option>
+            <option value="offset">At a distance from the left margin</option>
+            <option v-if="picturePanel.hAlign === 'word'" value="word">As set in Word</option>
+          </select>
+        </label>
+        <label v-if="picturePanel.hAlign === 'offset'">Distance from the margin (cm) <input v-model.number="picturePanel.hOffset" type="number" step="0.1" @change="applyPosition('h')" /></label>
+        <label>Vertical
+          <select v-model="picturePanel.vAlign" @change="applyPosition('v')">
+            <option value="offset">Below its paragraph (moves with text)</option>
+            <option value="top">Top of the margins</option>
+            <option value="center">Middle of the margins</option>
+            <option value="bottom">Bottom of the margins</option>
+            <option v-if="picturePanel.vAlign === 'word'" value="word">As set in Word</option>
+          </select>
+        </label>
+        <label v-if="picturePanel.vAlign === 'offset'">Distance below the paragraph (cm) <input v-model.number="picturePanel.vOffset" type="number" step="0.1" @change="applyPosition('v')" /></label>
+      </fieldset>
+      <fieldset>
+        <legend>Size</legend>
+        <div class="size-row">
+          <label>Width (cm) <input v-model.number="picturePanel.width" type="number" min="0.1" step="0.1" @change="applySize('width')" /></label>
+          <label>Height (cm) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
+        </div>
+        <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> Keep proportions</label>
+        <button type="button" @click="resetPictureSize">Reset size</button>
+      </fieldset>
+      <label class="alt">Alt text (describe the picture for people who can't see it)
+        <textarea v-model="picturePanel.alt" rows="2" @change="applyAlt" />
+      </label>
+      <div class="actions"><button type="button" @click="closePicturePanel">Close</button></div>
+    </form>
+
     <div v-if="tableMenu.open" ref="tableMenuEl" class="change-menu" role="menu" aria-label="Table layout" :style="{ left: `${tableMenu.x}px`, top: `${tableMenu.y}px` }" @mousedown.prevent @keydown.esc="closeTableMenu" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="tableAction('rowsAbove')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows above` : 'Insert row above' }}</button>
       <button type="button" role="menuitem" @click="tableAction('rowsBelow')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows below` : 'Insert row below' }}</button>
       <button type="button" role="menuitem" @click="tableAction('columnsLeft')">{{ tableMenu.newCols > 1 ? `Insert ${tableMenu.newCols} columns to the left` : 'Insert column to the left' }}</button>
       <button type="button" role="menuitem" @click="tableAction('columnsRight')">{{ tableMenu.newCols > 1 ? `Insert ${tableMenu.newCols} columns to the right` : 'Insert column to the right' }}</button>
       <hr />
+      <button type="button" role="menuitem" :disabled="!tableMenu.multi" :title="tableMenu.multi ? '' : 'Select the cells to merge first'" @click="tableAction('merge')">Merge cells</button>
+      <button type="button" role="menuitem" @click="openSplitDialog">Split cells…</button>
+      <hr />
       <button type="button" role="menuitem" @click="tableAction('deleteRows')">{{ tableMenu.rows > 1 ? `Delete ${tableMenu.rows} rows` : 'Delete row' }}</button>
       <button type="button" role="menuitem" @click="tableAction('deleteColumns')">{{ tableMenu.cols > 1 ? `Delete ${tableMenu.cols} columns` : 'Delete column' }}</button>
       <button type="button" role="menuitem" @click="tableAction('deleteTable')">Delete table</button>
     </div>
+
+    <form v-if="splitDialog.open" ref="splitDialogEl" class="chooser author-dialog split-dialog" role="dialog" aria-label="Split cells" :style="{ left: `${splitDialog.x}px`, top: `${splitDialog.y}px` }" @submit.prevent="splitCells" @keydown.esc="closeSplitDialog">
+      <label>Number of columns <input v-model.number="splitDialog.cols" type="number" min="1" max="20" required /></label>
+      <label>Number of rows <input v-model.number="splitDialog.rows" type="number" min="1" max="50" required /></label>
+      <div class="actions">
+        <button type="submit" class="confirm">Split</button>
+        <button type="button" @click="closeSplitDialog">Cancel</button>
+      </div>
+    </form>
 
     <div v-if="tablePicker.open" ref="tablePickerEl" class="table-picker" role="dialog" aria-label="Insert table" :style="{ left: `${tablePicker.x}px`, top: `${tablePicker.y}px` }" @keydown.esc="closeTablePicker">
       <p class="size" aria-hidden="true">{{ tablePicker.cols }} × {{ tablePicker.rows }} table</p>
@@ -272,6 +333,7 @@ import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../ed
 import { drawMarks } from '../editor/marks.js';
 import { changeItems, changesAt, adjacentChange, itemRange } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
+import { WRAPS } from '../docx/pictures.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -502,6 +564,11 @@ function onSelectionChange() {
   const range = selectionInPage();
   if (!range) return;
   lastReadOnly = null;
+  const pic = pictureInSelection(range);
+  if (pic !== picture.el) {
+    if (pic) showPicture(pic);
+    else if (!picturePanel.open) picture.el = null;
+  }
   // Clicking into placeholder text selects all of it, so typing replaces it (as in Word).
   const control = range.collapsed ? controlAt(range.startContainer, page.value) : null;
   if (control?.classList.contains('showing-placeholder') && control.querySelector(':scope > .sdt-content')) {
@@ -897,9 +964,239 @@ function addRow(cell) {
   markDirty();
 }
 
+// ------------------------------------------------------------------ picture layout
+
+const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+const CM = 360000; // EMU per centimetre
+const PX = 9525; // EMU per pixel
+const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline' });
+const picturePanel = reactive({ open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '' });
+const picturePanelEl = ref(null);
+const layoutOptionsButton = ref(null);
+const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+
+/** The picture a selection is on: exactly one picture and nothing else (as a click selects it). */
+function pictureInSelection(range) {
+  if (!range || range.collapsed) return null;
+  const frag = range.cloneContents();
+  if (frag.textContent.trim() || frag.querySelectorAll('.picture').length !== 1) return null;
+  return [...page.value.querySelectorAll('.picture')].find((p) => range.intersectsNode(p)) || null;
+}
+
+/** Selects a picture, as a click does in Word: the frame with its handles shows around it. */
+function selectPicture(span) {
+  const range = document.createRange();
+  range.selectNode(span);
+  page.value.focus({ preventScroll: true });
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  savedRange = range.cloneRange();
+  showPicture(span);
+}
+
+function showPicture(span) {
+  if (picture.el !== span) picturePanel.open = false;
+  picture.el = span;
+  updatePictureFrame();
+  if (span) message.value = 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
+}
+
+/** Puts the frame over the selected picture (in the sheet's coordinates). */
+function updatePictureFrame() {
+  const span = picture.el;
+  if (!span?.isConnected) {
+    picture.el = null;
+    picturePanel.open = false;
+    return;
+  }
+  const img = span.querySelector('img') || span;
+  const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
+  const r = img.getBoundingClientRect();
+  Object.assign(picture, { x: r.left - sheet.left, y: r.top - sheet.top, w: r.width, h: r.height, wrap: span.dataset.wrap || 'inline' });
+}
+
+/** Applies a change to the selected picture as one undoable step, keeping it selected. */
+function changePicture(change, done) {
+  const span = picture.el;
+  if (!span?.isConnected) return;
+  undoStack.flush();
+  change(span);
+  undoStack.commit();
+  markDirty();
+  nextTick(() => {
+    if (span.isConnected) selectPicture(span);
+    fillPicturePanel();
+    if (done) message.value = done;
+  });
+}
+
+/** Drag a handle: corners keep the proportions, sides stretch, as in Word. */
+function startResize(e, handle) {
+  const span = picture.el;
+  const img = span?.querySelector('img');
+  if (!img) return;
+  const start = { x: e.clientX, y: e.clientY, w: img.offsetWidth, h: img.offsetHeight };
+  const target = e.currentTarget;
+  target.setPointerCapture(e.pointerId);
+  let size = { w: start.w, h: start.h };
+  const move = (ev) => {
+    const dx = (ev.clientX - start.x) * (handle.includes('w') ? -1 : handle.includes('e') ? 1 : 0);
+    const dy = (ev.clientY - start.y) * (handle.includes('n') ? -1 : handle.includes('s') ? 1 : 0);
+    let w = start.w + dx;
+    let h = start.h + dy;
+    if (handle.length === 2) {
+      const scale = Math.max(w / start.w, h / start.h);
+      w = start.w * scale;
+      h = start.h * scale;
+    }
+    size = { w: Math.max(8, w), h: Math.max(8, h) };
+    img.style.width = `${size.w}px`;
+    img.style.height = `${size.h}px`;
+    updatePictureFrame();
+  };
+  const up = () => {
+    target.removeEventListener('pointermove', move);
+    target.removeEventListener('pointerup', up);
+    target.removeEventListener('pointercancel', up);
+    if (size.w === start.w && size.h === start.h) return;
+    changePicture((s) => doc.setPictureSize(s, size.w * PX, size.h * PX), `Picture resized to ${round(size.w * PX / CM, 1)} × ${round(size.h * PX / CM, 1)} cm`);
+  };
+  target.addEventListener('pointermove', move);
+  target.addEventListener('pointerup', up);
+  target.addEventListener('pointercancel', up);
+}
+
+/**
+ * A press on a picture selects it; dragging a selected floating picture moves it, its new place
+ * measured from the left margin and from its paragraph (so it moves with the text, as by default
+ * in Word).
+ */
+function onPictureMousedown(e, span) {
+  e.preventDefault();
+  const wasSelected = picture.el === span;
+  selectPicture(span);
+  if (!wasSelected || (span.dataset.wrap || 'inline') === 'inline' || e.button !== 0) return;
+  const img = span.querySelector('img');
+  const start = { x: e.clientX, y: e.clientY };
+  let moved = false;
+  const move = (ev) => {
+    const dx = ev.clientX - start.x;
+    const dy = ev.clientY - start.y;
+    if (!moved && Math.hypot(dx, dy) < 4) return;
+    moved = true;
+    span.style.transform = `translate(${dx}px, ${dy}px)`;
+    updatePictureFrame();
+  };
+  const up = (ev) => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    if (!moved) return;
+    const r = img.getBoundingClientRect(); // where it was dropped
+    span.style.transform = '';
+    const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
+    const block = span.closest(BLOCK_SELECTOR) || span.parentElement;
+    const left = r.left - (sheet.left + doc.page.left);
+    const top = r.top - block.getBoundingClientRect().top;
+    changePicture((s) => doc.setPicturePosition(s, {
+      h: { relativeFrom: 'margin', offset: Math.round(left) * PX },
+      v: { relativeFrom: 'paragraph', offset: Math.round(top) * PX },
+    }), 'Picture moved');
+    void ev;
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+/** Fills the Layout Options panel from the selected picture. */
+function fillPicturePanel() {
+  if (!picture.el) return;
+  const info = doc.pictureLayout(picture.el);
+  if (!info) return;
+  const page = doc.page;
+  const h = info.h || { relativeFrom: 'margin', align: 'left' };
+  const v = info.v || { relativeFrom: 'paragraph', offset: 0 };
+  let hAlign = 'word';
+  let hOffset = 0;
+  if (h.align && ['left', 'center', 'right'].includes(h.align) && ['margin', 'column'].includes(h.relativeFrom)) hAlign = h.align;
+  else if (h.align == null && ['margin', 'column', 'page'].includes(h.relativeFrom)) {
+    hAlign = 'offset';
+    hOffset = round(((h.offset || 0) / PX - (h.relativeFrom === 'page' ? page.left : 0)) * PX / CM);
+  }
+  let vAlign = 'word';
+  if (v.align && ['top', 'center', 'bottom'].includes(v.align) && v.relativeFrom === 'margin') vAlign = v.align;
+  else if (v.align == null && ['paragraph', 'line'].includes(v.relativeFrom)) vAlign = 'offset';
+  Object.assign(picturePanel, {
+    wrap: info.wrap, hAlign, hOffset, vAlign, vOffset: vAlign === 'offset' ? round((v.offset || 0) / CM) : 0,
+    width: round(info.cx / CM), height: round(info.cy / CM), alt: info.descr,
+  });
+}
+
+function togglePicturePanel() {
+  if (picturePanel.open) return closePicturePanel();
+  fillPicturePanel();
+  const r = layoutOptionsButton.value.getBoundingClientRect();
+  Object.assign(picturePanel, { open: true, x: Math.max(8, Math.min(r.right + 6, window.innerWidth - 310)), y: Math.max(8, r.top) });
+  nextTick(() => {
+    const el = picturePanelEl.value;
+    if (!el) return;
+    picturePanel.y = Math.max(8, Math.min(picturePanel.y, window.innerHeight - el.offsetHeight - 8)); // all of it on screen
+    el.querySelector('input:checked, input')?.focus();
+  });
+}
+
+function closePicturePanel() {
+  picturePanel.open = false;
+  if (picture.el?.isConnected) selectPicture(picture.el);
+  else page.value.focus();
+}
+
+const WRAP_NAMES = Object.fromEntries(WRAPS);
+
+function applyWrap(wrap) {
+  changePicture((s) => doc.setPictureWrap(s, wrap), `Text wrapping: ${WRAP_NAMES[wrap]}`);
+}
+
+function applyPosition(which) {
+  const p = picturePanel;
+  const h = which === 'h' && p.hAlign !== 'word'
+    ? (p.hAlign === 'offset' ? { relativeFrom: 'margin', offset: (Number(p.hOffset) || 0) * CM } : { relativeFrom: 'margin', align: p.hAlign })
+    : null;
+  const v = which === 'v' && p.vAlign !== 'word'
+    ? (p.vAlign === 'offset' ? { relativeFrom: 'paragraph', offset: (Number(p.vOffset) || 0) * CM } : { relativeFrom: 'margin', align: p.vAlign })
+    : null;
+  if (!h && !v) return;
+  changePicture((s) => doc.setPicturePosition(s, { h, v }), 'Picture positioned');
+}
+
+function applySize(which) {
+  const info = doc.pictureLayout(picture.el);
+  if (!info) return;
+  let w = Math.max(0.1, Number(picturePanel.width) || 0.1) * CM;
+  let h = Math.max(0.1, Number(picturePanel.height) || 0.1) * CM;
+  if (picturePanel.lock) {
+    if (which === 'width') h = (w * info.cy) / info.cx;
+    else w = (h * info.cx) / info.cy;
+  }
+  changePicture((s) => doc.setPictureSize(s, w, h), `Picture resized to ${round(w / CM, 1)} × ${round(h / CM, 1)} cm`);
+}
+
+/** Back to the picture's own size (at 96 pixels an inch), narrowed to fit between the margins. */
+function resetPictureSize() {
+  const img = picture.el?.querySelector('img');
+  if (!img?.naturalWidth) return;
+  const max = doc.page.width - doc.page.left - doc.page.right;
+  const scale = Math.min(1, max / img.naturalWidth);
+  changePicture((s) => doc.setPictureSize(s, img.naturalWidth * scale * PX, img.naturalHeight * scale * PX), 'Picture back to its own size');
+}
+
+function applyAlt() {
+  changePicture((s) => doc.setPictureDescription(s, picturePanel.alt.trim()), picturePanel.alt.trim() ? 'Alt text saved' : 'Alt text removed');
+}
+
 // ------------------------------------------------------------------ table layout
 
-const tableMenu = reactive({ open: false, x: 0, y: 0, rows: 1, cols: 1, newCols: 1 });
+const tableMenu = reactive({ open: false, x: 0, y: 0, rows: 1, cols: 1, newCols: 1, multi: false });
 const tableMenuEl = ref(null);
 const layoutButton = ref(null);
 
@@ -919,19 +1216,20 @@ function tableSelection() {
   // A selection ending at the very start of a cell (as when Tab selects a whole cell) ends before it.
   const end = range.cloneRange();
   end.collapse(false);
-  if (b && b !== a && isAtBlockStart(end, b)) {
+  if (b && b !== a && isAtBlockStart(end, b) && !isEmptyBlock(b)) {
     const cells = [...table.querySelectorAll(':scope > tbody > tr > td, :scope > tr > td')];
     b = cells[cells.indexOf(b) - 1] || a;
   }
   if (!b || b.closest('table') !== table) b = a;
   const pa = doc.cellPosition(a);
   const pb = doc.cellPosition(b);
-  if (!pa || !pb) return { table, cell: a, rows: [0, 0], cols: [0, 0], newCols: 1 };
+  if (!pa || !pb) return { table, cell: a, rows: [0, 0], cols: [0, 0], newCols: 1, multi: false };
   const cols = [Math.min(pa.start, pb.start), Math.max(pa.start + pa.span, pb.start + pb.span) - 1];
   return {
     table,
     cell: a,
     newCols: a === b ? 1 : cols[1] - cols[0] + 1, // columns to insert: one for a single (even spanning) cell
+    multi: a !== b,
     rows: [Math.min(pa.row, pb.row), Math.max(pa.row, pb.row)],
     cols: [Math.min(pa.start, pb.start), Math.max(pa.start + pa.span, pb.start + pb.span) - 1],
   };
@@ -949,6 +1247,7 @@ function toggleTableMenu() {
     rows: sel.rows[1] - sel.rows[0] + 1,
     cols: sel.cols[1] - sel.cols[0] + 1,
     newCols: sel.newCols,
+    multi: sel.multi,
   });
   nextTick(() => tableMenuEl.value?.querySelector('button')?.focus());
 }
@@ -997,7 +1296,6 @@ function tableAction(kind) {
   const rowCount = r1 - r0 + 1;
   const colCount = c1 - c0 + 1;
   const tracked = trackedBy(cell);
-  const untrackedNote = tracked ? ' – column changes can’t be tracked, so they won’t be marked' : '';
   const neighbours = { before: table.previousElementSibling, after: table.nextElementSibling, parent: table.parentElement };
   const row = cell.parentElement;
   undoStack.flush();
@@ -1011,9 +1309,9 @@ function tableAction(kind) {
     done = `${rowCount === 1 ? 'Row' : `${rowCount} rows`} inserted ${below ? 'below' : 'above'}`;
   } else if (kind === 'columnsLeft' || kind === 'columnsRight') {
     const right = kind === 'columnsRight';
-    res = doc.insertTableColumns(table, c0, colCount, sel.newCols, right);
+    res = doc.insertTableColumns(table, c0, colCount, sel.newCols, right, tracked);
     if (!res.reason) focus = cellAtColumn(row, right ? c1 + 1 : c0);
-    done = `${sel.newCols === 1 ? 'Column' : `${sel.newCols} columns`} inserted to the ${right ? 'right' : 'left'}${untrackedNote}`;
+    done = `${sel.newCols === 1 ? 'Column' : `${sel.newCols} columns`} inserted to the ${right ? 'right' : 'left'}${tracked ? ' (tracked)' : ''}`;
   } else if (kind === 'deleteRows') {
     res = doc.deleteTableRows(table, r0, r1, tracked);
     done = tracked ? `${plural(rowCount, 'Row', 'rows')} marked as deleted (tracked)` : `${plural(rowCount, 'Row', 'rows')} deleted – Undo (Ctrl+Z) brings ${rowCount === 1 ? 'it' : 'them'} back`;
@@ -1022,9 +1320,20 @@ function tableAction(kind) {
       focus = row.isConnected ? cellAtColumn(row, c0) : rows[Math.min(r0, rows.length - 1)] && cellAtColumn(rows[Math.min(r0, rows.length - 1)], c0);
     }
   } else if (kind === 'deleteColumns') {
-    res = doc.deleteTableColumns(table, c0, c1);
-    done = `${plural(colCount, 'Column', 'columns')} deleted – Undo (Ctrl+Z) brings ${colCount === 1 ? 'it' : 'them'} back${tracked ? '; column changes can’t be tracked' : ''}`;
+    res = doc.deleteTableColumns(table, c0, c1, tracked);
+    done = tracked && !res.removed && table.querySelector('td[data-rev-cell="del"]')
+      ? `${plural(colCount, 'Column', 'columns')} marked as deleted (tracked)`
+      : `${plural(colCount, 'Column', 'columns')} deleted – Undo (Ctrl+Z) brings ${colCount === 1 ? 'it' : 'them'} back`;
     if (!res.reason && !res.removed && row.isConnected) focus = cellAtColumn(row, Math.max(0, c0 - 1));
+  } else if (kind === 'merge') {
+    res = doc.mergeTableCells(table, sel.rows, sel.cols);
+    if (res.cell) focus = res.cell;
+    done = `Cells merged${tracked ? ' – merging cells isn’t tracked, so it won’t be marked' : ''}`;
+  } else if (kind === 'split') {
+    const { cols, rows } = splitDialog;
+    res = doc.splitTableCell(table, cell, cols, rows);
+    focus = cell.isConnected ? cell : null;
+    done = `Cell split into ${cols} × ${rows}${tracked ? ' – splitting cells isn’t tracked, so it won’t be marked' : ''}`;
   } else if (kind === 'deleteTable') {
     res = doc.deleteTable(table, tracked);
     done = tracked ? 'Table marked as deleted (tracked)' : 'Table deleted – Undo (Ctrl+Z) brings it back';
@@ -1051,6 +1360,30 @@ function tableAction(kind) {
   refreshComments();
   onSelectionChange();
   message.value = done;
+}
+
+const splitDialog = reactive({ open: false, x: 0, y: 0, cols: 2, rows: 1 });
+const splitDialogEl = ref(null);
+
+/** Split cells…: asks how many columns and rows, as Word does. */
+function openSplitDialog() {
+  tableMenu.open = false;
+  const rect = layoutButton.value.getBoundingClientRect();
+  Object.assign(splitDialog, { open: true, cols: 2, rows: 1, x: Math.max(8, Math.min(rect.left, window.innerWidth - 240)), y: rect.bottom + 4 });
+  nextTick(() => splitDialogEl.value?.querySelector('input')?.select());
+}
+
+function closeSplitDialog() {
+  splitDialog.open = false;
+  refocus();
+}
+
+function splitCells() {
+  splitDialog.cols = Math.min(20, Math.max(1, Math.floor(Number(splitDialog.cols) || 1)));
+  splitDialog.rows = Math.min(50, Math.max(1, Math.floor(Number(splitDialog.rows) || 1)));
+  splitDialog.open = false;
+  if (splitDialog.cols === 1 && splitDialog.rows === 1) return refocus();
+  tableAction('split');
 }
 
 // ------------------------------------------------------------------ inserting tables
@@ -1338,7 +1671,7 @@ function refreshChanges() {
   changes.wordOnly = doc.wordOnlyChanges(page.value);
 }
 
-const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row'].includes(item.kind) ? item.kind : null);
+const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row', 'cells'].includes(item.kind) ? item.kind : null);
 
 /** "the insertion by Alice", "your deletion", "the formatting change by Eve", "the inserted row by Dan". */
 function describeChange(item) {
@@ -1349,6 +1682,7 @@ function describeChange(item) {
   if (item.kind === 'run') return `the formatting change${by}`;
   if (item.kind === 'para') return `the paragraph formatting change${by}`;
   if (item.kind === 'row') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} row${by}`;
+  if (item.kind === 'cells') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} column${by}`;
   if (rev.mark) return `${who} paragraph break ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
   return `${who} ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
 }
@@ -1404,7 +1738,7 @@ function resolveCurrent(accept, then = 'next') {
   const first = targets[0];
   const at = document.createRange();
   if (first.kind === 'mark') at.setStart(first.el, first.el.childNodes.length);
-  else at.setStartBefore(first.kind === 'row' ? first.el.closest('table') : first.el);
+  else at.setStartBefore(first.kind === 'row' || first.kind === 'cells' ? first.el.closest('table') : first.el);
   at.collapse(true);
   resolveItems(targets, accept);
   const sel = window.getSelection();
@@ -1838,6 +2172,11 @@ function explainReadOnly(el, refused = false) {
 }
 
 function onPageMousedown(e) {
+  const pic = e.target.closest?.('.picture');
+  if (pic && page.value.contains(pic)) {
+    onPictureMousedown(e, pic);
+    return;
+  }
   pointerDown = { x: e.clientX, y: e.clientY, range: selectionInPage()?.cloneRange() || null };
 }
 
@@ -2065,6 +2404,7 @@ function onDrop(e) {
 }
 
 function onClick(e) {
+  if (e.target.closest('.picture')) return; // selected on mousedown
   const marker = e.target.closest('.comment-ref');
   if (marker) {
     commentsOpen.value = true;
@@ -2199,6 +2539,8 @@ function markNearField(range) {
 function onDocumentMousedown(e) {
   if (chooser.open && !chooserEl.value?.contains(e.target) && !chooserTarget?.contains(e.target)) closeChooser();
   if (palette.open && !paletteEl.value?.contains(e.target) && !paletteButton.value?.contains(e.target)) palette.open = false;
+  if (picturePanel.open && !picturePanelEl.value?.contains(e.target) && !layoutOptionsButton.value?.contains(e.target)) picturePanel.open = false;
+  if (splitDialog.open && !splitDialogEl.value?.contains(e.target)) splitDialog.open = false;
   if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
@@ -2510,7 +2852,7 @@ async function close() {
 .workspace { flex: 1; min-height: 0; display: flex; }
 .canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
 .docx-sheet {
-  position: relative; box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
+  position: relative; isolation: isolate; /* pictures behind the text stay on the page */ box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
   box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%);
   display: flex; flex-direction: column;
 }
@@ -2547,6 +2889,37 @@ async function close() {
 }
 .change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
+.picture-frame { position: absolute; z-index: 6; border: 1px solid var(--accent); pointer-events: none; box-sizing: border-box; }
+.picture-frame .handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; background: #fff; border: 1px solid var(--accent); border-radius: 50%; pointer-events: auto; touch-action: none; }
+.picture-frame .nw { left: 0; top: 0; cursor: nwse-resize; }
+.picture-frame .n { left: 50%; top: 0; cursor: ns-resize; }
+.picture-frame .ne { left: 100%; top: 0; cursor: nesw-resize; }
+.picture-frame .e { left: 100%; top: 50%; cursor: ew-resize; }
+.picture-frame .se { left: 100%; top: 100%; cursor: nwse-resize; }
+.picture-frame .s { left: 50%; top: 100%; cursor: ns-resize; }
+.picture-frame .sw { left: 0; top: 100%; cursor: nesw-resize; }
+.picture-frame .w { left: 0; top: 50%; cursor: ew-resize; }
+.layout-options {
+  position: absolute; z-index: 6; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
+}
+.picture-panel {
+  position: fixed; z-index: 10; width: 300px; box-sizing: border-box; max-height: calc(100vh - 16px); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%); font-size: 13px;
+}
+.picture-panel fieldset { margin: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; gap: 4px; }
+.picture-panel fieldset:disabled { opacity: .5; }
+.picture-panel legend { font-weight: 600; padding: 0 4px; }
+.picture-panel .wraps { display: grid; grid-template-columns: 1fr 1fr; }
+.picture-panel label { display: flex; flex-direction: column; gap: 2px; }
+.picture-panel .wraps label, .picture-panel label.inline { flex-direction: row; align-items: center; gap: 4px; }
+.picture-panel input[type=number], .picture-panel select, .picture-panel textarea { font: inherit; padding: 2px 4px; width: 100%; min-width: 0; box-sizing: border-box; }
+.picture-panel .size-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.picture-panel button { font: inherit; padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; align-self: flex-start; }
+.picture-panel .actions { display: flex; justify-content: flex-end; }
+.change-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
+.split-dialog label { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.split-dialog input { width: 64px; }
 .change-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
 .table-picker {
   position: fixed; z-index: 10; padding: 8px; display: flex; flex-direction: column; gap: 8px;
@@ -2655,6 +3028,10 @@ async function close() {
 .docx-sheet [data-rev-mark]::after { content: '¶'; margin-left: 1px; }
 .docx-sheet [data-rev-mark="ins"]::after { color: #1e6b34; }
 .docx-sheet [data-rev-mark="del"]::after { color: #b3261e; text-decoration: line-through; }
+.docx-sheet .raw-inline.picture { cursor: pointer; }
+.docx-sheet .raw-inline.picture img { display: block; }
+.docx-sheet .raw-inline.picture::selection, .docx-sheet .raw-inline.picture img::selection { background: transparent; } /* the frame shows it is selected */
+.docx-sheet .raw-inline.picture[data-wrap="inline"] { display: inline-block; vertical-align: bottom; }
 .docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
 .docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: #2b579a; }
 .docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
@@ -2681,5 +3058,7 @@ async function close() {
 .docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
 .docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px #2b579a55; }
 .docx-sheet table.docx-table td.vmerge { border-top-color: transparent; }
+.docx-sheet table.docx-table td[data-rev-cell="ins"] { background-color: rgb(30 107 52 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(30 107 52 / 45%); }
+.docx-sheet table.docx-table td[data-rev-cell="del"] { background-color: rgb(179 38 30 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(179 38 30 / 45%); }
 .docx-sheet table.docx-table td.vmerge > * { visibility: hidden; }
 </style>

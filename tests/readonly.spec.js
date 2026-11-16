@@ -67,13 +67,13 @@ test('typing after clicking read-only content never lands where the caret was be
   expect(xml).toContain('Plain last paragraph.!');
 });
 
-test('locked fields, pictures and equations say what they are when clicked', async ({ page }) => {
+test('locked fields and equations say what they are when clicked; a picture is selected', async ({ page }) => {
   await openInEditor(page, await buildDocx(BODY, OPTS));
   await clickAt(page, page.locator('.docx-page .sdt-locked'), 0.9);
   await expect(status(page)).toHaveText('Read-only: Content control “Company” – locked in Word');
   await page.keyboard.type('!');
   await clickAt(page, page.locator('.docx-page .raw-inline:has(img)'), 0.5);
-  await expect(status(page)).toHaveText('Read-only: Picture – kept as it is; edit it in Word');
+  await expect(status(page)).toHaveText('Picture: drag a corner to resize, or open Layout Options for wrapping and position'); // pictures are laid out here
   await clickAt(page, page.locator('.docx-page [title^="Equation"]'), 0.5);
   await expect(status(page)).toHaveText('Read-only: Equation – kept as it is; edit it in Word');
   const { xml } = await download(page);

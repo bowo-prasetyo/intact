@@ -177,6 +177,8 @@ function formattingChanges(before, after, styleName) {
   const pictures = (p) => p.getElementsByTagNameNS(NS.a, 'blip').length + p.getElementsByTagNameNS(NS.v, 'imagedata').length;
   if (pictures(after) > pictures(before)) return ['Picture added'];
   if (pictures(after) < pictures(before)) return ['Picture removed'];
+  const drawings = (p) => [...p.getElementsByTagNameNS(W, 'drawing')].map(canon).join('|');
+  if (drawings(after) !== drawings(before)) return ['Layout of a picture changed (size, wrapping, position or alt text)'];
   const marks = (p) => p.getElementsByTagNameNS(W, 'commentReference').length;
   if (marks(after) > marks(before)) return ['Comment added'];
   if (marks(after) < marks(before)) return ['Comment removed'];
