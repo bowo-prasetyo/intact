@@ -137,7 +137,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - See what you can't edit, read-only and in plain language: headers and footers in the page
   margins (tabs switch between first page, other or even pages and sections when there are several); comments with their replies and resolved state in a side panel (click one to
   highlight its text); fields labelled by what they
-  are ("Page number – Word updates it"). Clicking read-only content (a tracked change, chart,
+  are ("Page number – Word updates it"); citations and bibliographies by the reference manager they
+  come from ("Zotero citation – Zotero updates it in Word; edits made here are lost when it does";
+  also EndNote, Mendeley, Citavi and Word's own), and typing in one says so in the status bar. Clicking read-only content (a tracked change, chart,
   equation, locked field or cell) says in the status bar what it is and where to edit it, and puts
   the caret beside it, as Word does; typing in it, or in a header, footer or comment, says why
   nothing happens instead of doing nothing (or typing where the caret was before)
@@ -145,9 +147,19 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   spaces, → for tabs, ↵ for line breaks and ¶ at each paragraph end. They are drawn over the page,
   never in it, so they can't change the document; the choice is remembered in this browser
 - Paste with basic formatting, as Word's "merge formatting": bold, italic, underline,
-  strikethrough, superscript, subscript, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
-  Google Docs and Word; fonts, colours, styles, links and pictures in copied text don't (the status
-  bar says when pictures were skipped; a picture copied on its own is inserted)
+  strikethrough, superscript, subscript, paragraphs, line breaks, bulleted/numbered lists and links
+  to web and e-mail addresses come through from web pages, Google Docs and Word; fonts, colours,
+  styles, other links and pictures in copied text don't (the status bar says when pictures were
+  skipped; a picture copied on its own is inserted)
+- Links (toolbar button or Ctrl+K), as in Word: the selected text, or new text at the caret,
+  becomes a link to a web address, an e-mail address or a DOI (`10.1000/xyz` becomes
+  `https://doi.org/10.1000/xyz`); in a link, the same dialog changes its address or removes it. Links
+  are written as Word writes them (`w:hyperlink` with an external relationship in the part the link
+  is in, so links in notes work too, and Word's Hyperlink style, added if missing); a link inserted
+  while tracking is a tracked insertion. Relationships of links that are deleted again are taken out
+- The status bar counts the words in the document, and those selected ("12 of 340 words"); the
+  page takes the document's language (and a run in another language its own), so browsers that
+  choose a spelling dictionary by language (Firefox) check the text in it
 - Track Changes for your own edits (toolbar button or Ctrl+Shift+E), as in Word: typing, deleting,
   Enter, Shift+Enter, paste, Replace and page breaks are recorded as tracked changes with your name
   and the date, shown in colour as you work (deleted text struck through and kept, a deleted
@@ -184,7 +196,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Ctrl+Alt+H (highlight), Ctrl+Space (remove bold, italic, underline, strikethrough, superscript and
   subscript; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
-  (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+F/H,
+  (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+K (link), Ctrl+F/H,
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
@@ -308,8 +320,11 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   turned with its picture. Field cells that are locked, linked to data or not text
   fields can't be merged
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
-- Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
-  lists (not highlight); pictures within copied text and links (their text is kept) are not added
+- Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs,
+  lists and links to web and e-mail addresses (not highlight); pictures within copied text and other
+  links (their text is kept) are not added. Making existing text a link isn't tracked
+- Chrome and Edge check spelling in the languages chosen in their settings, whatever the document's
+  language
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it);

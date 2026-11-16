@@ -58,6 +58,9 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
+      <button ref="linkButton" type="button" title="Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here" @click="openLinkDialog">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.6 2.6 0 0 1 3.7 3.7l-1.1 1.1M8.8 11.4l-1.1 1.1a2.6 2.6 0 0 1-3.7-3.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" /></svg>
+      </button>
       <button type="button" title="Insert picture" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
@@ -425,8 +428,23 @@
       </div>
     </form>
 
+    <form v-if="linkDialog.open" ref="linkEl" class="chooser link-dialog" role="dialog" aria-label="Link" :style="{ left: `${linkDialog.x}px`, top: `${linkDialog.y}px` }" @submit.prevent="confirmLink" @keydown.esc="closeLinkDialog">
+      <label for="link-address">Address: web page, e-mail or DOI</label>
+      <input id="link-address" ref="linkInput" v-model="linkDialog.address" type="text" autocomplete="off" spellcheck="false" placeholder="https://… or 10.1000/xyz" :aria-invalid="!!linkDialog.error" />
+      <template v-if="linkDialog.askText">
+        <label for="link-text">Text to show</label>
+        <input id="link-text" v-model="linkDialog.text" type="text" autocomplete="off" :placeholder="linkDialog.address" />
+      </template>
+      <p v-if="linkDialog.error" class="error" role="alert">{{ linkDialog.error }}</p>
+      <div class="actions">
+        <button type="submit" class="confirm">{{ linkDialog.editing ? 'Update' : 'Insert' }}</button>
+        <button v-if="linkDialog.editing" type="button" @click="removeLink">Remove link</button>
+        <button type="button" @click="closeLinkDialog">Cancel</button>
+      </div>
+    </form>
+
     <footer class="statusbar">
-      <span>{{ words }} words</span>
+      <span>{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span role="status" aria-live="polite">{{ message }}</span>
     </footer>
@@ -444,7 +462,8 @@ import { currentDoc, setDocument } from '../store.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 import { controlAt, controlBox, setControlText, clearPlaceholder, fieldAtSelection } from '../editor/controls.js';
-import { parseClipboard, runNodes, insertAtCaret } from '../editor/paste.js';
+import { parseClipboard, runNodes, insertAtCaret, newLink } from '../editor/paste.js';
+import { normalizeLink } from '../docx/links.js';
 import {
   removesContent, rangesRemovedBy, trackedChangeAt, refusalMessage, commentMarkers, restoreCommentMarkers,
   onlyHiddenMarkers, beyondHiddenMarkers,
@@ -471,6 +490,7 @@ const dirty = ref(false);
 const saving = ref(false);
 const message = ref('');
 const words = ref(0);
+const selectedWords = ref(null); // words in the selection, as Word's status bar counts them; null if none
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
 // The document's own paragraph styles, offered in the style menu after the built-in ones.
 const styleChoices = ref([]);
@@ -572,6 +592,9 @@ onMounted(() => {
   document.head.append(styleEl);
   refreshCss();
   page.value.replaceChildren(doc.render());
+  // The document's language, so the browser checks spelling (and hyphenates) in it where it can.
+  const lang = doc.styles.language();
+  if (lang && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i.test(lang)) page.value.closest('.docx-sheet').lang = lang;
   styleChoices.value = doc.styleChoices();
   renderVariants(headerEl.value, 'header');
   renderVariants(footerEl.value, 'footer');
@@ -695,6 +718,7 @@ function onSelectionChange() {
   const range = selectionInPage();
   if (!range) return;
   if (caretOutOfMarker(range)) return; // the selection changes again, and this runs again
+  countSelectedWords(range);
   lastReadOnly = null;
   const pic = pictureInSelection(range);
   if (pic !== picture.el) {
@@ -980,9 +1004,15 @@ function onTab(e) {
 // ------------------------------------------------------------------ events
 
 let wordTimer = 0;
+const wordCount = (text) => (text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []).length;
+
 function countWords() {
-  const text = page.value?.innerText || '';
-  words.value = (text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []).length;
+  words.value = wordCount(page.value?.innerText || '');
+}
+
+/** The words in the selection (null when nothing is selected), shown as "12 of 340 words". */
+function countSelectedWords(range) {
+  selectedWords.value = range && !range.collapsed ? wordCount(range.toString()) : null;
 }
 
 function markDirty() {
@@ -1029,6 +1059,9 @@ function onInput(e) {
   markDirty();
   refreshComments();
   if (e?.inputType?.startsWith('format')) noteUntrackedFormatting();
+  // Typing in a citation or bibliography from Zotero, EndNote or Mendeley: say it will be rewritten.
+  const ref = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('.field[data-ref-manager]');
+  if (ref) message.value = `${ref.dataset.refManager}: ${ref.dataset.refManager.split(' ')[0]} replaces this text when it refreshes in Word – change it there instead`;
 }
 
 /** Moves text typed directly into the page into the paragraph after it (or a new one), caret after it. */
@@ -2301,6 +2334,7 @@ function pickHighlight(color) {
 function runShortcut(name) {
   if (['left', 'center', 'right', 'justify'].includes(name)) return alignBlocks(name);
   if (['bold', 'italic', 'underline'].includes(name)) return exec(name);
+  if (name === 'link') return openLinkDialog();
   if (name === 'normal') return applyBlockStyle('normal');
   if (name.startsWith('heading')) return applyBlockStyle(`h${name.slice(-1)}`);
   if (name === 'bullets') return toggleList('bullet');
@@ -2752,6 +2786,10 @@ function onPaste(e) {
   }
   const { blocks, skippedImages } = parseClipboard(html, text);
   if (!blocks.length) return;
+  // Pasted into a link: its text joins that link (a link can't hold another).
+  if ((range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('a')) {
+    for (const b of blocks) for (const r of b.runs) r.href = null;
+  }
   const tracked = trackedBy(range.startContainer);
   if (!range.collapsed) {
     if (tracked) deleteTracked(range, false, tracked);
@@ -2864,6 +2902,142 @@ function onClick(e) {
     e.preventDefault();
     window.open(a.href, '_blank', 'noopener');
   }
+}
+
+// ------------------------------------------------------------------ links
+
+const linkButton = ref(null);
+const linkEl = ref(null);
+const linkInput = ref(null);
+const linkDialog = reactive({ open: false, x: 0, y: 0, address: '', text: '', askText: false, editing: false, error: '' });
+let linkRange = null; // where the link goes: the selection when the dialog opened
+let linkTarget = null; // the link being changed, if the selection was in one
+
+/** The link (<a>) the selection is in, or null. */
+function linkAt(range) {
+  const el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  const a = el?.closest('a[href]');
+  return a && page.value.contains(a) ? a : null;
+}
+
+/**
+ * Ctrl+K, as in Word: a link to a web or e-mail address or a DOI for the selected text (or new text
+ * at the caret), or the link the caret is in, to change or remove.
+ */
+async function openLinkDialog() {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text, or select some, to add a link';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  const field = controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
+  if (field?.dataset.plain) {
+    message.value = 'A plain-text field can’t hold a link';
+    return;
+  }
+  if (closestBlock(range.startContainer) !== closestBlock(range.endContainer)) {
+    message.value = 'Select text within one paragraph to make it a link';
+    return;
+  }
+  linkTarget = linkAt(range);
+  linkRange = range.cloneRange();
+  const anchor = linkButton.value?.getBoundingClientRect();
+  Object.assign(linkDialog, {
+    open: true,
+    address: linkTarget ? linkTarget.getAttribute('href') : '',
+    text: '',
+    askText: !linkTarget && range.collapsed,
+    editing: !!linkTarget,
+    error: '',
+    x: Math.max(8, Math.min(anchor?.left ?? 8, window.innerWidth - 340)),
+    y: (anchor?.bottom ?? 60) + 4,
+  });
+  await nextTick();
+  linkInput.value?.focus();
+  linkInput.value?.select();
+}
+
+function closeLinkDialog() {
+  linkDialog.open = false;
+  page.value.focus();
+  if (linkRange) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(linkRange);
+  }
+}
+
+function confirmLink() {
+  const href = normalizeLink(linkDialog.address);
+  if (!href) {
+    linkDialog.error = 'Enter a web address (https://… or www.…), an e-mail address or a DOI (10.…)';
+    return;
+  }
+  linkDialog.open = false;
+  page.value.focus();
+  undoStack.flush();
+  const sel = window.getSelection();
+  let done;
+  if (linkTarget) {
+    // A new address for a link: the file's own link keeps its settings, with the new address.
+    if (linkTarget.getAttribute('href') !== href) {
+      linkTarget.setAttribute('href', href);
+      linkTarget.title = `${href} (Ctrl+click to open)`;
+      if (linkTarget.dataset.link !== 'new') linkTarget.dataset.link = 'changed';
+    }
+    done = 'Link updated';
+  } else if (linkRange.collapsed) {
+    // New text, shown as the link: typed, so tracked while tracking.
+    sel.removeAllRanges();
+    sel.addRange(linkRange);
+    const text = linkDialog.text.trim() || linkDialog.address.trim();
+    const a = newLink(href, [document.createTextNode(text)]);
+    const tracked = trackedBy(linkRange.startContainer);
+    if (tracked) insertTracked([a], tracked);
+    else insertAtCaret([a]);
+    done = tracked ? 'Link inserted (tracked)' : 'Link inserted';
+  } else {
+    // The selected text becomes the link (links inside it are taken out first, as in Word).
+    const frag = linkRange.extractContents();
+    for (const inner of [...frag.querySelectorAll('a')]) inner.replaceWith(...inner.childNodes);
+    const a = newLink(href, [...frag.childNodes]);
+    linkRange.insertNode(a);
+    const after = document.createRange();
+    after.setStartAfter(a);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+    done = 'Link added';
+  }
+  linkRange = null;
+  onInput();
+  undoStack.commit();
+  message.value = done; // after onInput, which clears the status
+  if (done === 'Link added') noteUntrackedFormatting();
+}
+
+function removeLink() {
+  linkDialog.open = false;
+  page.value.focus();
+  if (!linkTarget?.isConnected) return;
+  undoStack.flush();
+  const first = linkTarget.firstChild;
+  linkTarget.replaceWith(...linkTarget.childNodes);
+  if (first) {
+    const r = document.createRange();
+    r.setStartBefore(first);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+  linkRange = null;
+  onInput();
+  undoStack.commit();
+  message.value = 'Link removed – its text stays';
 }
 
 // ------------------------------------------------------------------ footnotes and endnotes
@@ -3445,11 +3619,13 @@ async function close() {
 @media (max-width: 720px) { .track-toggle .label, .review-toggle .label { display: none; } }
 .tracking-status { border: 0; background: none; color: #6f2dbd; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
 .author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
-.author-dialog label { font-size: 13px; }
-.author-dialog input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
-.author-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
-.author-dialog .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; text-align: center; }
-.author-dialog .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
+.link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }
+.link-dialog .error { margin: 0; color: #b3261e; font-size: 12px; }
+.author-dialog label, .link-dialog label { font-size: 13px; }
+.author-dialog input, .link-dialog input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+.author-dialog .actions, .link-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.author-dialog .actions button, .link-dialog .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; text-align: center; }
+.author-dialog .actions .confirm, .link-dialog .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
 .badge { font-size: 11px; color: var(--muted); }
 .chooser {
   position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;

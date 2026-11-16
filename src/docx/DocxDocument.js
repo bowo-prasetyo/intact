@@ -20,7 +20,7 @@ import { StyleSheet, jcToCss } from './styles.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import {
-  loadPart, parseComments, parseNotes, headerFooterVariants, fieldName, describe,
+  loadPart, parseComments, parseNotes, headerFooterVariants, fieldTitle, describe,
 } from './annotations.js';
 import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
@@ -37,7 +37,8 @@ import {
 } from './pictures.js';
 import { drawPicture } from './pictureView.js';
 import { ommlToMathml, isEquation } from './omml.js';
-import { fieldReview } from './fields.js';
+import { fieldReview, referenceManager } from './fields.js';
+import { relsPathOf } from './links.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -89,6 +90,7 @@ const TRACKED_INLINE = { ins: 'Inserted', moveTo: 'Moved here', del: 'Deleted', 
 const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TABLE', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER']);
 const HEADING_TAG = { title: 'h1', h1: 'h1', h2: 'h2', h3: 'h3', h4: 'h4', h5: 'h5', h6: 'h6' };
 const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+const HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
 const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
@@ -114,6 +116,9 @@ export class DocxDocument {
     this.name = name;
     this.mediaUrls = new Map();
     this.newMedia = new Map(); // pictures inserted this session: relationship id -> { path, target, data, ext, type }
+    // Links added this session (pasted, inserted or retargeted), per relationships part:
+    // rels path -> Map(address -> relationship id). The ids stay the same from one save to the next.
+    this.linkIds = new Map();
   }
 
   async text(path) {
@@ -548,6 +553,8 @@ export class DocxDocument {
       const part = this.noteParts[kind];
       if (!part) continue;
       let xml = null;
+      const mainRels = this.serialRels;
+      this.serialRels = { path: relsPathOf(part.path), rels: part.rels };
       for (const el of root.querySelectorAll(`.docx-note[data-note="${kind}"]`)) {
         const nodes = this.serializeBlocks(el);
         const s = new XMLSerializer();
@@ -559,6 +566,7 @@ export class DocxDocument {
         for (const n of nodes) note.appendChild(n); // adopted, so revision ids set later reach them
         if (!nodes.some((n) => n.localName === 'p')) note.appendChild(createW(xml, 'p'));
       }
+      this.serialRels = mainRels;
       out[kind] = xml;
     }
     return out;
@@ -1171,7 +1179,10 @@ export class DocxDocument {
         else if (mark.type === 'separate' && fields.length) {
           const wrap = document.createElement('span');
           wrap.className = 'field';
-          wrap.title = `${fieldName(fields[fields.length - 1].instr)} – Word updates it`;
+          const instr = fields[fields.length - 1].instr;
+          wrap.title = fieldTitle(instr);
+          const ref = referenceManager(instr);
+          if (ref && ref.source !== 'Word') wrap.dataset.refManager = `${ref.source} ${ref.kind}`;
           parent.append(wrap);
           parent = wrap;
         } else if (mark.type === 'end' && fields.length) {
@@ -1415,6 +1426,9 @@ export class DocxDocument {
     span.dataset.rpr = this.keep(rPr);
     const rStyle = wAttr(wChild(rPr, 'rStyle'), 'val');
     if (rStyle) span.dataset.rstyle = rStyle;
+    // The run's language, for the browser's spelling check (and hyphenation, screen readers).
+    const lang = wAttr(wChild(rPr, 'lang'), 'val');
+    if (lang && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i.test(lang)) span.lang = lang;
     Object.assign(span.style, cssToStyle(this.styles.rPrCss(rPr, false)));
     // Explicitly switched-off toggles (e.g. <w:b w:val="0"/>) are kept as inline CSS.
     if (onOff(wChild(rPr, 'b')) === false) span.style.fontWeight = 'normal';
@@ -2511,6 +2525,8 @@ export class DocxDocument {
   update(root) {
     const sectPr = wChild(this.body, 'sectPr');
     this.revisions = []; // <w:ins>/<w:del> written for this session's tracked changes
+    this.linksUsed = new Map(); // rels path -> Set of the ids of this session's links still in the text
+    this.serialRels = { path: this.relsPath, rels: this.rels };
     const nodes = this.serializeBlocks(root);
     this.notesOut = this.serializeNotes(root);
     this.revisions.forEach((rev, i) => rev.setAttributeNS(W, 'w:id', String(this.nextId + i)));
@@ -2637,6 +2653,7 @@ export class DocxDocument {
     this.update(root);
     this.zip.file(this.mainPath, serializeXml(this.xml));
     await this.writeMedia();
+    await this.writeLinks();
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
     await this.writeComments();
@@ -2924,11 +2941,9 @@ export class DocxDocument {
       state.last = null;
       return;
     }
-    if (el.tagName === 'A' && el.dataset.hl != null) {
-      const hl = this.rawClone(el.dataset.hl);
-      const inner = { last: null };
-      for (const c of el.childNodes) this.serializeInline(c, hl, ctx, block, inner);
-      if (hl.childNodes.length) out.appendChild(hl);
+    if (el.tagName === 'A' && (el.dataset.hl != null || el.dataset.link != null)) {
+      out.appendChild(this.serializeLink(el, ctx, block));
+      if (!out.lastChild.childNodes.length) out.lastChild.remove();
       state.last = null;
       return;
     }
@@ -2959,6 +2974,77 @@ export class DocxDocument {
     for (const c of el.childNodes) this.serializeInline(c, out, next, block, state);
   }
 
+  /**
+   * A link as <w:hyperlink>: one from the file keeps its element (and relationship) as it was; a
+   * new one (data-link="new", pasted or inserted) or one given a new address (data-link="changed")
+   * points at a relationship to its address in the part being written, and a new one's text takes
+   * Word's Hyperlink character style.
+   */
+  serializeLink(el, ctx, block, wrapRuns = null) {
+    const hl = el.dataset.hl != null ? this.rawClone(el.dataset.hl) : createW(this.xml, 'hyperlink');
+    if (el.dataset.link != null) {
+      hl.removeAttributeNS(NS.r, 'id');
+      hl.removeAttributeNS(W, 'anchor');
+      hl.setAttributeNS(NS.r, 'r:id', this.linkRel(el.getAttribute('href')));
+      if (el.dataset.hl == null) hl.setAttributeNS(W, 'w:history', '1');
+    }
+    const inner = { last: null };
+    const linkCtx = el.dataset.link === 'new' ? { ...ctx, link: true } : ctx;
+    const into = wrapRuns ? hl.appendChild(wrapRuns()) : hl;
+    for (const c of el.childNodes) this.serializeInline(c, into, linkCtx, block, inner);
+    if (wrapRuns && !into.childNodes.length) hl.removeChild(into);
+    return hl;
+  }
+
+  /** The relationship id for a link of this session to `href`, in the part being written. */
+  linkRel(href) {
+    const { path, rels } = this.serialRels;
+    if (!this.linkIds.has(path)) this.linkIds.set(path, new Map());
+    const ids = this.linkIds.get(path);
+    let rid = ids.get(href);
+    if (!rid) {
+      const taken = new Set([...(rels?.keys() || []), ...ids.values(), ...this.newMedia.keys()]);
+      let n = 1;
+      while (taken.has(`rIdLink${n}`)) n++;
+      rid = `rIdLink${n}`;
+      ids.set(href, rid);
+    }
+    if (!this.linksUsed.has(path)) this.linksUsed.set(path, new Set());
+    this.linksUsed.get(path).add(rid);
+    return rid;
+  }
+
+  /**
+   * Writes the relationships of this session's links into each part's relationships, as external
+   * hyperlinks: those still in the text are there, those deleted are taken out again. A part none of
+   * whose links are left is written back as it was (when it had been changed).
+   */
+  async writeLinks() {
+    for (const [path, ids] of this.linkIds) {
+      const used = this.linksUsed.get(path) || new Set();
+      const ours = new Set(ids.values());
+      const text = await this.text(path);
+      if (!text && !used.size) continue;
+      const rels = parseXml(text || `<Relationships xmlns="${NS.pr}"/>`);
+      const root = rels.documentElement;
+      let changed = false;
+      for (const r of [...root.children]) {
+        if (ours.has(r.getAttribute('Id')) && !used.has(r.getAttribute('Id'))) { r.remove(); changed = true; }
+      }
+      for (const [href, rid] of ids) {
+        if (!used.has(rid) || [...root.children].some((r) => r.getAttribute('Id') === rid)) continue;
+        const rel = rels.createElementNS(NS.pr, 'Relationship');
+        rel.setAttribute('Id', rid);
+        rel.setAttribute('Type', HYPERLINK_REL);
+        rel.setAttribute('Target', href);
+        rel.setAttribute('TargetMode', 'External');
+        root.appendChild(rel);
+        changed = true;
+      }
+      if (changed) this.zip.file(path, serializeXml(rels));
+    }
+  }
+
   /** A revision of this session, for <w:ins>, <w:del> or a paragraph mark (its id is set in update). */
   newRevision(kind, author, date) {
     const rev = createW(this.xml, kind);
@@ -2980,10 +3066,26 @@ export class DocxDocument {
     const wrap = prev && prev.kind === kind && prev.author === author && out.lastChild === prev.el
       ? prev.el : this.newRevision(kind, author, el.dataset.tcDate);
     const inner = { last: null };
-    for (const c of el.childNodes) this.serializeInline(c, wrap, ctx, block, inner);
+    let current = wrap;
+    const written = [wrap]; // what holds this change's text: deleted text is <w:delText> in all of it
+    for (const c of el.childNodes) {
+      if (c.nodeType === 1 && c.tagName === 'A' && c.dataset.link === 'new') {
+        // A link added while tracking: the link holds the tracked change, as Word writes it.
+        if (current.childNodes.length && current.parentNode !== out) out.appendChild(current);
+        written.push(out.appendChild(this.serializeLink(c, ctx, block, () => this.newRevision(kind, author, el.dataset.tcDate))));
+        current = this.newRevision(kind, author, el.dataset.tcDate);
+        written.push(current);
+        continue;
+      }
+      this.serializeInline(c, current, ctx, block, inner);
+    }
+    if (current !== wrap) {
+      if (current.childNodes.length) out.appendChild(current);
+      else this.revisions.splice(this.revisions.indexOf(current), 1);
+    }
     if (kind === 'del') {
       for (const [from, to] of [['t', 'delText'], ['instrText', 'delInstrText']]) {
-        for (const t of [...wrap.getElementsByTagNameNS(W, from)]) {
+        for (const t of written.flatMap((w) => [...w.getElementsByTagNameNS(W, from)])) {
           const d = createW(this.xml, to);
           for (const a of [...t.attributes]) d.setAttributeNS(a.namespaceURI, a.name, a.value);
           d.textContent = t.textContent;
@@ -3058,6 +3160,7 @@ export class DocxDocument {
 
   buildRPr(ctx) {
     const rPr = ctx.rpr != null ? this.rawClone(ctx.rpr) : createW(this.xml, 'rPr');
+    if (ctx.link) ensureOrdered(rPr, 'rStyle', RPR_ORDER).setAttributeNS(W, 'w:val', this.styles.ensureHyperlink());
     const toggle = (local, value) => {
       if (value === undefined) { removeW(rPr, local); return; }
       const e = ensureOrdered(rPr, local, RPR_ORDER);

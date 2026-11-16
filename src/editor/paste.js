@@ -1,15 +1,16 @@
 // Paste with basic formatting. Clipboard HTML (from web pages, Google Docs or Word) is reduced to
 // paragraphs, list items, line breaks and runs that are bold, italic, underlined, struck through,
-// superscript or subscript.
-// Everything else (fonts, colours, styles, links, pictures, data-* attributes) is dropped, because it
-// can't be mapped faithfully to the document's own formatting.
+// superscript or subscript, and links to web and e-mail addresses (written as Word's hyperlinks).
+// Everything else (fonts, colours, styles, pictures, other links, data-* attributes) is dropped,
+// because it can't be mapped faithfully to the document's own formatting.
+import { isLinkable } from '../docx/links.js';
 
 const BLOCKS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'TR', 'TABLE', 'UL', 'OL', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'DL', 'DT', 'DD', 'FIGURE']);
 const SKIP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'HEAD', 'TITLE', 'META', 'LINK', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'CANVAS', 'VIDEO', 'AUDIO', 'BUTTON', 'SELECT', 'TEXTAREA', 'INPUT']);
 
 /**
  * Parses clipboard data into { blocks, skippedImages }. A block is
- * { list: null | { kind: 'bullet' | 'number', level }, runs: [{ text, b, i, u, s } | { br: true }] }.
+ * { list: null | { kind: 'bullet' | 'number', level }, runs: [{ text, b, i, u, s, va, href } | { br: true }] }.
  */
 export function parseClipboard(html, text) {
   if (!html) return { blocks: plainBlocks(text || ''), skippedImages: 0 };
@@ -97,7 +98,7 @@ function walk(node, format, state) {
       let text = child.data;
       if (!format.pre) text = text.replace(/[\t\n\r ]+/g, ' ');
       text = text.replace(/ /g, ' ');
-      if (text) state.current.runs.push({ text, b: format.b, i: format.i, u: format.u, s: format.s, va: format.va || null });
+      if (text) state.current.runs.push({ text, b: format.b, i: format.i, u: format.u, s: format.s, va: format.va || null, href: format.href || null });
       continue;
     }
     if (child.nodeType !== 1) continue;
@@ -113,6 +114,11 @@ function walk(node, format, state) {
       continue;
     }
     const f = formatOf(el, format);
+    if (tag === 'A') {
+      const href = el.getAttribute('href');
+      f.href = isLinkable(href) ? href.trim() : null;
+      if (f.href) f.u = false; // the link's own style underlines it, as in Word
+    }
     if (tag === 'TD' || tag === 'TH') {
       // Cells of a row become one paragraph, separated by tabs.
       if (!state.current) startBlock(state);
@@ -147,7 +153,7 @@ function tidy(block) {
   const runs = [];
   for (const r of block.runs) {
     const last = runs[runs.length - 1];
-    if (!r.br && last && !last.br && last.b === r.b && last.i === r.i && last.u === r.u && last.s === r.s && (last.va || null) === (r.va || null)) last.text += r.text;
+    if (!r.br && last && !last.br && last.b === r.b && last.i === r.i && last.u === r.u && last.s === r.s && (last.va || null) === (r.va || null) && (last.href || null) === (r.href || null)) last.text += r.text;
     else runs.push({ ...r });
   }
   const first = runs.find((r) => !r.br);
@@ -157,10 +163,17 @@ function tidy(block) {
   return { list: block.list, runs: runs.filter((r) => r.br || r.text) };
 }
 
-/** DOM nodes for a block's runs: text wrapped in <strong>/<em>/<u>/<s> as needed. */
+/**
+ * DOM nodes for a block's runs: text wrapped in <strong>/<em>/<u>/<s> as needed, and neighbouring
+ * runs of one link in a new link (<a data-link="new">).
+ */
 export function runNodes(runs) {
-  return runs.map((r) => {
-    if (r.br) return document.createElement('br');
+  const out = [];
+  for (const r of runs) {
+    if (r.br) {
+      out.push(document.createElement('br'));
+      continue;
+    }
     let node = document.createTextNode(r.text);
     for (const [on, tag] of [[r.va === 'subscript', 'sub'], [r.va === 'superscript', 'sup'], [r.s, 's'], [r.u, 'u'], [r.i, 'em'], [r.b, 'strong']]) {
       if (!on) continue;
@@ -168,8 +181,23 @@ export function runNodes(runs) {
       wrap.append(node);
       node = wrap;
     }
-    return node;
-  });
+    const last = out[out.length - 1];
+    if (r.href && last?.tagName === 'A' && last.getAttribute('href') === r.href) last.append(node);
+    else if (r.href) out.push(newLink(r.href, [node]));
+    else out.push(node);
+  }
+  return out;
+}
+
+/** A link of this session to `href` around `nodes`: written as a Word hyperlink on save. */
+export function newLink(href, nodes) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.setAttribute('href', href);
+  a.dataset.link = 'new';
+  a.title = `${href} (Ctrl+click to open)`;
+  a.append(...nodes);
+  return a;
 }
 
 /** Inserts nodes at the collapsed selection and puts the caret after them. */

@@ -135,6 +135,36 @@ export class StyleSheet {
     return name.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^Toc\b/, 'TOC');
   }
 
+  /**
+   * The id of Word's "Hyperlink" character style (blue, underlined), added to styles.xml if it isn't
+   * there, as Word adds it with the first link.
+   */
+  ensureHyperlink() {
+    for (const s of this.byId.values()) if (s.type === 'character' && s.name.toLowerCase() === 'hyperlink') return s.id;
+    let id = 'Hyperlink';
+    while (this.byId.has(id)) id += '0';
+    const font = [...this.byId.values()].find((s) => s.type === 'character' && s.isDefault);
+    const xml = `<w:style w:type="character" w:styleId="${id}"><w:name w:val="Hyperlink"/>${font ? `<w:basedOn w:val="${font.id}"/>` : ''}<w:uiPriority w:val="99"/><w:unhideWhenUsed/>`
+      + '<w:rPr><w:color w:val="0563C1" w:themeColor="hyperlink"/><w:u w:val="single"/></w:rPr></w:style>';
+    const frag = parseXml(`<root xmlns:w="${NS.w}">${xml}</root>`).documentElement;
+    this.doc.documentElement.appendChild(this.doc.importNode(wChild(frag, 'style'), true));
+    this.changed = true;
+    this.reindex();
+    return id;
+  }
+
+  /**
+   * The document's language, as a BCP 47 tag ("en-GB"): its default paragraph style's, or else the
+   * document defaults'. Null if it names none.
+   */
+  language() {
+    for (const s of this.chain(this.defaultParagraph).reverse()) {
+      const lang = wAttr(wChild(s.rPr, 'lang'), 'val');
+      if (lang) return lang;
+    }
+    return wAttr(wChild(this.defaultRPr, 'lang'), 'val') || null;
+  }
+
   /** Classifies a paragraph style id as 'title', 'h1'..'h6' or null. */
   kindOf(styleId) {
     const s = styleId && this.byId.get(styleId);

@@ -15,7 +15,7 @@ export function shortcutFor(e) {
   if (!e.shiftKey && !e.altKey) {
     // Bold, italic and underline too: not every browser does them in editable text by itself.
     return {
-      b: 'bold', i: 'italic', u: 'underline', e: 'center', l: 'left', r: 'right', j: 'justify', m: 'indent', enter: 'pageBreak',
+      b: 'bold', i: 'italic', u: 'underline', e: 'center', l: 'left', r: 'right', j: 'justify', m: 'indent', enter: 'pageBreak', k: 'link',
     }[key] || (space ? 'clearFormatting' : null);
   }
   if (e.shiftKey && !e.altKey) {
@@ -34,6 +34,7 @@ export const SHORTCUTS = [
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+Alt+M', 'New comment'],
+  ['Ctrl+K', 'Insert a link, or change the one at the caret'],
   ['Tab in the last cell of a table', 'New row'],
   ['Ctrl+L, Ctrl+E, Ctrl+R, Ctrl+J', 'Align left, centre, right, justify'],
   ['Ctrl+Shift+N', 'Normal style'],

@@ -102,6 +102,8 @@ Saying no to these keeps the product small enough to keep its promises:
   picture's outline ✔
 - Edit footnotes and endnotes ✔; show equations ✔
 - Apply the document's own paragraph styles ✔; say when fields Word updates may be out of date ✔
+- Name reference managers' citations ✔; keep pasted links and insert links (DOIs too) ✔; count the
+  words selected ✔; check spelling in the document's language ✔
 - Edit headers and footers
 - Installable offline app (PWA)
 
