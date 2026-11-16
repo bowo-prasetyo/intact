@@ -1,14 +1,21 @@
 :root {
-  --brand: #2b579a;
-  --accent: #2b579a;
+  /* Intact Teal. Chosen to sit apart from Word's blue and from the colours that mean something in
+     a document here: green and red (others' insertions and deletions), purple (your tracked
+     changes), coral (comments) and yellow (find). */
+  --brand: #0e6467;
+  --accent: #0e6467;
   --surface: #ffffff;
   --canvas: #e9ebee;
   --border: #d4d8de;
-  --hover: #eef1f5;
-  --active: #dde5f1;
+  --hover: #eef3f3;
+  --active: #e0efee;
   --muted: #5f6672;
   --danger: #b3261e;
   --text: #1f2328;
+  /* The page is always white, so marks on it keep the light values in dark mode too. */
+  --sheet-accent: #0e6467;
+  --sheet-tint: #e3f1f0;
+  --sheet-line: #9ccfcb;
   color-scheme: light dark;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
@@ -16,13 +23,13 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --brand: #1e3f6f;
-    --accent: #7aa7e6;
+    --brand: #0b3f42;
+    --accent: #5ec4bd;
     --surface: #1f2329;
     --canvas: #14171b;
     --border: #353b44;
-    --hover: #2a3039;
-    --active: #33405a;
+    --hover: #263033;
+    --active: #1d3b3c;
     --muted: #9aa3ae;
     --danger: #ff8a80;
     --text: #e6e8eb;

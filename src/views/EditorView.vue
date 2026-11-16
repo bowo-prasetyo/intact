@@ -3229,7 +3229,7 @@ async function close() {
 .hf-tabs button {
   padding: 1px 8px; border: 1px solid #c9d1de; border-radius: 9px; background: #fff; color: #44516a; cursor: pointer;
 }
-.hf-tabs button[aria-selected="true"] { background: #2b579a; border-color: #2b579a; color: #fff; }
+.hf-tabs button[aria-selected="true"] { background: var(--sheet-accent); border-color: var(--sheet-accent); color: #fff; }
 .comments-toggle { gap: 3px; padding: 0 6px; }
 .script { font-size: 14px; line-height: 1; }
 .script sup, .script sub { font-size: 9px; }
@@ -3403,7 +3403,7 @@ async function close() {
 .docx-sheet .raw-inline.picture::selection, .docx-sheet .raw-inline.picture img::selection { background: transparent; } /* the frame shows it is selected */
 .docx-sheet .raw-inline.picture[data-wrap="inline"] { display: inline-block; vertical-align: bottom; }
 .docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
-.docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: #2b579a; }
+.docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: var(--sheet-accent); }
 .docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
 .docx-sheet .raw-inline.symbol { background: transparent; color: inherit; }
 .docx-sheet .raw-inline.comment-ref { display: inline; cursor: pointer; user-select: none; background: transparent; padding: 0; }
@@ -3413,11 +3413,11 @@ async function close() {
 }
 .docx-sheet .field { border-bottom: 1px dotted #9aa6b8; }
 ::highlight(comment) { background-color: #fbe3dc; }
-::highlight(field-near) { background-color: #d6e2f5; }
+::highlight(field-near) { background-color: var(--sheet-tint); }
 ::highlight(comment-active) { background-color: #f6b9a8; }
 .docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
 .docx-sheet div.sdt { box-shadow: 0 0 0 1px transparent; }
-.docx-sheet .sdt:not(.sdt-locked):hover, .docx-sheet .sdt:not(.sdt-locked):focus-within { background: #e8eef8; box-shadow: 0 0 0 1px #9db3d9; }
+.docx-sheet .sdt:not(.sdt-locked):hover, .docx-sheet .sdt:not(.sdt-locked):focus-within { background: var(--sheet-tint); box-shadow: 0 0 0 1px var(--sheet-line); }
 .docx-sheet .sdt-content { outline: none; }
 .docx-sheet span.sdt-content:empty { padding: 0 1ch; }
 .docx-sheet .showing-placeholder { color: #767676; }
@@ -3426,7 +3426,7 @@ async function close() {
 .docx-sheet .sdt-locked { cursor: default; user-select: none; background: #f1f3f6; }
 .docx-sheet table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
 .docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
-.docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px #2b579a55; }
+.docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px rgb(14 100 103 / 33%); }
 .docx-sheet table.docx-table td.vmerge { border-top-color: transparent; }
 .docx-sheet table.docx-table td[data-rev-cell="ins"] { background-color: rgb(30 107 52 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(30 107 52 / 45%); }
 .docx-sheet table.docx-table td[data-rev-cell="del"] { background-color: rgb(179 38 30 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(179 38 30 / 45%); }
