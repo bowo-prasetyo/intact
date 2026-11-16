@@ -29,9 +29,15 @@ test('a section set in two columns is shown in two columns, and saved as it was'
     return [cs.columnCount, cs.columnGap, cs.columnRuleStyle];
   })).toEqual(['2', '48px', 'solid']);
   await expect(cols.locator('p')).toHaveCount(3); // the two paragraphs and the one ending the section
-  // The two columns sit side by side.
-  const [a, b] = await cols.locator('p').evaluateAll((ps) => ps.slice(0, 2).map((p) => p.getClientRects()[0].left));
-  expect(Math.abs(a - b)).toBeGreaterThan(100);
+  // The text is laid out in two columns side by side: its lines start at two places across the page.
+  // (Where each column breaks is the browser's to balance: within a paragraph or between them.)
+  const lefts = await cols.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return [...new Set([...range.getClientRects()].filter((r) => r.width > 20).map((r) => Math.round(r.left)))].sort((x, y) => x - y);
+  });
+  expect(lefts.length).toBeGreaterThanOrEqual(2);
+  expect(lefts[lefts.length - 1] - lefts[0]).toBeGreaterThan(100);
   await expect(page.locator('.docx-page > p').last()).toHaveText('Back to one column');
 
   // Untouched, the document comes back as it was; edited, only the text changes.
