@@ -1965,7 +1965,10 @@ function onPaste(e) {
   }
   if (!range || refuseRemoving([range])) return;
   // A picture on its own (a screenshot, an image copied from an app): inserted as a picture.
-  const pictures = [...(e.clipboardData.files || [])].filter((f) => f.type.startsWith('image/'));
+  // Some browsers list a copied picture only among the clipboard's items, not its files.
+  const files = e.clipboardData.files?.length ? [...e.clipboardData.files]
+    : [...(e.clipboardData.items || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+  const pictures = files.filter((f) => f.type.startsWith('image/'));
   if (pictures.length && !e.clipboardData.getData('text/plain').trim()) {
     insertPictures(pictures);
     return;

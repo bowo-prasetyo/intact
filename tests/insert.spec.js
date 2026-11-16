@@ -196,7 +196,10 @@ test('a picture pasted on its own (a screenshot) is inserted', async ({ page }) 
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const data = new DataTransfer();
     data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
-    document.querySelector('.docx-page').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    // Firefox ignores clipboardData given to a scripted ClipboardEvent's constructor (see paste.spec.js).
+    const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: data });
+    document.querySelector('.docx-page').dispatchEvent(event);
   }, base64);
   await expect(page.locator('.docx-page img')).toHaveCount(1);
   await expect(page.locator('.statusbar [role=status]')).toHaveText('Picture inserted');
