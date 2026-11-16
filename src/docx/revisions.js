@@ -84,8 +84,17 @@ export function cellRevision(tc) {
   return null;
 }
 
-/** Tracked changes in a table that Intact can't accept or reject: table, row and cell properties, cell merges. */
-export function tablePropertyChanges(tbl) {
-  return ['tblPrChange', 'tblGridChange', 'trPrChange', 'tcPrChange', 'cellMerge']
-    .reduce((n, local) => n + tbl.getElementsByTagNameNS(W, local).length, 0);
+/**
+ * A tracked change to a table's, row's or cell's properties: the <w:tblPrChange> (or
+ * <w:tblGridChange>), <w:trPrChange> or <w:tcPrChange> of `el` (a w:tbl, w:tr or w:tc), as
+ * { author, date }; null if there is none.
+ */
+export function propertyChange(el) {
+  if (!el) return null;
+  const local = el.localName;
+  const changes = local === 'tbl'
+    ? [wChild(wChild(el, 'tblPr'), 'tblPrChange'), wChild(wChild(el, 'tblGrid'), 'tblGridChange')]
+    : [wChild(wChild(el, local === 'tr' ? 'trPr' : 'tcPr'), local === 'tr' ? 'trPrChange' : 'tcPrChange')];
+  const found = changes.find(Boolean);
+  return found ? { author: wAttr(found, 'author'), date: wAttr(found, 'date') } : null;
 }

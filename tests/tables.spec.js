@@ -60,12 +60,3 @@ test('while tracking, the new row is a tracked insertion with your name', async 
   const ids = [...xml.matchAll(/w:id="(\d+)"/g)].map((m) => m[1]);
   expect(new Set(ids).size).toBe(ids.length);
 });
-
-test('rows inside a field aren\'t extended, and the status bar says why', async ({ page }) => {
-  const rowField = (inner) => `<w:sdt><w:sdtPr><w:alias w:val="Lines"/><w:id w:val="9"/></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
-  await openInEditor(page, await buildDocx(`<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid>${rowField(`<w:tr>${CELL('Line')}</w:tr>`)}</w:tbl><w:p/>`));
-  await page.locator('td', { hasText: 'Line' }).click();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('.statusbar [role=status]')).toHaveText('This table’s rows or cells are fields: add rows in Word');
-  await expect(page.locator('tr')).toHaveCount(1);
-});

@@ -1,6 +1,6 @@
 // Accepting and rejecting tracked changes, as in Word: anyone's insertions, deletions, paragraph
 // breaks, formatting changes and table rows, and this session's own, one at a time (Previous, Next)
-// or all at once. Changes only Word can resolve (table and cell properties) are counted, never dropped.
+// or all at once. Changes only Word can resolve (in locked content) are counted, never dropped.
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import { buildDocx, openInEditor, download, canonicalize, documentXmlOf, W_NS } from './helpers.js';
@@ -14,9 +14,9 @@ const del = (author, text, id) => `<w:del w:id="${id}" w:author="${author}" w:da
 const DOC = `<w:p><w:r><w:t xml:space="preserve">Pay </w:t></w:r>${ins('Alice', 'promptly ', 1)}<w:r><w:t xml:space="preserve">the </w:t></w:r>${del('Bob', 'full ', 2)}<w:r><w:t>fee.</w:t></w:r></w:p>`
   + '<w:p><w:pPr><w:rPr><w:ins w:id="3" w:author="Carol" w:date="2026-01-03T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t>Split part one</w:t></w:r></w:p>'
   + '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>part two.</w:t></w:r></w:p>'
-  // A tracked row (and, only for Word, a tracked change to a cell's properties), then a tracked formatting change.
+  // A tracked row (and, only for Word, an insertion in locked content), then a tracked formatting change.
   + '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid>'
-  + '<w:tr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:tcPrChange w:id="6" w:author="Fay" w:date="2026-01-06T00:00:00Z"><w:tcPr/></w:tcPrChange></w:tcPr><w:p><w:r><w:t>Header</w:t></w:r></w:p></w:tc></w:tr>'
+  + `<w:tr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent><w:p>${ins('Fay', 'Header', 6)}</w:p></w:sdtContent></w:sdt><w:p/></w:tc></w:tr>`
   + '<w:tr><w:trPr><w:ins w:id="4" w:author="Dan" w:date="2026-01-04T00:00:00Z"/></w:trPr><w:tc><w:p><w:r><w:t>Row</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
   + '<w:p><w:r><w:rPr><w:b/><w:rPrChange w:id="5" w:author="Eve" w:date="2026-01-05T00:00:00Z"><w:rPr/></w:rPrChange></w:rPr><w:t>Bold by Eve.</w:t></w:r></w:p>';
 
@@ -41,7 +41,7 @@ test('the toolbar counts the changes, and names those only Word can resolve', as
   await openInEditor(page, await buildDocx(DOC));
   await expect(group(page)).toBeVisible();
   await expect(group(page).locator('.badge')).toHaveText('5');
-  await expect(group(page).locator('.badge')).toHaveAttribute('title', '5 tracked changes to accept or reject here; 1 more (table or cell properties, or locked content) only in Word');
+  await expect(group(page).locator('.badge')).toHaveAttribute('title', '5 tracked changes to accept or reject here; 1 more (in locked content) only in Word');
   // How they show: Dan's row tinted, Eve's formatting change underlined.
   await expect(page.locator('.docx-page tr[data-rev-row="ins"]')).toHaveText('Row');
   await expect(page.locator('.docx-page [data-fmt="run"]')).toHaveAttribute('title', 'Formatting changed by Eve on 2026-01-05 – tracked change: Accept or Reject on the toolbar');
@@ -71,10 +71,10 @@ test('Next and Previous go from change to change, wrapping round', async ({ page
 
 test('accepting an insertion and rejecting a deletion leave ordinary text, then go to the next', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC));
-  await page.locator('.docx-page .inserted').click(); // the caret goes beside it
+  await page.locator('.docx-page .inserted').first().click(); // the caret goes beside it
   await group(page).getByRole('button', { name: 'Accept' }).first().click();
   await expect(status(page)).toHaveText('Accepted the insertion by Alice. Next: the deletion by Bob');
-  await expect(page.locator('.docx-page .inserted')).toHaveCount(0);
+  await expect(page.locator('.docx-page p').first().locator('.inserted')).toHaveCount(0);
   await group(page).getByRole('button', { name: 'Reject' }).first().click(); // Bob's deletion, now selected
   await expect(status(page)).toHaveText('Rejected the deletion by Bob. Next: the paragraph break insertion by Carol');
   await expect(page.locator('.docx-page p').first()).toHaveText('Pay promptly the full fee.');
@@ -106,7 +106,7 @@ test('Accept all accepts every change it can, says which are left for Word, and 
   await openInEditor(page, await buildDocx(DOC));
   await page.getByTitle('More ways to accept').click();
   await page.getByRole('menuitem', { name: 'Accept all changes' }).click();
-  await expect(status(page)).toHaveText('Accepted all 5 changes. 1 more (table or cell properties, or locked content) can only be accepted in Word');
+  await expect(status(page)).toHaveText('Accepted all 5 changes. 1 more (in locked content) can only be accepted in Word');
   await expect(group(page).locator('.badge')).toHaveText('0');
   await expect(group(page).getByRole('button', { name: 'Accept' }).first()).toBeDisabled();
   await page.locator('.app-header').getByRole('button', { name: 'Download' }).click();
@@ -119,7 +119,7 @@ test('Accept all accepts every change it can, says which are left for Word, and 
   expect(xml).not.toMatch(/w:author="(Alice|Bob|Carol|Dan|Eve)"/);
   expect(xml).toContain('<w:tr><w:tc><w:p><w:r><w:t xml:space="preserve">Row</w:t></w:r></w:p></w:tc></w:tr>'); // Dan's row, kept
   expect(xml).toContain('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Bold by Eve.</w:t></w:r>'); // Eve's bold, kept
-  expect(xml).toContain('<w:tcPrChange w:id="6" w:author="Fay"'); // only in Word
+  expect(xml).toContain('<w:ins w:id="6" w:author="Fay"'); // only in Word
 });
 
 test('a selection accepts the changes in it; Undo takes it all back', async ({ page }) => {

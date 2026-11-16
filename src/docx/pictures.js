@@ -199,3 +199,194 @@ export function setPosition(r, { h, v }) {
 
 /** True if a run holds a picture whose layout can be changed here. */
 export const isLayoutPicture = (r) => !!frameOf(r);
+
+// ---------------------------------------------------------------- crop, rotation, effects
+
+const picOf = (r) => child(child(child(frameOf(r), A, 'graphic'), A, 'graphicData'), PIC, 'pic');
+const blipFillOf = (r) => child(picOf(r), PIC, 'blipFill');
+const spPrOf = (r) => {
+  const pic = picOf(r);
+  let spPr = child(pic, PIC, 'spPr');
+  if (!spPr) {
+    spPr = r.ownerDocument.createElementNS(PIC, 'pic:spPr');
+    pic.appendChild(spPr);
+  }
+  return spPr;
+};
+const makeA = (doc, local, attrs = {}) => {
+  const el = doc.createElementNS(A, `a:${local}`);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+};
+/** Puts `el` into `parent` at its place in `order` (DrawingML is strict about order). */
+function placeIn(parent, el, order) {
+  const at = order.indexOf(el.localName);
+  const before = [...parent.children].find((c) => order.indexOf(c.localName) > at || order.indexOf(c.localName) === -1 && c.localName === 'extLst');
+  parent.insertBefore(el, before || null);
+}
+const SPPR_ORDER = ['xfrm', 'custGeom', 'prstGeom', 'noFill', 'solidFill', 'gradFill', 'blipFill', 'pattFill', 'grpFill', 'ln', 'effectLst', 'effectDag', 'scene3d', 'sp3d', 'extLst'];
+const EFFECT_ORDER = ['blur', 'fillOverlay', 'glow', 'innerShdw', 'outerShdw', 'prstShdw', 'reflection', 'softEdge'];
+const pct = (v) => (Number(v) || 0) / 100000; // DrawingML percentages are in 1/1000 of a percent
+
+/**
+ * Crop, rotation and effects of a picture: { crop: { l, t, r, b } (fractions), rot (degrees),
+ * flipH, flipV, border: { color, width (pt) } | null, shadow, glow, softEdge, reflection,
+ * greyscale, brightness, contrast (−1 to 1) }.
+ */
+export function pictureLook(r) {
+  const src = child(blipFillOf(r), A, 'srcRect');
+  const spPr = child(picOf(r), PIC, 'spPr');
+  const xfrm = child(spPr, A, 'xfrm');
+  const ln = child(spPr, A, 'ln');
+  const fill = child(ln, A, 'solidFill');
+  const color = child(fill, A, 'srgbClr')?.getAttribute('val');
+  const effects = child(spPr, A, 'effectLst');
+  const blip = child(blipFillOf(r), A, 'blip');
+  const lum = child(blip, A, 'lum');
+  return {
+    crop: { l: pct(src?.getAttribute('l')), t: pct(src?.getAttribute('t')), r: pct(src?.getAttribute('r')), b: pct(src?.getAttribute('b')) },
+    rot: (Number(xfrm?.getAttribute('rot')) || 0) / 60000,
+    flipH: xfrm?.getAttribute('flipH') === '1',
+    flipV: xfrm?.getAttribute('flipV') === '1',
+    border: ln && !child(ln, A, 'noFill') ? { color: color || '000000', width: (Number(ln.getAttribute('w')) || 9525) / 12700 } : null,
+    shadow: !!child(effects, A, 'outerShdw'),
+    glow: child(effects, A, 'glow') ? (child(child(effects, A, 'glow'), A, 'srgbClr')?.getAttribute('val') || 'FFC000') : null,
+    softEdge: !!child(effects, A, 'softEdge'),
+    reflection: !!child(effects, A, 'reflection'),
+    greyscale: !!child(blip, A, 'grayscl'),
+    brightness: pct(lum?.getAttribute('bright')),
+    contrast: pct(lum?.getAttribute('contrast')),
+  };
+}
+
+/**
+ * Crops a picture (fractions of the picture cut from each side, as Word's Crop does): what shows
+ * keeps its scale, so the picture's frame grows or shrinks with the crop.
+ */
+export function setCrop(r, crop) {
+  const blipFill = blipFillOf(r);
+  const before = pictureLook(r).crop;
+  const clamp = (v) => Math.max(-0.9, Math.min(0.95, Number(v) || 0));
+  const c = { l: clamp(crop.l), t: clamp(crop.t), r: clamp(crop.r), b: clamp(crop.b) };
+  if (c.l + c.r > 0.95) c.r = 0.95 - c.l;
+  if (c.t + c.b > 0.95) c.b = 0.95 - c.t;
+  const info = pictureInfo(r);
+  const fullW = info.cx / (1 - before.l - before.r);
+  const fullH = info.cy / (1 - before.t - before.b);
+  resizePicture(r, fullW * (1 - c.l - c.r), fullH * (1 - c.t - c.b));
+  let src = child(blipFill, A, 'srcRect');
+  if (!c.l && !c.t && !c.r && !c.b) {
+    if (src) blipFill.removeChild(src);
+    return;
+  }
+  if (!src) {
+    src = makeA(r.ownerDocument, 'srcRect');
+    const blip = child(blipFill, A, 'blip');
+    if (blip) blip.after(src);
+    else blipFill.prepend(src);
+  }
+  for (const side of ['l', 't', 'r', 'b']) {
+    const v = Math.round(c[side] * 100000);
+    if (v) src.setAttribute(side, String(v));
+    else src.removeAttribute(side);
+  }
+}
+
+/** Rotates (degrees, clockwise) and flips a picture, as on its shape (a:xfrm). */
+export function setRotation(r, { rot, flipH, flipV }) {
+  const spPr = spPrOf(r);
+  let xfrm = child(spPr, A, 'xfrm');
+  if (!xfrm) {
+    const info = pictureInfo(r);
+    xfrm = makeA(r.ownerDocument, 'xfrm');
+    xfrm.appendChild(makeA(r.ownerDocument, 'off', { x: 0, y: 0 }));
+    xfrm.appendChild(makeA(r.ownerDocument, 'ext', { cx: info.cx, cy: info.cy }));
+    spPr.prepend(xfrm);
+  }
+  const deg = ((Math.round(Number(rot) || 0) % 360) + 360) % 360;
+  if (deg) xfrm.setAttribute('rot', String(deg * 60000));
+  else xfrm.removeAttribute('rot');
+  for (const [name, on] of [['flipH', flipH], ['flipV', flipV]]) {
+    if (on) xfrm.setAttribute(name, '1');
+    else xfrm.removeAttribute(name);
+  }
+}
+
+/**
+ * A picture's effects, as Word's Picture Border, Effects and Colour menus set them: a border
+ * (colour, width in points), an outer shadow, a glow, soft edges, a reflection; greyscale,
+ * brightness and contrast. Effects it doesn't set (blur, inner shadows, 3-D…) are kept.
+ */
+export function setEffects(r, look) {
+  const doc = r.ownerDocument;
+  const spPr = spPrOf(r);
+  const oldLn = child(spPr, A, 'ln');
+  if (oldLn) spPr.removeChild(oldLn);
+  if (look.border) {
+    const ln = makeA(doc, 'ln', { w: Math.round((Number(look.border.width) || 0.75) * 12700) });
+    ln.appendChild(makeA(doc, 'solidFill')).appendChild(makeA(doc, 'srgbClr', { val: (look.border.color || '000000').replace('#', '').toUpperCase() }));
+    placeIn(spPr, ln, SPPR_ORDER);
+  }
+  let effects = child(spPr, A, 'effectLst');
+  if (!effects) effects = makeA(doc, 'effectLst');
+  for (const local of ['glow', 'outerShdw', 'reflection', 'softEdge']) {
+    const old = child(effects, A, local);
+    if (old) effects.removeChild(old);
+  }
+  const add = (el) => placeIn(effects, el, EFFECT_ORDER);
+  if (look.glow) {
+    const glow = makeA(doc, 'glow', { rad: 63500 });
+    glow.appendChild(makeA(doc, 'srgbClr', { val: String(look.glow).replace('#', '').toUpperCase() })).appendChild(makeA(doc, 'alpha', { val: 60000 }));
+    add(glow);
+  }
+  if (look.shadow) {
+    const shadow = makeA(doc, 'outerShdw', { blurRad: 50800, dist: 38100, dir: 2700000, algn: 'tl', rotWithShape: 0 });
+    shadow.appendChild(makeA(doc, 'prstClr', { val: 'black' })).appendChild(makeA(doc, 'alpha', { val: 40000 }));
+    add(shadow);
+  }
+  if (look.reflection) add(makeA(doc, 'reflection', { blurRad: 6350, stA: 50000, endA: 300, endPos: 55000, dir: 5400000, sy: -100000, algn: 'bl', rotWithShape: 0 }));
+  if (look.softEdge) add(makeA(doc, 'softEdge', { rad: 63500 }));
+  if (effects.children.length && !effects.parentNode) placeIn(spPr, effects, SPPR_ORDER);
+  else if (!effects.children.length && effects.parentNode) spPr.removeChild(effects);
+  const blip = child(blipFillOf(r), A, 'blip');
+  if (!blip) return;
+  for (const local of ['grayscl', 'lum']) {
+    const old = child(blip, A, local);
+    if (old) blip.removeChild(old);
+  }
+  const ext = child(blip, A, 'extLst');
+  if (look.greyscale) blip.insertBefore(makeA(doc, 'grayscl'), ext);
+  const bright = Math.round((Number(look.brightness) || 0) * 100000);
+  const contrast = Math.round((Number(look.contrast) || 0) * 100000);
+  if (bright || contrast) {
+    const lum = makeA(doc, 'lum');
+    if (bright) lum.setAttribute('bright', String(bright));
+    if (contrast) lum.setAttribute('contrast', String(contrast));
+    blip.insertBefore(lum, ext);
+  }
+}
+
+// ---------------------------------------------------------------- wrapping to the outline
+
+/** The outline text wraps to (Tight, Through), as points in Word's 21600 units: [[x, y]…], or null. */
+export function wrapPolygon(r) {
+  const frame = frameOf(r);
+  const wrap = frame && [...frame.children].find((c) => c.namespaceURI === WP && (c.localName === 'wrapTight' || c.localName === 'wrapThrough'));
+  const polygon = child(wrap, WP, 'wrapPolygon');
+  if (!polygon) return null;
+  return [...polygon.children].filter((c) => c.namespaceURI === WP).map((c) => [Number(c.getAttribute('x')) || 0, Number(c.getAttribute('y')) || 0]);
+}
+
+/** Sets the outline text wraps to (points in 21600 units, the first repeated at the end as Word writes it). */
+export function setWrapPolygon(r, points) {
+  const frame = frameOf(r);
+  const wrap = [...frame.children].find((c) => c.namespaceURI === WP && (c.localName === 'wrapTight' || c.localName === 'wrapThrough'));
+  if (!wrap || !points?.length) return;
+  const doc = r.ownerDocument;
+  const polygon = make(doc, 'wrapPolygon', { edited: '0' });
+  const all = [...points, points[0]];
+  all.forEach(([x, y], i) => polygon.appendChild(make(doc, i === 0 ? 'start' : 'lineTo', { x: Math.round(x), y: Math.round(y) })));
+  const old = child(wrap, WP, 'wrapPolygon');
+  if (old) old.replaceWith(polygon);
+  else wrap.appendChild(polygon);
+}

@@ -27,16 +27,16 @@ import {
 } from './contentControls.js';
 import {
   trackedChangeLabel, paragraphMarkLabel, paragraphMarkRevision, inlineRevisionKind, formattingChange, rowRevision,
-  tablePropertyChanges, cellRevision,
+  cellRevision, propertyChange,
 } from './revisions.js';
 import { reviewParagraphs, tableSummary } from './review.js';
 import {
-  pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX,
+  pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX, pictureLook, setCrop, setRotation, setEffects, wrapPolygon, setWrapPolygon,
 } from './pictures.js';
 import {
-  rowsOf, cellsOf, layout, cellPosition, gridWidths, hasWrappedParts, insertRows, deleteRows, insertColumns, deleteColumns,
+  rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, isWrappedCell, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
-  markCell, deleteCellTracked, undeleteCell, acceptInsertedCell, removeCells,
+  markCell, deleteCellTracked, undeleteCell, acceptInsertedCell, removeCells, removeRow, resolveMerge, restoreGrid, dropGridChange,
 } from './tables.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
@@ -436,6 +436,15 @@ export class DocxDocument {
       const change = formattingChange(this.raw[Number(kind === 'run' ? d.rpr : d.ppr)]);
       return change && { kind: 'format', mark: false, own: false, para: kind === 'para', ...change };
     }
+    if (kind === 'tprops' || kind === 'rprops' || kind === 'cprops') {
+      const node = kind === 'tprops' ? this.raw[Number(el.dataset.raw)] : kind === 'rprops' ? this.rowXml(el) : this.cellXml(el);
+      const change = propertyChange(node);
+      return change && { kind: 'format', mark: false, own: false, ...change };
+    }
+    if (kind === 'merge') {
+      const merge = wChild(wChild(this.cellXml(el), 'tcPr'), 'cellMerge');
+      return merge && { kind: 'format', mark: false, own: false, author: wAttr(merge, 'author'), date: wAttr(merge, 'date') };
+    }
     if (kind === 'cells') {
       const tc = this.cellXml(el);
       const rev = tc && cellRevision(tc);
@@ -470,6 +479,8 @@ export class DocxDocument {
     if (item.kind === 'run' || item.kind === 'para') return this.resolveFormatting(item, accept);
     if (item.kind === 'row') return this.resolveRow(el, accept);
     if (item.kind === 'cells') return this.resolveCells(el, accept);
+    if (item.kind === 'merge') return this.resolveMergeCells(el, accept);
+    if (item.kind === 'tprops' || item.kind === 'rprops' || item.kind === 'cprops') return this.resolveTableProps(item, accept);
     const rev = this.revisionOf(el);
     if (!rev) return;
     const keep = (rev.kind === 'ins') === accept;
@@ -624,7 +635,7 @@ export class DocxDocument {
         tr.removeAttribute('title');
       }
     } else {
-      row.parentNode.removeChild(row);
+      removeRow(row);
       tr.remove();
       if (!tableParts(tbl, 'tr').length) {
         table.remove();
@@ -639,16 +650,14 @@ export class DocxDocument {
 
   /**
    * How many tracked changes under `root` can only be accepted or rejected in Word: those inside
-   * content saved verbatim (locked fields and cells, preserved blocks and items), changes to table,
-   * row and cell properties, and tracked rows inside a content control.
+   * content saved verbatim (locked fields and cells, preserved blocks and items) and tracked cell
+   * merges.
    */
   wordOnlyChanges(root) {
     let n = 0;
     for (const el of root.querySelectorAll('[data-raw]')) {
       const node = this.raw[Number(el.dataset.raw)];
       if (node.localName === 'tbl') {
-        n += tablePropertyChanges(node);
-        n += tableParts(node, 'tr').filter((r) => r.wrappers.length && rowRevision(r.el)).length;
       } else if (!el.classList.contains('inserted') && !el.classList.contains('deleted') && el.dataset.tracked) {
         n++;
       }
@@ -1049,6 +1058,7 @@ export class DocxDocument {
     const tbody = document.createElement('tbody');
     table.append(tbody);
     for (const { el: tr, wrappers: rowWrappers } of tableParts(tbl, 'tr')) tbody.append(this.renderRow(tr, rowWrappers));
+    this.applyTableProps(table, tbl);
     return table;
   }
 
@@ -1064,15 +1074,41 @@ export class DocxDocument {
     return row;
   }
 
+  /** A tracked change to a table's properties (or its grid), shown on the table. */
+  applyTableProps(table, tbl) {
+    let change = propertyChange(tbl);
+    // A grid change made with tracked cells (a split) is part of that change, resolved with it.
+    const grid = wChild(wChild(tbl, 'tblGrid'), 'tblGridChange');
+    if (change && grid && !wChild(wChild(tbl, 'tblPr'), 'tblPrChange')) {
+      const key = `${wAttr(grid, 'author') || ''}|${wAttr(grid, 'date') || ''}`;
+      if ([...tbl.getElementsByTagNameNS(W, 'cellIns')].some((c) => `${wAttr(c, 'author') || ''}|${wAttr(c, 'date') || ''}` === key)) change = null;
+    }
+    if (change) {
+      table.dataset.fmtTable = '1';
+      table.title = `Table formatting changed${byWhom(change)} – tracked change: Accept or Reject on the toolbar`;
+    } else if (table.dataset.fmtTable) {
+      delete table.dataset.fmtTable;
+      table.removeAttribute('title');
+    }
+  }
+
   /** A row's tracked insertion or deletion, shown on the row. */
   applyRowProps(row, tr, rowWrappers = []) {
     const rev = rowRevision(tr);
-    if (rev && !rowWrappers.length) {
+    if (rev) {
       row.dataset.revRow = rev.kind; // a tracked row, accepted or rejected on the toolbar
       row.title = `Row ${rev.kind === 'ins' ? 'inserted' : 'deleted'}${byWhom(rev)} – tracked change: Accept or Reject on the toolbar`;
-    } else if (!rowWrappers.length) {
+    } else {
       delete row.dataset.revRow;
-      row.removeAttribute('title');
+      if (rowWrappers.length) row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
+      else row.removeAttribute('title');
+    }
+    const change = propertyChange(tr);
+    if (change) {
+      row.dataset.fmtRow = '1'; // a tracked change to the row's properties (height, header repeat…)
+      if (!rev) row.title = `Row formatting changed${byWhom(change)} – tracked change: Accept or Reject on the toolbar`;
+    } else {
+      delete row.dataset.fmtRow;
     }
   }
 
@@ -1123,6 +1159,57 @@ export class DocxDocument {
       delete td.dataset.revKey;
       td.removeAttribute('title');
     }
+    const merge = wChild(tcPr, 'cellMerge');
+    if (merge) {
+      // A tracked merge or split down a column: its cells share a key (author and time).
+      td.dataset.revMerge = wAttr(merge, 'vMerge') === 'cont' ? 'merge' : 'split';
+      td.dataset.revMergeKey = `${wAttr(merge, 'author') || ''}|${wAttr(merge, 'date') || ''}`;
+      if (!rev) td.title = `Cells ${td.dataset.revMerge === 'merge' ? 'merged' : 'split'}${byWhom({ author: wAttr(merge, 'author'), date: wAttr(merge, 'date') })} – tracked change: Accept or Reject on the toolbar`;
+    } else if (td.dataset.revMerge) {
+      delete td.dataset.revMerge;
+      delete td.dataset.revMergeKey;
+      if (!rev) td.removeAttribute('title');
+    }
+    const change = propertyChange(tc);
+    if (change) {
+      td.dataset.fmtCell = '1'; // a tracked change to the cell's properties (width, shading…)
+      if (!rev) td.title = `Cell formatting changed${byWhom(change)} – tracked change: Accept or Reject on the toolbar`;
+    } else if (td.dataset.fmtCell) {
+      delete td.dataset.fmtCell;
+      if (!rev) td.removeAttribute('title');
+    }
+  }
+
+  /**
+   * A tracked change to a table's, row's or cell's properties: accepted, its record goes; rejected,
+   * the old properties come back (a row's or cell's own tracked insertion or deletion stays).
+   */
+  resolveTableProps({ el, kind }, accept) {
+    const table = kind === 'tprops' ? el : el.closest('table');
+    const rows = this.tableRows(table);
+    const r = kind === 'tprops' ? -1 : rows.indexOf(kind === 'rprops' ? el : el.parentElement);
+    const c = kind === 'cprops' ? [...el.parentElement.cells].indexOf(el) : -1;
+    const restore = (props, changeLocal, innerLocal, keep = []) => {
+      const change = wChild(props, changeLocal);
+      if (!change) return;
+      props.removeChild(change);
+      if (accept) return;
+      const kept = keep.map((local) => wChild(props, local)).filter(Boolean);
+      const old = wChild(change, innerLocal);
+      while (props.firstChild) props.removeChild(props.firstChild);
+      for (const n of [...(old?.childNodes || [])]) props.appendChild(n);
+      for (const n of kept) props.appendChild(n);
+    };
+    this.editTable(table, (tbl) => {
+      if (kind === 'tprops') {
+        restore(wChild(tbl, 'tblPr'), 'tblPrChange', 'tblPr');
+        restore(wChild(tbl, 'tblGrid'), 'tblGridChange', 'tblGrid');
+        return;
+      }
+      const tr = rowsOf(tbl)[r];
+      if (kind === 'rprops') restore(wChild(tr, 'trPr'), 'trPrChange', 'trPr', ['ins', 'del']);
+      else restore(wChild(cellsOf(tr)[c], 'tcPr'), 'tcPrChange', 'tcPr', ['cellIns', 'cellDel', 'cellMerge']);
+    });
   }
 
   /** The XML cell (<w:tc>) a rendered cell stands for (rows and cells match in order). */
@@ -1149,8 +1236,14 @@ export class DocxDocument {
     const rows = this.tableRows(table);
     const at = group.map((c) => [rows.indexOf(c.parentElement), [...c.parentElement.cells].indexOf(c)]);
     const pick = (tbl) => at.map(([r, i]) => cellsOf(rowsOf(tbl)[r])[i]).filter(Boolean);
+    const key = td.dataset.revKey.split('|').slice(1).join('|'); // author|date
     if ((kind === 'ins') === accept) {
-      if (kind === 'ins') this.editTable(table, (tbl) => pick(tbl).forEach(acceptInsertedCell));
+      if (kind === 'ins') {
+        this.editTable(table, (tbl) => {
+          pick(tbl).forEach(acceptInsertedCell);
+          dropGridChange(tbl, key);
+        });
+      }
       else {
         this.editTable(table, (tbl) => pick(tbl).forEach((tc) => {
           const copy = tc.cloneNode(true); // rendered again, its text no longer deleted
@@ -1161,6 +1254,7 @@ export class DocxDocument {
     } else {
       this.editTable(table, (tbl) => {
         removeCells(tbl, pick(tbl));
+        if (kind === 'ins') restoreGrid(tbl, key); // cells split off: the widths they took come back
         fitWidths(tbl, { before: Infinity, textWidth: 0 });
       });
     }
@@ -1286,18 +1380,49 @@ export class DocxDocument {
    * (or centred) with the text around it; on a line of its own; or behind or in front of the text at
    * its position. Offsets from the paragraph are measured from where the picture's run is.
    */
-  stylePicture(span, info = this.pictureLayout(span)) {
+  stylePicture(span, info = this.pictureLayout(span), look = pictureLook(this.raw[Number(span.dataset.raw)])) {
     const img = span.querySelector('img');
     const w = info.cx / EMU_PER_PX;
     const h = info.cy / EMU_PER_PX;
-    if (img) {
-      img.style.width = `${w}px`;
-      img.style.height = `${h}px`;
-      img.alt = info.descr;
-    }
     span.dataset.wrap = info.wrap;
     span.removeAttribute('style');
+    const st = span.style;
+    this.placePicture(span, info, w, h);
+    // What shows of it: its frame, the picture cropped inside (as Word's srcRect cuts it).
+    st.width = `${w}px`;
+    st.height = `${h}px`;
+    st.overflow = 'hidden';
+    const c = look.crop;
+    const fullW = w / (1 - c.l - c.r);
+    const fullH = h / (1 - c.t - c.b);
+    if (img) {
+      img.alt = info.descr;
+      Object.assign(img.style, {
+        width: `${fullW}px`, height: `${fullH}px`, maxWidth: 'none', marginLeft: `${-c.l * fullW}px`, marginTop: `${-c.t * fullH}px`,
+        filter: [look.greyscale && 'grayscale(1)', look.brightness && `brightness(${1 + look.brightness})`, look.contrast && `contrast(${1 + look.contrast})`].filter(Boolean).join(' '),
+      });
+    }
+    // Rotation and flips, border, shadow, glow, soft edges and reflection: as near as CSS shows them.
+    const turns = [look.rot && `rotate(${look.rot}deg)`, look.flipH && 'scaleX(-1)', look.flipV && 'scaleY(-1)'].filter(Boolean).join(' ');
+    if (turns) st.transform = turns;
+    span.dataset.turn = turns;
+    if (look.border) st.outline = `${Math.max(1, look.border.width * 1.333)}px solid #${look.border.color}`;
+    const drops = [look.shadow && 'drop-shadow(3px 3px 3px rgb(0 0 0 / 40%))', look.glow && `drop-shadow(0 0 5px #${look.glow})`].filter(Boolean);
+    if (drops.length) st.filter = drops.join(' ');
+    if (look.softEdge) {
+      const fade = 'linear-gradient(to right, transparent, #000 8px, #000 calc(100% - 8px), transparent), linear-gradient(to bottom, transparent, #000 8px, #000 calc(100% - 8px), transparent)';
+      st.maskImage = fade;
+      st.webkitMaskImage = fade;
+      st.maskComposite = 'intersect';
+      st.webkitMaskComposite = 'source-in';
+    }
+    if (look.reflection) st.webkitBoxReflect = 'below 2px linear-gradient(transparent 55%, rgb(255 255 255 / 45%))';
+  }
+
+  /** Where a picture goes: in line, floating left or right, on a line of its own, or behind or in front of the text. */
+  placePicture(span, info, w, h) {
     if (info.wrap === 'inline') return;
+    const st = span.style;
     const page = this.page;
     const content = page.width - page.left - page.right;
     const px = (emu) => (emu || 0) / EMU_PER_PX;
@@ -1309,7 +1434,6 @@ export class DocxDocument {
     else if (hp.align == null) left = px(hp.offset) - (hp.relativeFrom === 'page' ? page.left : 0);
     const fromParagraph = !vp.relativeFrom || ['paragraph', 'line'].includes(vp.relativeFrom);
     const top = vp.align == null ? px(vp.offset) : 0;
-    const st = span.style;
     if (info.wrap === 'behind' || info.wrap === 'front') {
       st.position = 'absolute';
       st.left = `${page.left + left}px`;
@@ -1325,12 +1449,16 @@ export class DocxDocument {
     if (fromParagraph) st.marginTop = `${top}px`;
     if (info.wrap === 'topAndBottom') {
       st.display = 'block';
-      st.width = `${w}px`;
-      st.marginLeft = hp.align === 'center' ? 'auto' : hp.align === 'right' ? 'auto' : `${Math.max(0, left)}px`;
+      st.marginLeft = hp.align === 'center' || hp.align === 'right' ? 'auto' : `${Math.max(0, left)}px`;
       if (hp.align === 'center') st.marginRight = 'auto';
       return;
     }
-    // Square, tight and through: the text flows around it.
+    // Square, tight and through: the text flows around it; tight and through, around its outline.
+    const outline = (info.wrap === 'tight' || info.wrap === 'through') && wrapPolygon(this.raw[Number(span.dataset.raw)]);
+    if (outline?.length > 2) {
+      st.shapeOutside = `polygon(${outline.map(([x, y]) => `${(x / 216).toFixed(2)}% ${(y / 216).toFixed(2)}%`).join(', ')}) content-box`;
+      st.shapeMargin = '8px';
+    }
     if (hp.align === 'right' || (hp.align == null && left + w / 2 > content / 2 + 1)) {
       st.float = 'right';
       st.marginLeft = '10px';
@@ -1350,20 +1478,41 @@ export class DocxDocument {
     const run = this.raw[Number(span.dataset.raw)].cloneNode(true);
     change(run);
     span.dataset.raw = this.keep(run);
-    this.stylePicture(span, pictureInfo(run));
+    this.stylePicture(span, pictureInfo(run), pictureLook(run));
   }
 
   setPictureSize(span, cx, cy) {
     this.changePicture(span, (run) => resizePicture(run, cx, cy));
   }
 
-  setPictureWrap(span, wrap) {
+  /** Changes a picture's text wrapping; for Tight and Through, `outline` (see editor pictureOutline) is what the text wraps to. */
+  setPictureWrap(span, wrap, outline = null) {
     this.zOrder = (this.zOrder || 251659264) + 1024;
-    this.changePicture(span, (run) => setWrap(run, wrap, this.zOrder));
+    this.changePicture(span, (run) => {
+      setWrap(run, wrap, this.zOrder);
+      if (outline) setWrapPolygon(run, outline);
+    });
   }
 
   setPicturePosition(span, position) {
     this.changePicture(span, (run) => setPosition(run, position));
+  }
+
+  /** A picture's crop, rotation and effects (see pictures.js pictureLook). */
+  pictureLookOf(span) {
+    return pictureLook(this.raw[Number(span.dataset.raw)]);
+  }
+
+  setPictureCrop(span, crop) {
+    this.changePicture(span, (run) => setCrop(run, crop));
+  }
+
+  setPictureRotation(span, rotation) {
+    this.changePicture(span, (run) => setRotation(run, rotation));
+  }
+
+  setPictureEffects(span, look) {
+    this.changePicture(span, (run) => setEffects(run, look));
   }
 
   setPictureDescription(span, text) {
@@ -1380,8 +1529,7 @@ export class DocxDocument {
   /** Why a table's structure can't be changed here, or null. */
   tableLocked(table) {
     if (table?.dataset.raw == null) return 'This table can’t be changed here: change it in Word';
-    if (hasWrappedParts(this.raw[Number(table.dataset.raw)])) return 'This table’s rows or cells are fields: change its layout in Word';
-    return null;
+    return lockedParts(this.raw[Number(table.dataset.raw)]);
   }
 
   /** Text width between the page margins, in twips. */
@@ -1421,22 +1569,34 @@ export class DocxDocument {
       table.remove();
       return false;
     }
+    // Fields around rows and cells, for rendering new rows and cells as fields too.
+    const rowWrappers = new Map(tableParts(tbl, 'tr').map(({ el, wrappers }) => [el, wrappers]));
     const rendered = rows.map((tr) => {
       const row = rowOf.get(tr);
+      const around = rowWrappers.get(tr) || [];
       if (!row) {
-        const fresh = this.renderRow(tr);
+        const fresh = this.renderRow(tr, around);
         this.markTracked(fresh, false);
         return fresh;
       }
+      const cellWrappers = new Map(tableParts(tr, 'tc').map(({ el, wrappers }) => [el, wrappers]));
       row.replaceChildren(...cellsOf(tr).map((tc) => {
         const td = cellOf.get(tc);
-        if (!td) return this.renderCell(tc);
+        if (!td) {
+          const fresh = this.renderCell(tc, around, cellWrappers.get(tc) || []);
+          this.markTracked(fresh, false);
+          return fresh;
+        }
         this.applyCellProps(td, tc);
         return td;
       }));
-      this.applyRowProps(row, tr);
+      this.applyRowProps(row, tr, around);
       return row;
     });
+    const tblStyle = wAttr(wChild(wChild(tbl, 'tblPr'), 'tblStyle'), 'val');
+    if (tblStyle) table.dataset.tstyle = tblStyle;
+    else delete table.dataset.tstyle;
+    this.applyTableProps(table, tbl);
     (table.tBodies[0] || table).replaceChildren(...rendered);
     table.dataset.raw = this.keep(tbl);
     const label = trackedChangeLabel(tbl);
@@ -1613,7 +1773,7 @@ export class DocxDocument {
    * as Word does) into one: their content goes into the first, one cell after another (empty cells
    * add nothing). Returns { cell } (the merged cell) or { reason }.
    */
-  mergeTableCells(table, [r0, r1], [c0, c1]) {
+  mergeTableCells(table, [r0, r1], [c0, c1], tracked = null) {
     const reason = this.tableLocked(table);
     if (reason) return { reason };
     const tbl = this.raw[Number(table.dataset.raw)];
@@ -1623,39 +1783,121 @@ export class DocxDocument {
     if (cells.flat().length < 2) return { reason: 'Select the cells to merge: more than one' };
     const domRows = this.tableRows(table);
     const tds = cells.map((row, i) => row.map((c) => domRows[area.r0 + i].cells[c.index]));
-    if (tds.flat().some((td) => !td || td.dataset.revCell) || domRows.slice(area.r0, area.r1 + 1).some((r) => r.dataset.revRow)) {
+    if (cells.flat().some((c) => isWrappedCell(c.tc))) return { reason: 'Cells that are fields can’t be merged: merge them in Word' };
+    if (tds.flat().some((td) => !td || td.dataset.revCell || td.dataset.revMerge) || domRows.slice(area.r0, area.r1 + 1).some((r) => r.dataset.revRow)) {
       return { reason: 'These cells are a tracked change: accept or reject it first' };
+    }
+    const down = area.r1 > area.r0 && !!tracked; // merging down the rows: tracked while tracking
+    if (down && tds.slice(1).flat().some((td) => td.querySelector('[data-tracked], [data-tc], [data-tc-mark], [data-rev-mark]'))) {
+      return { reason: 'These cells hold tracked changes: accept or reject them first' };
     }
     const target = tds[0][0];
     const empty = (td) => !td.textContent.trim() && !td.querySelector('img, .raw-inline, .sdt, table');
-    for (const td of tds.flat().slice(1)) {
-      if (!empty(td)) {
+    // Across each row (never tracked: Word can't record it), the cells' content joins the row's first cell.
+    tds.forEach((row) => {
+      for (const td of row.slice(1)) {
+        if (!empty(td)) {
+          if (empty(row[0])) row[0].replaceChildren();
+          row[0].append(...td.childNodes);
+        }
+        td.replaceChildren(this.emptyParagraph());
+      }
+    });
+    // Down the rows: moved into the merged cell, or, tracked, copied in as an insertion and left
+    // as a deletion where it was (so rejecting the merge puts it back).
+    for (const row of tds.slice(1)) {
+      const td = row[0];
+      if (empty(td)) continue;
+      if (!down) {
         if (empty(target)) target.replaceChildren();
         target.append(...td.childNodes);
+        td.replaceChildren(this.emptyParagraph());
+        continue;
       }
-      td.replaceChildren(this.emptyParagraph());
+      for (const block of [...td.children]) {
+        const copy = block.cloneNode(true);
+        copy.dataset.tcMark = 'ins';
+        copy.dataset.tcMarkAuthor = tracked.author;
+        copy.dataset.tcMarkDate = tracked.date;
+        copy.replaceChildren(this.trackedSpan('ins', tracked, [...copy.childNodes]));
+        target.append(copy);
+        block.replaceChildren(this.trackedSpan('del', tracked, [...block.childNodes]));
+      }
     }
+    const rev = down && this.rowRevisionMaker(tracked);
     this.editTable(table, (t) => {
-      mergeCells(t, area);
+      mergeCells(t, area, rev);
       fitWidths(t, { before: Infinity, textWidth: 0 });
     });
-    return { cell: target };
+    return { cell: target, across: area.c1 > area.c0, down: area.r1 > area.r0 };
   }
 
-  /** Splits a rendered cell into `cols` × `rows` cells (see tables.js splitCell). Returns {} or { reason }. */
-  splitTableCell(table, td, cols, rows) {
+  /** A tracked insertion or deletion of this session around `nodes`, as editor/track.js makes them. */
+  trackedSpan(kind, { author, date }, nodes) {
+    const span = document.createElement('span');
+    span.className = kind === 'ins' ? 'tc-ins' : 'tc-del';
+    span.dataset.tc = kind;
+    span.dataset.tcAuthor = author;
+    span.dataset.tcDate = date;
+    span.title = `${kind === 'ins' ? 'Inserted' : 'Deleted'} by ${author} – tracked change: Accept or Reject on the toolbar`;
+    if (kind === 'del') span.contentEditable = 'false';
+    span.append(...nodes.filter((n) => !(n.nodeType === 1 && n.tagName === 'BR' && !n.nextSibling)));
+    return span;
+  }
+
+  /** Splits a rendered cell into `cols` × `rows` cells (see tables.js splitCell), tracked while tracking. Returns {} or { reason }. */
+  splitTableCell(table, td, cols, rows, tracked = null) {
     const reason = this.tableLocked(table);
     if (reason) return { reason };
-    if (td.dataset.revCell || td.parentElement.dataset.revRow) return { reason: 'This cell is a tracked change: accept or reject it first' };
+    if (td.dataset.revCell || td.dataset.revMerge || td.parentElement.dataset.revRow) return { reason: 'This cell is a tracked change: accept or reject it first' };
     const rowIndex = this.tableRows(table).indexOf(td.parentElement);
     const cellIndex = [...td.parentElement.cells].indexOf(td);
     const trial = splitCell(this.raw[Number(table.dataset.raw)].cloneNode(true), rowIndex, cellIndex, cols, rows);
     if (trial.reason) return trial;
+    const rev = tracked && this.rowRevisionMaker(tracked);
     this.editTable(table, (t) => {
-      splitCell(t, rowIndex, cellIndex, cols, rows);
+      splitCell(t, rowIndex, cellIndex, cols, rows, rev);
       fitWidths(t, { before: Infinity, textWidth: 0 });
     });
     return {};
+  }
+
+  /**
+   * A tracked merge (or split) of cells down a column, all its cells at once, with the text the
+   * merge moved: accepted, the merge stays and the moved text is only in the merged cell; rejected,
+   * the cells are as they were, their text back in them.
+   */
+  resolveMergeCells(td, accept) {
+    const table = td.closest('table');
+    const key = td.dataset.revMergeKey;
+    const group = this.tableRows(table).flatMap((r) => [...r.cells]).filter((c) => c.dataset.revMergeKey === key);
+    const [author, date] = key.split('|');
+    for (const cell of group) {
+      // This session's moved text: its insertions and deletions of the same author and time.
+      for (const span of [...cell.querySelectorAll('[data-tc]')].filter((sp) => sp.dataset.tcAuthor === author && sp.dataset.tcDate === date)) {
+        if ((span.dataset.tc === 'ins') === accept) span.replaceWith(...span.childNodes);
+        else span.remove();
+      }
+      for (const block of [...cell.querySelectorAll('[data-tc-mark]')].filter((b) => b.dataset.tcMarkAuthor === author && b.dataset.tcMarkDate === date)) {
+        if (accept) {
+          delete block.dataset.tcMark;
+          delete block.dataset.tcMarkAuthor;
+          delete block.dataset.tcMarkDate;
+        } else block.remove();
+      }
+      // Someone's (from the file): their revisions of the same author and time, one by one.
+      for (const el of [...cell.querySelectorAll('.raw-inline.inserted, .raw-inline.deleted')]) {
+        const rev = this.revisionOf(el);
+        if (rev && rev.author === author && (rev.date || '') === date) this.resolveRevision({ el, kind: 'inline' }, accept);
+      }
+      if (!cell.firstElementChild) cell.append(this.emptyParagraph());
+    }
+    const rows = this.tableRows(table);
+    const at = group.map((c) => [rows.indexOf(c.parentElement), [...c.parentElement.cells].indexOf(c)]);
+    this.editTable(table, (tbl) => at.forEach(([r, i]) => {
+      const tc = cellsOf(rowsOf(tbl)[r])[i];
+      if (tc) resolveMerge(tc, accept);
+    }));
   }
 
   /** Deletes a whole table: its rows marked deleted while tracking, else the table goes. */

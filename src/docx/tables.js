@@ -1,5 +1,7 @@
 // Changing a table's structure as Word does: rows inserted above or below, columns inserted left
-// or right, rows and columns deleted. Everything here works on a table's XML (<w:tbl>), in grid
+// or right, rows and columns deleted, cells merged and split. Rows and cells inside content
+// controls (repeating sections, fields around cells) are found through them; a row added in a
+// repeating section is a new item, and a control left empty goes. Everything here works on a table's XML (<w:tbl>), in grid
 // columns (<w:tblGrid>): a cell spanning columns (gridSpan) is widened or narrowed rather than
 // split, vertical merges (vMerge) carry on through rows inserted inside them, and widths follow
 // the grid. DocxDocument keeps the rendered table in step.
@@ -12,13 +14,96 @@ const TCPR_ORDER = [
 ];
 const REVISION_MARKS = ['ins', 'del', 'moveTo', 'moveFrom'];
 
-export const rowsOf = (tbl) => wChildren(tbl, 'tr');
-export const cellsOf = (tr) => wChildren(tr, 'tc');
+const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
+const isW = (n, local) => n?.nodeType === 1 && n.namespaceURI === W && n.localName === local;
 
-/** True if content controls or custom XML wrap rows or cells: such tables are changed in Word. */
-export function hasWrappedParts(tbl) {
-  const wrapped = (el) => elementChildren(el).some((c) => c.namespaceURI === W && (c.localName === 'sdt' || c.localName === 'customXml'));
-  return wrapped(tbl) || rowsOf(tbl).some(wrapped);
+/** Rows (`local` 'tr') or cells ('tc') of `parent` in order, looking through content controls and custom XML around them. */
+function parts(parent, local) {
+  const out = [];
+  for (const c of elementChildren(parent)) {
+    if (c.namespaceURI !== W) continue;
+    if (c.localName === local) out.push(c);
+    else if (c.localName === 'sdt') out.push(...parts(wChild(c, 'sdtContent') || c.ownerDocument.createElement('x'), local));
+    else if (c.localName === 'customXml') out.push(...parts(c, local));
+  }
+  return out;
+}
+
+export const rowsOf = (tbl) => parts(tbl, 'tr');
+export const cellsOf = (tr) => parts(tr, 'tc');
+
+/** The content controls (and custom XML) around a row or cell, innermost first, up to its table or row. */
+function wrappersOf(el) {
+  const out = [];
+  for (let n = el.parentNode; n && !isW(n, 'tbl') && !isW(n, 'tr'); n = n.parentNode) {
+    if (isW(n, 'sdt') || isW(n, 'customXml')) out.push(n);
+  }
+  return out;
+}
+
+/** The element standing for a row or cell among its table's or row's children: its outermost wrapper, or itself. */
+function outermost(el) {
+  const w = wrappersOf(el);
+  return w.length ? w[w.length - 1] : el;
+}
+
+/** Takes a row or cell out, and any content control left empty by it. */
+export function removeRow(el) {
+  detach(el);
+}
+
+function detach(el) {
+  let parent = el.parentNode;
+  parent.removeChild(el);
+  while (parent && (isW(parent, 'sdtContent') || isW(parent, 'customXml'))) {
+    if (elementChildren(parent).some((c) => !(c.namespaceURI === W && ['bookmarkStart', 'bookmarkEnd', 'proofErr'].includes(c.localName)))) break;
+    const holder = isW(parent, 'sdtContent') ? parent.parentNode : parent;
+    const up = holder.parentNode;
+    up.removeChild(holder);
+    parent = up;
+  }
+}
+
+/**
+ * Why a table's rows or cells can't be changed here, or null: content controls around them that
+ * are locked, or linked to the document's data (Word would overwrite them).
+ */
+export function lockedParts(tbl) {
+  const wrappers = new Set();
+  for (const tr of rowsOf(tbl)) {
+    for (const w of wrappersOf(tr)) wrappers.add(w);
+    for (const tc of cellsOf(tr)) for (const w of wrappersOf(tc)) wrappers.add(w);
+  }
+  for (const w of wrappers) {
+    if (!isW(w, 'sdt')) continue;
+    const sdtPr = wChild(w, 'sdtPr');
+    const lock = wAttr(wChild(sdtPr, 'lock'), 'val');
+    if (lock === 'sdtContentLocked' || lock === 'contentLocked') return 'This table’s rows or cells are locked fields: change its layout in Word';
+    if (wChild(sdtPr, 'dataBinding')) return 'This table’s rows or cells are linked to the document’s data: change its layout in Word';
+  }
+  return null;
+}
+
+/** True if a cell sits inside a content control of its own (not just one around its row). */
+export const isWrappedCell = (tc) => wrappersOf(tc).length > 0;
+
+/** The repeating section item (Word's repeatable content control) holding just this row, if any. */
+function repeatingItem(tr) {
+  const sdt = wrappersOf(tr).find((w) => isW(w, 'sdt'));
+  const sdtPr = sdt && wChild(sdt, 'sdtPr');
+  if (!sdtPr || ![...sdtPr.children].some((c) => c.namespaceURI === W15 && c.localName === 'repeatingSectionItem')) return null;
+  return rowsOf(wChild(sdt, 'sdtContent')).length === 1 ? sdt : null;
+}
+
+/** Content controls copied with a row get new ids, and show no placeholder (their copies are empty). */
+function freshControls(el) {
+  const sdts = isW(el, 'sdt') ? [el, ...el.getElementsByTagNameNS(W, 'sdt')] : [...el.getElementsByTagNameNS(W, 'sdt')];
+  for (const sdt of sdts) {
+    const sdtPr = wChild(sdt, 'sdtPr');
+    const id = wChild(sdtPr, 'id');
+    if (id) id.setAttributeNS(W, 'w:val', String(Math.floor(Math.random() * 0x7fffffff) - 0x3fffffff));
+    removeW(sdtPr, 'showingPlcHdr');
+  }
 }
 
 const int = (el, attr = 'val') => {
@@ -138,8 +223,10 @@ function emptyCell(tc, like = tc) {
 function blankRow(tr) {
   const copy = tr.cloneNode(true);
   for (const c of elementChildren(copy)) {
-    if (!(c.namespaceURI === W && ['trPr', 'tblPrEx', 'tc'].includes(c.localName))) copy.removeChild(c);
+    const cellHolder = c.namespaceURI === W && (c.localName === 'sdt' || c.localName === 'customXml') && cellsOf(c.localName === 'sdt' ? wChild(c, 'sdtContent') || c : c).length;
+    if (!(c.namespaceURI === W && ['trPr', 'tblPrEx', 'tc'].includes(c.localName)) && !cellHolder) copy.removeChild(c);
   }
+  freshControls(copy);
   const props = wChild(copy, 'trPr');
   if (props) {
     removeW(props, 'ins', 'del', 'trPrChange');
@@ -183,8 +270,17 @@ export function insertRows(tbl, index, count, below, revision = null) {
     if (revision) markRow(tr, revision());
     made.push(tr);
   }
-  if (below) ref.after(...made);
-  else ref.before(...made);
+  // In a repeating section (Word's repeatable rows), each new row is a new item, as Word's + adds one.
+  const item = repeatingItem(ref);
+  const placed = item ? made.map((tr) => {
+    const copy = item.cloneNode(true);
+    freshControls(copy);
+    wChild(copy, 'sdtContent').replaceChildren(tr);
+    return copy;
+  }) : made;
+  const at = item || ref;
+  if (below) at.after(...placed);
+  else at.before(...placed);
   return made;
 }
 
@@ -217,8 +313,8 @@ export function insertColumns(tbl, at, count, like) {
     const model = (like < at ? left || after : after || left).tc;
     const fresh = Array.from({ length: count }, () => blankCell(model));
     made.push(...fresh);
-    if (after) after.tc.before(...fresh);
-    else left.tc.after(...fresh);
+    if (after) outermost(after.tc).before(...fresh);
+    else outermost(left.tc).after(...fresh);
   }
   const grid = wChild(tbl, 'tblGrid') || tbl.insertBefore(createW(tbl.ownerDocument, 'tblGrid'), rowsOf(tbl)[0] || null);
   const cols = wChildren(grid, 'gridCol');
@@ -239,12 +335,12 @@ export function deleteColumns(tbl, from, to) {
     const after = rowValue(tr, 'gridAfter');
     for (const c of cells) {
       const gone = overlap(c.start, c.start + c.span);
-      if (gone === c.span) tr.removeChild(c.tc);
+      if (gone === c.span) detach(c.tc);
       else if (gone) setSpan(c.tc, c.span - gone);
     }
     if (before) setRowValue(tr, 'gridBefore', before - overlap(0, before));
     if (after) setRowValue(tr, 'gridAfter', after - overlap(end, end + after));
-    if (!cellsOf(tr).length) tbl.removeChild(tr);
+    if (!cellsOf(tr).length) detach(tr);
   }
   const cols = wChildren(wChild(tbl, 'tblGrid'), 'gridCol');
   cols.slice(from, to + 1).forEach((c) => c.parentNode.removeChild(c));
@@ -253,7 +349,7 @@ export function deleteColumns(tbl, from, to) {
 /** Deletes rows (by index), as Word does: a vertical merge starting in one starts below it instead. */
 export function deleteRows(tbl, indices) {
   const rows = rowsOf(tbl);
-  for (const i of indices) if (rows[i]) tbl.removeChild(rows[i]);
+  for (const i of indices) if (rows[i]) detach(rows[i]);
 }
 
 /**
@@ -424,15 +520,39 @@ export function areaCells(tbl, { r0, r1, c0, c1 }) {
  * columns (the others go), and with several rows the first row's cell starts a vertical merge the
  * rows below continue. (The cells' content is moved by the caller.)
  */
-export function mergeCells(tbl, area) {
+export function mergeCells(tbl, area, rev = null) {
   const width = area.c1 - area.c0 + 1;
   areaCells(tbl, area).forEach((cells, i) => {
     const [first, ...rest] = cells;
-    for (const c of rest) c.tc.parentNode.removeChild(c.tc);
+    for (const c of rest) detach(c.tc);
     setSpan(first.tc, width);
-    setVMerge(first.tc, area.r1 > area.r0 ? (i === 0 ? 'restart' : 'continue') : null);
-    if (i > 0) emptyCell(first.tc);
+    const was = vMerge(first.tc);
+    const now = area.r1 > area.r0 ? (i === 0 ? 'restart' : 'continue') : null;
+    setVMerge(first.tc, now);
+    // Merging down the rows, tracked: <w:cellMerge> records each cell's new and old merge.
+    if (rev && now && now !== was) markMerge(first.tc, rev('cellMerge'), now, was);
+    else if (i > 0) emptyCell(first.tc); // its content went into the merged cell
   });
+}
+
+const MERGE_VALUE = { restart: 'rest', continue: 'cont' };
+
+/** Records a tracked change of a cell's vertical merge: `rev` is the <w:cellMerge>; states are 'restart', 'continue' or null. */
+export function markMerge(tc, rev, now, was) {
+  rev.setAttributeNS(W, 'w:vMerge', MERGE_VALUE[now] || 'rest');
+  if (was) rev.setAttributeNS(W, 'w:vMergeOrig', MERGE_VALUE[was]);
+  markCell(tc, rev);
+}
+
+/** A tracked merge or split of cells down a column, resolved: accepted, the record goes; rejected, the old merge comes back. */
+export function resolveMerge(tc, accept) {
+  const props = wChild(tc, 'tcPr');
+  const rev = wChild(props, 'cellMerge');
+  if (!rev) return;
+  props.removeChild(rev);
+  if (accept) return;
+  const orig = wAttr(rev, 'vMergeOrig');
+  setVMerge(tc, orig === 'rest' ? 'restart' : orig === 'cont' ? 'continue' : null);
 }
 
 /**
@@ -481,7 +601,7 @@ function mergeRows(tbl, rowIndex, start) {
  * vertically. A cell merged across several rows splits into 1 row (each keeping the merge) or into
  * that many rows (the merge undone). Returns { reason } if it can't be split so.
  */
-export function splitCell(tbl, rowIndex, cellIndex, cols, rows) {
+export function splitCell(tbl, rowIndex, cellIndex, cols, rows, rev = null) {
   const cell = layout(rowsOf(tbl)[rowIndex])[cellIndex];
   if (!cell) return { reason: 'There is no cell to split here' };
   const [first, last] = mergeRows(tbl, rowIndex, cell.start);
@@ -489,25 +609,42 @@ export function splitCell(tbl, rowIndex, cellIndex, cols, rows) {
   if (merged > 1 && rows !== 1 && rows !== merged) return { reason: `This cell is merged across ${merged} rows: split it into 1 or ${merged} rows` };
   const at = (r) => layout(rowsOf(tbl)[r]).find((c) => c.start === cell.start);
   const keepMerge = merged > 1 && rows === 1;
-  if (merged > 1 && rows === merged) for (let r = first; r <= last; r++) setVMerge(at(r).tc, null);
+  if (merged > 1 && rows === merged) {
+    for (let r = first; r <= last; r++) {
+      const tc = at(r).tc;
+      const was = vMerge(tc);
+      if (rev && r === first) continue; // tracked, the first cell keeps starting the merge, so rejecting restores it
+      setVMerge(tc, null);
+      if (rev && r > first) markMerge(tc, rev('cellMerge'), null, was); // tracked: the cell no longer continues the merge
+    }
+  }
   if (cols > 1) {
     const widths = gridWidths(tbl);
     const x0 = widths.slice(0, cell.start).reduce((a, b) => a + b, 0);
     const span = widths.slice(cell.start, cell.start + cell.span).reduce((a, b) => a + b, 0);
     if (span / cols < 60) return { reason: 'The cell is too narrow to split into that many columns' };
+    const grid = wChild(tbl, 'tblGrid');
+    const oldCols = wChildren(grid, 'gridCol').map((c) => c.cloneNode(true));
     const bounds = [];
     for (let k = 1; k < cols; k++) bounds.push(boundaryAt(tbl, x0 + Math.round((k * span) / cols)));
+    // Tracked, new grid columns are a tracked grid change (the old grid kept), so rejecting gives the widths back.
+    if (rev && wChildren(grid, 'gridCol').length !== oldCols.length && !wChild(grid, 'tblGridChange')) {
+      const change = rev('tblGridChange');
+      change.appendChild(createW(tbl.ownerDocument, 'tblGrid')).append(...oldCols);
+      grid.appendChild(change);
+    }
     const ends = [cell.start, ...bounds, null];
     for (let r = merged > 1 ? first : rowIndex; r <= (merged > 1 ? last : rowIndex); r++) {
       const c = at(r);
       ends[ends.length - 1] = c.start + c.span;
       const kind = keepMerge ? vMerge(c.tc) : null;
       setSpan(c.tc, ends[1] - ends[0]);
-      let prev = c.tc;
+      let prev = outermost(c.tc);
       for (let k = 1; k < cols; k++) {
         const fresh = blankCell(c.tc);
         setSpan(fresh, ends[k + 1] - ends[k]);
         if (kind) setVMerge(fresh, kind);
+        if (rev) markCell(fresh, rev('cellIns'));
         prev.after(fresh);
         prev = fresh;
       }
@@ -526,6 +663,7 @@ export function splitCell(tbl, rowIndex, cellIndex, cols, rows) {
       removeW(props, 'tblHeader');
       if (props && !elementChildren(props).length) copy.removeChild(props);
       for (const c of layout(copy)) if (!inside(c)) setVMerge(c.tc, 'continue');
+      if (rev) markRow(copy, rev('ins'));
       made.push(copy);
     }
     tr.after(...made);
@@ -538,7 +676,7 @@ export function splitCell(tbl, rowIndex, cellIndex, cols, rows) {
 /** Marks a cell inserted or deleted with tracking: `rev` is the <w:cellIns> or <w:cellDel>. */
 export function markCell(tc, rev) {
   const props = tcPr(tc);
-  removeW(props, 'cellIns', 'cellDel');
+  removeW(props, ...(rev.localName === 'cellMerge' ? ['cellMerge'] : ['cellIns', 'cellDel']));
   const after = TCPR_ORDER.indexOf(rev.localName);
   props.insertBefore(rev, wChildren(props).find((c) => TCPR_ORDER.indexOf(c.localName) > after) || null);
 }
@@ -579,7 +717,7 @@ export function removeCells(tbl, tcs) {
       if (!set.has(c.tc)) continue;
       const inRemovable = [...Array(c.span).keys()].every((k) => removable.includes(c.start + k));
       if (!inRemovable) {
-        tr.removeChild(c.tc);
+        detach(c.tc);
         setRowValue(tr, 'gridAfter', rowValue(tr, 'gridAfter') + c.span);
       }
     }
@@ -592,4 +730,22 @@ export function removeCells(tbl, tcs) {
     deleteColumns(tbl, removable[j], removable[i]);
     i = j + 1;
   }
+}
+
+/** After cells split off with tracking are taken out again: the old grid widths back, from the tracked grid change. */
+export function restoreGrid(tbl, key) {
+  const grid = wChild(tbl, 'tblGrid');
+  const change = wChild(grid, 'tblGridChange');
+  if (!change || `${wAttr(change, 'author') || ''}|${wAttr(change, 'date') || ''}` !== key) return;
+  grid.removeChild(change);
+  const old = wChildren(wChild(change, 'tblGrid'), 'gridCol');
+  const now = wChildren(grid, 'gridCol');
+  if (old.length === now.length) now.forEach((c, i) => c.setAttributeNS(W, 'w:w', wAttr(old[i], 'w')));
+}
+
+/** The tracked grid change made with cells of change `key` (author|date) is accepted with them. */
+export function dropGridChange(tbl, key) {
+  const grid = wChild(tbl, 'tblGrid');
+  const change = wChild(grid, 'tblGridChange');
+  if (change && `${wAttr(change, 'author') || ''}|${wAttr(change, 'date') || ''}` === key) grid.removeChild(change);
 }

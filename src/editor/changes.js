@@ -6,7 +6,11 @@
 //   para    a tracked change to a paragraph's formatting (data-fmt-para);
 //   row     a tracked table row (data-rev-row); the changes in a deleted row are part of it;
 //   cells   a tracked column: the cells inserted or deleted together (data-rev-cell, one data-rev-key),
-//           listed once, at its first cell; the changes in deleted cells are part of it.
+//           listed once, at its first cell; the changes in deleted cells are part of it;
+//   merge   a tracked merge or split of cells down a column (data-rev-merge, one data-rev-merge-key),
+//           listed once, at its first cell, with the text it moved;
+//   tprops, rprops, cprops   a tracked change to a table's, row's or cell's properties
+//           (data-fmt-table, data-fmt-row, data-fmt-cell).
 // Changes inside content saved verbatim (locked fields and cells, preserved blocks) can only be
 // accepted or rejected in Word, and aren't listed (DocxDocument.wordOnlyChanges counts them).
 
@@ -14,6 +18,21 @@ const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li';
 
 const isInline = (el) => !!el.dataset.tc || (el.classList.contains('raw-inline') && (el.classList.contains('inserted') || el.classList.contains('deleted')));
 const isMark = (el) => el.matches(BLOCKS) && (!!el.dataset.tcMark || !!el.dataset.revMark);
+
+/** True for this session's text moved by a tracked merge: it is accepted or rejected with the merge. */
+function partOfMerge(el, kind) {
+  if (kind !== 'inline' && kind !== 'mark') return false;
+  const cell = el.closest('td');
+  if (!cell?.dataset.revMerge) return false;
+  const key = kind === 'mark' ? `${el.dataset.tcMarkAuthor}|${el.dataset.tcMarkDate}` : `${el.dataset.tcAuthor}|${el.dataset.tcDate}`;
+  return key === cell.dataset.revMergeKey;
+}
+
+/** The cells of the tracked merge `td` belongs to: same table, same data-rev-merge-key. */
+export function mergeGroup(td) {
+  const table = td.closest('table');
+  return [...table.querySelectorAll(':scope > tbody > tr > td, :scope > tr > td')].filter((c) => c.dataset.revMergeKey === td.dataset.revMergeKey);
+}
 
 /** The cells of the tracked column `td` belongs to: same table, same data-rev-key. */
 export function cellGroup(td) {
@@ -31,9 +50,18 @@ function resolvable(el) {
 export function changeItems(root) {
   const out = [];
   const seen = new Set(); // tracked columns listed: table + key
-  const add = (el, kind) => { if (resolvable(el)) out.push({ el, kind, mark: kind === 'mark' }); };
+  const add = (el, kind) => { if (resolvable(el) && !partOfMerge(el, kind)) out.push({ el, kind, mark: kind === 'mark' }); };
   const walk = (node) => {
     for (const el of node.children) {
+      if (el.tagName === 'TABLE' && el.dataset.fmtTable) add(el, 'tprops');
+      if (el.tagName === 'TD' && el.dataset.fmtCell) add(el, 'cprops');
+      if (el.tagName === 'TD' && el.dataset.revMerge) {
+        const table = el.closest('table');
+        if (![...seen].some(([t, k]) => t === table && k === `merge|${el.dataset.revMergeKey}`)) {
+          seen.add([table, `merge|${el.dataset.revMergeKey}`]);
+          add(el, 'merge');
+        }
+      }
       if (el.tagName === 'TD' && el.dataset.revCell) {
         const key = el.dataset.revKey;
         const table = el.closest('table');
@@ -59,6 +87,7 @@ export function changeItems(root) {
         if (isMark(el)) add(el, 'mark');
       }
       if (el.tagName === 'TR' && el.dataset.revRow) add(el, 'row');
+      if (el.tagName === 'TR' && el.dataset.fmtRow) add(el, 'rprops');
     }
   };
   walk(root);
@@ -74,11 +103,20 @@ export function itemRange(item) {
     range.collapse(false);
   } else if (kind === 'run' || kind === 'para') {
     range.selectNodeContents(el);
-  } else if (kind === 'cells') {
-    const cells = cellGroup(el);
+  } else if (kind === 'cells' || kind === 'merge') {
+    const cells = kind === 'cells' ? cellGroup(el) : mergeGroup(el);
     const last = cells[cells.length - 1];
     range.setStart(cells[0], 0);
     range.setEnd(last, last.childNodes.length);
+  } else if (kind === 'cprops') {
+    range.selectNodeContents(el);
+  } else if (kind === 'tprops') {
+    range.setStartBefore(el); // the table's own change comes before what is in it
+    range.collapse(true);
+  } else if (kind === 'rprops') {
+    const last = el.cells[el.cells.length - 1]; // the row's own change comes after its cells
+    range.selectNodeContents(last);
+    range.collapse(false);
   } else if (kind === 'row') {
     const cells = [...el.cells];
     range.setStart(cells[0], 0);
@@ -118,7 +156,7 @@ export function changesAt(range, items) {
   if (!range.collapsed) {
     return items.filter(({ el, kind }) => (kind === 'mark' || kind === 'para'
       ? range.comparePoint(el, el.childNodes.length) === 0
-      : kind === 'cells' ? cellGroup(el).some((td) => range.intersectsNode(td)) : range.intersectsNode(el)));
+      : kind === 'cells' || kind === 'merge' ? (kind === 'cells' ? cellGroup(el) : mergeGroup(el)).some((td) => range.intersectsNode(td)) : range.intersectsNode(el)));
   }
   const { startContainer: node, startOffset: offset } = range;
   const el = node.nodeType === 1 ? node : node.parentElement;
@@ -141,11 +179,21 @@ export function changesAt(range, items) {
   }
   const para = block && find((i) => i.kind === 'para' && i.el === block);
   if (para) return [para];
+  const merged = el.closest('td[data-rev-merge]');
+  const merge = merged && find((i) => i.kind === 'merge' && mergeGroup(i.el).includes(merged));
+  if (merge) return [merge];
   const cell = el.closest('td[data-rev-cell]');
   const column = cell && find((i) => i.kind === 'cells' && cellGroup(i.el).includes(cell));
   if (column) return [column];
   const row = find((i) => i.kind === 'row' && i.el.contains(el));
-  return row ? [row] : [];
+  if (row) return [row];
+  const cellProps = find((i) => i.kind === 'cprops' && i.el.contains(el));
+  if (cellProps) return [cellProps];
+  const rowProps = find((i) => i.kind === 'rprops' && i.el.contains(el));
+  if (rowProps) return [rowProps];
+  const table = el.closest('table');
+  const tableProps = table && find((i) => i.kind === 'tprops' && i.el === table);
+  return tableProps ? [tableProps] : [];
 }
 
 /**

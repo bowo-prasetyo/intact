@@ -34,13 +34,22 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   `cellDel`), deleted text struck through, and each row or column is accepted or rejected as one
   change (rejecting an inserted column, or accepting a deleted one, takes its grid column out and
   narrows cells spanning it). Deleting a row or column you inserted removes it; rows and columns
-  holding someone's tracked change aren't deleted untracked
+  holding someone's tracked change aren't deleted untracked. Rows and cells that are content
+  controls change too: a row added in a repeating section is a new item of it (with its own ids,
+  as Word's + adds one), a row added in a plain field stays in it, a field left empty goes, and new
+  cells next to a field cell are ordinary cells; locked fields and fields linked to data stay as
+  they are
 - Merge and split cells from the same menu, as Word does: Merge cells joins the selected cells
   (grown to whole cells where a merged cell sticks out) into one spanning them across (`gridSpan`)
   and down (`vMerge`), their content one after another in it; Split cells… divides a cell into
   columns of equal width (adding grid columns that the other rows span where needed) and rows (the
-  row's other cells merged down), and a merged cell splits back into the cells it spans. Merging and
-  splitting aren't tracked; the status bar says so while tracking
+  row's other cells merged down), and a merged cell splits back into the cells it spans. While
+  tracking they are tracked in the ways a Word document can record them: cells merged down a column
+  (or split back) with `w:cellMerge`, the text moved shown inserted in the merged cell and deleted
+  where it was; cells split into columns as inserted cells, the old grid kept (`tblGridChange`) so
+  rejecting gives the widths back; into rows as inserted rows. Each is one change to accept or
+  reject. Cells merged across a row can't be recorded in a Word document: that part is done
+  directly, and the status bar says so
 - Insert pictures (PNG, JPEG, GIF or BMP) from the toolbar, by pasting a picture on its own (such as
   a screenshot) or by dropping picture files on the page: in line with the text at the caret, at
   their size or narrowed to fit between the margins, tracked while tracking. The picture's file,
@@ -55,6 +64,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   DrawingML is changed where it must be (`wp:inline` ↔ `wp:anchor`, extents, position, wrap,
   `docPr/@descr`) and the rest kept; the page shows the layout as near as a web page can. Resizing
   and moving aren't tracked; the review lists them. Charts, shapes and other drawings stay as they are
+- Crop, rotate and add effects to pictures, as Word's Picture Format tab does: crop by numbers or
+  with the handles (`a:srcRect`; what shows keeps its scale, the frame follows), rotate with the
+  round handle or by 90° and flip (`a:xfrm` `rot`, `flipH`, `flipV`), and set a border, shadow,
+  glow, soft edges, reflection, greyscale, brightness and contrast (`a:ln`, `a:effectLst`,
+  `a:grayscl`, `a:lum`); effects Intact doesn't set are kept. Tight and Through wrapping follow the
+  picture's outline, as in Word: the outline of what isn't transparent is written as the wrap
+  polygon, and the page wraps the text around it (CSS `shape-outside`), as it does for a polygon
+  Word drew
 - Add comments (toolbar button or Ctrl+Alt+M) on the selected text, or the word at the caret, with
   your name (asked once, shared with Track Changes): they appear in the comments panel and are
   written to `comments.xml` (created if the document has none) next to the comments already there.
@@ -99,8 +116,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   joins its paragraph with the next; a formatting change rejected restores the old formatting
   (run or paragraph: style, alignment, list); an inserted row rejected (or a deleted one accepted)
   goes. Tracked paragraph breaks show as a coloured ¶, formatting changes with a dashed underline
-  or a bar in the margin, tracked rows tinted. Changes only Word can resolve (table and cell
-  properties, locked content) are counted, named and kept
+  or a bar in the margin, tracked rows tinted. Tracked changes to a table's, row's or cell's
+  properties (`tblPrChange`, `tblGridChange`, `trPrChange`, `tcPrChange`) are changes like the
+  others: accepted, the record goes; rejected, the old properties come back. Changes only Word can
+  resolve (inside locked content) are counted, named and kept
 - Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
   changed, with the words deleted and inserted, which changes are tracked, a warning when some
   aren't, and anything else that changes (comments removed with their text, Track Changes switched,
@@ -215,14 +234,15 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 ## Limitations
 
-- Tracked changes to table and cell properties, and tracked changes inside locked content, can only
-  be accepted or rejected in Word (the toolbar counts them); your own formatting changes (bold,
+- Tracked changes inside locked content can only be accepted or rejected in Word (the toolbar
+  counts them); your own formatting changes (bold,
   styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
-- Floating pictures are shown as near to Word's layout as a web page allows (text wraps around a
-  picture's rectangle, not its outline); pictures can't be cropped, rotated or given effects here.
-  Tables whose rows or cells are content controls are changed in Word
+- Floating pictures are shown as near to Word's layout as a web page allows (rotation, shadows and
+  reflections are approximated; a wrap outline isn't rotated with the picture); 3-D effects, artistic
+  effects and picture styles are kept but set in Word. Cells merged across a row can't be tracked
+  (Word documents have no way to record it), and cells that are fields can't be merged
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
   lists (not highlight); pictures within copied text and links (their text is kept) are not added
