@@ -10,7 +10,7 @@
       <h2>What you can edit</h2>
       <ul>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
-        <li>New comments on the text you select (Ctrl+Alt+M)</li>
+        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
@@ -39,8 +39,7 @@
       <h2>Limitations</h2>
       <ul>
         <li>No adding images or tables; tables only grow by a row at the end.</li>
-        <li>Existing comments can't be replied to or resolved here.</li>
-        <li>Tracked formatting changes, table rows and changes inside locked content can only be accepted or rejected in Word; text holding someone's tracked change can't be deleted together with it.</li>
+        <li>Tracked changes to table and cell properties, and changes inside locked content, can only be accepted or rejected in Word; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>

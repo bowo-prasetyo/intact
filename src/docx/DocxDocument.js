@@ -25,7 +25,10 @@ import {
 import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
 } from './contentControls.js';
-import { trackedChangeLabel, paragraphMarkLabel, paragraphMarkRevision, inlineRevisionKind } from './revisions.js';
+import {
+  trackedChangeLabel, paragraphMarkLabel, paragraphMarkRevision, inlineRevisionKind, formattingChange, rowRevision,
+  tablePropertyChanges,
+} from './revisions.js';
 import { reviewParagraphs } from './review.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
@@ -40,6 +43,12 @@ const NUMBERING_CT = 'application/vnd.openxmlformats-officedocument.wordprocessi
 const NUMPR_ORDER = ['ilvl', 'numId', 'numberingChange', 'ins'];
 const COMMENTS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments';
 const COMMENTS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml';
+const COMMENTS_EX_REL = 'http://schemas.microsoft.com/office/2011/relationships/commentsExtended';
+const COMMENTS_EX_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml';
+const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
+const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
+/** A new paragraph id, as Word writes them (eight hex digits, below 0x80000000). */
+const newParaId = () => (Math.floor(Math.random() * 0x7ffffffe) + 1).toString(16).toUpperCase().padStart(8, '0');
 const SETTINGS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings';
 const SETTINGS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml';
 // The settings that come before <w:trackRevisions> in CT_Settings.
@@ -124,6 +133,7 @@ export class DocxDocument {
       ['/comments', '/commentsExtended', '/footnotes', '/endnotes'].map(partOf),
     );
     this.comments = parseComments(comments, commentsExt);
+    for (const c of this.comments) c.hadParaId = !!c.paraId; // a reply or resolving may need one added
     await this.initCommentRemoval(relOf);
     this.notes = { footnote: parseNotes(footnotes, 'footnote'), endnote: parseNotes(endnotes, 'endnote') };
     const settings = await partOf('/settings');
@@ -266,8 +276,15 @@ export class DocxDocument {
       const refs = node.localName === 'tbl' ? [] : [...commentIdsIn(node)];
       if (refs.length) this.commentRefs.set(el.dataset.raw, refs);
     }
+    for (const el of root.querySelectorAll('[data-rpr]')) {
+      const change = formattingChange(this.raw[Number(el.dataset.rpr)]);
+      if (!change) continue;
+      el.dataset.fmt = 'run'; // a tracked formatting change, accepted or rejected on the toolbar
+      el.title = `Formatting changed${byWhom(change)} – tracked change: Accept or Reject on the toolbar`;
+    }
     for (const el of root.querySelectorAll('[data-ppr]')) {
       const pPr = this.raw[Number(el.dataset.ppr)];
+      if (formattingChange(pPr)) el.dataset.fmtPara = '1';
       const label = paragraphMarkLabel(pPr);
       if (label) el.dataset.tracked = label;
       const rev = paragraphMarkRevision(pPr);
@@ -288,7 +305,7 @@ export class DocxDocument {
     const id = String(this.nextId++);
     const initials = author.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
     const comment = {
-      id, author, initials, date, text, paraId: null, parentId: null, done: false, isNew: true,
+      id, author, initials, date, text, paraId: newParaId(), parentId: null, done: false, isNew: true,
       paragraphs: text.split('\n').map((s) => s.trim()).filter(Boolean),
     };
     this.comments.push(comment);
@@ -315,6 +332,72 @@ export class DocxDocument {
     return comment;
   }
 
+  /**
+   * Adds a reply of this session to comment `parentId`, as Word writes one: its own range markers
+   * inside the parent's range and its mark after the parent's, linked to the parent in
+   * commentsExtended.xml on save. Null if the parent's mark isn't in the editor content `root`.
+   */
+  addReply(parentId, { author, text, date }, root) {
+    const q = (attr) => root.querySelector(`[${attr}="${CSS.escape(parentId)}"]`);
+    const parentRef = q('data-comment-ref');
+    const parent = this.comments.find((c) => c.id === parentId);
+    if (!parentRef || !parent) return null;
+    parent.paraId ||= newParaId(); // written into comments.xml on save if the reply is kept
+    const id = String(this.nextId++);
+    const initials = author.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+    const reply = {
+      id, author, initials, date, text, paraId: newParaId(), parentId, done: false, isNew: true,
+      paragraphs: text.split('\n').map((s) => s.trim()).filter(Boolean),
+    };
+    this.comments.push(reply);
+    this.newComments.push(reply);
+    this.commentsInBody.add(id);
+    this.commentRangesInBody.add(id);
+    const marker = (local) => {
+      const el = createW(this.xml, local);
+      el.setAttributeNS(W, 'w:id', id);
+      return el;
+    };
+    const run = createW(this.xml, 'r');
+    run.appendChild(marker('commentReference'));
+    const mark = this.rawInline(run); // a reply's mark is hidden: replies are shown with their thread
+    this.commentRefs.set(mark.dataset.raw, [id]);
+    // Inside the parent's range (or, for a comment on a point, just before its mark).
+    const start = q('data-comment-start');
+    const end = q('data-comment-end');
+    const replyStart = this.hiddenRaw(marker('commentRangeStart'));
+    const replyEnd = this.hiddenRaw(marker('commentRangeEnd'));
+    if (start) start.after(replyStart);
+    else parentRef.before(replyStart);
+    if (end) end.after(replyEnd);
+    else parentRef.before(replyEnd);
+    parentRef.after(mark);
+    return reply;
+  }
+
+  /** A comment's text as the panel shows it: its paragraphs, one per line. */
+  commentText(c) {
+    return c.text ?? c.paragraphs.join('\n');
+  }
+
+  /**
+   * Changes to comments kept on their marks in the editor content (so Undo covers them): an edited
+   * text (data-edit) and a thread resolved or reopened (data-done). Map id -> { text?, done? }, only
+   * where they differ from the comment as it was.
+   */
+  commentOverrides(root) {
+    const out = new Map();
+    for (const el of root.querySelectorAll('[data-comment-ref]')) {
+      const c = this.comments.find((x) => x.id === el.dataset.commentRef);
+      if (!c) continue;
+      const o = {};
+      if (el.dataset.edit != null && el.dataset.edit !== this.commentText(c)) o.text = el.dataset.edit;
+      if (el.dataset.done != null && (el.dataset.done === '1') !== !!c.done) o.done = el.dataset.done === '1';
+      if (Object.keys(o).length) out.set(c.id, o);
+    }
+    return out;
+  }
+
   /** Numbers the comment marks under `root` in document order, as the panel lists them. */
   renumberComments(root) {
     this.commentOrder = new Map();
@@ -332,9 +415,17 @@ export class DocxDocument {
    * own (made this session), author, date }. Inline revisions are spans; a paragraph break is its
    * paragraph.
    */
-  revisionOf(el) {
+  revisionOf(el, kind = null) {
     if (el?.nodeType !== 1) return null;
     const d = el.dataset;
+    if (kind === 'run' || kind === 'para') {
+      const change = formattingChange(this.raw[Number(kind === 'run' ? d.rpr : d.ppr)]);
+      return change && { kind: 'format', mark: false, own: false, para: kind === 'para', ...change };
+    }
+    if (kind === 'row') {
+      const rev = this.rowXml(el) && rowRevision(this.rowXml(el));
+      return rev && { kind: rev.kind, mark: false, own: false, row: true, author: rev.author, date: rev.date };
+    }
     if (d.tc) return { kind: d.tc, mark: false, own: true, author: d.tcAuthor, date: d.tcDate };
     if (d.tcMark) return { kind: d.tcMark, mark: true, own: true, author: d.tcMarkAuthor, date: d.tcMarkDate };
     if (d.revMark && d.ppr != null) {
@@ -355,7 +446,10 @@ export class DocxDocument {
    * paragraph break kept loses its revision; one removed joins its paragraph with the next, which
    * keeps its own properties (its break is the one that stays), as in Word.
    */
-  resolveRevision(el, accept) {
+  resolveRevision(item, accept) {
+    const { el } = item;
+    if (item.kind === 'run' || item.kind === 'para') return this.resolveFormatting(item, accept);
+    if (item.kind === 'row') return this.resolveRow(el, accept);
     const rev = this.revisionOf(el);
     if (!rev) return;
     const keep = (rev.kind === 'ins') === accept;
@@ -412,14 +506,122 @@ export class DocxDocument {
     el.remove();
   }
 
-  /** How many tracked formatting changes the editor content holds (these are accepted in Word). */
-  formattingChanges(root) {
-    const seen = new Set();
-    for (const el of root.querySelectorAll('[data-rpr], [data-ppr]')) {
-      const node = this.raw[Number(el.dataset.rpr ?? el.dataset.ppr)];
-      if (wChild(node, 'rPrChange') || wChild(node, 'pPrChange')) seen.add(el.dataset.rpr ?? `p${el.dataset.ppr}`);
+  /**
+   * A tracked formatting change: accepted, the record of the old formatting goes; rejected, the old
+   * formatting comes back (the run or paragraph is restyled; text formatting applied inside the run
+   * since goes with it, as the run's formatting is what is rejected).
+   */
+  resolveFormatting({ el, kind }, accept) {
+    if (kind === 'run') {
+      const rPr = this.raw[Number(el.dataset.rpr)];
+      const change = wChild(rPr, 'rPrChange');
+      if (!change) return;
+      let next;
+      if (accept) {
+        next = rPr.cloneNode(true);
+        removeW(next, 'rPrChange');
+      } else {
+        next = (wChild(change, 'rPr') || createW(this.xml, 'rPr')).cloneNode(true);
+      }
+      // Restyle: the run's tags (bold, italic…) come from its properties, so they are rebuilt.
+      for (const tag of [...el.querySelectorAll('strong, b, em, i, u, s, strike, sup, sub, mark')]) tag.replaceWith(...tag.childNodes);
+      const { span, target } = this.runSpan(next);
+      target.append(...el.childNodes);
+      el.replaceWith(span);
+      this.markTracked(span.parentElement || span, false);
+      return;
     }
-    return seen.size;
+    const pPr = this.raw[Number(el.dataset.ppr)];
+    let next;
+    if (accept) {
+      next = pPr.cloneNode(true);
+      removeW(next, 'pPrChange');
+      removeW(wChild(next, 'rPr'), 'rPrChange');
+    } else {
+      const change = wChild(pPr, 'pPrChange');
+      next = change ? (wChild(change, 'pPr') || createW(this.xml, 'pPr')).cloneNode(true) : pPr.cloneNode(true);
+      // The mark's own properties and section break stay with the paragraph, as in Word.
+      const rPr = wChild(pPr, 'rPr')?.cloneNode(true);
+      if (rPr) {
+        const old = wChild(rPr, 'rPrChange');
+        const restored = old ? (wChild(old, 'rPr') || createW(this.xml, 'rPr')).cloneNode(true) : rPr;
+        for (const rev of ['ins', 'del', 'moveTo', 'moveFrom']) {
+          const mark = wChild(rPr, rev);
+          if (mark && restored !== rPr) restored.insertBefore(mark.cloneNode(true), restored.firstChild);
+        }
+        removeW(next, 'rPr');
+        ensureOrdered(next, 'rPr', PPR_ORDER).replaceWith(restored);
+      }
+      const sectPr = wChild(pPr, 'sectPr');
+      if (sectPr && !wChild(next, 'sectPr')) next.appendChild(sectPr.cloneNode(true));
+    }
+    const fresh = this.paragraphElement(next);
+    for (const a of ['tcMark', 'tcMarkAuthor', 'tcMarkDate', 'revMark', 'revTitle', 'tracked']) {
+      if (el.dataset[a] != null) fresh.dataset[a] = el.dataset[a];
+    }
+    fresh.append(...el.childNodes);
+    el.replaceWith(fresh);
+  }
+
+  /** The XML row (<w:tr>) a rendered table row stands for (rows match in order). */
+  rowXml(tr) {
+    const table = tr.closest('table');
+    if (!table || table.dataset.raw == null) return null;
+    const rows = [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
+    const parts = tableParts(this.raw[Number(table.dataset.raw)], 'tr');
+    return parts[rows.indexOf(tr)]?.el || null;
+  }
+
+  /**
+   * A tracked row: an inserted row accepted (or a deleted one rejected) stays, without the revision;
+   * otherwise the row goes. The table gets a new copy of its XML, so Undo stays exact; a table left
+   * with no rows goes too.
+   */
+  resolveRow(tr, accept) {
+    const table = tr.closest('table');
+    const rows = [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
+    const index = rows.indexOf(tr);
+    const tbl = this.raw[Number(table.dataset.raw)].cloneNode(true);
+    const row = tableParts(tbl, 'tr')[index]?.el;
+    const rev = row && rowRevision(row);
+    if (!rev) return;
+    if ((rev.kind === 'ins') === accept) {
+      const trPr = wChild(row, 'trPr');
+      removeW(trPr, 'ins', 'del');
+      if (!elementChildren(trPr).length) row.removeChild(trPr);
+      delete tr.dataset.revRow;
+      tr.removeAttribute('title');
+    } else {
+      row.parentNode.removeChild(row);
+      tr.remove();
+      if (!tableParts(tbl, 'tr').length) {
+        table.remove();
+        return;
+      }
+    }
+    table.dataset.raw = this.keep(tbl);
+    const label = trackedChangeLabel(tbl);
+    if (label) table.dataset.tracked = label;
+    else delete table.dataset.tracked;
+  }
+
+  /**
+   * How many tracked changes under `root` can only be accepted or rejected in Word: those inside
+   * content saved verbatim (locked fields and cells, preserved blocks and items), changes to table,
+   * row and cell properties, and tracked rows inside a content control.
+   */
+  wordOnlyChanges(root) {
+    let n = 0;
+    for (const el of root.querySelectorAll('[data-raw]')) {
+      const node = this.raw[Number(el.dataset.raw)];
+      if (node.localName === 'tbl') {
+        n += tablePropertyChanges(node);
+        n += tableParts(node, 'tr').filter((r) => r.wrappers.length && rowRevision(r.el)).length;
+      } else if (!el.classList.contains('inserted') && !el.classList.contains('deleted') && el.dataset.tracked) {
+        n++;
+      }
+    }
+    return n;
   }
 
   keep(node) {
@@ -522,8 +724,11 @@ export class DocxDocument {
     return this.styles.byId.get(styleId)?.name.toLowerCase() === 'placeholder text';
   }
 
-  renderParagraph(p) {
-    const pPr = wChild(p, 'pPr');
+  /**
+   * An empty paragraph element for paragraph properties `pPr`: its tag (heading or not), style,
+   * formatting as CSS and list membership, as rendered.
+   */
+  paragraphElement(pPr) {
     const styleId = wAttr(wChild(pPr, 'pStyle'), 'val');
     const kind = this.styles.kindOf(styleId);
     const el = document.createElement(HEADING_TAG[kind] || 'p');
@@ -548,6 +753,11 @@ export class DocxDocument {
       if (!el.style.paddingLeft) el.style.paddingLeft = '36pt';
       el.style.textIndent = '';
     }
+    return el;
+  }
+
+  renderParagraph(p) {
+    const el = this.paragraphElement(wChild(p, 'pPr'));
     this.renderInlines(p, el);
     if (!el.textContent && !el.querySelector('img,.raw-inline:not(.raw-hidden)')) el.append(document.createElement('br'));
     return el;
@@ -736,30 +946,9 @@ export class DocxDocument {
     const rPr = wChild(r, 'rPr');
     let target = parent;
     if (rPr) {
-      const span = document.createElement('span');
-      span.dataset.rpr = this.keep(rPr);
-      const rStyle = wAttr(wChild(rPr, 'rStyle'), 'val');
-      if (rStyle) span.dataset.rstyle = rStyle;
-      Object.assign(span.style, cssToStyle(this.styles.rPrCss(rPr, false)));
-      // Explicitly switched-off toggles (e.g. <w:b w:val="0"/>) are kept as inline CSS.
-      if (onOff(wChild(rPr, 'b')) === false) span.style.fontWeight = 'normal';
-      if (onOff(wChild(rPr, 'i')) === false) span.style.fontStyle = 'normal';
-      parent.append(span);
-      target = span;
-      const wrap = (tag) => { const e = document.createElement(tag); target.append(e); target = e; };
-      if (onOff(wChild(rPr, 'b'))) wrap('strong');
-      if (onOff(wChild(rPr, 'i'))) wrap('em');
-      const u = wChild(rPr, 'u');
-      if (u && wAttr(u, 'val') !== 'none') wrap('u');
-      if (onOff(wChild(rPr, 'strike')) || onOff(wChild(rPr, 'dstrike'))) wrap('s');
-      const va = wAttr(wChild(rPr, 'vertAlign'), 'val');
-      if (va === 'superscript') wrap('sup');
-      if (va === 'subscript') wrap('sub');
-      const hl = wAttr(wChild(rPr, 'highlight'), 'val');
-      if (hl && hl !== 'none') {
-        wrap('mark');
-        target.dataset.color = hl;
-      }
+      const run = this.runSpan(rPr);
+      parent.append(run.span);
+      target = run.target;
     }
     let text = '';
     const flush = () => { if (text) { target.append(document.createTextNode(text)); text = ''; } };
@@ -774,6 +963,38 @@ export class DocxDocument {
       }
     }
     flush();
+  }
+
+  /**
+   * The span for a run with properties `rPr`: its formatting as CSS, with bold, italic, underline,
+   * strikethrough, superscript, subscript and highlight as tags inside it. Returns the span and the
+   * innermost element, which holds the text.
+   */
+  runSpan(rPr) {
+    const span = document.createElement('span');
+    span.dataset.rpr = this.keep(rPr);
+    const rStyle = wAttr(wChild(rPr, 'rStyle'), 'val');
+    if (rStyle) span.dataset.rstyle = rStyle;
+    Object.assign(span.style, cssToStyle(this.styles.rPrCss(rPr, false)));
+    // Explicitly switched-off toggles (e.g. <w:b w:val="0"/>) are kept as inline CSS.
+    if (onOff(wChild(rPr, 'b')) === false) span.style.fontWeight = 'normal';
+    if (onOff(wChild(rPr, 'i')) === false) span.style.fontStyle = 'normal';
+    let target = span;
+    const wrap = (tag) => { const e = document.createElement(tag); target.append(e); target = e; };
+    if (onOff(wChild(rPr, 'b'))) wrap('strong');
+    if (onOff(wChild(rPr, 'i'))) wrap('em');
+    const u = wChild(rPr, 'u');
+    if (u && wAttr(u, 'val') !== 'none') wrap('u');
+    if (onOff(wChild(rPr, 'strike')) || onOff(wChild(rPr, 'dstrike'))) wrap('s');
+    const va = wAttr(wChild(rPr, 'vertAlign'), 'val');
+    if (va === 'superscript') wrap('sup');
+    if (va === 'subscript') wrap('sub');
+    const hl = wAttr(wChild(rPr, 'highlight'), 'val');
+    if (hl && hl !== 'none') {
+      wrap('mark');
+      target.dataset.color = hl;
+    }
+    return { span, target };
   }
 
   renderTable(tbl) {
@@ -792,6 +1013,11 @@ export class DocxDocument {
   /** A table row (`rowWrappers`: content controls around it), its cells editable unless locked. */
   renderRow(tr, rowWrappers = []) {
     const row = document.createElement('tr');
+    const rev = rowRevision(tr);
+    if (rev && !rowWrappers.length) {
+      row.dataset.revRow = rev.kind; // a tracked row, accepted or rejected on the toolbar
+      row.title = `Row ${rev.kind === 'ins' ? 'inserted' : 'deleted'}${byWhom(rev)} – tracked change: Accept or Reject on the toolbar`;
+    }
     if (rowWrappers.length) {
       row.classList.add('sdt-row');
       row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
@@ -1037,6 +1263,7 @@ export class DocxDocument {
       wasInBody: this.commentsInBody, present: commentIdsIn(this.body), elsewhere: this.commentsElsewhere,
     });
     pruneCommentMarkers(this.body, this.commentsRemoved, this.commentRangesInBody);
+    this.commentEdits = this.commentOverrides(root);
   }
 
   /**
@@ -1059,7 +1286,16 @@ export class DocxDocument {
     return {
       paragraphs: reviewParagraphs(this.originalBody, this.body, { tracked: (p) => trackedParagraphs.has(p), styleName }),
       commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id) && !c.isNew),
-      commentsAdded: this.newComments.filter((c) => commentIdsIn(this.body).has(c.id) && !this.commentsRemoved.has(c.id)),
+      commentsAdded: this.newComments.filter((c) => commentIdsIn(this.body).has(c.id) && !this.commentsRemoved.has(c.id))
+        .map((c) => ({ ...c, text: this.commentEdits.get(c.id)?.text ?? c.text, parentAuthor: this.comments.find((p) => p.id === c.parentId)?.author })),
+      ...(() => {
+        const changed = [...this.commentEdits].filter(([id]) => !this.commentsRemoved.has(id)).map(([id, e]) => ({ c: this.comments.find((x) => x.id === id), e }));
+        return {
+          commentsEdited: changed.filter(({ c, e }) => e.text != null && !c.isNew).map(({ c }) => c),
+          commentsResolved: changed.filter(({ e }) => e.done === true).map(({ c }) => c),
+          commentsReopened: changed.filter(({ e }) => e.done === false).map(({ c }) => c),
+        };
+      })(),
       insertions: this.revisions.filter((r) => r.localName === 'ins').length,
       deletions: this.revisions.filter((r) => r.localName === 'del').length,
       tracking: this.tracking,
@@ -1117,25 +1353,76 @@ export class DocxDocument {
   }
 
   /** Takes removed comments out of the comment parts (or puts back the original parts if none). */
+  /**
+   * Writes the comment parts when comments changed: removed ones taken out (see commentRemoval.js),
+   * edited ones rewritten, new comments and replies appended, and resolved state and reply links in
+   * commentsExtended.xml. A part is created if the document has none; untouched, they stay as read.
+   */
   async writeComments() {
     const present = commentIdsIn(this.body);
-    const added = this.newComments.filter((c) => present.has(c.id) && !this.commentsRemoved.has(c.id));
-    if (!this.commentsRemoved.size && !added.length && !this.commentPartsChanged) return;
-    const out = pruneCommentParts(this.commentParts, this.comments, this.commentsRemoved);
-    if (added.length) {
-      // New comments go at the end of comments.xml, which is created if the document has none.
+    const removed = this.commentsRemoved;
+    const added = this.newComments.filter((c) => present.has(c.id) && !removed.has(c.id));
+    const edits = new Map([...this.commentEdits].filter(([id]) => present.has(id) && !removed.has(id)));
+    if (!removed.size && !added.length && !edits.size && !this.commentPartsChanged) return;
+    const out = pruneCommentParts(this.commentParts, this.comments, removed);
+    const byId = (id) => this.comments.find((c) => c.id === id);
+    const replies = added.filter((c) => c.parentId);
+    const doneChanges = [...edits].filter(([, e]) => e.done != null);
+    // Comments that commentsExtended.xml will name: they need a paragraph id, added if they had none.
+    const named = new Set([...replies.map((r) => r.parentId), ...doneChanges.map(([id]) => id)]);
+    for (const id of named) {
+      const c = byId(id);
+      if (c) c.paraId ||= newParaId();
+    }
+    const touched = this.comments.filter((c) => !c.isNew && present.has(c.id) && !removed.has(c.id)
+      && (edits.get(c.id)?.text != null || (named.has(c.id) && !c.hadParaId)));
+    if (added.length || touched.length) {
       if (!this.commentParts.comments) {
-        const empty = `${XML_HEADER}<w:comments xmlns:w="${W}"/>`;
+        const empty = `${XML_HEADER}<w:comments xmlns:w="${W}" xmlns:w14="${W14}"/>`;
         const path = await this.addPart('comments.xml', empty, COMMENTS_REL, COMMENTS_CT);
         this.commentParts.comments = { path, text: empty };
       }
       const { path, text } = this.commentParts.comments;
       const doc = parseXml(out[path] ?? text);
-      for (const c of added) doc.documentElement.appendChild(commentXml(doc, c));
+      for (const c of touched) {
+        const el = [...doc.getElementsByTagNameNS(W, 'comment')].find((x) => wAttr(x, 'id') === c.id);
+        if (!el) continue;
+        const edit = edits.get(c.id)?.text;
+        if (edit != null) setCommentText(doc, el, edit);
+        const paras = wChildren(el, 'p');
+        if (c.paraId && paras.length) paras[paras.length - 1].setAttributeNS(W14, 'w14:paraId', c.paraId);
+      }
+      for (const c of added) doc.documentElement.appendChild(commentXml(doc, { ...c, text: edits.get(c.id)?.text ?? c.text }));
+      out[path] = serializeXml(doc);
+    }
+    if (replies.length || doneChanges.length) {
+      if (!this.commentParts.extended) {
+        const empty = `${XML_HEADER}<w15:commentsEx xmlns:w15="${W15}"/>`;
+        const path = await this.addPart('commentsExtended.xml', empty, COMMENTS_EX_REL, COMMENTS_EX_CT);
+        this.commentParts.extended = { path, text: empty };
+      }
+      const { path, text } = this.commentParts.extended;
+      const doc = parseXml(out[path] ?? text);
+      const entry = (paraId) => {
+        let e = [...doc.getElementsByTagNameNS(W15, 'commentEx')].find((x) => x.getAttributeNS(W15, 'paraId') === paraId);
+        if (!e) {
+          e = doc.createElementNS(W15, 'w15:commentEx');
+          e.setAttributeNS(W15, 'w15:paraId', paraId);
+          e.setAttributeNS(W15, 'w15:done', '0');
+          doc.documentElement.appendChild(e);
+        }
+        return e;
+      };
+      for (const r of replies) {
+        const parent = byId(r.parentId);
+        entry(parent.paraId);
+        entry(r.paraId).setAttributeNS(W15, 'w15:paraIdParent', parent.paraId);
+      }
+      for (const [id, e] of doneChanges) entry(byId(id).paraId).setAttributeNS(W15, 'w15:done', e.done ? '1' : '0');
       out[path] = serializeXml(doc);
     }
     for (const [path, xml] of Object.entries(out)) this.zip.file(path, xml);
-    this.commentPartsChanged = this.commentsRemoved.size > 0 || added.length > 0;
+    this.commentPartsChanged = removed.size > 0 || added.length > 0 || edits.size > 0 || touched.length > 0;
   }
 
   async writeNumbering() {
@@ -1550,5 +1837,34 @@ function commentXml(doc, c) {
       t.textContent = line;
     }
   });
+  const paras = wChildren(el, 'p');
+  if (c.paraId) paras[paras.length - 1].setAttributeNS(W14, 'w14:paraId', c.paraId);
   return el;
+}
+
+/**
+ * Replaces a comment's text (in comments.xml): one paragraph per line, keeping its first
+ * paragraph's properties and its reference mark. (Formatting within the old text goes.)
+ */
+function setCommentText(doc, comment, text) {
+  const paras = wChildren(comment, 'p');
+  const first = paras[0];
+  const pPr = wChild(first, 'pPr');
+  const mark = !!first?.getElementsByTagNameNS(W, 'annotationRef').length;
+  for (const p of paras) comment.removeChild(p);
+  text.split('\n').forEach((line, i) => {
+    const p = comment.appendChild(createW(doc, 'p'));
+    if (i === 0 && pPr) p.appendChild(pPr.cloneNode(true));
+    if (i === 0 && mark) p.appendChild(createW(doc, 'r')).appendChild(createW(doc, 'annotationRef'));
+    if (line) {
+      const t = p.appendChild(createW(doc, 'r')).appendChild(createW(doc, 't'));
+      t.setAttributeNS(NS.xml, 'xml:space', 'preserve');
+      t.textContent = line;
+    }
+  });
+}
+
+/** " by Ann on 2026-01-05", from a revision's author and date. */
+function byWhom({ author, date }) {
+  return `${author ? ` by ${author}` : ''}${date ? ` on ${date.slice(0, 10)}` : ''}`;
 }

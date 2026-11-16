@@ -149,8 +149,14 @@ export function wordDiff(before, after) {
   return out;
 }
 
-/** How many tracked changes a paragraph holds (its runs' and its break's). */
-const revisions = (p) => ['ins', 'del', 'moveFrom', 'moveTo'].reduce((n, local) => n + p.getElementsByTagNameNS(W, local).length, 0);
+/** How many tracked changes a paragraph holds: in its runs, its break, its formatting, and its table row. */
+function revisions(p) {
+  let n = ['ins', 'del', 'moveFrom', 'moveTo', 'rPrChange', 'pPrChange'].reduce((sum, local) => sum + p.getElementsByTagNameNS(W, local).length, 0);
+  const tr = closestW(p, 'tr');
+  const trPr = tr && wChild(tr, 'trPr');
+  if (trPr && (wChild(trPr, 'ins') || wChild(trPr, 'del'))) n++;
+  return n;
+}
 
 /** How alike two texts are, from 0 to 1: the share of their characters in common words. */
 function similarity(a, b) {

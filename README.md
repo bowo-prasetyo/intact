@@ -25,7 +25,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Add comments (toolbar button or Ctrl+Alt+M) on the selected text, or the word at the caret, with
   your name (asked once, shared with Track Changes): they appear in the comments panel and are
   written to `comments.xml` (created if the document has none) next to the comments already there.
-  Comments added this session can be deleted; deleting their text deletes them too
+  Every comment can be replied to, edited, resolved (or reopened) and deleted in the panel, as in
+  Word: a reply is written as a real reply (linked to its comment in `commentsExtended.xml`, which is
+  created, with paragraph ids, if the file has none), resolving sets Word's "done" flag, and Undo
+  covers all of it. Deleting a comment's text deletes it too
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
@@ -60,8 +63,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Reject act on the change at the cursor (just click it) or every change in a selection, then go
   to the next; their menus also accept or reject without moving on, or all changes at once. An
   insertion accepted (or a deletion rejected) becomes ordinary text; a paragraph break removed
-  joins its paragraph with the next. Tracked paragraph breaks show as a coloured ¶. Changes only
-  Word can resolve (formatting, table rows, locked content) are counted, named and kept
+  joins its paragraph with the next; a formatting change rejected restores the old formatting
+  (run or paragraph: style, alignment, list); an inserted row rejected (or a deleted one accepted)
+  goes. Tracked paragraph breaks show as a coloured ¶, formatting changes with a dashed underline
+  or a bar in the margin, tracked rows tinted. Changes only Word can resolve (table and cell
+  properties, locked content) are counted, named and kept
 - Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
   changed, with the words deleted and inserted, which changes are tracked, a warning when some
   aren't, and anything else that changes (comments removed with their text, Track Changes switched,
@@ -173,7 +179,7 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 ## Limitations
 
-- Tracked formatting changes, tracked table rows and tracked changes inside locked content can only
+- Tracked changes to table and cell properties, and tracked changes inside locked content, can only
   be accepted or rejected in Word (the toolbar counts them); your own formatting changes (bold,
   styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
@@ -187,8 +193,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)
-- Fields, footnotes, headers and footers are preserved but can't be edited; existing comments can't
-  be edited, replied to or resolved here (new ones can be added)
+- Fields, footnotes, headers and footers are preserved but can't be edited; comments anchored in a
+  header, footer or note are shown but changed in Word; editing a comment's text replaces any
+  formatting within it
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save

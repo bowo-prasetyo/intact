@@ -51,3 +51,31 @@ export function inlineRevisionKind(node) {
   if (node?.namespaceURI !== W) return null;
   return { ins: 'ins', moveTo: 'ins', del: 'del', moveFrom: 'del' }[node.localName] || null;
 }
+
+/**
+ * A tracked formatting change in run or paragraph properties (`props`: <w:rPr> or <w:pPr>):
+ * { author, date } of its <w:rPrChange> / <w:pPrChange>; for a paragraph, also its mark's
+ * <w:rPr><w:rPrChange>. Null if there is none.
+ */
+export function formattingChange(props) {
+  if (!props) return null;
+  const change = wChild(props, 'rPrChange') || wChild(props, 'pPrChange')
+    || (props.localName === 'pPr' ? wChild(wChild(props, 'rPr'), 'rPrChange') : null);
+  return change ? { author: wAttr(change, 'author'), date: wAttr(change, 'date') } : null;
+}
+
+/** If a table row (<w:tr>) was inserted or deleted with tracking: { kind, author, date }; else null. */
+export function rowRevision(tr) {
+  const trPr = wChild(tr, 'trPr');
+  for (const local of ['ins', 'del']) {
+    const el = wChild(trPr, local);
+    if (el) return { kind: local, author: wAttr(el, 'author'), date: wAttr(el, 'date') };
+  }
+  return null;
+}
+
+/** Tracked changes in a table that Intact can't accept or reject: table, row and cell properties. */
+export function tablePropertyChanges(tbl) {
+  return ['tblPrChange', 'tblGridChange', 'trPrChange', 'tcPrChange', 'cellIns', 'cellDel', 'cellMerge']
+    .reduce((n, local) => n + tbl.getElementsByTagNameNS(W, local).length, 0);
+}

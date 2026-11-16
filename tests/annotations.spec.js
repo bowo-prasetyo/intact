@@ -75,7 +75,7 @@ test('comments are listed with replies and resolved state, and point at their te
   expect(await page.locator('.docx-page .comment-ref').evaluateAll((els) => els.map((e) => e.dataset.n))).toEqual(['1', '2']);
   expect(await highlighted(page, 'comment')).toEqual(['EUR 1,200', 'Recieved']);
 
-  await threads.nth(1).click();
+  await threads.nth(1).locator('.text').first().click(); // the comment, not one of its buttons
   expect(await highlighted(page, 'comment-active')).toEqual(['Recieved']);
   await page.locator('.docx-page .comment-ref').first().click();
   await expect(threads.nth(0)).toHaveClass(/active/);
