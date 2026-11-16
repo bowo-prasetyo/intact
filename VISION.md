@@ -140,6 +140,24 @@ Word's hyperlink blue and highlight colours.
 
 Every text pairing meets WCAG AA (white on `--brand` is 6.9:1 in light and 11.6:1 in dark).
 
+## Logo
+
+The mark is a page with a text cursor: the cursor is where you change what you need, the page is the
+rest, kept whole. The cursor is also the I of Intact. The wordmark is Inter Display SemiBold,
+outlined, so the logo needs no font.
+
+| File | Use |
+|---|---|
+| `public/logo.svg` / `public/logo-dark.svg` | Mark and wordmark, on light / dark backgrounds |
+| `public/favicon.svg` | Browser tab; follows the browser's light or dark theme |
+| `public/favicon.ico` | 16, 32 and 48 px, for browsers and tools without SVG icons |
+| `public/apple-touch-icon.png` | Home-screen icon, 180 px, white page on teal |
+| `.github/social-preview.png` | Link previews (Settings → Social preview), 1280 × 640 |
+
+In the app header the mark is drawn inline, reversed (white page, teal cursor). Keep clear space of
+at least the cursor's width around the logo; don't recolour it outside the brand colours, add
+effects, or put Word's "W" or blue near it.
+
 ## Talking about Word
 
 Lead with what Intact does, not with Word. The start page headline is "Change what you need. Keep

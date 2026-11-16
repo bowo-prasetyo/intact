@@ -1,4 +1,11 @@
-# Intact — private .docx editor
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/logo-dark.svg" />
+    <img src="public/logo.svg" alt="Intact" height="56" />
+  </picture>
+</h1>
+
+**Intact — private .docx editor.** Change what you need. Keep the rest intact.
 
 Fix a Word document in seconds, privately: no install, no account, no upload — and nothing you
 didn't touch changes. Open a `.docx`, edit its text, and download it again. The file is unzipped,
