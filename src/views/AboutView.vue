@@ -11,6 +11,8 @@
       <ul>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it</li>
+        <li>Headers and footers, in the page's margins: the first page's, other pages', even pages' and each section's, chosen with the tabs above and below the page</li>
+        <li>The text in text boxes and shapes, shown where Word puts them with their fill and outline</li>
         <li>Insert tables and pictures (from the toolbar, or paste or drop a picture)</li>
         <li>Table layout: insert rows above or below and columns left or right (tracked while tracking); delete rows, columns or the table; merge and split cells</li>
         <li>Pictures: click one to resize or rotate it with its handles; Layout Options set its text wrapping (Tight and Through follow its outline), position, size, crop, rotation, effects, picture style, shape, 3-D and artistic effects, and alt text; drag a floating picture to move it</li>
@@ -31,15 +33,18 @@
       </ul>
       <h2>What you can see but not edit</h2>
       <p>
-        Headers and footers (all of them, one at a time), comments (with replies and whether they are resolved),
-        equations (drawn as in Word) and fields are shown as they are, labelled in plain language, and saved unchanged.
+        Comments (with replies and whether they are resolved), equations (drawn as in Word), fields, charts,
+        SmartArt and groups of shapes are shown as they are, labelled in plain language, and saved unchanged.
+        Sections in columns, paragraph borders and shading, drop caps, character spacing and theme colours
+        are shown as in Word, and fonts embedded in the document are used; a font the document asks for that
+        isn't on your device is named in the status bar.
         Click anything read-only, or try to type in it, and the status bar says what it is and where to edit it.
       </p>
       <h2>What is preserved</h2>
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,
-        spacing, list numbering, images, tables layout, headers and footers, footnotes, fields,
-        equations, comment anchors, section settings and tracked changes. Such content is shown greyed
+        spacing, list numbering, images, tables layout, the shapes of text boxes, footnotes, fields,
+        equations, comment anchors, section settings, embedded fonts and tracked changes. Such content is shown greyed
         out (tracked changes with their author) and cannot be edited here, and so are locked form
         fields and fields linked to the document's data.
       </p>
@@ -49,7 +54,9 @@
         <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
-        <li>New footnotes can't be added; pictures, tables, page breaks and new comments can't go in a note.</li>
+        <li>New footnotes can't be added; pictures, tables, page breaks and new comments can't go in a note, a header, a footer or a text box.</li>
+        <li>A text box's size, position and look are kept, not changed here; a text box grows to show all its text where Word would cut it off. Groups of shapes, and shapes without text, can't be edited.</li>
+        <li>The page isn't split into pages: columns are balanced, and each header and footer is shown once.</li>
         <li>Equations need a math font to look as in Word (Windows and macOS have one).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>

@@ -128,11 +128,8 @@
           <button v-if="picture.el" ref="layoutOptionsButton" type="button" class="layout-options" title="Layout Options: wrapping, position, size and alt text" aria-haspopup="dialog" :aria-expanded="picturePanel.open" :style="{ left: `${picture.x + picture.w + 6}px`, top: `${picture.y}px` }" @mousedown.prevent @click="togglePicturePanel">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="3" width="6" height="5" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M10 4h4M10 7h4M2 11h12M2 14h12" stroke="currentColor" stroke-width="1.3" /></svg>
           </button>
-          <div v-if="doc.headers.length" class="docx-hf header" :style="headerStyle" :title="hfTitle('header')" @click="onHeaderFooterClick">
-            <div v-if="doc.headers.length > 1" class="hf-tabs" role="tablist" aria-label="Headers">
-              <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @click="hf.header = i">{{ v.label }}</button>
-            </div>
-            <div ref="headerEl" class="hf-variants" />
+          <div v-if="doc.headers.length > 1" class="hf-tabs header" role="tablist" aria-label="Headers">
+            <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @mousedown.prevent @click="showVariant('header', i)">{{ v.label }}</button>
           </div>
           <div
             ref="page"
@@ -149,11 +146,8 @@
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
-          <div v-if="doc.footers.length" class="docx-hf footer" :style="footerStyle" :title="hfTitle('footer')" @click="onHeaderFooterClick">
-            <div ref="footerEl" class="hf-variants" />
-            <div v-if="doc.footers.length > 1" class="hf-tabs" role="tablist" aria-label="Footers">
-              <button v-for="(v, i) in doc.footers" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @click="hf.footer = i">{{ v.label }}</button>
-            </div>
+          <div v-if="doc.footers.length > 1" class="hf-tabs footer" role="tablist" aria-label="Footers">
+            <button v-for="(v, i) in doc.footers" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @mousedown.prevent @click="showVariant('footer', i)">{{ v.label }}</button>
           </div>
         </div>
       </div>
@@ -445,6 +439,7 @@
 
     <footer class="statusbar">
       <span>{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words</span>
+      <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span role="status" aria-live="polite">{{ message }}</span>
     </footer>
@@ -478,6 +473,7 @@ import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC, MATERIALS, LI
 import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
+import { missingFonts } from '../docx/fonts.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -532,56 +528,56 @@ const aligns = [
 ];
 
 // The sheet is the page: header (in the top margin), the editable body, footer (bottom margin). As in
-// Word, the body starts at the top margin or below the header, whichever is lower.
-const headerEl = ref(null);
-const footerEl = ref(null);
+// Word, the body starts at the top margin or below the header, whichever is lower. Headers and
+// footers are in the page itself (see doc.renderBand), placed by CSS from these sizes.
+const footerSpace = ref(0); // the footer's height, kept free below the text
 const sheetStyle = computed(() => ({ width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px` }));
 const pageStyle = computed(() => {
   const p = doc.page;
-  return { padding: `${doc.headers.length ? 0 : p.top}px ${p.right}px ${doc.footers.length ? 0 : p.bottom}px ${p.left}px` };
-});
-const headerStyle = computed(() => {
-  const p = doc.page;
-  return { padding: `${p.header}px ${p.right}px 0 ${p.left}px`, minHeight: `${Math.max(0, p.top - p.header)}px` };
-});
-const footerStyle = computed(() => {
-  const p = doc.page;
-  return { padding: `0 ${p.right}px ${p.footer}px ${p.left}px`, minHeight: `${Math.max(0, p.bottom - p.footer)}px` };
+  return {
+    padding: `${doc.headers.length ? 0 : p.top}px ${p.right}px ${doc.footers.length ? Math.max(p.bottom, footerSpace.value) : p.bottom}px ${p.left}px`,
+    '--hf-header': `${p.header}px`,
+    '--hf-top': `${Math.max(0, p.top - p.header)}px`,
+    '--hf-footer': `${p.footer}px`,
+    '--hf-bottom': `${Math.max(0, p.bottom - p.footer)}px`,
+    '--hf-left': `${p.left}px`,
+    '--hf-right': `${p.right}px`,
+  };
 });
 
-// Which header / footer is shown, when the document has several (first page, even pages, sections).
+/** Keeps the footer's height free at the bottom of the page, as the text grows above it. */
+function measureFooter() {
+  const band = page.value?.querySelector(':scope > .docx-hf-band.footer');
+  const h = band ? band.offsetHeight : 0;
+  if (h !== footerSpace.value) footerSpace.value = h;
+}
+
+// Which header / footer is shown, when the document has several (first page, even pages, sections):
+// a stylesheet hides the others, so the choice survives Undo replacing the page's content.
 const hf = reactive({ header: 0, footer: 0 });
-
-function hfTitle(which) {
-  const variant = (which === 'header' ? doc.headers : doc.footers)[hf[which]];
-  const label = variant?.label || '';
-  const name = label === 'All pages' || !label ? which : `${label} ${which}`;
-  return `${name[0].toUpperCase()}${name.slice(1)} – shown for reference; edit it in Word`;
+let variantStyle = null;
+function refreshVariants() {
+  if (!variantStyle) return;
+  variantStyle.textContent = ['header', 'footer']
+    .map((w) => `.docx-page .docx-hf-part[data-which="${w}"]:not([data-variant="${hf[w]}"]) { display: none; }`).join('\n');
+  nextTick(measureFooter);
 }
+watch(() => ({ ...hf }), refreshVariants);
 
-/** Renders every header (or footer) variant once; only the selected one is visible. */
-function renderVariants(el, which) {
-  if (!el) return;
-  const variants = which === 'header' ? doc.headers : doc.footers;
-  const nodes = variants.map((v, i) => {
-    const div = document.createElement('div');
-    div.className = 'hf-variant';
-    div.dataset.which = which;
-    div.dataset.variant = String(i);
-    div.hidden = i !== hf[which];
-    const content = doc.renderHeaderFooter(v);
-    if (content) div.append(...content.childNodes);
-    return div;
+/** Shows another header or footer (first page, other pages, a section's) and puts the caret in it. */
+function showVariant(which, i) {
+  undoStack?.flush();
+  hf[which] = i;
+  const host = page.value.querySelector(`.docx-hf-part[data-which="${which}"][data-variant="${i}"]`);
+  if (!host) return;
+  nextTick(() => {
+    host.focus({ preventScroll: true });
+    placeCaret(host.querySelector(BLOCK_SELECTOR) || host, true);
   });
-  el.replaceChildren(...nodes);
-  el.parentElement.classList.toggle('empty', variants.length === 1 && !nodes[0].childNodes.length);
 }
 
-watch(() => ({ ...hf }), () => {
-  for (const el of [headerEl.value, footerEl.value]) {
-    for (const v of el?.children || []) v.hidden = Number(v.dataset.variant) !== hf[v.dataset.which];
-  }
-});
+// Fonts the document uses that aren't on this device (nor embedded in it): named in the status bar.
+const fontsMissing = ref([]);
 
 function refreshCss() {
   styleEl.textContent = doc.css('.docx-sheet');
@@ -596,8 +592,11 @@ onMounted(() => {
   const lang = doc.styles.language();
   if (lang && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i.test(lang)) page.value.closest('.docx-sheet').lang = lang;
   styleChoices.value = doc.styleChoices();
-  renderVariants(headerEl.value, 'header');
-  renderVariants(footerEl.value, 'footer');
+  variantStyle = document.createElement('style');
+  document.head.append(variantStyle);
+  refreshVariants();
+  measureFooter();
+  requestAnimationFrame(() => { if (page.value) fontsMissing.value = missingFonts(page.value); });
   threads.value = commentThreads();
   commentsOpen.value = threads.value.length > 0 && window.innerWidth >= 1100;
   paintComments();
@@ -610,7 +609,7 @@ onMounted(() => {
   countWords();
   refreshChanges();
   page.value.focus();
-  placeCaret(page.value.querySelector(BLOCK_SELECTOR) || page.value, true);
+  placeCaret(bodyBlocks()[0] || page.value, true);
   // Comments in headers, footers and notes aren't in the page: their changes are undone with it.
   undoStack = createHistory(page.value, { state: { get: () => doc.storyState(), set: (v) => doc.setStoryState(v) } });
   undoStack.commit();
@@ -663,6 +662,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  variantStyle?.remove();
   marksObserver?.disconnect();
   cancelAnimationFrame(marksFrame);
   window.removeEventListener('resize', scheduleMarks);
@@ -803,7 +803,7 @@ function caretOutOfMarker(range) {
 
 function focusEnd() {
   page.value.focus();
-  const blocks = page.value.querySelectorAll(':scope > ' + BLOCK_SELECTOR.split(',').join(', :scope > '));
+  const blocks = bodyBlocks();
   placeCaret(blocks[blocks.length - 1] || page.value);
 }
 
@@ -1006,8 +1006,11 @@ function onTab(e) {
 let wordTimer = 0;
 const wordCount = (text) => (text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []).length;
 
+/** Counts the words in the text, its notes and text boxes, as Word does: not in headers and footers. */
 function countWords() {
-  words.value = wordCount(page.value?.innerText || '');
+  if (!page.value) return;
+  const bands = [...page.value.querySelectorAll(':scope > .docx-hf-band')].reduce((n, b) => n + wordCount(b.innerText || ''), 0);
+  words.value = wordCount(page.value.innerText || '') - bands;
 }
 
 /** The words in the selection (null when nothing is selected), shown as "12 of 340 words". */
@@ -1016,6 +1019,7 @@ function countSelectedWords(range) {
 }
 
 function markDirty() {
+  measureFooter();
   dirty.value = true;
   message.value = '';
   clearTimeout(wordTimer);
@@ -1039,8 +1043,9 @@ function onInput(e) {
   // Firefox, typing over whole paragraphs (as after Select All), can put the text outside them.
   if (!e?.isComposing) for (const n of [...page.value.childNodes]) if (n.nodeType === 3 && n.data) moveIntoParagraph(n);
   // Never leave the page (the text above the notes) empty: keep at least one paragraph to type into.
-  const first = page.value.firstElementChild;
-  if (!first || first.classList.contains('docx-notes')) {
+  let first = page.value.firstElementChild;
+  if (first?.matches('.docx-hf-band.header')) first = first.nextElementSibling;
+  if (!first || first.matches('.docx-notes, .docx-hf-band')) {
     const p = document.createElement('p');
     p.append(document.createElement('br'));
     page.value.insertBefore(p, first);
@@ -2613,7 +2618,11 @@ function onPageMousedown(e) {
     onPictureMousedown(e, pic);
     return;
   }
-  pointerDown = { x: e.clientX, y: e.clientY, range: selectionInPage()?.cloneRange() || null };
+  const range = selectionInPage();
+  // Typing in the text, then in a header, footer, note or text box, is two steps for Undo.
+  const hostOf = (n) => (n?.nodeType === 1 ? n : n?.parentElement)?.closest('[contenteditable="true"]');
+  if (range && hostOf(e.target) !== hostOf(range.startContainer)) undoStack.flush();
+  pointerDown = { x: e.clientX, y: e.clientY, range: range?.cloneRange() || null };
 }
 
 /**
@@ -2643,10 +2652,6 @@ function clickReadOnly(el, e) {
   sel.addRange(beside);
 }
 
-function onHeaderFooterClick(e) {
-  if (!e.target.closest('button')) message.value = `Read-only: ${e.currentTarget.title}`;
-}
-
 /**
  * Typing while the selection is in a header, footer or comment (outside the editable page), or
  * after clicking a read-only block, does nothing; say why. True if the key was explained.
@@ -2659,12 +2664,6 @@ function explainKeyOutsideText(e) {
   }
   const node = window.getSelection().anchorNode;
   const el = node?.nodeType === 1 ? node : node?.parentElement;
-  const hf = el?.closest('.docx-hf');
-  if (hf) {
-    message.value = `Read-only: ${hf.title}`;
-    flash(hf);
-    return true;
-  }
   if (el?.closest('.comments') && e.key !== 'Enter') {
     message.value = 'Read-only: comments are shown for reference – reply to or resolve them in Word';
     return true;
@@ -2683,12 +2682,14 @@ function onKeydown(e) {
   const key = e.key.toLowerCase();
   const range = selectionInPage();
   // Select All in the text selects the text, not the notes below it (in a note, the note), as in Word.
-  const notes = page.value.querySelector(':scope > .docx-notes');
+  const notes = page.value.querySelector(':scope > :is(.docx-notes, .docx-hf-band)');
   if (mod && key === 'a' && !e.shiftKey && !e.altKey && notes && range && !noteAt(range.startContainer)) {
     e.preventDefault();
-    // From the first block to the end of the last one before the notes: deleting it leaves a paragraph.
-    const first = page.value.firstElementChild;
-    const last = notes.previousElementSibling;
+    // From the first block to the end of the last one before the notes and footer (after the
+    // header): deleting it leaves a paragraph.
+    const text = [...page.value.children].filter((c) => !c.matches('.docx-notes, .docx-hf-band'));
+    const first = text[0];
+    const last = text[text.length - 1];
     if (!last) return;
     const all = document.createRange();
     all.setStart(first, 0);
@@ -3042,10 +3043,25 @@ function removeLink() {
 
 // ------------------------------------------------------------------ footnotes and endnotes
 
-/** The note (footnote or endnote, below the text) that `node` is in, or null. */
+/**
+ * The note (footnote or endnote, below the text), header, footer or text box that `node` is in, or
+ * null: text with its own editing host, apart from the body's.
+ */
 function noteAt(node) {
   const el = node?.nodeType === 1 ? node : node?.parentElement;
-  return el?.closest('.docx-note') || null;
+  return el?.closest('.docx-note, .docx-hf-part, .textbox-content') || null;
+}
+
+/** "a footnote", "a header", "a text box": where the caret is, for messages. */
+function storyName(el) {
+  if (el.classList.contains('docx-note')) return `a ${el.dataset.note}`;
+  if (el.classList.contains('docx-hf-part')) return `a ${el.dataset.which}`;
+  return 'a text box';
+}
+
+/** The blocks of the text itself: not in headers, footers, notes or text boxes. */
+function bodyBlocks() {
+  return [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((b) => !b.closest('.docx-notes, .docx-hf-band, .textbox'));
 }
 
 /** "footnote 2", for messages. */
@@ -3089,7 +3105,7 @@ function goToNote(ref) {
 function refuseInNote(range, what) {
   const note = range && noteAt(range.startContainer);
   if (!note) return false;
-  message.value = `${what} can’t go in a ${note.dataset.note} here: add it in Word`;
+  message.value = `${what} can’t go in ${storyName(note)} here: add it in Word`;
   return true;
 }
 
@@ -3266,9 +3282,6 @@ function refreshComments() {
   const added = [...removed].filter((id) => !removedComments.has(id));
   removedComments = removed;
   threads.value = commentThreads(removed); // edits and resolved state live on the marks, so always
-  // A comment deleted from a header or footer: its mark there goes too.
-  const gone = doc.storyRemoved();
-  for (const el of document.querySelectorAll('.docx-hf [data-comment-ref]')) el.style.display = gone.has(el.dataset.commentRef) ? 'none' : '';
   paintComments();
   if (added.length) message.value = commentRemovalMessage(added);
 }
@@ -3365,21 +3378,16 @@ function closeFind() {
   page.value.focus();
 }
 
-/** What Find searches, in order: headers, the document, footers, then comment texts. */
+/** What Find searches, in order: the page (its header, the text, notes and footer), then comment texts. */
 function searchRoots() {
-  return [
-    ...(headerEl.value?.children || []),
-    page.value,
-    ...(footerEl.value?.children || []),
-    ...document.querySelectorAll('.comments .comment .text'),
-  ];
+  return [page.value, ...document.querySelectorAll('.comments .comment .text')];
 }
 
 /** Brings a match into view, switching to its header/footer tab or opening Comments if need be. */
 async function revealRange(range) {
   const el = range.startContainer.parentElement;
-  const variant = el?.closest('.hf-variant');
-  if (variant?.hidden) hf[variant.dataset.which] = Number(variant.dataset.variant);
+  const variant = el?.closest('.docx-hf-part');
+  if (variant && hf[variant.dataset.which] !== Number(variant.dataset.variant)) hf[variant.dataset.which] = Number(variant.dataset.variant);
   if (el?.closest('.comments') && !commentsOpen.value) commentsOpen.value = true;
   await nextTick();
   const scroller = el?.closest('.canvas, .comments');
@@ -3521,23 +3529,19 @@ async function close() {
   flex: 1; box-sizing: border-box; outline: none;
   white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; caret-color: #000;
 }
-.docx-hf { flex: none; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; opacity: .55; cursor: default; }
-.docx-hf.footer { display: flex; flex-direction: column; justify-content: flex-end; }
-.docx-hf:hover { opacity: .8; }
-.docx-hf.empty { padding-bottom: 0 !important; padding-top: 0 !important; }
-.docx-hf { position: relative; }
 .hf-tabs {
-  position: absolute; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px;
+  position: absolute; z-index: 3; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px;
   font: 11px/1.4 system-ui, sans-serif; white-space: normal;
 }
-.header .hf-tabs { top: 6px; }
-.footer .hf-tabs { bottom: 6px; }
+.hf-tabs.header { top: 6px; }
+.hf-tabs.footer { bottom: 6px; }
 .hf-tabs button {
   padding: 1px 8px; border: 1px solid #c9d1de; border-radius: 9px; background: #fff; color: #44516a; cursor: pointer;
 }
 .hf-tabs button[aria-selected="true"] { background: var(--sheet-accent); border-color: var(--sheet-accent); color: #fff; }
 .comments-toggle { gap: 3px; padding: 0 6px; }
 .script { font-size: 14px; line-height: 1; }
+.fonts-missing { cursor: help; text-decoration: underline dotted; }
 .script sup, .script sub { font-size: 9px; }
 .split { display: inline-flex; }
 .split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
@@ -3645,9 +3649,10 @@ async function close() {
   .canvas { padding: 0; }
   .docx-sheet { min-height: 100% !important; width: 100% !important; box-shadow: none; }
   .docx-page { padding: 24px 16px !important; }
-  .docx-hf { padding: 12px 16px !important; min-height: 0 !important; }
-  .docx-hf.header:has(.hf-tabs) { padding-top: 34px !important; }
-  .docx-hf.footer:has(.hf-tabs) { padding-bottom: 34px !important; }
+  /* The page's own margins (inline) give way to the phone's. */
+  .docx-sheet .docx-page { --hf-header: 12px !important; --hf-top: 0px !important; --hf-footer: 12px !important; --hf-bottom: 0px !important; --hf-left: 16px !important; --hf-right: 16px !important; }
+  .docx-sheet:has(.hf-tabs.header) .docx-page { --hf-header: 34px !important; }
+  .docx-sheet:has(.hf-tabs.footer) .docx-page { --hf-footer: 34px !important; }
 }
 </style>
 
@@ -3716,6 +3721,38 @@ async function close() {
 .docx-sheet .raw-inline.note-ref[data-note-ref], .docx-sheet .raw-inline.note-mark { cursor: pointer; }
 .docx-sheet .raw-inline.note-ref[data-note-ref]:hover, .docx-sheet .raw-inline.note-mark:hover { text-decoration: underline; }
 /* Footnotes and endnotes, below the text (as in Word's draft view): each note is edited in place. */
+/* Headers and footers: in the page, in its margins, dimmed until you work in them, as in Word. */
+.docx-sheet .docx-hf-band { cursor: default; }
+.docx-sheet .docx-hf-band.header { padding-top: var(--hf-header); min-height: var(--hf-top); margin-bottom: 6px; }
+.docx-sheet .docx-hf-band.footer {
+  position: absolute; left: var(--hf-left); right: var(--hf-right); bottom: 0;
+  padding-bottom: var(--hf-footer); padding-top: 6px; min-height: var(--hf-bottom);
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+.docx-sheet .docx-hf-part { outline: none; border-radius: 2px; cursor: text; opacity: .6; position: relative; }
+.docx-sheet .docx-hf-part:hover { opacity: .85; box-shadow: 0 0 0 1px var(--sheet-line); }
+.docx-sheet .docx-hf-part:focus-within { opacity: 1; box-shadow: 0 0 0 1px var(--sheet-accent); }
+.docx-sheet .docx-hf-part:is(:hover, :focus-within)::after {
+  content: attr(data-label); position: absolute; left: 0; font: 600 10px/1.6 system-ui, sans-serif;
+  padding: 0 6px; border-radius: 3px; background: var(--sheet-tint); color: var(--sheet-accent); pointer-events: none; white-space: nowrap;
+}
+.docx-sheet .header .docx-hf-part::after { top: 100%; margin-top: 3px; }
+.docx-sheet .footer .docx-hf-part::after { bottom: 100%; margin-bottom: 3px; }
+/* Text boxes and shapes with text: a frame holding text you edit. */
+.docx-sheet .textbox {
+  display: inline-flex; flex-direction: column; box-sizing: border-box; vertical-align: top;
+  text-indent: 0; white-space: pre-wrap; cursor: default; overflow-wrap: break-word; max-width: 100%;
+}
+.docx-sheet .textbox[data-wrap="topAndBottom"] { display: flex; }
+.docx-sheet .textbox-content { outline: none; cursor: text; min-height: 1em; }
+.docx-sheet .textbox:hover { box-shadow: 0 0 0 1px var(--sheet-line); }
+.docx-sheet .textbox:focus-within { box-shadow: 0 0 0 2px var(--sheet-accent); }
+.docx-sheet .textbox-content :is(p, h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+/* A drop cap: its paragraph floats, and the next lines flow around it. */
+.docx-sheet .drop-cap { float: left; margin-top: 0 !important; margin-bottom: 0 !important; }
+.docx-sheet .drop-cap + * { margin-top: 0; }
+.docx-sheet .docx-columns { margin: 0; }
+.docx-sheet .docx-columns > :first-child { margin-top: 0; }
 .docx-sheet .docx-notes { margin-top: 24px; padding-top: 6px; cursor: default; }
 .docx-sheet .docx-notes::before {
   content: attr(data-label); display: block; width: 33%; border-top: 1px solid #9aa0aa; padding-top: 4px; margin-bottom: 2px;

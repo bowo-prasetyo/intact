@@ -126,17 +126,42 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   around it (nor its number); deleting its reference in the text hides it and renumbers the others,
   as in Word. Only notes that changed are rewritten in `footnotes.xml` / `endnotes.xml`; untouched,
   the parts come back byte for byte. Comments in notes stay with the comments panel
+- Edit headers and footers in place, in the page's margins, as in Word: the first page's, other
+  pages', even pages' and each section's, chosen with tabs above and below the page (a click in one
+  edits it; it is dimmed until then). Typing, formatting, Undo, Find and Replace and Track Changes
+  work in them as in the text, and lists in them are numbered on their own. Only the parts that
+  changed are rewritten (`header1.xml`, `footer2.xml`…); untouched, they come back byte for byte.
+  Comments in them stay with the comments panel, and go with their text when it is deleted
+- Edit the text in text boxes and shapes, shown where Word puts them: in line with the text or
+  floating left, right or centred with the text wrapping around them, at their size, with their fill
+  and outline (theme colours too), inner margins and vertical alignment. Both kinds Word writes are
+  edited: DrawingML shapes (`wps:wsp`, Word 2010 and later) and legacy VML text boxes. The text is
+  edited like the body (formatting, Undo, Track Changes); on save only the text changes, written into
+  the shape and into its copy for older readers (`mc:Fallback`), whose tracked changes get ids of
+  their own. A text box left alone is written back exactly as it was
+- See a designed document as Word lays it out: a section set in columns (`w:cols`, with a line
+  between them when it has one) is shown in columns; paragraph borders (`w:pBdr`, with their style,
+  width, colour and distance from the text) and shading (`w:shd`, theme colours too); drop caps
+  (`w:framePr w:dropCap`) beside the lines after them; character spacing (`w:spacing`) and raised or
+  lowered text (`w:position`); and theme colours on text with their tint or shade
+  (`w:themeColor`, `w:themeShade`), worked out from the document's theme as Word does. None of this
+  changes the file
+- Fonts: the fonts embedded in a document (`word/fonts/*.odttf`, listed in `fontTable.xml`) are
+  read from it, unscrambled as the standard says (ECMA-376 Part 1, 17.8.1) and shown with it, as Word
+  does; nothing is fetched. A font the text is set in that is neither embedded nor on this device is
+  named in the status bar ("Font shown with a substitute: Playfair Display"), so you know the page
+  shows another in its place; the document keeps it
 - See equations: Word's equations (Office Math) are drawn as MathML by the browser (fractions,
   roots, scripts, sums and integrals, brackets, matrices, functions, accents, and Word's script,
   double-struck and bold letters), on their own line or in the line of text. They stay read-only
   and are written back exactly as they were
 - Find and replace (Ctrl/Cmd+F, Ctrl/Cmd+H), with match case and whole words. Matches are found
   across formatting but not across paragraphs; a replacement takes the formatting of the match's
-  first character, as in Word. Footnotes and endnotes are searched and replaced too. Headers,
-  footers, comments and locked fields are searched, but their matches are read-only and never replaced
-- See what you can't edit, read-only and in plain language: headers and footers in the page
-  margins (tabs switch between first page, other or even pages and sections when there are several); comments with their replies and resolved state in a side panel (click one to
-  highlight its text); fields labelled by what they
+  first character, as in Word. Footnotes, endnotes, headers, footers and text boxes are searched and
+  replaced too (a match in another header or footer shows its tab). Comments and locked fields are
+  searched, but their matches are read-only and never replaced
+- See what you can't edit, read-only and in plain language: comments with their replies and resolved
+  state in a side panel (click one to highlight its text); fields labelled by what they
   are ("Page number – Word updates it"); citations and bibliographies by the reference manager they
   come from ("Zotero citation – Zotero updates it in Word; edits made here are lost when it does";
   also EndNote, Mendeley, Citavi and Word's own), and typing in one says so in the status bar. Clicking read-only content (a tracked change, chart,
@@ -225,13 +250,15 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    Unsupported content becomes a non-editable placeholder (`data-raw`) holding the original XML.
    Tables keep their XML structure; cell contents are editable, and rows and columns change through
    `src/docx/tables.js`, which edits a copy of the table's XML by grid column while the rendered
-   rows and cells (with any edits in them) are kept.
+   rows and cells (with any edits in them) are kept. A section in columns is wrapped in a
+   `div.docx-columns` for the page only; saving reads the blocks inside it.
 3. **Save** – the editor DOM is walked back into WordprocessingML: stored properties are cloned,
    toggles are merged in (respecting the schema order of `CT_RPr`/`CT_PPr`), adjacent runs with the
    same formatting are merged, and placeholders are written back verbatim. Only
    `word/document.xml` changes, plus `styles.xml` if a heading or the Table Grid style had to be
    added, `numbering.xml` if a new list was started, `footnotes.xml` / `endnotes.xml` if a note was
-   edited, and for inserted pictures their files in `word/media`, relationships and content types.
+   edited, a header or footer part if it was edited, and for inserted pictures their files in
+   `word/media`, relationships and content types.
 4. **Content controls** – a `<w:sdt>` is shown as a frame around its rendered content. Text and
    combo box fields hold an editable `.sdt-content` island; check boxes, drop-downs and dates
    change through clicks. On save its `<w:sdtContent>` is rebuilt and its properties kept, updating
@@ -251,17 +278,36 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 7. **Find and replace** – `src/editor/find.js` searches runs of text nodes in the same paragraph
    and editing host, and highlights matches with the CSS Custom Highlight API, which doesn't
    change the DOM. Replacing edits the text nodes directly as one undoable step.
-8. **Read-only companions** – `src/docx/annotations.js` loads comments (replies and resolved state
-   from `commentsExtended.xml`), footnote/endnote text (for references' tooltips) and the headers and footers,
-   which are rendered with their own relationships outside the editable page, so they can never be
-   saved into the body. Comment ranges are highlighted with the CSS Custom Highlight API between
+8. **Companions** – `src/docx/annotations.js` loads comments (replies and resolved state from
+   `commentsExtended.xml`), footnote/endnote text (for references' tooltips) and finds the headers
+   and footers each section uses (edited in the page: see 10). Comment ranges are highlighted with the CSS Custom Highlight API between
    the hidden `commentRangeStart` / `commentRangeEnd` markers.
 9. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
    attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
    then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
    bullet or numbering definitions.
-10. **Protected deletions** – everything that is or holds a tracked change is labelled when rendered
+10. **Headers and footers** – rendered into the page, before the text and after the notes, as
+   `section.docx-hf-band` bands (not editable themselves, like the notes' section) holding one
+   editing host per header or footer part (`.docx-hf-part`), each rendered with its part's
+   relationships (`doc.inPart`). The view shows the variant chosen in its tabs with a stylesheet, so
+   the choice survives Undo; the header band is in the flow at the top of the page, the footer band
+   is placed at its foot, with room kept for it below the text. `serializeBlocks` skips the bands;
+   `serializeParts` saves each part whose content no longer saves the same way as when it was
+   rendered, and `writeParts` writes it only then.
+11. **Text boxes** – `src/docx/textboxes.js` finds a run's text box (DrawingML in `w:drawing` or
+   `mc:AlternateContent`, or VML in `w:pict`) and its size, place, fill, outline and insets. It is
+   rendered as a `span.textbox` frame (not editable, placed as a picture is) around a
+   `.textbox-content` editing host. On save the run is cloned from the raw store; if the text
+   changed, the new blocks replace its `w:txbxContent`, and in `update` (once revision ids are known)
+   the copies in `mc:Fallback` get the same blocks, their revisions their own ids. The page nests
+   paragraphs inside the paragraph the box is anchored in, which the HTML parser doesn't allow, so
+   Undo (`src/editor/history.js`) restores copies of the page's nodes rather than parsing its HTML.
+12. **Layout and fonts** – `StyleSheet.pPrCss` / `rPrCss` (`src/docx/styles.js`) give borders,
+   shading, character spacing, raised text and theme colours as CSS; drop caps float. Embedded fonts
+   are loaded with the `FontFace` API (`src/docx/fonts.js`), and fonts that are missing are found by
+   measuring text on a canvas, all in the browser.
+13. **Protected deletions** – everything that is or holds a tracked change is labelled when rendered
    (`data-tracked`, see `src/docx/revisions.js`); `src/editor/protect.js` checks what each edit would
    remove (`beforeinput` target ranges, or the selection) and refuses edits that would take a
    labelled element away. Comments follow their mark: `src/docx/commentRemoval.js` removes, on save,
@@ -333,8 +379,17 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Equations are shown, not edited; they need a math font to look as in Word (Windows and macOS have
   one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation
   arrays are not aligned at their `&` points
-- Fields, headers and footers are preserved but can't be edited (comments in them can); editing a
+- Fields are preserved but can't be edited (their results can, until Word updates them); editing a
   comment's text replaces any formatting within it
+- Pictures, tables, page breaks and new comments can't go in a header, footer or text box (the
+  status bar says so); a note reference in a header stays as it is
+- A text box's size, position and look are kept, not changed here, and it grows to show all its text
+  where Word would cut it off; text wrapping around it follows its rectangle. Groups of shapes,
+  canvases, shapes without text, charts and SmartArt stay as they are. A text box laid out on the page
+  (rather than beside its paragraph) is shown near its paragraph
+- With no pages, columns are balanced (as Word balances them before a continuous section break), each
+  header and footer is shown once, and adjacent paragraphs with the same borders get a border each
+  (Word draws one box around them); a drop cap in the margin is shown like one in the text
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save

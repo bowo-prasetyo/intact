@@ -57,7 +57,11 @@ function position(el) {
  */
 export function pictureInfo(r) {
   const frame = frameOf(r);
-  if (!frame) return null;
+  return frame ? frameInfo(frame) : null;
+}
+
+/** The layout of a drawing's frame (<wp:inline> or <wp:anchor>), whatever it holds: as pictureInfo. */
+export function frameInfo(frame) {
   const extent = child(frame, WP, 'extent');
   const docPr = child(frame, WP, 'docPr');
   const info = {
