@@ -104,7 +104,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Apply the document's own paragraph styles ✔; say when fields Word updates may be out of date ✔
 - Name reference managers' citations ✔; keep pasted links and insert links (DOIs too) ✔; count the
   words selected ✔; check spelling in the document's language ✔
-- Edit headers and footers
+- Edit headers and footers ✔; edit the text in text boxes and shapes ✔; show designed documents as
+  Word lays them out (columns, paragraph borders and shading, drop caps, character spacing, theme
+  colours, embedded fonts) and name fonts shown with a substitute ✔
 - Installable offline app (PWA)
 
 ## How we'll know it's working

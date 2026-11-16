@@ -17,6 +17,8 @@ import {
   RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren, XML_HEADER,
 } from './xml.js';
 import { StyleSheet, jcToCss } from './styles.js';
+import { textboxInfo, setTextboxText, textboxContents, syncCopies } from './textboxes.js';
+import { loadEmbeddedFonts } from './fonts.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import {
@@ -197,7 +199,7 @@ export class DocxDocument {
     const loadVariants = async (local) => {
       const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd).map(async (v) => {
         const part = await loadPart(this, this.rels.get(v.rid));
-        return part && { ...v, ...part };
+        return part && { ...v, ...part, text: await this.text(part.path) }; // edited in the page (see renderBand)
       }));
       return variants.filter(Boolean);
     };
@@ -214,6 +216,8 @@ export class DocxDocument {
       const blob = new Blob([await f.async('uint8array')], { type: IMAGE_TYPES[ext] || 'application/octet-stream' });
       this.mediaUrls.set(f.name, URL.createObjectURL(blob));
     }));
+    // Fonts embedded in the file are shown with it, as in Word (read from the file, never fetched).
+    this.fontFaces = await loadEmbeddedFonts(await partOf('/fontTable'), (path) => this.zip.file(path)?.async('uint8array'));
   }
 
   /**
@@ -344,7 +348,7 @@ export class DocxDocument {
     const replies = this.comments.filter((c) => c.storyReply && this.storyCommentLive(c) && !removed.has(c.id));
     const docs = new Map();
     const docFor = (path) => {
-      if (!docs.has(path)) docs.set(path, this.notesOutAt(path) || parseXml(this.storyTexts[path]));
+      if (!docs.has(path)) docs.set(path, this.partOutAt(path) || parseXml(this.storyTexts[path]));
       return docs.get(path);
     };
     for (const id of removed) if (this.commentStory.has(id)) docFor(this.commentStory.get(id));
@@ -354,7 +358,7 @@ export class DocxDocument {
       for (const r of replies.filter((x) => this.storyOf(x.parentId) === path)) addReplyMarkers(xml, r.parentId, r.id);
       this.zip.file(path, serializeXml(xml));
     }
-    for (const path of this.storiesWritten || []) if (!docs.has(path) && !this.notesOutAt(path)) this.zip.file(path, this.storyTexts[path]);
+    for (const path of this.storiesWritten || []) if (!docs.has(path) && !this.partOutAt(path)) this.zip.file(path, this.storyTexts[path]);
     this.storiesWritten = new Set(docs.keys());
   }
 
@@ -373,6 +377,8 @@ export class DocxDocument {
   dispose() {
     for (const url of this.mediaUrls.values()) URL.revokeObjectURL(url);
     this.mediaUrls.clear();
+    for (const face of this.fontFaces || []) document.fonts.delete(face);
+    this.fontFaces = [];
   }
 
   /** Page geometry in CSS px from the final section properties. */
@@ -441,19 +447,220 @@ export class DocxDocument {
     this.noteCount = { footnote: 0, endnote: 0 };
     this.noteOrder = { footnote: [], endnote: [] }; // note ids in the order the text refers to them
     const frag = document.createDocumentFragment();
-    this.renderBlocks(this.body, frag);
+    this.renderBody(frag);
     if (!frag.childNodes.length) frag.append(this.emptyParagraph());
     for (const kind of NOTE_KINDS) {
       const notes = this.renderNotes(kind);
       if (notes) frag.append(notes);
     }
+    const header = this.renderBand('header');
+    if (header) frag.prepend(header);
+    const footer = this.renderBand('footer');
+    if (footer) frag.append(footer);
     this.applyContextualSpacing(frag);
     this.markTracked(frag);
-    // Each note as it would be saved now: a note that still saves the same way is written back as it was.
+    // Each text box, note, header and footer as it would be saved now: one that still saves the same
+    // way is written back as it was. Text boxes first, innermost first: the others hold them.
     this.revisions = [];
+    this.textboxBaseline = new Map();
+    for (const el of [...frag.querySelectorAll('.textbox')].reverse()) this.textboxBaseline.set(el.dataset.textbox, this.textboxXml(el));
     this.noteBaseline = new Map();
     for (const el of frag.querySelectorAll('.docx-note')) this.noteBaseline.set(noteKey(el), this.noteXml(el));
+    this.partBaseline = new Map();
+    for (const el of frag.querySelectorAll('.docx-hf-part')) this.partBaseline.set(el.dataset.part, this.noteXml(el));
     return frag;
+  }
+
+  /**
+   * The body's blocks, section by section: a section set in columns (w:cols) is wrapped in a
+   * `div.docx-columns` that shows them, as Word lays it out. The wrapper is only for the page:
+   * saving reads the blocks inside it, and the section's settings stay in the file where they are.
+   */
+  renderBody(frag) {
+    let section = document.createDocumentFragment();
+    const close = (sectPr) => {
+      const cols = columnsOf(sectPr);
+      if (cols && section.firstChild) {
+        const div = document.createElement('div');
+        div.className = 'docx-columns';
+        div.dataset.cols = String(cols.count);
+        div.style.columnCount = String(cols.count);
+        div.style.columnGap = `${cols.gap}px`;
+        if (cols.rule) div.style.columnRule = '1px solid #000';
+        div.append(section);
+        frag.append(div);
+      } else {
+        frag.append(section);
+      }
+      section = document.createDocumentFragment();
+    };
+    for (const child of elementChildren(this.body)) {
+      if (child.namespaceURI === W && child.localName === 'sectPr') continue;
+      this.renderBlock(child, section);
+      const sectPr = child.namespaceURI === W && child.localName === 'p' && wChild(wChild(child, 'pPr'), 'sectPr');
+      if (sectPr) close(sectPr); // the paragraph holding a section break ends its section
+    }
+    close(wChild(this.body, 'sectPr'));
+  }
+
+  // ---------------------------------------------------------------- headers and footers
+
+  /**
+   * The headers (or footers) as a band at the top (bottom) of the page: each one an editing host
+   * of its own, so typing, formatting, Undo, Find and Track Changes work there as in the text. The
+   * band itself can't be edited or deleted; the view shows the variant chosen in its tabs (first
+   * page, other pages, sections). Saved to their own parts by serializeParts.
+   */
+  renderBand(which) {
+    const variants = which === 'header' ? this.headers : this.footers;
+    if (!variants.length) return null;
+    const band = document.createElement('section');
+    band.className = `docx-hf-band ${which}`;
+    band.contentEditable = 'false';
+    band.dataset.protected = `the ${which}`;
+    band.title = `${which === 'header' ? 'Header' : 'Footer'} – click its text to edit it`;
+    variants.forEach((v, i) => {
+      const host = document.createElement('div');
+      host.className = 'docx-hf-part';
+      host.contentEditable = 'true';
+      host.dataset.which = which;
+      host.dataset.variant = String(i);
+      host.dataset.part = v.path;
+      host.dataset.protected = `the ${which}`;
+      const name = !v.label || v.label === 'All pages' ? which : `${v.label} ${which}`;
+      host.dataset.label = name[0].toUpperCase() + name.slice(1);
+      this.inPart(v, () => this.renderBlocks(v.xml.documentElement, host));
+      if (!host.firstChild) host.append(this.emptyParagraph());
+      band.append(host);
+    });
+    return band;
+  }
+
+  /** Runs `fn` with the context of a header or footer part: its relationships, its own list numbering. */
+  inPart(part, fn) {
+    const saved = [this.rels, this.numbering, this.commentOrder, this.noteCount, this.noteOrder, this.inNote];
+    this.rels = part.rels;
+    this.numbering = new Numbering(this.numberingXml);
+    this.commentOrder = new Map();
+    this.noteCount = { footnote: 0, endnote: 0 };
+    this.noteOrder = null; // a note reference in a header stays read-only
+    this.inNote = true; // comments in it stay with the comments panel (see doc.story), as in notes
+    try {
+      fn();
+    } finally {
+      [this.rels, this.numbering, this.commentOrder, this.noteCount, this.noteOrder, this.inNote] = saved;
+    }
+  }
+
+  /**
+   * The header and footer parts as they will be saved, from their hosts in the editor content
+   * `root`: path -> the part's XML with its new content, for each one that changed.
+   */
+  serializeParts(root) {
+    const out = {};
+    for (const v of [...this.headers, ...this.footers]) {
+      const host = root.querySelector(`.docx-hf-part[data-part="${CSS.escape(v.path)}"]`);
+      if (!host) continue;
+      const mainRels = this.serialRels;
+      this.serialRels = { path: relsPathOf(v.path), rels: v.rels };
+      const nodes = this.serializeBlocks(host);
+      this.serialRels = mainRels;
+      const s = new XMLSerializer();
+      if (nodes.map((n) => s.serializeToString(n)).join('') === this.partBaseline.get(v.path)) continue;
+      const xml = parseXml(v.text);
+      const top = xml.documentElement;
+      for (const c of elementChildren(top)) top.removeChild(c);
+      for (const n of nodes) top.appendChild(n); // adopted, so revision ids set later reach them
+      if (!nodes.some((n) => n.localName === 'p')) top.appendChild(createW(xml, 'p'));
+      out[v.path] = xml;
+    }
+    return out;
+  }
+
+  /** Writes the headers and footers that changed; one changed by an earlier save and no longer gets its original back. */
+  writeParts() {
+    for (const v of [...this.headers, ...this.footers]) {
+      const xml = this.partsOut?.[v.path];
+      if (xml) this.zip.file(v.path, serializeXml(xml));
+      else if (v.written) this.zip.file(v.path, v.text);
+      v.written = !!xml;
+    }
+  }
+
+  /** A note, header or footer part as it will be saved, if it changed, else null. */
+  partOutAt(path) {
+    return this.notesOutAt(path) || this.partsOut?.[path] || null;
+  }
+
+  /** The paragraphs of headers and footers that changed, for the review: "First page header", paragraph 1… */
+  reviewParts(root, opts) {
+    const out = [];
+    for (const v of [...this.headers, ...this.footers]) {
+      const xml = this.partsOut[v.path];
+      if (!xml) continue;
+      const host = root.querySelector(`.docx-hf-part[data-part="${CSS.escape(v.path)}"]`);
+      const where = host?.dataset.label || 'Header';
+      for (const entry of reviewParagraphs(parseXml(v.text).documentElement, xml.documentElement, opts)) out.push({ ...entry, where });
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- text boxes
+
+  /**
+   * A text box (or a shape with text) as it is laid out: a frame (not editable itself) with the
+   * shape's size, place, fill and outline, holding its text as an editing host of its own. The
+   * shape's XML is kept; only its text is written back when it changed (see serializeTextbox).
+   */
+  renderTextbox(r, info) {
+    const span = document.createElement('span');
+    span.className = 'textbox';
+    span.contentEditable = 'false';
+    span.dataset.textbox = this.keep(r);
+    span.dataset.wrap = info.wrap;
+    span.title = 'Text box – click its text to edit it; its size, place and look stay as they are';
+    const w = info.cx / EMU_PER_PX;
+    const h = info.cy / EMU_PER_PX;
+    this.placePicture(span, info, w, h);
+    const st = span.style;
+    if (w) st.width = `${w}px`;
+    if (h) st.minHeight = `${h}px`; // the text can grow it here, so nothing typed is hidden
+    st.padding = info.insets.map((x) => `${Math.max(0, x)}px`).join(' ');
+    if (info.fill) st.backgroundColor = `#${info.fill}`;
+    if (info.line) st.border = `${info.line.width}px solid #${info.line.color}`;
+    if (info.geometry === 'ellipse') st.borderRadius = '50%';
+    else if (/^round/.test(info.geometry)) st.borderRadius = '12px';
+    if (info.anchor === 'ctr' || info.anchor === 'b') st.justifyContent = info.anchor === 'ctr' ? 'center' : 'flex-end';
+    const host = document.createElement('div');
+    host.className = 'textbox-content';
+    host.contentEditable = 'true';
+    const { main } = textboxContents(r);
+    this.renderBlocks(main[0], host);
+    if (!host.firstChild) host.append(this.emptyParagraph());
+    span.append(host);
+    return span;
+  }
+
+  /** The text of a rendered text box as it would be saved now, as a string. */
+  textboxXml(el) {
+    const host = el.querySelector(':scope > .textbox-content');
+    return host ? this.noteXml(host) : '';
+  }
+
+  /**
+   * A text box's run: as it was if its text is unchanged; otherwise with the new text, in its shown
+   * text and its copies for older readers (given the same text in update, once revision ids are set).
+   */
+  serializeTextbox(el) {
+    const r = this.rawClone(el.dataset.textbox);
+    const host = el.querySelector(':scope > .textbox-content');
+    if (!host) return r;
+    const blocks = this.serializeBlocks(host);
+    const s = new XMLSerializer();
+    if (blocks.map((n) => s.serializeToString(n)).join('') === this.textboxBaseline?.get(el.dataset.textbox)) return r;
+    const { main, copies } = setTextboxText(r, blocks); // adopted, so revision ids set later reach them
+    if (copies.length) this.textboxCopies?.push({ main, copies });
+    return r;
   }
 
   // ---------------------------------------------------------------- footnotes and endnotes
@@ -1036,14 +1243,16 @@ export class DocxDocument {
   }
 
   renderBlocks(container, parent) {
-    for (const child of elementChildren(container)) {
-      const local = child.namespaceURI === W ? child.localName : null;
-      if (local === 'p') parent.append(this.renderParagraph(child));
-      else if (local === 'tbl') parent.append(this.renderTable(child));
-      else if (local === 'sectPr' || local === 'tblPr' || local === 'tcPr' || local === 'trPr') continue;
-      else if (local === 'sdt') parent.append(this.renderControl(child, true));
-      else parent.append(this.rawBlock(child));
-    }
+    for (const child of elementChildren(container)) this.renderBlock(child, parent);
+  }
+
+  renderBlock(child, parent) {
+    const local = child.namespaceURI === W ? child.localName : null;
+    if (local === 'p') parent.append(this.renderParagraph(child));
+    else if (local === 'tbl') parent.append(this.renderTable(child));
+    else if (local === 'sectPr' || local === 'tblPr' || local === 'tcPr' || local === 'trPr') return;
+    else if (local === 'sdt') parent.append(this.renderControl(child, true));
+    else parent.append(this.rawBlock(child));
   }
 
   rawBlock(node) {
@@ -1136,6 +1345,14 @@ export class DocxDocument {
     if (pPr) {
       el.dataset.ppr = this.keep(pPr);
       Object.assign(el.style, cssToStyle(this.styles.pPrCss(pPr)));
+      // A drop cap is a paragraph of its own, in a frame the next paragraphs flow around.
+      const frame = wChild(pPr, 'framePr');
+      const dropCap = wAttr(frame, 'dropCap');
+      if (dropCap === 'drop' || dropCap === 'margin') {
+        el.classList.add('drop-cap');
+        el.dataset.dropCap = dropCap;
+        el.style.paddingRight = `${(Number(wAttr(frame, 'hSpace')) || 60) / 20}pt`;
+      }
     }
     const direct = wChild(pPr, 'numPr');
     if (direct) {
@@ -1241,6 +1458,8 @@ export class DocxDocument {
       span.title = comment ? `Comment by ${comment.author}: ${comment.paragraphs.join(' ')}` : 'Comment';
       return span;
     }
+    const box = local === 'r' && textboxInfo(node, this.styles.themeColors);
+    if (box) return this.renderTextbox(node, box);
     const span = document.createElement('span');
     span.contentEditable = 'false';
     span.dataset.raw = this.keep(node);
@@ -1362,28 +1581,6 @@ export class DocxDocument {
     span.className = 'raw-inline page-break';
     span.title = 'Page break';
     return span;
-  }
-
-  /** A header or footer (an entry of this.headers / this.footers), rendered read-only, or null if empty. */
-  renderHeaderFooter(part) {
-    if (!part) return null;
-    const [rels, numbering, order, notes, noteOrder] = [this.rels, this.numbering, this.commentOrder, this.noteCount, this.noteOrder];
-    this.rels = part.rels;
-    this.numbering = new Numbering(this.numberingXml);
-    this.commentOrder = new Map();
-    this.noteCount = { footnote: 0, endnote: 0 };
-    this.noteOrder = null; // a note reference in a header stays read-only
-    const frag = document.createDocumentFragment();
-    try {
-      this.renderBlocks(part.xml.documentElement, frag);
-    } finally {
-      [this.rels, this.numbering, this.commentOrder, this.noteCount, this.noteOrder] = [rels, numbering, order, notes, noteOrder];
-    }
-    for (const e of frag.querySelectorAll('[contenteditable]')) e.removeAttribute('contenteditable');
-    const holder = document.createElement('div');
-    holder.append(frag);
-    if (!holder.textContent.trim() && !holder.querySelector('img')) return null;
-    return holder;
   }
 
   renderRun(r, parent) {
@@ -2382,9 +2579,17 @@ export class DocxDocument {
     this.applyContextualSpacing(root);
     this.renumberNotes(root);
     if (!this.numberingXml && !root.querySelector('.list')) return;
+    // Each header and footer numbers its own lists; the body (with its notes) numbers the rest.
+    for (const host of root.querySelectorAll('.docx-hf-part')) {
+      this.numberBlocks(host.querySelectorAll('p,h1,h2,h3,h4,h5,h6'), new Numbering(this.numberingXml));
+    }
     const numbering = new Numbering(this.numberingXml);
     this.numbering = numbering;
-    for (const el of root.querySelectorAll('p,h1,h2,h3,h4,h5,h6')) {
+    this.numberBlocks([...root.querySelectorAll('p,h1,h2,h3,h4,h5,h6')].filter((el) => !el.closest('.docx-hf-band')), numbering);
+  }
+
+  numberBlocks(blocks, numbering) {
+    for (const el of blocks) {
       const list = this.listOf(el);
       const num = list && numbering.next(list.numId, list.ilvl);
       // Indentation follows the list level, unless the paragraph keeps its own (as when rendered).
@@ -2527,9 +2732,21 @@ export class DocxDocument {
     this.revisions = []; // <w:ins>/<w:del> written for this session's tracked changes
     this.linksUsed = new Map(); // rels path -> Set of the ids of this session's links still in the text
     this.serialRels = { path: this.relsPath, rels: this.rels };
+    this.textboxCopies = []; // text boxes whose new text goes to their copies for older readers too
     const nodes = this.serializeBlocks(root);
     this.notesOut = this.serializeNotes(root);
+    this.partsOut = this.serializeParts(root);
     this.revisions.forEach((rev, i) => rev.setAttributeNS(W, 'w:id', String(this.nextId + i)));
+    // Copies of edited text boxes, with their own ids for this session's tracked changes in them.
+    let nextCopyId = this.nextId + this.revisions.length;
+    const ours = new Set(this.revisions);
+    for (const { main, copies } of this.textboxCopies) {
+      const from = [...main.getElementsByTagName('*')];
+      for (const copy of syncCopies(main, copies)) {
+        const to = [...copy.getElementsByTagName('*')];
+        from.forEach((n, i) => { if (ours.has(n) && to[i]) to[i].setAttributeNS(W, 'w:id', String(nextCopyId++)); });
+      }
+    }
     while (this.body.firstChild) this.body.removeChild(this.body.firstChild);
     for (const n of nodes) this.body.appendChild(n);
     if (!nodes.some((n) => n.localName === 'p')) this.body.appendChild(createW(this.xml, 'p'));
@@ -2539,12 +2756,14 @@ export class DocxDocument {
     });
     pruneCommentMarkers(this.body, this.commentsRemoved, this.commentRangesInBody);
     for (const id of this.storyRemoved()) this.commentsRemoved.add(id);
-    // A comment in a note goes with its text, as in the body: its mark was deleted with it.
-    for (const kind of NOTE_KINDS) {
-      const xml = this.notesOut[kind];
-      if (!xml) continue;
+    // A comment in a note, header or footer goes with its text, as in the body: its mark was deleted with it.
+    const outs = [
+      ...NOTE_KINDS.filter((k) => this.notesOut[k]).map((k) => [this.noteParts[k].path, this.notesOut[k]]),
+      ...Object.entries(this.partsOut),
+    ];
+    for (const [partPath, xml] of outs) {
       const present = commentIdsIn(xml);
-      for (const [id, path] of this.commentStory) if (path === this.noteParts[kind].path && !present.has(id)) this.commentsRemoved.add(id);
+      for (const [id, path] of this.commentStory) if (path === partPath && !present.has(id)) this.commentsRemoved.add(id);
     }
     for (let grew = true; grew;) {
       grew = false;
@@ -2602,6 +2821,7 @@ export class DocxDocument {
       paragraphs: [
         ...reviewParagraphs(this.originalBody, this.body, { tracked, styleName }),
         ...this.reviewNotes(root, { tracked, styleName }),
+        ...this.reviewParts(root, { tracked, styleName }),
       ],
       commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id) && !c.isNew),
       commentsAdded: this.newComments.filter((c) => this.presentComments().has(c.id) && !this.commentsRemoved.has(c.id))
@@ -2658,6 +2878,7 @@ export class DocxDocument {
     if (this.numberingChanged) await this.writeNumbering();
     await this.writeComments();
     this.writeNotes();
+    this.writeParts();
     this.writeStories();
     await this.writeSettings();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
@@ -2826,6 +3047,7 @@ export class DocxDocument {
     };
     for (const node of container.childNodes) {
       if (node.nodeType === 1 && node.classList.contains('docx-notes')) continue; // saved to their own part
+      if (node.nodeType === 1 && node.classList.contains('docx-hf-band')) continue; // headers and footers too
       if (node.nodeType === 1 && BLOCK_TAGS.has(node.tagName)) {
         flush();
         if (node.tagName === 'TABLE' && node.dataset.raw != null) out.push(this.serializeTable(node));
@@ -2929,6 +3151,11 @@ export class DocxDocument {
     }
     if (el.dataset.tc === 'ins' || el.dataset.tc === 'del') {
       this.serializeRevision(el, out, ctx, block, state);
+      return;
+    }
+    if (el.dataset.textbox != null) {
+      out.appendChild(this.serializeTextbox(el));
+      state.last = null;
       return;
     }
     if (el.dataset.raw != null) {
@@ -3195,6 +3422,16 @@ export class DocxDocument {
  * The rows of a table (local 'tr') or cells of a row ('tc') in order, looking through content
  * controls and customXml wrapped around them: [{ el, wrappers: [<w:sdt>…] }].
  */
+/** A section's columns (w:cols), for showing them: { count, gap (px), rule } or null for one column. */
+function columnsOf(sectPr) {
+  const cols = wChild(sectPr, 'cols');
+  if (!cols) return null;
+  const count = Number(wAttr(cols, 'num')) || wChildren(cols, 'col').length || 1;
+  if (count < 2) return null;
+  const space = wAttr(cols, 'space');
+  return { count: Math.min(count, 45), gap: (space != null ? Number(space) || 0 : 720) / 15, rule: ['1', 'true', 'on'].includes(wAttr(cols, 'sep') || '') };
+}
+
 function tableParts(parent, local, wrappers = []) {
   const out = [];
   for (const c of elementChildren(parent)) {

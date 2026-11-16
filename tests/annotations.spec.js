@@ -1,4 +1,5 @@
-// Comments, headers, footers and notes are shown read-only, in plain language, and never change.
+// Comments and preserved content are shown in plain language, and never change unless edited.
+// Headers and footers are shown in the page's margins (and edited there: see headers.spec.js).
 import { test, expect } from '@playwright/test';
 import { buildDocx, openInEditor, download, canonicalize, documentXmlOf, W_NS } from './helpers.js';
 
@@ -33,17 +34,17 @@ const COMMENTED = `<w:p><w:r><w:t xml:space="preserve">The fee is </w:t></w:r><w
 
 const highlighted = (page, name) => page.evaluate((n) => [...(CSS.highlights.get(n) || [])].map((r) => r.toString()), name);
 
-test('the first page\'s header and footer are shown, read-only and outside the editable text', async ({ page }) => {
+test('the first page\'s header and footer are shown in the page\'s margins, apart from the text', async ({ page }) => {
   const docx = await buildDocx('<w:p><w:r><w:t>Body text</w:t></w:r></w:p>', { ...HEADERS, sectPr: `${HEADERS.sectPr}<w:titlePg/>` });
   await openInEditor(page, docx);
-  const header = page.locator('.docx-hf.header .hf-variant:not([hidden])');
+  const header = page.locator('.docx-hf-band.header .docx-hf-part:visible');
   await expect(page.getByRole('tablist', { name: 'Headers' }).getByRole('tab')).toHaveText(['First page', 'Other pages']);
   await expect(header).toHaveText('First page header ');
-  await expect(page.locator('.docx-hf.header')).toHaveAttribute('title', 'First page header – shown for reference; edit it in Word');
+  await expect(header).toHaveAttribute('data-label', 'First page header');
   await expect(header.locator('img')).toHaveCount(1); // the header's own relationships resolve its image
-  await expect(page.locator('.docx-hf.footer')).toContainText('Page 1');
-  await expect(page.locator('.docx-page')).toHaveText('Body text');
-  await expect(page.locator('.docx-hf [contenteditable]')).toHaveCount(0);
+  await expect(page.locator('.docx-hf-band.footer')).toContainText('Page 1');
+  await expect(page.locator('.docx-page > p')).toHaveText(['Body text']);
+  await expect(page.locator('.docx-hf-band.header')).toHaveAttribute('contenteditable', 'false'); // only their text is edited
 
   const { zip, xml } = await download(page);
   expect(await canonicalize(page, xml)).toEqual(await canonicalize(page, await documentXmlOf(docx)));
@@ -52,9 +53,9 @@ test('the first page\'s header and footer are shown, read-only and outside the e
 
 test('without a different first page, the default header is shown', async ({ page }) => {
   await openInEditor(page, await buildDocx('<w:p><w:r><w:t>Body</w:t></w:r></w:p>', HEADERS));
-  await expect(page.locator('.docx-hf.header .hf-variant')).toHaveText('Default header');
+  await expect(page.locator('.docx-hf-band.header .docx-hf-part')).toHaveText('Default header');
   await expect(page.getByRole('tablist', { name: 'Headers' })).toHaveCount(0);
-  await expect(page.locator('.docx-hf.header')).toHaveAttribute('title', /^Header – /);
+  await expect(page.locator('.docx-hf-band.header .docx-hf-part')).toHaveAttribute('data-label', 'Header');
 });
 
 test('comments are listed with replies and resolved state, and point at their text', async ({ page }) => {
@@ -134,14 +135,14 @@ test('documents with several headers offer them as tabs: sections, first page, e
   await openInEditor(page, docx);
   const tabs = page.getByRole('tablist', { name: 'Headers' }).getByRole('tab');
   await expect(tabs).toHaveText(['Section 1: odd pages', 'Section 1: even pages', 'Section 2: first page', 'Section 2: odd pages']);
-  const shown = page.locator('.docx-hf.header .hf-variant:not([hidden])');
+  const shown = page.locator('.docx-hf-band.header .docx-hf-part:visible');
   await expect(shown).toHaveText('Header A');
   await tabs.nth(2).click();
   await expect(shown).toHaveText('Header D');
-  await expect(page.locator('.docx-hf.header')).toHaveAttribute('title', /^Section 2: first page header/);
+  await expect(shown).toHaveAttribute('data-label', 'Section 2: first page header');
 });
 
-test('Find also searches headers, footers and comments, read-only', async ({ page }) => {
+test('Find also searches headers and footers (editable there), and comments (read-only)', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 700 }); // comments start closed
   const docx = await buildDocx(COMMENTED.replace('The fee is ', 'The fee per Page is '), {
     parts: { ...HEADERS.parts, ...COMMENTS.parts },
@@ -155,12 +156,12 @@ test('Find also searches headers, footers and comments, read-only', async ({ pag
   await page.keyboard.type('page');
   // Header (first page, "First page header"), the body twice, the footer ("Page 1"), no comment.
   const status = page.locator('.findbar .status');
-  await expect(status).toHaveText(/ of 4 · 2 read-only$/);
+  await expect(status).toHaveText(/ of 4$/);
 
   await page.getByRole('textbox', { name: 'Find' }).fill('Default');
-  await expect(status).toHaveText('1 of 1 · 1 read-only');
+  await expect(status).toHaveText('1 of 1');
   // The match is in the "Other pages" header, so that tab is shown.
-  await expect(page.locator('.docx-hf.header .hf-variant:not([hidden])')).toHaveText('Default header');
+  await expect(page.locator('.docx-hf-band.header .docx-hf-part:visible')).toHaveText('Default header');
 
   await page.getByRole('textbox', { name: 'Find' }).fill('finance');
   await expect(status).toHaveText('1 of 1 · 1 read-only');

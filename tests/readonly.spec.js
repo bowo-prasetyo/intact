@@ -80,25 +80,21 @@ test('locked fields and equations say what they are when clicked; a picture is s
   expect(xml).toContain('</w:sdt><w:r><w:t xml:space="preserve">! end.</w:t>'); // typed beside the field
 });
 
-test('typing in a header, footer or comment says it is read-only', async ({ page }) => {
+test('typing in a comment says it is read-only; typing in a header edits it', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const docx = await buildDocx(COMMENTED, OPTS);
   await openInEditor(page, docx);
-  await page.locator('.docx-hf.header').getByText('Confidential header').click();
-  await expect(status(page)).toHaveText('Read-only: Header – shown for reference; edit it in Word');
-  await page.locator('.docx-page p').first().click();
-  await page.keyboard.type('!'); // an edit clears the message
+  await page.locator('.docx-hf-band.header').getByText('Confidential header').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('!');
   await expect(status(page)).toHaveText('');
-  await page.locator('.docx-hf.header').getByText('Confidential header').click();
-  await page.keyboard.type('X');
-  await expect(status(page)).toHaveText('Read-only: Header – shown for reference; edit it in Word');
+  await expect(page.locator('.docx-hf-band.header')).toHaveText('Confidential header!');
 
   await page.getByRole('complementary', { name: 'Comments' }).getByText('Check the fee.').dblclick();
   await page.keyboard.type('X');
   await expect(status(page)).toHaveText('Read-only: comments are shown for reference – reply to or resolve them in Word');
-  await expect(page.locator('.docx-hf.header')).toHaveText('Confidential header');
   const { zip } = await download(page);
-  expect(await zip.file('word/header1.xml').async('string')).toBe(OPTS.parts['word/header1.xml']);
+  expect(await zip.file('word/header1.xml').async('string')).toContain('Confidential header!');
   expect(await zip.file('word/comments.xml').async('string')).toBe(OPTS.parts['word/comments.xml']);
 });
 

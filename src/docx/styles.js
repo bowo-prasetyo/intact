@@ -31,6 +31,7 @@ export class StyleSheet {
       this.fonts.major = latin(major) || this.fonts.major;
       this.fonts.minor = latin(minor) || this.fonts.minor;
     }
+    this.themeColors = themeColors(themeDoc);
     this.reindex();
   }
 
@@ -232,12 +233,17 @@ export class StyleSheet {
     if (font) css['font-family'] = `"${font}", sans-serif`;
     const sz = wAttr(wChild(rPr, 'sz'), 'val');
     if (sz) css['font-size'] = `${Number(sz) / 2}pt`;
-    const color = wAttr(wChild(rPr, 'color'), 'val');
-    if (color && /^[0-9a-f]{6}$/i.test(color)) css.color = '#' + color;
+    const color = this.runColor(wChild(rPr, 'color'));
+    if (color) css.color = color;
+    // Character spacing (twentieths of a point) and text raised or lowered (half-points).
+    const spacing = Number(wAttr(wChild(rPr, 'spacing'), 'val'));
+    if (spacing) css['letter-spacing'] = `${spacing / 20}pt`;
+    const position = Number(wAttr(wChild(rPr, 'position'), 'val'));
+    if (position) css['vertical-align'] = `${position / 2}pt`;
     const hl = wAttr(wChild(rPr, 'highlight'), 'val');
     if (withToggles && hl && hl !== 'none') css['background-color'] = HIGHLIGHT[hl] || hl;
-    const shd = wAttr(wChild(rPr, 'shd'), 'fill');
-    if (!hl && shd && /^[0-9a-f]{6}$/i.test(shd)) css['background-color'] = '#' + shd;
+    const shd = this.shadingColor(wChild(rPr, 'shd'));
+    if (!hl && shd) css['background-color'] = shd;
     const va = wAttr(wChild(rPr, 'vertAlign'), 'val');
     if (withToggles && va === 'superscript') Object.assign(css, { 'vertical-align': 'super', 'font-size': 'smaller' });
     if (withToggles && va === 'subscript') Object.assign(css, { 'vertical-align': 'sub', 'font-size': 'smaller' });
@@ -287,7 +293,45 @@ export class StyleSheet {
     }
     const jc = wAttr(wChild(pPr, 'jc'), 'val');
     if (jc) css['text-align'] = jcToCss(jc);
+    // Borders and shading. Word draws a border its "space" (points) away from the text.
+    const pBdr = wChild(pPr, 'pBdr');
+    for (const side of ['top', 'left', 'bottom', 'right']) {
+      const b = wChild(pBdr, side) || (side === 'left' && wChild(pBdr, 'start')) || (side === 'right' && wChild(pBdr, 'end'));
+      if (!b) continue;
+      const border = borderCss(b);
+      css[`border-${side}`] = border || 'none';
+      if (!border) continue;
+      const space = `${Number(wAttr(b, 'space')) || 0}pt`;
+      if (side === 'top' || side === 'bottom') css[`padding-${side}`] = space;
+      else if (!css[`padding-${side}`]) css[`padding-${side}`] = space;
+    }
+    const fill = this.shadingColor(wChild(pPr, 'shd'));
+    if (fill) css['background-color'] = fill;
     return css;
+  }
+
+  /**
+   * The colour of a run's <w:color>, as Word shows it: a theme colour (with its tint or shade) from
+   * the document's theme, else its value. Null for automatic or none.
+   */
+  runColor(el) {
+    if (!el) return null;
+    const theme = this.themeColors[THEME_COLOR_NAMES[wAttr(el, 'themeColor')]];
+    if (theme) return '#' + tintShade(theme, wAttr(el, 'themeTint'), wAttr(el, 'themeShade'));
+    const val = wAttr(el, 'val');
+    return val && /^[0-9a-f]{6}$/i.test(val) ? '#' + val : null;
+  }
+
+  /** The fill of a <w:shd> (paragraph or run shading), theme colours included, or null. */
+  shadingColor(shd) {
+    if (!shd || wAttr(shd, 'val') === 'nil') return null;
+    const theme = this.themeColors[THEME_COLOR_NAMES[wAttr(shd, 'themeFill')]];
+    if (theme) return '#' + tintShade(theme, wAttr(shd, 'themeFillTint'), wAttr(shd, 'themeFillShade'));
+    const fill = wAttr(shd, 'fill');
+    if (fill && /^[0-9a-f]{6}$/i.test(fill)) return '#' + fill;
+    const color = wAttr(shd, 'color');
+    if (wAttr(shd, 'val') === 'solid' && color && /^[0-9a-f]{6}$/i.test(color)) return '#' + color;
+    return null;
   }
 
   /** A stylesheet for the editor page, scoped under `scope`. */
@@ -296,7 +340,9 @@ export class StyleSheet {
     const base = { ...this.pPrCss(this.defaultPPr), ...this.rPrCss(this.defaultRPr) };
     if (!base['font-family']) base['font-family'] = `"${this.fonts.minor}", sans-serif`;
     if (!base['font-size']) base['font-size'] = '10pt';
-    const { 'margin-top': mt, 'margin-bottom': mb, 'line-height': lh, ...pageCss } = base;
+    const { 'margin-top': mt, 'margin-bottom': mb, 'line-height': lh, ...rest } = base;
+    // Paragraph borders, shading and padding in the defaults are each paragraph's, not the page's.
+    const pageCss = Object.fromEntries(Object.entries(rest).filter(([k]) => !/^(border|padding|background)/.test(k)));
     rules.push(`${scope} { ${decl(pageCss)} }`);
     rules.push(`${scope} :is(p,h1,h2,h3,h4,h5,h6) { margin-top: ${mt || '0'}; margin-bottom: ${mb || '0'}; ${lh ? `line-height: ${lh};` : ''} }`);
     const merged = (id) => {
@@ -326,6 +372,82 @@ export class StyleSheet {
     }
     return rules.join('\n');
   }
+}
+
+/** Word's theme colour names (w:themeColor) -> the theme's colour slots. */
+const THEME_COLOR_NAMES = {
+  dark1: 'dk1', light1: 'lt1', dark2: 'dk2', light2: 'lt2', text1: 'dk1', background1: 'lt1', text2: 'dk2', background2: 'lt2',
+  accent1: 'accent1', accent2: 'accent2', accent3: 'accent3', accent4: 'accent4', accent5: 'accent5', accent6: 'accent6',
+  hyperlink: 'hlink', followedHyperlink: 'folHlink',
+};
+
+/** The colours of a theme's colour scheme: { dk1: 'RRGGBB', lt1, …, accent1…6, hlink, folHlink }. */
+export function themeColors(themeDoc) {
+  const out = {};
+  const scheme = themeDoc?.getElementsByTagNameNS(NS.a, 'clrScheme')[0];
+  for (const slot of scheme ? [...scheme.children] : []) {
+    const c = slot.firstElementChild;
+    const hex = c?.localName === 'srgbClr' ? c.getAttribute('val') : c?.localName === 'sysClr' ? c.getAttribute('lastClr') : null;
+    if (hex && /^[0-9a-f]{6}$/i.test(hex)) out[slot.localName] = hex.toUpperCase();
+  }
+  return out;
+}
+
+/**
+ * A theme colour with Word's tint or shade (hex bytes, "BF"): a shade darkens and a tint lightens
+ * its luminance, as Word applies them (in HSL).
+ */
+export function tintShade(hex, tint, shade) {
+  if (!tint && !shade) return hex;
+  const [h, s, l] = rgbToHsl(hex);
+  let lum = l;
+  if (shade) lum = l * (parseInt(shade, 16) / 255);
+  if (tint) lum = l * (parseInt(tint, 16) / 255) + (1 - parseInt(tint, 16) / 255);
+  return hslToRgb(h, s, Math.min(1, Math.max(0, lum)));
+}
+
+function rgbToHsl(hex) {
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h / 6, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  const f = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const rgb = s === 0 ? [l, l, l] : [f(p, q, h + 1 / 3), f(p, q, h), f(p, q, h - 1 / 3)];
+  return rgb.map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+const BORDER_STYLES = {
+  single: 'solid', thick: 'solid', double: 'double', dotted: 'dotted', dashed: 'dashed', dashSmallGap: 'dashed',
+  dotDash: 'dashed', dotDotDash: 'dotted', triple: 'double', wave: 'solid', doubleWave: 'double',
+  thinThickSmallGap: 'double', thickThinSmallGap: 'double', thinThickMediumGap: 'double', thickThinMediumGap: 'double',
+  thinThickLargeGap: 'double', thickThinLargeGap: 'double', threeDEmboss: 'ridge', threeDEngrave: 'groove', outset: 'outset', inset: 'inset',
+};
+
+/** A Word border (<w:top w:val="single" w:sz="12" w:color="C55A11"/>, sz in eighths of a point) as CSS, or null for none. */
+export function borderCss(b) {
+  const val = wAttr(b, 'val');
+  if (!val || val === 'nil' || val === 'none') return null;
+  const style = BORDER_STYLES[val] || 'solid';
+  const width = Math.max(style === 'double' ? 2.25 : 0.5, (Number(wAttr(b, 'sz')) || 4) / 8);
+  const color = wAttr(b, 'color');
+  return `${width}pt ${style} ${color && /^[0-9a-f]{6}$/i.test(color) ? '#' + color : 'currentColor'}`;
 }
 
 export function jcToCss(jc) {
