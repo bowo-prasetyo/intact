@@ -22,7 +22,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Edit text in paragraphs, headings, lists and table cells
 - Bold, italic, underline, strikethrough, superscript and subscript (each turns the other off, as in
   Word), and highlight in Word's 15 highlight colours (the last colour chosen is remembered; existing
-  highlight shows and can be removed); paragraph styles (Normal, Title, Heading 1–3); alignment
+  highlight shows and can be removed); paragraph styles (Normal, Title, Heading 1–3, and the document's own: headings 4–9 it defines, the
+  styles in Word's style gallery that aren't hidden, such as Quote and Caption, and any style its text
+  uses; a paragraph in another style shows that style's name); alignment
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
@@ -170,8 +172,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
   changed, with the words deleted and inserted, which changes are tracked, a warning when some
   aren't, and anything else that changes (comments removed with their text, Track Changes switched,
-  styles or lists added). An untouched document says "No changes". The review can be skipped, and
-  opened any time from the toolbar
+  styles or lists added). An untouched document says "No changes". When the text changed and the
+  document has fields Word works out (a table of contents, cross-references, figure and table
+  numbers), it says they may be out of date and how to update them in Word (Ctrl+A, F9), and offers
+  to have Word update them when the file is opened (`w:updateFields` in `settings.xml`); when
+  citations from Word or a reference manager (Zotero, EndNote, Mendeley) were added or removed and
+  a bibliography lists them, it says the bibliography needs refreshing (`src/docx/fields.js`). The
+  review can be skipped, and opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Shift+= / Ctrl+= (superscript / subscript),
   Ctrl+Alt+H (highlight), Ctrl+Space (remove bold, italic, underline, strikethrough, superscript and
