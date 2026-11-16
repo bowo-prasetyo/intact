@@ -1,7 +1,7 @@
 // Merging and splitting table cells, as Word's Layout tab does. Merging: the selected cells become
 // one (gridSpan across, vMerge down), their content one after another in it. Splitting: a cell into
 // columns of equal width (new grid columns where needed) and rows (the row's other cells merged
-// down). Neither is tracked, and the status bar says so while tracking.
+// down). (Tracked merging and splitting: tracked-merge.spec.js.)
 import { test, expect } from '@playwright/test';
 import { buildDocx, openInEditor, download, canonicalize, documentXmlOf } from './helpers.js';
 
@@ -117,14 +117,4 @@ test('splitting a cell into rows merges the row\'s other cells down; a merge spl
   await page.locator('td', { hasText: 'C1' }).click();
   await split(page, 1, 3);
   await expect(status(page)).toHaveText('This cell is merged across 2 rows: split it into 1 or 2 rows');
-});
-
-test('while tracking, merging says it isn\'t tracked', async ({ page }) => {
-  await openInEditor(page, await buildDocx(TABLE));
-  await page.getByRole('button', { name: 'Track changes' }).click();
-  await page.getByRole('dialog', { name: 'Your name on tracked changes' }).getByRole('textbox').fill('Rita');
-  await page.getByRole('button', { name: 'Start tracking' }).click();
-  await selectCells(page, 'C1', 'C2');
-  await layout(page, 'Merge cells');
-  await expect(status(page)).toHaveText('Cells merged – merging cells isn’t tracked, so it won’t be marked');
 });

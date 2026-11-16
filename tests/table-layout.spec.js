@@ -181,11 +181,3 @@ test('rows holding someone\'s tracked change aren\'t deleted untracked', async (
   await expect(status(page)).toHaveText('The rows hold tracked changes: accept or reject them first, or turn on Track changes');
   await expect(page.locator('table tr')).toHaveCount(3);
 });
-
-test('a table whose rows are fields is changed in Word', async ({ page }) => {
-  const rowField = (inner) => `<w:sdt><w:sdtPr><w:alias w:val="Lines"/><w:id w:val="9"/></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
-  await openInEditor(page, await buildDocx(`<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid>${rowField(`<w:tr>${CELL('Line')}</w:tr>`)}</w:tbl><w:p/>`));
-  await page.locator('td', { hasText: 'Line' }).click();
-  await layout(page, 'Insert column to the right');
-  await expect(status(page)).toHaveText('This table’s rows or cells are fields: change its layout in Word');
-});

@@ -90,12 +90,14 @@ Saying no to these keeps the product small enough to keep its promises:
 - Track your own edits as tracked changes ✔; review your changes before downloading ✔; Word's
   keyboard shortcuts ✔
 - Superscript, subscript and highlight ✔; show formatting marks (¶) ✔
-- Accept or reject tracked changes ✔, including formatting changes and table rows ✔ (table and cell
-  property changes: still in Word)
+- Accept or reject tracked changes ✔, including formatting changes and table rows ✔, and table, row
+  and cell property changes ✔
 - Add a comment ✔; reply to, edit, resolve and delete comments ✔; add a table row with Tab in the
   last cell ✔
 - Insert tables and pictures ✔; insert and delete table rows and columns ✔, tracked ✔; merge and
-  split cells ✔; resize, wrap and position pictures ✔ (cropping and effects: still in Word)
+  split cells ✔ (tracked where a Word document can record it ✔); tables whose rows or cells are
+  fields ✔; resize, wrap and position pictures ✔; crop, rotate and add effects ✔; wrap text to a
+  picture's outline ✔
 - Edit headers, footers and footnotes
 - Installable offline app (PWA)
 

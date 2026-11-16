@@ -12,7 +12,8 @@
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Insert tables and pictures (from the toolbar, or paste or drop a picture)</li>
         <li>Table layout: insert rows above or below and columns left or right (tracked while tracking); delete rows, columns or the table; merge and split cells</li>
-        <li>Pictures: click one to resize it with its handles; Layout Options set its text wrapping, position, size and alt text; drag a floating picture to move it</li>
+        <li>Pictures: click one to resize or rotate it with its handles; Layout Options set its text wrapping (Tight and Through follow its outline), position, size, crop, rotation, effects and alt text; drag a floating picture to move it</li>
+        <li>Tables whose rows or cells are fields, including repeating sections</li>
         <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
@@ -41,8 +42,8 @@
       </p>
       <h2>Limitations</h2>
       <ul>
-        <li>Floating pictures are shown as near to Word's layout as a web page allows; cropping and picture effects are left to Word. Merging and splitting cells isn't tracked.</li>
-        <li>Tracked changes to table and cell properties, and changes inside locked content, can only be accepted or rejected in Word; text holding someone's tracked change can't be deleted together with it.</li>
+        <li>Floating pictures are shown as near to Word's layout as a web page allows; 3-D and artistic effects are left to Word. Cells merged across a row can't be tracked: Word documents have no way to record it.</li>
+        <li>Tracked changes inside locked content can only be accepted or rejected in Word; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>

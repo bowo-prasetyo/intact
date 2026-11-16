@@ -36,7 +36,8 @@ test('a click selects a picture; a corner resizes it in proportion, and Undo tak
   await openInEditor(page, await buildDocx(DOC));
   await selectPicture(page);
   await expect(status(page)).toHaveText('Picture: drag a corner to resize, or open Layout Options for wrapping and position');
-  await expect(page.locator('.picture-frame .handle')).toHaveCount(8);
+  await expect(page.locator('.picture-frame .handle:not(.rotate)')).toHaveCount(8);
+  await expect(page.locator('.picture-frame .handle.rotate')).toHaveCount(1);
   await dragBy(page, page.locator('.picture-frame .se'), 40, 5); // wider: the height follows
   await expect(status(page)).toHaveText('Picture resized to 2.1 × 1.1 cm');
   expect(await pic(page).locator('img').evaluate((i) => [i.style.width, i.style.height])).toEqual(['80px', '40px']);

@@ -117,8 +117,9 @@
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
           <div ref="marksEl" class="marks-layer" aria-hidden="true" />
-          <div v-if="picture.el" class="picture-frame" :class="{ floating: picture.wrap !== 'inline' }" :style="{ left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.w}px`, height: `${picture.h}px` }">
-            <span v-for="h in HANDLES" :key="h" class="handle" :class="h" :title="h.length === 2 ? 'Drag to resize' : 'Drag to stretch'" @pointerdown.prevent.stop="startResize($event, h)" />
+          <div v-if="picture.el" class="picture-frame" :class="{ floating: picture.wrap !== 'inline', cropping: picture.cropping }" :style="{ left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.w}px`, height: `${picture.h}px` }">
+            <span v-for="h in HANDLES" :key="h" class="handle" :class="h" :title="picture.cropping ? 'Drag to crop' : h.length === 2 ? 'Drag to resize' : 'Drag to stretch'" @pointerdown.prevent.stop="picture.cropping ? startCrop($event, h) : startResize($event, h)" />
+            <span v-if="!picture.cropping" class="handle rotate" title="Drag to rotate (Shift: in steps of 15°)" @pointerdown.prevent.stop="startRotate" />
           </div>
           <button v-if="picture.el" ref="layoutOptionsButton" type="button" class="layout-options" title="Layout Options: wrapping, position, size and alt text" aria-haspopup="dialog" :aria-expanded="picturePanel.open" :style="{ left: `${picture.x + picture.w + 6}px`, top: `${picture.y}px` }" @mousedown.prevent @click="togglePicturePanel">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="3" width="6" height="5" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M10 4h4M10 7h4M2 11h12M2 14h12" stroke="currentColor" stroke-width="1.3" /></svg>
@@ -228,6 +229,54 @@
         <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> Keep proportions</label>
         <button type="button" @click="resetPictureSize">Reset size</button>
       </fieldset>
+      <details>
+        <summary>Crop</summary>
+        <div class="size-row">
+          <label>Left (%) <input v-model.number="picturePanel.cropL" type="number" step="1" @change="applyCrop" /></label>
+          <label>Right (%) <input v-model.number="picturePanel.cropR" type="number" step="1" @change="applyCrop" /></label>
+          <label>Top (%) <input v-model.number="picturePanel.cropT" type="number" step="1" @change="applyCrop" /></label>
+          <label>Bottom (%) <input v-model.number="picturePanel.cropB" type="number" step="1" @change="applyCrop" /></label>
+        </div>
+        <button type="button" :aria-pressed="picture.cropping" @click="toggleCropping">{{ picture.cropping ? 'Done cropping' : 'Crop with the handles' }}</button>
+      </details>
+      <details>
+        <summary>Rotate and flip</summary>
+        <div class="buttons">
+          <button type="button" @click="rotateBy(90)">Rotate right 90°</button>
+          <button type="button" @click="rotateBy(-90)">Rotate left 90°</button>
+          <button type="button" :aria-pressed="picturePanel.flipH" @click="flip('flipH')">Flip horizontal</button>
+          <button type="button" :aria-pressed="picturePanel.flipV" @click="flip('flipV')">Flip vertical</button>
+        </div>
+        <label>Rotation (°) <input v-model.number="picturePanel.rot" type="number" step="1" @change="applyRotation" /></label>
+      </details>
+      <details>
+        <summary>Effects</summary>
+        <div class="size-row">
+          <label>Border
+            <select v-model="picturePanel.border" @change="applyEffects">
+              <option value="none">No border</option>
+              <option value="thin">Thin</option>
+              <option value="medium">Medium</option>
+              <option value="thick">Thick</option>
+            </select>
+          </label>
+          <label>Border colour <input v-model="picturePanel.borderColor" type="color" @change="applyEffects" /></label>
+        </div>
+        <label class="inline"><input v-model="picturePanel.shadow" type="checkbox" @change="applyEffects" /> Shadow</label>
+        <label class="inline"><input v-model="picturePanel.glow" type="checkbox" @change="applyEffects" /> Glow</label>
+        <label class="inline"><input v-model="picturePanel.softEdge" type="checkbox" @change="applyEffects" /> Soft edges</label>
+        <label class="inline"><input v-model="picturePanel.reflection" type="checkbox" @change="applyEffects" /> Reflection</label>
+        <label>Colour
+          <select v-model="picturePanel.colour" @change="applyEffects">
+            <option value="normal">As it is</option>
+            <option value="greyscale">Greyscale</option>
+          </select>
+        </label>
+        <div class="size-row">
+          <label>Brightness (%) <input v-model.number="picturePanel.brightness" type="number" min="-100" max="100" step="5" @change="applyEffects" /></label>
+          <label>Contrast (%) <input v-model.number="picturePanel.contrast" type="number" min="-100" max="100" step="5" @change="applyEffects" /></label>
+        </div>
+      </details>
       <label class="alt">Alt text (describe the picture for people who can't see it)
         <textarea v-model="picturePanel.alt" rows="2" @change="applyAlt" />
       </label>
@@ -331,9 +380,10 @@ import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../edito
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
-import { changeItems, changesAt, adjacentChange, itemRange } from '../editor/changes.js';
+import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
 import { WRAPS } from '../docx/pictures.js';
+import { pictureOutline } from '../editor/outline.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -969,8 +1019,13 @@ function addRow(cell) {
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const CM = 360000; // EMU per centimetre
 const PX = 9525; // EMU per pixel
-const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline' });
-const picturePanel = reactive({ open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '' });
+const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false });
+const picturePanel = reactive({
+  open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '',
+  cropL: 0, cropT: 0, cropR: 0, cropB: 0, rot: 0, flipH: false, flipV: false,
+  border: 'none', borderColor: '#000000', shadow: false, glow: false, softEdge: false, reflection: false, colour: 'normal', brightness: 0, contrast: 0,
+});
+const BORDERS = { thin: 0.75, medium: 1.5, thick: 3 };
 const picturePanelEl = ref(null);
 const layoutOptionsButton = ref(null);
 const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
@@ -996,7 +1051,10 @@ function selectPicture(span) {
 }
 
 function showPicture(span) {
-  if (picture.el !== span) picturePanel.open = false;
+  if (picture.el !== span) {
+    picturePanel.open = false;
+    picture.cropping = false;
+  }
   picture.el = span;
   updatePictureFrame();
   if (span) message.value = 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
@@ -1010,9 +1068,8 @@ function updatePictureFrame() {
     picturePanel.open = false;
     return;
   }
-  const img = span.querySelector('img') || span;
   const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
-  const r = img.getBoundingClientRect();
+  const r = span.getBoundingClientRect(); // the picture's frame (what shows of it, cropped)
   Object.assign(picture, { x: r.left - sheet.left, y: r.top - sheet.top, w: r.width, h: r.height, wrap: span.dataset.wrap || 'inline' });
 }
 
@@ -1034,9 +1091,10 @@ function changePicture(change, done) {
 /** Drag a handle: corners keep the proportions, sides stretch, as in Word. */
 function startResize(e, handle) {
   const span = picture.el;
-  const img = span?.querySelector('img');
-  if (!img) return;
-  const start = { x: e.clientX, y: e.clientY, w: img.offsetWidth, h: img.offsetHeight };
+  const info = span && doc.pictureLayout(span);
+  if (!info) return;
+  const look = doc.pictureLookOf(span);
+  const start = { x: e.clientX, y: e.clientY, w: info.cx / PX, h: info.cy / PX };
   const target = e.currentTarget;
   target.setPointerCapture(e.pointerId);
   let size = { w: start.w, h: start.h };
@@ -1051,8 +1109,7 @@ function startResize(e, handle) {
       h = start.h * scale;
     }
     size = { w: Math.max(8, w), h: Math.max(8, h) };
-    img.style.width = `${size.w}px`;
-    img.style.height = `${size.h}px`;
+    doc.stylePicture(span, { ...info, cx: size.w * PX, cy: size.h * PX }, look); // a preview until it is let go
     updatePictureFrame();
   };
   const up = () => {
@@ -1077,7 +1134,6 @@ function onPictureMousedown(e, span) {
   const wasSelected = picture.el === span;
   selectPicture(span);
   if (!wasSelected || (span.dataset.wrap || 'inline') === 'inline' || e.button !== 0) return;
-  const img = span.querySelector('img');
   const start = { x: e.clientX, y: e.clientY };
   let moved = false;
   const move = (ev) => {
@@ -1085,15 +1141,15 @@ function onPictureMousedown(e, span) {
     const dy = ev.clientY - start.y;
     if (!moved && Math.hypot(dx, dy) < 4) return;
     moved = true;
-    span.style.transform = `translate(${dx}px, ${dy}px)`;
+    span.style.transform = `translate(${dx}px, ${dy}px) ${span.dataset.turn || ''}`;
     updatePictureFrame();
   };
   const up = (ev) => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
     if (!moved) return;
-    const r = img.getBoundingClientRect(); // where it was dropped
-    span.style.transform = '';
+    const r = span.getBoundingClientRect(); // where it was dropped
+    span.style.transform = span.dataset.turn || '';
     const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
     const block = span.closest(BLOCK_SELECTOR) || span.parentElement;
     const left = r.left - (sheet.left + doc.page.left);
@@ -1126,9 +1182,15 @@ function fillPicturePanel() {
   let vAlign = 'word';
   if (v.align && ['top', 'center', 'bottom'].includes(v.align) && v.relativeFrom === 'margin') vAlign = v.align;
   else if (v.align == null && ['paragraph', 'line'].includes(v.relativeFrom)) vAlign = 'offset';
+  const look = doc.pictureLookOf(picture.el);
+  const border = look.border ? (look.border.width <= 1 ? 'thin' : look.border.width <= 2 ? 'medium' : 'thick') : 'none';
   Object.assign(picturePanel, {
     wrap: info.wrap, hAlign, hOffset, vAlign, vOffset: vAlign === 'offset' ? round((v.offset || 0) / CM) : 0,
     width: round(info.cx / CM), height: round(info.cy / CM), alt: info.descr,
+    cropL: round(look.crop.l * 100, 1), cropT: round(look.crop.t * 100, 1), cropR: round(look.crop.r * 100, 1), cropB: round(look.crop.b * 100, 1),
+    rot: round(look.rot, 1), flipH: look.flipH, flipV: look.flipV,
+    border, borderColor: `#${look.border?.color || '000000'}`.toLowerCase(), shadow: look.shadow, glow: !!look.glow, softEdge: look.softEdge,
+    reflection: look.reflection, colour: look.greyscale ? 'greyscale' : 'normal', brightness: round(look.brightness * 100), contrast: round(look.contrast * 100),
   });
 }
 
@@ -1154,7 +1216,10 @@ function closePicturePanel() {
 const WRAP_NAMES = Object.fromEntries(WRAPS);
 
 function applyWrap(wrap) {
-  changePicture((s) => doc.setPictureWrap(s, wrap), `Text wrapping: ${WRAP_NAMES[wrap]}`);
+  // Tight and Through: the text wraps to the picture's outline (what isn't transparent), as in Word.
+  const outline = (wrap === 'tight' || wrap === 'through') && picture.el
+    ? pictureOutline(picture.el.querySelector('img'), doc.pictureLookOf(picture.el).crop) : null;
+  changePicture((s) => doc.setPictureWrap(s, wrap, outline), `Text wrapping: ${WRAP_NAMES[wrap]}${outline ? ', around its outline' : ''}`);
 }
 
 function applyPosition(which) {
@@ -1188,6 +1253,111 @@ function resetPictureSize() {
   const max = doc.page.width - doc.page.left - doc.page.right;
   const scale = Math.min(1, max / img.naturalWidth);
   changePicture((s) => doc.setPictureSize(s, img.naturalWidth * scale * PX, img.naturalHeight * scale * PX), 'Picture back to its own size');
+}
+
+/** Crop with the handles, as Word's Crop button: dragging a handle cuts (or uncuts) that side. */
+function toggleCropping() {
+  picture.cropping = !picture.cropping;
+  message.value = picture.cropping ? 'Crop: drag the handles to cut the picture; Esc or Done cropping when finished' : 'Picture cropped';
+}
+
+function startCrop(e, handle) {
+  const span = picture.el;
+  const info = span && doc.pictureLayout(span);
+  if (!info) return;
+  const look = doc.pictureLookOf(span);
+  const c0 = look.crop;
+  const fullW = info.cx / PX / (1 - c0.l - c0.r);
+  const fullH = info.cy / PX / (1 - c0.t - c0.b);
+  const start = { x: e.clientX, y: e.clientY };
+  const target = e.currentTarget;
+  target.setPointerCapture(e.pointerId);
+  let crop = c0;
+  const move = (ev) => {
+    const dx = (ev.clientX - start.x) / fullW;
+    const dy = (ev.clientY - start.y) / fullH;
+    crop = {
+      l: handle.includes('w') ? c0.l + dx : c0.l,
+      r: handle.includes('e') ? c0.r - dx : c0.r,
+      t: handle.includes('n') ? c0.t + dy : c0.t,
+      b: handle.includes('s') ? c0.b - dy : c0.b,
+    };
+    for (const side of ['l', 'r', 't', 'b']) crop[side] = Math.max(-0.5, Math.min(0.9, crop[side]));
+    if (crop.l + crop.r > 0.95 || crop.t + crop.b > 0.95) return;
+    const w = fullW * (1 - crop.l - crop.r);
+    const h = fullH * (1 - crop.t - crop.b);
+    doc.stylePicture(span, { ...info, cx: w * PX, cy: h * PX }, { ...look, crop });
+    updatePictureFrame();
+  };
+  const up = () => {
+    target.removeEventListener('pointermove', move);
+    target.removeEventListener('pointerup', up);
+    if (crop === c0) return;
+    changePicture((s) => doc.setPictureCrop(s, crop), 'Picture cropped');
+    nextTick(() => { picture.cropping = true; });
+  };
+  target.addEventListener('pointermove', move);
+  target.addEventListener('pointerup', up);
+}
+
+/** Drag the round handle above a picture to rotate it (Shift: in steps of 15°), as in Word. */
+function startRotate(e) {
+  const span = picture.el;
+  const info = span && doc.pictureLayout(span);
+  if (!info) return;
+  const look = doc.pictureLookOf(span);
+  const r = span.getBoundingClientRect();
+  const center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  const target = e.currentTarget;
+  target.setPointerCapture(e.pointerId);
+  let rot = look.rot;
+  const move = (ev) => {
+    let deg = (Math.atan2(ev.clientY - center.y, ev.clientX - center.x) * 180) / Math.PI + 90;
+    if (ev.shiftKey) deg = Math.round(deg / 15) * 15;
+    rot = ((Math.round(deg) % 360) + 360) % 360;
+    doc.stylePicture(span, info, { ...look, rot });
+    updatePictureFrame();
+  };
+  const up = () => {
+    target.removeEventListener('pointermove', move);
+    target.removeEventListener('pointerup', up);
+    if (rot === look.rot) return;
+    changePicture((s) => doc.setPictureRotation(s, { rot, flipH: look.flipH, flipV: look.flipV }), `Picture rotated to ${rot}°`);
+  };
+  target.addEventListener('pointermove', move);
+  target.addEventListener('pointerup', up);
+}
+
+function applyCrop() {
+  const p = picturePanel;
+  const crop = { l: (Number(p.cropL) || 0) / 100, t: (Number(p.cropT) || 0) / 100, r: (Number(p.cropR) || 0) / 100, b: (Number(p.cropB) || 0) / 100 };
+  changePicture((s) => doc.setPictureCrop(s, crop), 'Picture cropped');
+}
+
+function applyRotation() {
+  const p = picturePanel;
+  changePicture((s) => doc.setPictureRotation(s, { rot: Number(p.rot) || 0, flipH: p.flipH, flipV: p.flipV }), `Picture rotated to ${((Math.round(Number(p.rot) || 0) % 360) + 360) % 360}°`);
+}
+
+function rotateBy(deg) {
+  picturePanel.rot = (((Number(picturePanel.rot) || 0) + deg) % 360 + 360) % 360;
+  applyRotation();
+}
+
+function flip(axis) {
+  picturePanel[axis] = !picturePanel[axis];
+  const p = picturePanel;
+  changePicture((s) => doc.setPictureRotation(s, { rot: Number(p.rot) || 0, flipH: p.flipH, flipV: p.flipV }), axis === 'flipH' ? 'Picture flipped horizontally' : 'Picture flipped vertically');
+}
+
+function applyEffects() {
+  const p = picturePanel;
+  const look = {
+    border: p.border === 'none' ? null : { color: p.borderColor.replace('#', ''), width: BORDERS[p.border] },
+    shadow: p.shadow, glow: p.glow ? 'FFC000' : null, softEdge: p.softEdge, reflection: p.reflection,
+    greyscale: p.colour === 'greyscale', brightness: (Number(p.brightness) || 0) / 100, contrast: (Number(p.contrast) || 0) / 100,
+  };
+  changePicture((s) => doc.setPictureEffects(s, look), 'Picture effects changed');
 }
 
 function applyAlt() {
@@ -1326,14 +1496,18 @@ function tableAction(kind) {
       : `${plural(colCount, 'Column', 'columns')} deleted – Undo (Ctrl+Z) brings ${colCount === 1 ? 'it' : 'them'} back`;
     if (!res.reason && !res.removed && row.isConnected) focus = cellAtColumn(row, Math.max(0, c0 - 1));
   } else if (kind === 'merge') {
-    res = doc.mergeTableCells(table, sel.rows, sel.cols);
+    res = doc.mergeTableCells(table, sel.rows, sel.cols, tracked);
     if (res.cell) focus = res.cell;
-    done = `Cells merged${tracked ? ' – merging cells isn’t tracked, so it won’t be marked' : ''}`;
+    // Word documents can record cells merged down a column as a tracked change, but not across a row.
+    done = !tracked ? 'Cells merged'
+      : res.down && !res.across ? 'Cells merged (tracked)'
+        : res.down ? 'Cells merged – tracked down the rows; merging across a row can’t be tracked in a Word document'
+          : 'Cells merged – merging across a row can’t be tracked in a Word document, so it isn’t marked';
   } else if (kind === 'split') {
     const { cols, rows } = splitDialog;
-    res = doc.splitTableCell(table, cell, cols, rows);
+    res = doc.splitTableCell(table, cell, cols, rows, tracked);
     focus = cell.isConnected ? cell : null;
-    done = `Cell split into ${cols} × ${rows}${tracked ? ' – splitting cells isn’t tracked, so it won’t be marked' : ''}`;
+    done = `Cell split into ${cols} × ${rows}${tracked ? ' (tracked)' : ''}`;
   } else if (kind === 'deleteTable') {
     res = doc.deleteTable(table, tracked);
     done = tracked ? 'Table marked as deleted (tracked)' : 'Table deleted – Undo (Ctrl+Z) brings it back';
@@ -1661,7 +1835,7 @@ const acceptMenuButton = ref(null);
 const rejectMenuButton = ref(null);
 const changesTitle = computed(() => {
   const parts = [`${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'} to accept or reject here`];
-  if (changes.wordOnly) parts.push(`${changes.wordOnly} more (table or cell properties, or locked content) only in Word`);
+  if (changes.wordOnly) parts.push(`${changes.wordOnly} more (in locked content) only in Word`);
   return parts.join('; ');
 });
 
@@ -1671,7 +1845,7 @@ function refreshChanges() {
   changes.wordOnly = doc.wordOnlyChanges(page.value);
 }
 
-const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row', 'cells'].includes(item.kind) ? item.kind : null);
+const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row', 'cells', 'merge', 'tprops', 'rprops', 'cprops'].includes(item.kind) ? item.kind : null);
 
 /** "the insertion by Alice", "your deletion", "the formatting change by Eve", "the inserted row by Dan". */
 function describeChange(item) {
@@ -1683,6 +1857,10 @@ function describeChange(item) {
   if (item.kind === 'para') return `the paragraph formatting change${by}`;
   if (item.kind === 'row') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} row${by}`;
   if (item.kind === 'cells') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} column${by}`;
+  if (item.kind === 'merge') return `the ${item.el.dataset.revMerge === 'merge' || mergeGroup(item.el).some((c) => c.dataset.revMerge === 'merge') ? 'merged' : 'split'} cells${by}`;
+  if (item.kind === 'tprops') return `the table formatting change${by}`;
+  if (item.kind === 'rprops') return `the row formatting change${by}`;
+  if (item.kind === 'cprops') return `the cell formatting change${by}`;
   if (rev.mark) return `${who} paragraph break ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
   return `${who} ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
 }
@@ -1738,7 +1916,7 @@ function resolveCurrent(accept, then = 'next') {
   const first = targets[0];
   const at = document.createRange();
   if (first.kind === 'mark') at.setStart(first.el, first.el.childNodes.length);
-  else at.setStartBefore(first.kind === 'row' || first.kind === 'cells' ? first.el.closest('table') : first.el);
+  else at.setStartBefore(['row', 'cells', 'merge', 'tprops', 'rprops', 'cprops'].includes(first.kind) ? first.el.closest('table') : first.el);
   at.collapse(true);
   resolveItems(targets, accept);
   const sel = window.getSelection();
@@ -1766,7 +1944,7 @@ function resolveAll(accept) {
   resolveItems(items, accept);
   const word = changes.wordOnly;
   message.value = `${accept ? 'Accepted' : 'Rejected'} all ${items.length} ${items.length === 1 ? 'change' : 'changes'}`
-    + (word ? `. ${word} more (table or cell properties, or locked content) can only be ${accept ? 'accepted' : 'rejected'} in Word` : '');
+    + (word ? `. ${word} more (in locked content) can only be ${accept ? 'accepted' : 'rejected'} in Word` : '');
 }
 
 /** Resolves changes, last first so earlier ones stay where they are, as one undoable step. */
@@ -2236,6 +2414,11 @@ function explainKeyOutsideText(e) {
 }
 
 function onKeydown(e) {
+  if (e.key === 'Escape' && picture.cropping) {
+    e.preventDefault();
+    toggleCropping();
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   const range = selectionInPage();
@@ -2899,6 +3082,15 @@ async function close() {
 .picture-frame .s { left: 50%; top: 100%; cursor: ns-resize; }
 .picture-frame .sw { left: 0; top: 100%; cursor: nesw-resize; }
 .picture-frame .w { left: 0; top: 50%; cursor: ew-resize; }
+.picture-frame .rotate { left: 50%; top: -22px; cursor: grab; }
+.picture-frame.cropping { border: 1px dashed #000; }
+.picture-frame.cropping .handle { width: 10px; height: 10px; border-radius: 0; background: #000; border-color: #fff; }
+.picture-panel details { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+.picture-panel details[open] { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+.picture-panel summary { cursor: pointer; font-weight: 600; }
+.picture-panel .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+.picture-panel .buttons button[aria-pressed="true"] { background: var(--active); }
+.picture-panel input[type=color] { width: 100%; height: 26px; padding: 0 2px; }
 .layout-options {
   position: absolute; z-index: 6; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
@@ -3022,6 +3214,10 @@ async function close() {
    tracked table rows, as Word marks them. */
 .docx-sheet [data-fmt="run"] { border-bottom: 1px dashed #8e44ad; }
 .docx-sheet [data-fmt-para] { box-shadow: -10px 0 0 -8px #8e44ad; }
+.docx-sheet table.docx-table[data-fmt-table] { outline: 2px dashed #8e5cc7; outline-offset: 2px; }
+.docx-sheet tr[data-fmt-row] > td:first-child { box-shadow: inset 3px 0 0 #8e5cc7; }
+.docx-sheet table.docx-table td[data-rev-merge] { box-shadow: inset 0 0 0 2px rgb(111 45 189 / 45%); }
+.docx-sheet table.docx-table td[data-fmt-cell] { box-shadow: inset 0 0 0 1px #8e5cc7; }
 .docx-sheet tr[data-rev-row="ins"] > td { background-color: #e8f5ea; }
 .docx-sheet tr[data-rev-row="del"] > td { background-color: #fbe9e7; text-decoration: line-through; }
 /* Someone else's tracked paragraph break, in the colours of their insertions and deletions. */
