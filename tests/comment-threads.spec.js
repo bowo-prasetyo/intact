@@ -99,7 +99,7 @@ test('resolving and reopening a thread: w15:done, and the review says so', async
   expect(await zip.file('word/commentsExtended.xml').async('string')).toBe(EXTENDED); // back as it was
 });
 
-test('deleting a thread deletes its comment and replies; a comment in a header is left to Word', async ({ page }) => {
+test('deleting a thread deletes its comment and replies; a comment in a header stays', async ({ page }) => {
   const header = `${XML}<w:hdr ${W_NS}><w:p><w:commentRangeStart w:id="5"/><w:r><w:t>Header text</w:t></w:r><w:commentRangeEnd w:id="5"/><w:r><w:commentReference w:id="5"/></w:r></w:p></w:hdr>`;
   const comments = COMMENTS.replace('</w:comments>', '<w:comment w:id="5" w:author="Bob"><w:p><w:r><w:t>About the header.</w:t></w:r></w:p></w:comment></w:comments>');
   await openInEditor(page, await buildDocx(BODY, {
@@ -107,8 +107,7 @@ test('deleting a thread deletes its comment and replies; a comment in a header i
     rels: `${MODERN.rels}<Relationship Id="rIdH" Type="${REL}/header" Target="header1.xml"/>`,
     sectPr: '<w:headerReference w:type="default" r:id="rIdH"/>',
   }));
-  await expect(thread(page, 'About the header.').locator('.hint')).toHaveText('In a header, footer or note: reply to, edit or resolve it in Word.');
-  await expect(thread(page, 'About the header.').getByRole('button')).toHaveCount(0);
+  await expect(thread(page, 'About the header.').locator('.tag.muted')).toHaveText('In a header');
 
   await reply(page, 'Check the amount.', 'A reply.');
   await thread(page, 'Check the amount.').locator('.thread-actions').getByRole('button', { name: 'Delete' }).click();

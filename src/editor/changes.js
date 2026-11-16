@@ -11,8 +11,9 @@
 //           listed once, at its first cell, with the text it moved;
 //   tprops, rprops, cprops   a tracked change to a table's, row's or cell's properties
 //           (data-fmt-table, data-fmt-row, data-fmt-cell).
-// Changes inside content saved verbatim (locked fields and cells, preserved blocks) can only be
-// accepted or rejected in Word, and aren't listed (DocxDocument.wordOnlyChanges counts them).
+// Changes inside content saved verbatim (locked fields and cells, preserved blocks) aren't
+// listed one by one: each such piece (a locked field or cell, a field) is one item, kind 'locked',
+// whose changes are all accepted or rejected together.
 
 const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li';
 
@@ -46,6 +47,7 @@ function resolvable(el) {
   return !holder || holder.tagName === 'TABLE';
 }
 
+
 /** The tracked changes under `root`, in document order (a paragraph's own changes after its text). */
 export function changeItems(root) {
   const out = [];
@@ -53,6 +55,15 @@ export function changeItems(root) {
   const add = (el, kind) => { if (resolvable(el) && !partOfMerge(el, kind)) out.push({ el, kind, mark: kind === 'mark' }); };
   const walk = (node) => {
     for (const el of node.children) {
+      // Content kept as it is, holding tracked changes: one item for all of them.
+      if (el.dataset.raw != null && el.dataset.tracked && el.tagName !== 'TABLE' && !isInline(el)) {
+        add(el, 'locked');
+        continue;
+      }
+      if (el.tagName === 'TD' && el.contentEditable === 'false' && el.querySelector('[data-tracked]')) {
+        add(el, 'locked');
+        continue;
+      }
       if (el.tagName === 'TABLE' && el.dataset.fmtTable) add(el, 'tprops');
       if (el.tagName === 'TD' && el.dataset.fmtCell) add(el, 'cprops');
       if (el.tagName === 'TD' && el.dataset.revMerge) {
@@ -108,6 +119,9 @@ export function itemRange(item) {
     const last = cells[cells.length - 1];
     range.setStart(cells[0], 0);
     range.setEnd(last, last.childNodes.length);
+  } else if (kind === 'locked') {
+    if (el.tagName === 'TD') range.selectNodeContents(el);
+    else range.selectNode(el);
   } else if (kind === 'cprops') {
     range.selectNodeContents(el);
   } else if (kind === 'tprops') {
@@ -168,6 +182,8 @@ export function changesAt(range, items) {
   const after = neighbour(node, offset, 1, block);
   const next = find((i) => i.kind === 'inline' && (i.el === before || i.el === after));
   if (next) return [next];
+  const locked = find((i) => i.kind === 'locked' && (i.el.contains(el) || i.el === before || i.el === after));
+  if (locked) return [locked];
   const run = find((i) => i.kind === 'run' && i.el.contains(el));
   if (run) return [run];
   const mark = block && find((i) => i.kind === 'mark' && i.el === block);

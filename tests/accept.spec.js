@@ -1,6 +1,6 @@
 // Accepting and rejecting tracked changes, as in Word: anyone's insertions, deletions, paragraph
 // breaks, formatting changes and table rows, and this session's own, one at a time (Previous, Next)
-// or all at once. Changes only Word can resolve (in locked content) are counted, never dropped.
+// or all at once. Changes inside locked content are resolved together, as one item.
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import { buildDocx, openInEditor, download, canonicalize, documentXmlOf, W_NS } from './helpers.js';
@@ -37,11 +37,11 @@ async function caretAt(page, text, offset = 0) {
   }, [text, offset]);
 }
 
-test('the toolbar counts the changes, and names those only Word can resolve', async ({ page }) => {
+test('the toolbar counts the changes, those in locked content too', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC));
   await expect(group(page)).toBeVisible();
-  await expect(group(page).locator('.badge')).toHaveText('5');
-  await expect(group(page).locator('.badge')).toHaveAttribute('title', '5 tracked changes to accept or reject here; 1 more (in locked content) only in Word');
+  await expect(group(page).locator('.badge')).toHaveText('6');
+  await expect(group(page).locator('.badge')).toHaveAttribute('title', '6 tracked changes to accept or reject here');
   // How they show: Dan's row tinted, Eve's formatting change underlined.
   await expect(page.locator('.docx-page tr[data-rev-row="ins"]')).toHaveText('Row');
   await expect(page.locator('.docx-page [data-fmt="run"]')).toHaveAttribute('title', 'Formatting changed by Eve on 2026-01-05 – tracked change: Accept or Reject on the toolbar');
@@ -59,6 +59,8 @@ test('Next and Previous go from change to change, wrapping round', async ({ page
   await expect(status(page)).toHaveText('The deletion by Bob, 2026-01-02');
   await next.click();
   await expect(status(page)).toHaveText('The paragraph break insertion by Carol, 2026-01-03');
+  await next.click();
+  await expect(status(page)).toHaveText('The tracked change in the locked field by Fay');
   await next.click();
   await expect(status(page)).toHaveText('The inserted row by Dan, 2026-01-04');
   await next.click();
@@ -78,7 +80,7 @@ test('accepting an insertion and rejecting a deletion leave ordinary text, then 
   await group(page).getByRole('button', { name: 'Reject' }).first().click(); // Bob's deletion, now selected
   await expect(status(page)).toHaveText('Rejected the deletion by Bob. Next: the paragraph break insertion by Carol');
   await expect(page.locator('.docx-page p').first()).toHaveText('Pay promptly the full fee.');
-  await expect(group(page).locator('.badge')).toHaveText('3');
+  await expect(group(page).locator('.badge')).toHaveText('4');
   const { xml } = await download(page);
   expect(xml).toMatch(/<w:p><w:r><w:t xml:space="preserve">Pay (<\/w:t><\/w:r><w:r><w:t xml:space="preserve">)?promptly (<\/w:t><\/w:r><w:r><w:t xml:space="preserve">)?the (<\/w:t><\/w:r><w:r><w:t xml:space="preserve">)?full (<\/w:t><\/w:r><w:r><w:t xml:space="preserve">)?fee\.<\/w:t><\/w:r><\/w:p>/);
   expect(xml).not.toMatch(/w:author="(Alice|Bob)"/);
@@ -102,24 +104,23 @@ test('a tracked paragraph break: rejected, its paragraph joins the next; accepte
   await expect(page.locator('.docx-page p[data-rev-mark]')).toHaveCount(0);
 });
 
-test('Accept all accepts every change it can, says which are left for Word, and the review agrees', async ({ page }) => {
+test('Accept all accepts every change, those in locked content too, and the review agrees', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC));
   await page.getByTitle('More ways to accept').click();
   await page.getByRole('menuitem', { name: 'Accept all changes' }).click();
-  await expect(status(page)).toHaveText('Accepted all 5 changes. 1 more (in locked content) can only be accepted in Word');
-  await expect(group(page).locator('.badge')).toHaveText('0');
-  await expect(group(page).getByRole('button', { name: 'Accept' }).first()).toBeDisabled();
+  await expect(status(page)).toHaveText('Accepted all 6 changes');
+  await expect(group(page)).toHaveCount(0); // nothing left to accept or reject
   await page.locator('.app-header').getByRole('button', { name: 'Download' }).click();
   const review = page.getByRole('dialog', { name: 'Review your changes' });
-  await expect(review.locator('.notes')).toContainText('You accepted 5 tracked changes. As in Word, accepting and rejecting aren’t themselves tracked.');
+  await expect(review.locator('.notes')).toContainText('You accepted 6 tracked changes. As in Word, accepting and rejecting aren’t themselves tracked.');
   await expect(review.locator('.notes')).not.toContainText('aren’t tracked: the recipient');
   await expect(review.locator('.tag.resolved').first()).toHaveText('Change accepted or rejected');
   const [dl] = await Promise.all([page.waitForEvent('download'), review.getByRole('button', { name: 'Download' }).click()]);
   const xml = await (await JSZip.loadAsync(await (await import('node:fs')).promises.readFile(await dl.path()))).file('word/document.xml').async('string');
-  expect(xml).not.toMatch(/w:author="(Alice|Bob|Carol|Dan|Eve)"/);
+  expect(xml).not.toMatch(/w:author="(Alice|Bob|Carol|Dan|Eve|Fay)"/);
   expect(xml).toContain('<w:tr><w:tc><w:p><w:r><w:t xml:space="preserve">Row</w:t></w:r></w:p></w:tc></w:tr>'); // Dan's row, kept
   expect(xml).toContain('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Bold by Eve.</w:t></w:r>'); // Eve's bold, kept
-  expect(xml).toContain('<w:ins w:id="6" w:author="Fay"'); // only in Word
+  expect(xml).toContain('<w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t xml:space="preserve">Header</w:t></w:r></w:p></w:sdtContent>'); // Fay's insertion accepted, the field still locked
 });
 
 test('a selection accepts the changes in it; Undo takes it all back', async ({ page }) => {

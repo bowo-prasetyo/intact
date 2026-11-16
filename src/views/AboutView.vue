@@ -14,7 +14,7 @@
         <li>Table layout: insert rows above or below and columns left or right (tracked while tracking); delete rows, columns or the table; merge and split cells</li>
         <li>Pictures: click one to resize or rotate it with its handles; Layout Options set its text wrapping (Tight and Through follow its outline), position, size, crop, rotation, effects and alt text; drag a floating picture to move it</li>
         <li>Tables whose rows or cells are fields, including repeating sections</li>
-        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete</li>
+        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3) and alignment</li>
@@ -43,7 +43,7 @@
       <h2>Limitations</h2>
       <ul>
         <li>Floating pictures are shown as near to Word's layout as a web page allows; 3-D and artistic effects are left to Word. Cells merged across a row can't be tracked: Word documents have no way to record it.</li>
-        <li>Tracked changes inside locked content can only be accepted or rejected in Word; text holding someone's tracked change can't be deleted together with it.</li>
+        <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>

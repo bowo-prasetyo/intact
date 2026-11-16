@@ -64,7 +64,7 @@
           </form>
           <div class="tags">
             <span v-if="t.n" class="tag">{{ t.n }}</span>
-            <span v-else class="tag muted">Not anchored in the text</span>
+            <span v-else class="tag muted">{{ t.place || 'Not anchored in the text' }}</span>
             <span v-if="t.done" class="tag resolved">Resolved</span>
             <span v-if="t.isNew" class="tag new">New</span>
           </div>
@@ -73,7 +73,7 @@
             <button type="button" @click="$emit('resolve', { id: t.id, done: !t.done })">{{ t.done ? 'Reopen' : 'Resolve' }}</button>
             <button type="button" title="Delete this comment and its replies (Undo brings them back)" @click="$emit('delete', t.id)">Delete</button>
           </div>
-          <p v-else class="hint">In a header, footer or note: reply to, edit or resolve it in Word.</p>
+          <p v-else class="hint">Not in the document’s text: reply to, edit or resolve it in Word.</p>
         </article>
       </li>
     </ol>

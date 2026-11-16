@@ -94,6 +94,8 @@ Saying no to these keeps the product small enough to keep its promises:
   and cell property changes ✔
 - Add a comment ✔; reply to, edit, resolve and delete comments ✔; add a table row with Tab in the
   last cell ✔
+- Comments in headers, footers and notes: reply, edit, resolve, delete ✔; tracked changes in locked
+  content: accept and reject ✔
 - Insert tables and pictures ✔; insert and delete table rows and columns ✔, tracked ✔; merge and
   split cells ✔ (tracked where a Word document can record it ✔); tables whose rows or cells are
   fields ✔; resize, wrap and position pictures ✔; crop, rotate and add effects ✔; wrap text to a

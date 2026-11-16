@@ -12,7 +12,7 @@
       <button class="ghost" type="button" @click="close">Close</button>
     </AppHeader>
 
-    <div class="toolbar" :class="{ 'has-changes': changes.total || changes.wordOnly }" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
+    <div class="toolbar" :class="{ 'has-changes': changes.total }" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
       <button type="button" title="Undo (Ctrl+Z)" @click="undo">↶</button>
       <button type="button" title="Redo (Ctrl+Y)" @click="redo">↷</button>
       <span class="sep" />
@@ -75,7 +75,7 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Track changes</span>
       </button>
-      <span v-if="changes.total || changes.wordOnly" class="changes-group" role="group" aria-label="Tracked changes">
+      <span v-if="changes.total" class="changes-group" role="group" aria-label="Tracked changes">
         <span class="sep" />
         <button type="button" title="Previous change" :disabled="!changes.total" @click="gotoChange(-1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
@@ -508,7 +508,8 @@ onMounted(() => {
   refreshChanges();
   page.value.focus();
   placeCaret(page.value.querySelector(BLOCK_SELECTOR) || page.value, true);
-  undoStack = createHistory(page.value);
+  // Comments in headers, footers and notes aren't in the page: their changes are undone with it.
+  undoStack = createHistory(page.value, { state: { get: () => doc.storyState(), set: (v) => doc.setStoryState(v) } });
   undoStack.commit();
 });
 
@@ -1797,28 +1798,35 @@ function replyComment({ id, text, name }) {
     try { localStorage.setItem(AUTHOR_KEY, name); } catch { /* this session only */ }
   }
   let reply = null;
-  changeComments(() => { reply = doc.addReply(id, { author: author.value, text, date: revisionDate() }, page.value); }, 'Reply added');
+  changeComments(() => {
+    const opts = { author: author.value, text, date: revisionDate() };
+    reply = doc.addReply(id, opts, page.value) || doc.replyInStory(id, opts); // in the text, or in a header, footer or note
+  }, 'Reply added');
   if (!reply) message.value = 'This comment isn’t in the text here: reply to it in Word';
 }
 
 /** A comment's new text, kept on its mark until saved, so Undo covers it. */
 function editComment({ id, text }) {
   const mark = commentMark(id);
-  if (!mark || !text) return;
-  changeComments(() => { mark.dataset.edit = text; }, 'Comment edited');
+  if (!text) return;
+  if (mark) changeComments(() => { mark.dataset.edit = text; }, 'Comment edited');
+  else if (doc.storyOf(id)) changeComments(() => doc.editStoryComment(id, text), 'Comment edited');
 }
 
 /** Resolves or reopens a thread, kept on its mark until saved, so Undo covers it. */
 function resolveComment({ id, done }) {
   const mark = commentMark(id);
-  if (!mark) return;
-  changeComments(() => { mark.dataset.done = done ? '1' : '0'; }, done ? 'Comment resolved' : 'Comment reopened');
+  const text = done ? 'Comment resolved' : 'Comment reopened';
+  if (mark) changeComments(() => { mark.dataset.done = done ? '1' : '0'; }, text);
+  else if (doc.storyOf(id)) changeComments(() => doc.resolveStoryComment(id, done), text);
 }
 
 /** Deletes a comment and its replies (their marks go from the text); Undo brings them back. */
 function deleteComment(id) {
   undoStack.flush();
-  for (const el of page.value.querySelectorAll(`[data-comment-start="${CSS.escape(id)}"], [data-comment-end="${CSS.escape(id)}"], [data-comment-ref="${CSS.escape(id)}"]`)) el.remove();
+  const marks = page.value.querySelectorAll(`[data-comment-start="${CSS.escape(id)}"], [data-comment-end="${CSS.escape(id)}"], [data-comment-ref="${CSS.escape(id)}"]`);
+  for (const el of marks) el.remove();
+  if (!marks.length && doc.storyOf(id)) doc.deleteStoryComment(id); // in a header, footer or note
   undoStack.commit();
   markDirty();
   refreshComments();
@@ -1827,7 +1835,7 @@ function deleteComment(id) {
 
 // ------------------------------------------------------------------ accepting and rejecting changes
 
-const changes = reactive({ total: 0, wordOnly: 0 });
+const changes = reactive({ total: 0 });
 const resolved = reactive({ accepted: 0, rejected: 0 }); // this session, for the review
 const changeMenu = reactive({ open: null, x: 0, y: 0 });
 const changeMenuEl = ref(null);
@@ -1835,17 +1843,15 @@ const acceptMenuButton = ref(null);
 const rejectMenuButton = ref(null);
 const changesTitle = computed(() => {
   const parts = [`${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'} to accept or reject here`];
-  if (changes.wordOnly) parts.push(`${changes.wordOnly} more (in locked content) only in Word`);
   return parts.join('; ');
 });
 
 function refreshChanges() {
   if (!page.value) return;
   changes.total = changeItems(page.value).length;
-  changes.wordOnly = doc.wordOnlyChanges(page.value);
 }
 
-const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row', 'cells', 'merge', 'tprops', 'rprops', 'cprops'].includes(item.kind) ? item.kind : null);
+const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row', 'cells', 'merge', 'tprops', 'rprops', 'cprops', 'locked'].includes(item.kind) ? item.kind : null);
 
 /** "the insertion by Alice", "your deletion", "the formatting change by Eve", "the inserted row by Dan". */
 function describeChange(item) {
@@ -1858,6 +1864,7 @@ function describeChange(item) {
   if (item.kind === 'row') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} row${by}`;
   if (item.kind === 'cells') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} column${by}`;
   if (item.kind === 'merge') return `the ${item.el.dataset.revMerge === 'merge' || mergeGroup(item.el).some((c) => c.dataset.revMerge === 'merge') ? 'merged' : 'split'} cells${by}`;
+  if (item.kind === 'locked') return `the ${rev.count === 1 ? 'tracked change' : `${rev.count} tracked changes`} in ${rev.what}${by}`;
   if (item.kind === 'tprops') return `the table formatting change${by}`;
   if (item.kind === 'rprops') return `the row formatting change${by}`;
   if (item.kind === 'cprops') return `the cell formatting change${by}`;
@@ -1879,7 +1886,12 @@ function settleCaret(range) {
 }
 
 /** Selects a change (an inline one, or the end of a paragraph whose break it is) and shows it. */
+// The change Next or Previous last went to: a browser drops a selection in read-only content (a
+// locked cell) when a toolbar button is clicked, so Accept and Reject fall back on it.
+let selectedChange = null;
+
 function selectChange(item) {
+  selectedChange = item;
   const range = itemRange(item);
   page.value.focus();
   const sel = window.getSelection();
@@ -1906,7 +1918,8 @@ function gotoChange(dir) {
 function resolveCurrent(accept, then = 'next') {
   const range = selectionInPage() || savedRange;
   const items = changeItems(page.value);
-  const targets = changesAt(range, items);
+  let targets = changesAt(range, items);
+  if (!targets.length && selectedChange?.el.isConnected) targets = items.filter((i) => i.el === selectedChange.el && i.kind === selectedChange.kind);
   if (!targets.length) {
     message.value = 'Put the cursor on a tracked change (or select some), or use Next change';
     return;
@@ -1942,9 +1955,7 @@ function resolveAll(accept) {
   const items = changeItems(page.value);
   if (!items.length) return;
   resolveItems(items, accept);
-  const word = changes.wordOnly;
-  message.value = `${accept ? 'Accepted' : 'Rejected'} all ${items.length} ${items.length === 1 ? 'change' : 'changes'}`
-    + (word ? `. ${word} more (in locked content) can only be ${accept ? 'accepted' : 'rejected'} in Word` : '');
+  message.value = `${accept ? 'Accepted' : 'Rejected'} all ${items.length} ${items.length === 1 ? 'change' : 'changes'}`;
 }
 
 /** Resolves changes, last first so earlier ones stay where they are, as one undoable step. */
@@ -2350,6 +2361,7 @@ function explainReadOnly(el, refused = false) {
 }
 
 function onPageMousedown(e) {
+  selectedChange = null;
   const pic = e.target.closest?.('.picture');
   if (pic && page.value.contains(pic)) {
     onPictureMousedown(e, pic);
@@ -2414,6 +2426,7 @@ function explainKeyOutsideText(e) {
 }
 
 function onKeydown(e) {
+  selectedChange = null;
   if (e.key === 'Escape' && picture.cropping) {
     e.preventDefault();
     toggleCropping();
@@ -2757,14 +2770,18 @@ function chooseDate(iso) {
  */
 function commentThreads(removed = new Set()) {
   // As shown: with the text and resolved state kept on their marks in the page (see commentMark).
-  const comments = doc.comments.filter((c) => !removed.has(c.id)).map((c) => {
+  const comments = doc.comments.filter((c) => !removed.has(c.id) && (!doc.storyOf(c.id) || doc.storyCommentLive(c))).map((c) => {
     const mark = commentMark(c.id);
-    const text = mark?.dataset.edit;
+    // In a header, footer or note: its changes are kept by the document (see doc.story).
+    const place = mark ? null : doc.storyPlace(c.id);
+    const text = mark ? mark.dataset.edit : place ? doc.story.edits[c.id] : undefined;
+    const done = mark?.dataset.done != null ? mark.dataset.done === '1' : place && doc.story.done[c.id] != null ? doc.story.done[c.id] : c.done;
     return {
       ...c,
-      anchored: !!mark,
+      anchored: !!mark || !!place,
+      place,
       paragraphs: text != null ? text.split('\n').map((s) => s.trim()).filter(Boolean) : c.paragraphs,
-      done: mark?.dataset.done != null ? mark.dataset.done === '1' : c.done,
+      done,
     };
   });
   const ids = new Set(comments.map((c) => c.id));
@@ -2791,6 +2808,9 @@ function refreshComments() {
   const added = [...removed].filter((id) => !removedComments.has(id));
   removedComments = removed;
   threads.value = commentThreads(removed); // edits and resolved state live on the marks, so always
+  // A comment deleted from a header or footer: its mark there goes too.
+  const gone = doc.storyRemoved();
+  for (const el of document.querySelectorAll('.docx-hf [data-comment-ref]')) el.style.display = gone.has(el.dataset.commentRef) ? 'none' : '';
   paintComments();
   if (added.length) message.value = commentRemovalMessage(added);
 }

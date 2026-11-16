@@ -5,9 +5,10 @@
 // silently skips them and then gets out of step with the document. This history owns undo instead:
 // it stores the page's HTML plus the selection after each change, and restores both on undo/redo.
 // Every data-raw/-ppr/-rpr index in the HTML points into the document's append-only raw store, so
-// an old snapshot stays valid.
+// an old snapshot stays valid. `state` ({ get, set }, strings) is anything else to undo with the
+// page: changes to comments in headers, footers and notes, which aren't in the page.
 
-export function createHistory(root, { limit = 100, delay = 400 } = {}) {
+export function createHistory(root, { limit = 100, delay = 400, state = null } = {}) {
   const stack = [];
   let index = -1;
   let timer = 0;
@@ -18,8 +19,8 @@ export function createHistory(root, { limit = 100, delay = 400 } = {}) {
     timer = 0;
     if (composing) return; // never touch the DOM in the middle of IME input
     root.normalize(); // merge split text nodes so selection paths survive an innerHTML round-trip
-    const snap = { html: root.innerHTML, sel: saveSelection(root) };
-    if (stack[index]?.html === snap.html) {
+    const snap = { html: root.innerHTML, sel: saveSelection(root), extra: state ? state.get() : null };
+    if (stack[index]?.html === snap.html && stack[index]?.extra === snap.extra) {
       stack[index].sel = snap.sel;
       return;
     }
@@ -41,6 +42,7 @@ export function createHistory(root, { limit = 100, delay = 400 } = {}) {
   }
 
   function restore(snap) {
+    if (state && snap.extra !== null) state.set(snap.extra);
     root.innerHTML = snap.html;
     restoreSelection(root, snap.sel);
   }
