@@ -140,5 +140,8 @@ Word's hyperlink blue and highlight colours.
 
 Every text pairing meets WCAG AA (white on `--brand` is 6.9:1 in light and 11.6:1 in dark).
 
-Still open: the phrase "Word documents" on the start page, worth revisiting before the app is
-promoted widely.
+## Talking about Word
+
+Lead with what Intact does, not with Word. The start page headline is "Change what you need. Keep
+the rest intact." Mention Microsoft Word only to describe compatibility, in plain text and never in
+a heading or the name: "`.docx` files, the format Microsoft Word uses", not "Edit Word documents".
