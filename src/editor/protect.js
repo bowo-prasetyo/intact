@@ -1,4 +1,6 @@
 // Keeps deletions from quietly taking what the user can't see or edit with them.
+//  * Notes (data-protected): the footnotes and endnotes below the text, each note and its number,
+//    can't be deleted with text around them; a note goes when its reference in the text does.
 //  * Tracked changes: deleting a revision would accept or reject it without a trace, so an edit
 //    that would remove anything labelled data-tracked (see DocxDocument.markTracked) is refused.
 //  * Comments: a comment lives as long as its mark (data-comment-ref). When a deletion takes one end
@@ -62,7 +64,8 @@ export function rangesRemovedBy(e) {
  * or a table holding revisions, or merges a paragraph whose mark is tracked into its neighbour.
  */
 export function trackedChangeAt(ranges, root) {
-  const tracked = root.querySelectorAll('[data-tracked]');
+  // Also what can't go with the text around it (data-protected): notes and their numbers.
+  const tracked = root.querySelectorAll('[data-tracked], [data-protected]');
   if (!tracked.length) return null;
   for (const r of ranges) {
     const range = toRange(r);
@@ -78,6 +81,10 @@ export function trackedChangeAt(ranges, root) {
 
 /** The status-bar explanation for a refused edit. */
 export function refusalMessage(el) {
+  if (el.dataset.protected && !el.dataset.tracked) {
+    if (el.classList.contains('note-mark')) return 'Not deleted: the note’s number stays – Word numbers notes. To remove the note, delete its number in the text.';
+    return `Not deleted: that would remove ${el.dataset.protected}. Select within one note, or delete a note’s number in the text to remove it.`;
+  }
   // Revisions shown on their own (and paragraph breaks) are accepted or rejected here; those inside
   // tables' structure or locked content only in Word.
   const here = el.matches('.inserted, .deleted, [data-rev-mark]');

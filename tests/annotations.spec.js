@@ -107,7 +107,7 @@ test('preserved content is described in plain language', async ({ page }) => {
   await openInEditor(page, await buildDocx(COMMENTED, COMMENTS));
   const note = page.locator('.docx-page .note-ref');
   await expect(note).toHaveAttribute('data-n', '1');
-  await expect(note).toHaveAttribute('title', 'Footnote 1: Source: annual report. – edit it in Word');
+  await expect(note).toHaveAttribute('title', 'Footnote: Source: annual report. – click to edit it (footnotes are below the text)');
   const field = page.locator('.docx-page .field');
   await expect(field).toHaveText('4');
   await expect(field).toHaveAttribute('title', 'Page number – Word updates it');
@@ -165,4 +165,12 @@ test('Find also searches headers, footers and comments, read-only', async ({ pag
   await page.getByRole('textbox', { name: 'Find' }).fill('finance');
   await expect(status).toHaveText('1 of 1 · 1 read-only');
   await expect(page.getByRole('complementary', { name: 'Comments' })).toBeVisible(); // opened to show it
+});
+
+test('End then typing in a paragraph that ends with a comment’s mark types at its end', async ({ page }) => {
+  await openInEditor(page, await buildDocx('<w:p><w:r><w:t xml:space="preserve">Keep </w:t></w:r><w:commentRangeStart w:id="6"/><w:r><w:t>this</w:t></w:r><w:commentRangeEnd w:id="6"/><w:r><w:commentReference w:id="6"/></w:r></w:p><w:p><w:r><w:t>Next</w:t></w:r></w:p>'));
+  await page.locator('.docx-page p').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' too');
+  await expect(page.locator('.docx-page p').first()).toHaveText('Keep this too');
 });

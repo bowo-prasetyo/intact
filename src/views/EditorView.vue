@@ -688,6 +688,7 @@ function closestBlock(node) {
 function onSelectionChange() {
   const range = selectionInPage();
   if (!range) return;
+  if (caretOutOfMarker(range)) return; // the selection changes again, and this runs again
   lastReadOnly = null;
   const pic = pictureInSelection(range);
   if (pic !== picture.el) {
@@ -748,6 +749,26 @@ function placeCaret(el, atStart = false) {
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/**
+ * Firefox puts the caret inside an empty non-editable marker at the end of a line (a comment's
+ * mark, a hidden comment range or bookmark, a note's number), where typing and deleting do
+ * nothing. Puts it just after the marker instead: true if it moved.
+ */
+function caretOutOfMarker(range) {
+  if (!range.collapsed) return false;
+  let el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  let atom = null;
+  for (; el && el !== page.value && !el.isContentEditable; el = el.parentElement) atom = el;
+  if (!atom || !el?.isContentEditable || atom.tagName !== 'SPAN' || atom.textContent || atom.querySelector('img, math')) return false;
+  const after = document.createRange();
+  after.setStartAfter(atom);
+  after.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(after);
+  return true;
 }
 
 function focusEnd() {
@@ -973,11 +994,14 @@ function onInput(e) {
     markSplit(pendingSplit); // Enter while tracking: the new paragraph break is an insertion
     pendingSplit = null;
   }
-  // Never leave the page completely empty: keep at least one paragraph to type into.
-  if (!page.value.firstElementChild) {
+  // Firefox, typing over whole paragraphs (as after Select All), can put the text outside them.
+  if (!e?.isComposing) for (const n of [...page.value.childNodes]) if (n.nodeType === 3 && n.data) moveIntoParagraph(n);
+  // Never leave the page (the text above the notes) empty: keep at least one paragraph to type into.
+  const first = page.value.firstElementChild;
+  if (!first || first.classList.contains('docx-notes')) {
     const p = document.createElement('p');
     p.append(document.createElement('br'));
-    page.value.append(p);
+    page.value.insertBefore(p, first);
     placeCaret(p, true);
   }
   const range = selectionInPage();
@@ -993,6 +1017,27 @@ function onInput(e) {
   markDirty();
   refreshComments();
   if (e?.inputType?.startsWith('format')) noteUntrackedFormatting();
+}
+
+/** Moves text typed directly into the page into the paragraph after it (or a new one), caret after it. */
+function moveIntoParagraph(text) {
+  let next = text.nextSibling;
+  while (next && next.nodeType !== 1) next = next.nextSibling;
+  let p = next?.matches(BLOCK_SELECTOR) ? next : null;
+  if (p) {
+    if (!p.textContent && p.lastChild?.tagName === 'BR') p.lastChild.remove();
+    p.prepend(text);
+  } else {
+    p = document.createElement('p');
+    text.before(p);
+    p.append(text);
+  }
+  const range = document.createRange();
+  range.setStart(text, text.length);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 function onBeforeInput(e) {
@@ -1766,6 +1811,7 @@ function insertTable(rows, cols) {
     message.value = 'A table can’t go in a field';
     return;
   }
+  if (refuseInNote(range, 'A table')) return;
   const tracked = trackedBy(range.startContainer);
   undoStack.flush();
   range.collapse(true);
@@ -1825,6 +1871,7 @@ async function insertPictures(files, at = null) {
   }
   const locked = readOnlySelection();
   if (locked) return explainReadOnly(locked, true);
+  if (refuseInNote(range, 'A picture')) return;
   if (controlAt(range.startContainer, page.value)) {
     message.value = 'A picture can’t go in a field: insert it in Word';
     return;
@@ -1893,6 +1940,7 @@ function startComment() {
   }
   const locked = readOnlySelection();
   if (locked) return explainReadOnly(locked, true);
+  if (refuseInNote(range, 'A new comment')) return;
   const hostOf = (n) => (n.nodeType === 1 ? n : n.parentElement).closest('[contenteditable="true"]');
   if (hostOf(range.startContainer) !== hostOf(range.endContainer)) {
     message.value = 'A comment can’t run from a table cell into the text around it: select within one';
@@ -2309,6 +2357,7 @@ function insertPageBreak() {
     message.value = 'A page break can’t go inside a field';
     return;
   }
+  if (refuseInNote(range, 'A page break')) return;
   const locked = readOnlySelection();
   if (locked) return explainReadOnly(locked, true);
   if (!range.collapsed && refuseRemoving([range])) return;
@@ -2587,6 +2636,22 @@ function onKeydown(e) {
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   const range = selectionInPage();
+  // Select All in the text selects the text, not the notes below it (in a note, the note), as in Word.
+  const notes = page.value.querySelector(':scope > .docx-notes');
+  if (mod && key === 'a' && !e.shiftKey && !e.altKey && notes && range && !noteAt(range.startContainer)) {
+    e.preventDefault();
+    // From the first block to the end of the last one before the notes: deleting it leaves a paragraph.
+    const first = page.value.firstElementChild;
+    const last = notes.previousElementSibling;
+    if (!last) return;
+    const all = document.createRange();
+    all.setStart(first, 0);
+    all.setEnd(last, last.childNodes.length);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(all);
+    return;
+  }
   if (isEditingKey(e) || (e.key === 'Tab' && !mod && !e.altKey)) {
     const locked = readOnlySelection();
     if (locked) {
@@ -2753,6 +2818,8 @@ function onDrop(e) {
 
 function onClick(e) {
   if (e.target.closest('.picture')) return; // selected on mousedown
+  const noteRef = e.target.closest('.note-ref[data-note-ref], .note-mark');
+  if (noteRef && goToNote(noteRef)) return;
   const marker = e.target.closest('.comment-ref');
   if (marker) {
     commentsOpen.value = true;
@@ -2785,6 +2852,59 @@ function onClick(e) {
     e.preventDefault();
     window.open(a.href, '_blank', 'noopener');
   }
+}
+
+// ------------------------------------------------------------------ footnotes and endnotes
+
+/** The note (footnote or endnote, below the text) that `node` is in, or null. */
+function noteAt(node) {
+  const el = node?.nodeType === 1 ? node : node?.parentElement;
+  return el?.closest('.docx-note') || null;
+}
+
+/** "footnote 2", for messages. */
+function noteName(note) {
+  return `${note.dataset.note} ${note.dataset.n}`;
+}
+
+/**
+ * Clicking a note's number in the text goes to the note, to edit it; its number in the note goes
+ * back to the text, as in Word. False if there is nowhere to go.
+ */
+function goToNote(ref) {
+  const sel = window.getSelection();
+  if (ref.classList.contains('note-mark')) {
+    const note = ref.closest('.docx-note');
+    const target = [...page.value.querySelectorAll(`.note-ref[data-note-ref="${note.dataset.note}"][data-note-id="${CSS.escape(note.dataset.noteId)}"]`)]
+      .find((r) => !r.closest('.docx-notes'));
+    if (!target) return false;
+    page.value.focus({ preventScroll: true });
+    const range = document.createRange();
+    range.setStartAfter(target);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    message.value = `Back in the text, after ${noteName(note)}`;
+    return true;
+  }
+  const note = page.value.querySelector(`.docx-note[data-note="${ref.dataset.noteRef}"][data-note-id="${CSS.escape(ref.dataset.noteId)}"]`);
+  if (!note || note.hidden) return false;
+  note.focus({ preventScroll: true });
+  const blocks = note.querySelectorAll(BLOCK_SELECTOR);
+  placeCaret(blocks[blocks.length - 1] || note);
+  note.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const name = noteName(note);
+  message.value = `${name[0].toUpperCase()}${name.slice(1)}: type to edit it – click its number to go back to the text`;
+  return true;
+}
+
+/** Says why something can't go in a note, if the selection is in one: true then. */
+function refuseInNote(range, what) {
+  const note = range && noteAt(range.startContainer);
+  if (!note) return false;
+  message.value = `${what} can’t go in a ${note.dataset.note} here: add it in Word`;
+  return true;
 }
 
 // ------------------------------------------------------------------ content controls
@@ -3405,7 +3525,22 @@ async function close() {
 .docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
 .docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: var(--sheet-accent); }
 .docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
+.docx-sheet .raw-inline.note-ref[data-note-ref], .docx-sheet .raw-inline.note-mark { cursor: pointer; }
+.docx-sheet .raw-inline.note-ref[data-note-ref]:hover, .docx-sheet .raw-inline.note-mark:hover { text-decoration: underline; }
+/* Footnotes and endnotes, below the text (as in Word's draft view): each note is edited in place. */
+.docx-sheet .docx-notes { margin-top: 24px; padding-top: 6px; cursor: default; }
+.docx-sheet .docx-notes::before {
+  content: attr(data-label); display: block; width: 33%; border-top: 1px solid #9aa0aa; padding-top: 4px; margin-bottom: 2px;
+  font: 600 11px/1.4 system-ui, sans-serif; color: #6b7280; letter-spacing: .02em; text-transform: uppercase; user-select: none;
+}
+.docx-sheet .docx-note { outline: none; border-radius: 2px; cursor: text; }
+.docx-sheet .docx-note:focus-within { background: var(--sheet-tint); box-shadow: 0 0 0 2px var(--sheet-tint); }
 .docx-sheet .raw-inline.symbol { background: transparent; color: inherit; }
+/* Equations, drawn as MathML (docx/omml.js): read-only, so they look like the text around them. */
+.docx-sheet .raw-inline.equation { background: transparent; color: inherit; border-radius: 3px; }
+.docx-sheet .raw-inline.equation:hover { background: var(--sheet-tint); }
+.docx-sheet .raw-inline.equation.display { display: block; margin: 4px 0; }
+.docx-sheet .equation math { font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', math; }
 .docx-sheet .raw-inline.comment-ref { display: inline; cursor: pointer; user-select: none; background: transparent; padding: 0; }
 .docx-sheet .comment-ref::before {
   content: attr(data-n); display: inline-block; min-width: 1.3em; margin: 0 1px; padding: 0 3px; border-radius: 7px;

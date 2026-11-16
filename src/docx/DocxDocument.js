@@ -36,6 +36,7 @@ import {
   setGeometry, set3D, applyPictureStyle, setArtistic, clearArtistic, blipOf,
 } from './pictures.js';
 import { drawPicture } from './pictureView.js';
+import { ommlToMathml, isEquation } from './omml.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -77,6 +78,8 @@ export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordproc
 const SIMPLE_RUN_CHILDREN = new Set(['rPr', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen', 'lastRenderedPageBreak']);
 const HIDDEN_INLINE = new Set(['bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd', 'permStart', 'permEnd', 'moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd']);
 const FLATTEN_INLINE = new Set(['smartTag', 'customXml', 'dir', 'bdo']);
+const NOTE_KINDS = ['footnote', 'endnote'];
+const NOTE_NAMES = { footnote: 'Footnote', endnote: 'Endnote' };
 const TRACKED_INLINE = { ins: 'Inserted', moveTo: 'Moved here', del: 'Deleted', moveFrom: 'Moved away' };
 const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TABLE', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER']);
 const HEADING_TAG = { title: 'h1', h1: 'h1', h2: 'h2', h3: 'h3', h4: 'h4', h5: 'h5', h6: 'h6' };
@@ -153,6 +156,11 @@ export class DocxDocument {
     for (const c of this.comments) c.hadParaId = !!c.paraId; // a reply or resolving may need one added
     await this.initCommentRemoval(relOf);
     this.notes = { footnote: parseNotes(footnotes, 'footnote'), endnote: parseNotes(endnotes, 'endnote') };
+    // The notes themselves are edited in the page, below the text (see renderNotes, serializeNotes).
+    this.noteParts = {};
+    for (const [kind, part] of [['footnote', footnotes], ['endnote', endnotes]]) {
+      if (part) this.noteParts[kind] = { ...part, text: await this.text(part.path) };
+    }
     const settings = await partOf('/settings');
     const evenAndOdd = onOff(wChild(settings?.xml.documentElement, 'evenAndOddHeaders')) === true;
     // Track Changes: on when the document says so, as in Word. Saved back only if it was switched.
@@ -162,9 +170,11 @@ export class DocxDocument {
     this.tracking = this.trackRevisions;
     // New revisions get ids above every id in the document.
     let maxId = 0;
-    for (const el of this.xml.getElementsByTagName('*')) {
-      const id = Number(el.getAttributeNS(W, 'id'));
-      if (Number.isInteger(id) && id > maxId) maxId = id;
+    for (const xml of [this.xml, ...Object.values(this.noteParts).map((p) => p.xml)]) {
+      for (const el of xml.getElementsByTagName('*')) {
+        const id = Number(el.getAttributeNS(W, 'id'));
+        if (Number.isInteger(id) && id > maxId) maxId = id;
+      }
     }
     // Annotations (comments, revisions, bookmarks) share one id space: new ones come from here.
     for (const c of this.comments) if (Number(c.id) > maxId) maxId = Number(c.id);
@@ -321,7 +331,7 @@ export class DocxDocument {
     const replies = this.comments.filter((c) => c.storyReply && this.storyCommentLive(c) && !removed.has(c.id));
     const docs = new Map();
     const docFor = (path) => {
-      if (!docs.has(path)) docs.set(path, parseXml(this.storyTexts[path]));
+      if (!docs.has(path)) docs.set(path, this.notesOutAt(path) || parseXml(this.storyTexts[path]));
       return docs.get(path);
     };
     for (const id of removed) if (this.commentStory.has(id)) docFor(this.commentStory.get(id));
@@ -331,7 +341,7 @@ export class DocxDocument {
       for (const r of replies.filter((x) => this.storyOf(x.parentId) === path)) addReplyMarkers(xml, r.parentId, r.id);
       this.zip.file(path, serializeXml(xml));
     }
-    for (const path of this.storiesWritten || []) if (!docs.has(path)) this.zip.file(path, this.storyTexts[path]);
+    for (const path of this.storiesWritten || []) if (!docs.has(path) && !this.notesOutAt(path)) this.zip.file(path, this.storyTexts[path]);
     this.storiesWritten = new Set(docs.keys());
   }
 
@@ -392,12 +402,152 @@ export class DocxDocument {
     this.numbering = new Numbering(this.numberingXml);
     this.commentOrder = new Map(); // comment id -> marker number, in document order
     this.noteCount = { footnote: 0, endnote: 0 };
+    this.noteOrder = { footnote: [], endnote: [] }; // note ids in the order the text refers to them
     const frag = document.createDocumentFragment();
     this.renderBlocks(this.body, frag);
     if (!frag.childNodes.length) frag.append(this.emptyParagraph());
+    for (const kind of NOTE_KINDS) {
+      const notes = this.renderNotes(kind);
+      if (notes) frag.append(notes);
+    }
     this.applyContextualSpacing(frag);
     this.markTracked(frag);
+    // Each note as it would be saved now: a note that still saves the same way is written back as it was.
+    this.revisions = [];
+    this.noteBaseline = new Map();
+    for (const el of frag.querySelectorAll('.docx-note')) this.noteBaseline.set(noteKey(el), this.noteXml(el));
     return frag;
+  }
+
+  // ---------------------------------------------------------------- footnotes and endnotes
+
+  /**
+   * The footnotes (or endnotes) the text refers to, in its order, as a section at the end of the
+   * page: each note an editing host of its own, numbered as in the text. Null if there are none.
+   * The section itself can't be edited or deleted; Word keeps notes in their own part, written by
+   * serializeNotes. Comments in notes stay with the comments panel (see doc.story).
+   */
+  renderNotes(kind) {
+    const part = this.noteParts[kind];
+    const ids = [...new Set(this.noteOrder[kind])];
+    if (!part || !ids.length) return null;
+    const byId = new Map(wChildren(part.xml.documentElement, kind).map((n) => [wAttr(n, 'id'), n]));
+    const section = document.createElement('section');
+    section.className = 'docx-notes';
+    section.dataset.notes = kind;
+    section.dataset.label = `${NOTE_NAMES[kind]}s`; // drawn by CSS, so it is never text in the page
+    section.contentEditable = 'false';
+    section.dataset.protected = `the ${kind}s`;
+    section.title = `${NOTE_NAMES[kind]}s – click a note’s text to edit it`;
+    const rels = this.rels;
+    this.rels = part.rels;
+    this.inNote = true;
+    try {
+      for (const id of ids) {
+        const node = byId.get(id);
+        if (!node) continue;
+        const n = this.noteNumber(kind, this.noteOrder[kind].indexOf(id) + 1);
+        const el = document.createElement('div');
+        el.className = 'docx-note';
+        el.contentEditable = 'true';
+        el.dataset.note = kind;
+        el.dataset.noteId = id;
+        el.dataset.n = n;
+        el.dataset.protected = `${kind} ${n}`;
+        this.noteMarkN = n;
+        this.renderBlocks(node, el);
+        if (!el.firstChild) el.append(this.emptyParagraph());
+        section.append(el);
+      }
+    } finally {
+      this.rels = rels;
+      this.inNote = false;
+    }
+    return section.firstChild ? section : null;
+  }
+
+  noteNumber(kind, n) {
+    return kind === 'footnote' ? String(n) : romanLower(n);
+  }
+
+  /** The XML a rendered note would be saved as now, as a string. */
+  noteXml(el) {
+    const s = new XMLSerializer();
+    return this.serializeBlocks(el).map((n) => s.serializeToString(n)).join('');
+  }
+
+  /**
+   * Numbers the note references in the text and their notes in order, as Word does, and hides the
+   * notes whose reference was deleted (Word doesn't show them either).
+   */
+  renumberNotes(root) {
+    const count = { footnote: 0, endnote: 0 };
+    const numbers = new Map();
+    for (const ref of root.querySelectorAll('.note-ref[data-note-ref]')) {
+      if (ref.closest('.docx-notes')) continue;
+      const kind = ref.dataset.noteRef;
+      const n = this.noteNumber(kind, ++count[kind]);
+      if (ref.dataset.n !== n) ref.dataset.n = n;
+      if (!numbers.has(`${kind}:${ref.dataset.noteId}`)) numbers.set(`${kind}:${ref.dataset.noteId}`, n);
+    }
+    for (const note of root.querySelectorAll('.docx-note')) {
+      const n = numbers.get(noteKey(note));
+      if (note.hidden !== !n) note.hidden = !n;
+      if (!n) delete note.dataset.n; // numbered again if its reference comes back
+      if (!n || note.dataset.n === n) continue;
+      note.dataset.n = n;
+      note.dataset.protected = `${note.dataset.note} ${n}`;
+      for (const mark of note.querySelectorAll('.note-mark')) mark.dataset.n = n;
+    }
+    for (const section of root.querySelectorAll('.docx-notes')) {
+      const empty = !section.querySelector('.docx-note:not([hidden])');
+      if (section.hidden !== empty) section.hidden = empty;
+    }
+  }
+
+  /**
+   * The note parts as they will be saved, from the notes in the editor content `root`: for each
+   * kind, the part's XML with the notes that changed rewritten, or null if none changed (the part
+   * is then written back as it was). Notes not shown (no reference in the text) are kept as they are.
+   */
+  serializeNotes(root) {
+    const out = {};
+    for (const kind of NOTE_KINDS) {
+      const part = this.noteParts[kind];
+      if (!part) continue;
+      let xml = null;
+      for (const el of root.querySelectorAll(`.docx-note[data-note="${kind}"]`)) {
+        const nodes = this.serializeBlocks(el);
+        const s = new XMLSerializer();
+        if (nodes.map((n) => s.serializeToString(n)).join('') === this.noteBaseline.get(noteKey(el))) continue;
+        xml ||= parseXml(part.text);
+        const note = wChildren(xml.documentElement, kind).find((n) => wAttr(n, 'id') === el.dataset.noteId);
+        if (!note) continue;
+        while (note.firstChild) note.removeChild(note.firstChild);
+        for (const n of nodes) note.appendChild(n); // adopted, so revision ids set later reach them
+        if (!nodes.some((n) => n.localName === 'p')) note.appendChild(createW(xml, 'p'));
+      }
+      out[kind] = xml;
+    }
+    return out;
+  }
+
+  /** Writes the note parts that changed; one changed by an earlier save and no longer gets its original back. */
+  writeNotes() {
+    for (const kind of NOTE_KINDS) {
+      const part = this.noteParts[kind];
+      if (!part) continue;
+      const xml = this.notesOut?.[kind];
+      if (xml) this.zip.file(part.path, serializeXml(xml));
+      else if (part.written) this.zip.file(part.path, part.text);
+      part.written = !!xml;
+    }
+  }
+
+  /** The note part at `path` as it will be saved, if its notes changed, else null. */
+  notesOutAt(path) {
+    const kind = NOTE_KINDS.find((k) => this.noteParts[k]?.path === path);
+    return (kind && this.notesOut?.[kind]) || null;
   }
 
   /**
@@ -1025,7 +1175,8 @@ export class DocxDocument {
     span.contentEditable = 'false';
     span.dataset.raw = this.keep(node);
     span.className = 'raw-inline raw-hidden';
-    markCommentRange(span, node);
+    // Comments in notes are the comments panel's (see doc.story): their markers are only kept.
+    if (!this.inNote) markCommentRange(span, node);
     return span;
   }
 
@@ -1033,6 +1184,7 @@ export class DocxDocument {
     const local = node.localName;
     if (HIDDEN_INLINE.has(local)) return this.hiddenRaw(node);
     const commentRef = local === 'r' && onlyChild(node, 'commentReference');
+    if (commentRef && this.inNote) return this.hiddenRaw(node);
     if (commentRef) {
       const id = wAttr(commentRef, 'id');
       const comment = this.comments.find((c) => c.id === id);
@@ -1093,10 +1245,27 @@ export class DocxDocument {
     if (noteRef) {
       const kind = noteRef.localName === 'footnoteReference' ? 'footnote' : 'endnote';
       const n = ++this.noteCount[kind];
+      const id = wAttr(noteRef, 'id');
+      this.noteOrder?.[kind].push(id);
       span.classList.add('note-ref');
-      span.dataset.n = kind === 'footnote' ? String(n) : romanLower(n);
-      const text = this.notes[kind].get(wAttr(noteRef, 'id'));
-      span.title = `${kind === 'footnote' ? 'Footnote' : 'Endnote'} ${span.dataset.n}${text ? `: ${text}` : ''} – edit it in Word`;
+      span.dataset.n = this.noteNumber(kind, n);
+      const text = this.notes[kind].get(id);
+      if (this.noteParts[kind] && this.noteOrder) {
+        span.dataset.noteRef = kind;
+        span.dataset.noteId = id;
+        span.title = `${NOTE_NAMES[kind]}${text ? `: ${text}` : ''} – click to edit it (${kind}s are below the text)`;
+      } else {
+        span.title = `${NOTE_NAMES[kind]} ${span.dataset.n}${text ? `: ${text}` : ''} – edit it in Word`;
+      }
+      return span;
+    }
+    const noteMark = this.inNote && local === 'r' && (wChild(node, 'footnoteRef') || wChild(node, 'endnoteRef'));
+    if (noteMark) {
+      // The note's own number, at its start: Word numbers it, so it stays (and says where it points).
+      span.classList.add('note-ref', 'note-mark');
+      span.dataset.n = this.noteMarkN;
+      span.dataset.protected = 'the note’s number';
+      span.title = 'The note’s number – Word numbers notes; click it to go to the text';
       return span;
     }
     const sym = local === 'r' && wChild(node, 'sym');
@@ -1118,8 +1287,26 @@ export class DocxDocument {
       return span;
     }
     span.title = `${describe(node)} – kept as it is; edit it in Word`;
+    if (isEquation(node) && this.renderEquation(span, node)) return span;
     span.textContent = plainText(node) || '⧉';
     return span;
+  }
+
+  /**
+   * Shows an equation as MathML in `span` (on its own line for an equation paragraph, m:oMathPara).
+   * False if it can't be drawn, so it shows as text instead. Its XML is kept as it was either way.
+   */
+  renderEquation(span, node) {
+    try {
+      const maths = ommlToMathml(node);
+      if (!maths.length) return false;
+      span.classList.add('equation');
+      if (maths.some((m) => m.getAttribute('display') === 'block')) span.classList.add('display');
+      span.append(...maths);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** A new page break (<w:r><w:br w:type="page"/></w:r>), rendered as rawInline renders one. */
@@ -1137,16 +1324,17 @@ export class DocxDocument {
   /** A header or footer (an entry of this.headers / this.footers), rendered read-only, or null if empty. */
   renderHeaderFooter(part) {
     if (!part) return null;
-    const [rels, numbering, order, notes] = [this.rels, this.numbering, this.commentOrder, this.noteCount];
+    const [rels, numbering, order, notes, noteOrder] = [this.rels, this.numbering, this.commentOrder, this.noteCount, this.noteOrder];
     this.rels = part.rels;
     this.numbering = new Numbering(this.numberingXml);
     this.commentOrder = new Map();
     this.noteCount = { footnote: 0, endnote: 0 };
+    this.noteOrder = null; // a note reference in a header stays read-only
     const frag = document.createDocumentFragment();
     try {
       this.renderBlocks(part.xml.documentElement, frag);
     } finally {
-      [this.rels, this.numbering, this.commentOrder, this.noteCount] = [rels, numbering, order, notes];
+      [this.rels, this.numbering, this.commentOrder, this.noteCount, this.noteOrder] = [rels, numbering, order, notes, noteOrder];
     }
     for (const e of frag.querySelectorAll('[contenteditable]')) e.removeAttribute('contenteditable');
     const holder = document.createElement('div');
@@ -2146,6 +2334,7 @@ export class DocxDocument {
    */
   renumber(root) {
     this.applyContextualSpacing(root);
+    this.renumberNotes(root);
     if (!this.numberingXml && !root.querySelector('.list')) return;
     const numbering = new Numbering(this.numberingXml);
     this.numbering = numbering;
@@ -2291,6 +2480,7 @@ export class DocxDocument {
     const sectPr = wChild(this.body, 'sectPr');
     this.revisions = []; // <w:ins>/<w:del> written for this session's tracked changes
     const nodes = this.serializeBlocks(root);
+    this.notesOut = this.serializeNotes(root);
     this.revisions.forEach((rev, i) => rev.setAttributeNS(W, 'w:id', String(this.nextId + i)));
     while (this.body.firstChild) this.body.removeChild(this.body.firstChild);
     for (const n of nodes) this.body.appendChild(n);
@@ -2301,6 +2491,22 @@ export class DocxDocument {
     });
     pruneCommentMarkers(this.body, this.commentsRemoved, this.commentRangesInBody);
     for (const id of this.storyRemoved()) this.commentsRemoved.add(id);
+    // A comment in a note goes with its text, as in the body: its mark was deleted with it.
+    for (const kind of NOTE_KINDS) {
+      const xml = this.notesOut[kind];
+      if (!xml) continue;
+      const present = commentIdsIn(xml);
+      for (const [id, path] of this.commentStory) if (path === this.noteParts[kind].path && !present.has(id)) this.commentsRemoved.add(id);
+    }
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const c of this.comments) {
+        if (c.parentId && this.commentsRemoved.has(c.parentId) && !this.commentsRemoved.has(c.id)) {
+          this.commentsRemoved.add(c.id);
+          grew = true;
+        }
+      }
+    }
     this.commentEdits = this.commentOverrides(root);
     // Edits to comments in headers, footers and notes, where they differ from the comment as it was.
     for (const [id, text] of Object.entries(this.story.edits)) {
@@ -2343,8 +2549,12 @@ export class DocxDocument {
       const name = (id ? this.styles.byId.get(id)?.name || id : this.styles.byId.get(this.styles.defaultParagraph)?.name) || 'Normal';
       return name[0].toUpperCase() + name.slice(1); // built-in names are stored as "heading 1"
     };
+    const tracked = (p) => trackedParagraphs.has(p);
     return {
-      paragraphs: reviewParagraphs(this.originalBody, this.body, { tracked: (p) => trackedParagraphs.has(p), styleName }),
+      paragraphs: [
+        ...reviewParagraphs(this.originalBody, this.body, { tracked, styleName }),
+        ...this.reviewNotes(root, { tracked, styleName }),
+      ],
       commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id) && !c.isNew),
       commentsAdded: this.newComments.filter((c) => this.presentComments().has(c.id) && !this.commentsRemoved.has(c.id))
         .map((c) => ({ ...c, text: this.commentEdits.get(c.id)?.text ?? c.text, parentAuthor: this.comments.find((p) => p.id === c.parentId)?.author })),
@@ -2371,6 +2581,24 @@ export class DocxDocument {
     };
   }
 
+  /** The paragraphs of footnotes and endnotes that changed, for the review: "Footnote 2", paragraph 1… */
+  reviewNotes(root, opts) {
+    const out = [];
+    for (const kind of NOTE_KINDS) {
+      const xml = this.notesOut[kind];
+      if (!xml) continue;
+      const before = parseXml(this.noteParts[kind].text);
+      const find = (doc, id) => wChildren(doc.documentElement, kind).find((n) => wAttr(n, 'id') === id);
+      for (const el of root.querySelectorAll(`.docx-note[data-note="${kind}"]`)) {
+        const a = find(before, el.dataset.noteId);
+        const b = find(xml, el.dataset.noteId);
+        if (!a || !b) continue;
+        for (const entry of reviewParagraphs(a, b, opts)) out.push({ ...entry, where: `${NOTE_NAMES[kind]} ${el.dataset.n}` });
+      }
+    }
+    return out;
+  }
+
   /** Produces a .docx Blob from the current editor content. */
   async save(root) {
     this.update(root);
@@ -2379,6 +2607,7 @@ export class DocxDocument {
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
     await this.writeComments();
+    this.writeNotes();
     this.writeStories();
     await this.writeSettings();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
@@ -2535,6 +2764,7 @@ export class DocxDocument {
       pending = [];
     };
     for (const node of container.childNodes) {
+      if (node.nodeType === 1 && node.classList.contains('docx-notes')) continue; // saved to their own part
       if (node.nodeType === 1 && BLOCK_TAGS.has(node.tagName)) {
         flush();
         if (node.tagName === 'TABLE' && node.dataset.raw != null) out.push(this.serializeTable(node));
@@ -2855,6 +3085,11 @@ function fieldMarker(r) {
 function onlyChild(r, local) {
   const kids = elementChildren(r).filter((k) => !(k.namespaceURI === W && k.localName === 'rPr'));
   return kids.length === 1 && kids[0].namespaceURI === W && kids[0].localName === local ? kids[0] : null;
+}
+
+/** "footnote:2": a rendered note's kind and id. */
+function noteKey(el) {
+  return `${el.dataset.note}:${el.dataset.noteId}`;
 }
 
 function markCommentRange(el, node) {

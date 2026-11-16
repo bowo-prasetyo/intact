@@ -117,13 +117,24 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
   date picker for the field at the caret. Fields around whole table cells or rows work too. Locked
   fields and fields linked to the document's data stay read-only and say why
+- Edit footnotes and endnotes in place: they are listed below the text (as in Word's draft view),
+  numbered in the order the text refers to them, and edited like the text: typing, formatting,
+  Undo, Find and Replace and Track Changes all work in them. Clicking a note's number in the text
+  goes to the note, and its number in the note goes back. A note can't be deleted with the text
+  around it (nor its number); deleting its reference in the text hides it and renumbers the others,
+  as in Word. Only notes that changed are rewritten in `footnotes.xml` / `endnotes.xml`; untouched,
+  the parts come back byte for byte. Comments in notes stay with the comments panel
+- See equations: Word's equations (Office Math) are drawn as MathML by the browser (fractions,
+  roots, scripts, sums and integrals, brackets, matrices, functions, accents, and Word's script,
+  double-struck and bold letters), on their own line or in the line of text. They stay read-only
+  and are written back exactly as they were
 - Find and replace (Ctrl/Cmd+F, Ctrl/Cmd+H), with match case and whole words. Matches are found
   across formatting but not across paragraphs; a replacement takes the formatting of the match's
-  first character, as in Word. Headers, footers, comments and locked fields are searched too, but
-  their matches are read-only and never replaced
+  first character, as in Word. Footnotes and endnotes are searched and replaced too. Headers,
+  footers, comments and locked fields are searched, but their matches are read-only and never replaced
 - See what you can't edit, read-only and in plain language: headers and footers in the page
   margins (tabs switch between first page, other or even pages and sections when there are several); comments with their replies and resolved state in a side panel (click one to
-  highlight its text); numbered footnotes with their text on hover; fields labelled by what they
+  highlight its text); fields labelled by what they
   are ("Page number – Word updates it"). Clicking read-only content (a tracked change, chart,
   equation, locked field or cell) says in the status bar what it is and where to edit it, and puts
   the caret beside it, as Word does; typing in it, or in a header, footer or comment, says why
@@ -200,8 +211,8 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    toggles are merged in (respecting the schema order of `CT_RPr`/`CT_PPr`), adjacent runs with the
    same formatting are merged, and placeholders are written back verbatim. Only
    `word/document.xml` changes, plus `styles.xml` if a heading or the Table Grid style had to be
-   added, `numbering.xml` if a new list was started, and for inserted pictures their files in
-   `word/media`, relationships and content types.
+   added, `numbering.xml` if a new list was started, `footnotes.xml` / `endnotes.xml` if a note was
+   edited, and for inserted pictures their files in `word/media`, relationships and content types.
 4. **Content controls** – a `<w:sdt>` is shown as a frame around its rendered content. Text and
    combo box fields hold an editable `.sdt-content` island; check boxes, drop-downs and dates
    change through clicks. On save its `<w:sdtContent>` is rebuilt and its properties kept, updating
@@ -209,20 +220,29 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    Placeholder text left alone or cleared is written back verbatim. Locked fields, fields bound to
    custom XML (Word would overwrite edits from the data on open), tables of contents, citations,
    pictures and groups stay read-only and are written back verbatim.
-5. **Find and replace** – `src/editor/find.js` searches runs of text nodes in the same paragraph
+5. **Footnotes and endnotes** – the notes the body refers to are rendered after it, inside the
+   editable page, as a `section.docx-notes` (not editable itself) holding one editing host per note
+   (`.docx-note`), so typing, formatting, Undo, Find and Track Changes work there as in the body.
+   `serializeBlocks` skips the section; `serializeNotes` saves each note that no longer saves the
+   same way as when it was rendered into its part, and `writeNotes` writes the part only then. The
+   notes, and each note's number, are `data-protected`: `src/editor/protect.js` refuses an edit
+   that would remove one with the text around it.
+6. **Equations** – `src/docx/omml.js` turns Office Math (`m:oMath`, `m:oMathPara`) into MathML for
+   display. The equation itself stays a read-only placeholder holding its original XML.
+7. **Find and replace** – `src/editor/find.js` searches runs of text nodes in the same paragraph
    and editing host, and highlights matches with the CSS Custom Highlight API, which doesn't
    change the DOM. Replacing edits the text nodes directly as one undoable step.
-6. **Read-only companions** – `src/docx/annotations.js` loads comments (replies and resolved state
-   from `commentsExtended.xml`), footnote/endnote text and the first section's header and footer,
+8. **Read-only companions** – `src/docx/annotations.js` loads comments (replies and resolved state
+   from `commentsExtended.xml`), footnote/endnote text (for references' tooltips) and the headers and footers,
    which are rendered with their own relationships outside the editable page, so they can never be
    saved into the body. Comment ranges are highlighted with the CSS Custom Highlight API between
    the hidden `commentRangeStart` / `commentRangeEnd` markers.
-7. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
+9. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
    attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
    then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
    bullet or numbering definitions.
-8. **Protected deletions** – everything that is or holds a tracked change is labelled when rendered
+10. **Protected deletions** – everything that is or holds a tracked change is labelled when rendered
    (`data-tracked`, see `src/docx/revisions.js`); `src/editor/protect.js` checks what each edit would
    remove (`beforeinput` target ranges, or the selection) and refuses edits that would take a
    labelled element away. Comments follow their mark: `src/docx/commentRemoval.js` removes, on save,
@@ -285,9 +305,14 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   lists (not highlight); pictures within copied text and links (their text is kept) are not added
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
-- Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)
-- Fields, footnotes, headers and footers are preserved but can't be edited (comments in them can);
-  editing a comment's text replaces any formatting within it
+- Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it);
+  new footnotes can't be added, and pictures, tables, page breaks and new comments can't go in a
+  note (comments already in notes can be replied to, edited, resolved and deleted in the panel)
+- Equations are shown, not edited; they need a math font to look as in Word (Windows and macOS have
+  one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation
+  arrays are not aligned at their `&` points
+- Fields, headers and footers are preserved but can't be edited (comments in them can); editing a
+  comment's text replaces any formatting within it
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save
