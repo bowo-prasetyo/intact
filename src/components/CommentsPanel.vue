@@ -206,7 +206,7 @@ time { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 9px; background: #f9ddd6; color: #7a2e1f; }
 .tag.muted { background: var(--hover); color: var(--muted); }
 .tag.resolved { background: #dcefe0; color: #1e6b34; }
-.tag.new { background: #e3ecfa; color: #2b579a; }
+.tag.new { background: var(--active); color: var(--accent); }
 .comment-actions { display: flex; gap: 8px; margin-top: 2px; }
 .link { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0; text-decoration: underline dotted; }
 .link:hover { color: inherit; }

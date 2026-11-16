@@ -117,5 +117,28 @@ comes back intact, with only your edits. It replaces "Office", which suggested a
 applications and invited trademark questions. Use this one name everywhere: the header, the page
 title, the package name and the `Application` written into new documents.
 
-Still open: the Word-blue colour (`--brand` in `src/style.css` and the icon) and the phrase "Word
-documents" on the start page. Both are worth revisiting before the app is promoted widely.
+Call it an **editor**, never a "word processor". A word processor is for writing documents from
+scratch, which is a non-goal above; "editor" says the job is changing a document someone else
+made. It also keeps the descriptor clear of Word.
+
+## Brand colour
+
+The brand colour is **Intact Teal**, `#0e6467` (`--brand` and `--accent` in `src/style.css`, and
+the icon). Teal says calm, safe and checked, and it sits apart from Word's blue and from the colours
+that mean something in a document here: green and red (others' insertions and deletions), purple
+(your tracked changes), coral (comments) and yellow (find). Don't use teal for any of those, and
+don't bring Word's blue back into the interface. Document content keeps its own colours, such as
+Word's hyperlink blue and highlight colours.
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--brand` | `#0e6467` | `#0b3f42` | Header bar, with white text |
+| `--accent` | `#0e6467` | `#5ec4bd` | Links, selected and focused controls |
+| `--active` | `#e0efee` | `#1d3b3c` | Selected item backgrounds |
+| `--hover` | `#eef3f3` | `#263033` | Hover backgrounds |
+| `--sheet-accent` / `--sheet-tint` / `--sheet-line` | `#0e6467` / `#e3f1f0` / `#9ccfcb` | same | Marks on the always-white page |
+
+Every text pairing meets WCAG AA (white on `--brand` is 6.9:1 in light and 11.6:1 in dark).
+
+Still open: the phrase "Word documents" on the start page, worth revisiting before the app is
+promoted widely.
