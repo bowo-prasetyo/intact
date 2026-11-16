@@ -173,14 +173,6 @@ test('deleting, while tracking, a row you inserted removes it', async ({ page })
   await expect(page.locator('tr[data-rev-row]')).toHaveCount(0);
 });
 
-test('a column change while tracking is made, and the status bar says it isn\'t tracked', async ({ page }) => {
-  await openInEditor(page, await buildDocx(TABLE));
-  await startTracking(page);
-  await page.locator('td', { hasText: 'Pens' }).click();
-  await layout(page, 'Insert column to the left');
-  await expect(status(page)).toHaveText('Column inserted to the left – column changes can’t be tracked, so they won’t be marked');
-});
-
 test('rows holding someone\'s tracked change aren\'t deleted untracked', async ({ page }) => {
   const table = TABLE.replace('<w:r><w:t>Pens</w:t></w:r>', '<w:ins w:id="90" w:author="Ann"><w:r><w:t>Pens</w:t></w:r></w:ins>');
   await openInEditor(page, await buildDocx(table));

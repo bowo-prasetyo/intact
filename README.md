@@ -29,14 +29,32 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   below (as many as are selected; copies of the row, carrying vertical merges and header repeat on
   where they fall inside them), insert columns left or right (cells spanning the place are widened,
   the grid and widths follow, and a table that fitted the page narrows to fit), delete rows, columns
-  or the whole table. Rows are tracked while tracking (a deleted row is marked, its text struck
-  through, and accepted or rejected as one change; deleting a row you inserted removes it). Column
-  changes can't be tracked here, so they are made directly and the status bar says so; rows holding
-  someone's tracked change aren't deleted untracked
+  or the whole table. Rows and columns are tracked while tracking, as Word tracks them: a row
+  inserted or deleted is marked on the row (`trPr`), a column on each of its cells (`cellIns`,
+  `cellDel`), deleted text struck through, and each row or column is accepted or rejected as one
+  change (rejecting an inserted column, or accepting a deleted one, takes its grid column out and
+  narrows cells spanning it). Deleting a row or column you inserted removes it; rows and columns
+  holding someone's tracked change aren't deleted untracked
+- Merge and split cells from the same menu, as Word does: Merge cells joins the selected cells
+  (grown to whole cells where a merged cell sticks out) into one spanning them across (`gridSpan`)
+  and down (`vMerge`), their content one after another in it; Split cells… divides a cell into
+  columns of equal width (adding grid columns that the other rows span where needed) and rows (the
+  row's other cells merged down), and a merged cell splits back into the cells it spans. Merging and
+  splitting aren't tracked; the status bar says so while tracking
 - Insert pictures (PNG, JPEG, GIF or BMP) from the toolbar, by pasting a picture on its own (such as
   a screenshot) or by dropping picture files on the page: in line with the text at the caret, at
   their size or narrowed to fit between the margins, tracked while tracking. The picture's file,
   relationship and content type are added when saving, only if it is still in the document
+- Lay out pictures, as Word does: a click selects a picture (a frame with handles); corners resize
+  it in proportion, sides stretch it; a floating picture is dragged to a new place (measured from
+  the margin and its paragraph, so it moves with the text). Layout Options (the button beside a
+  selected picture) set its text wrapping (in line, square, tight, through, top and bottom, behind
+  or in front of text), its position (left, centred or right of the margins or at a distance;
+  below its paragraph or at the top, middle or bottom of the margins), its exact size in
+  centimetres (keeping proportions, or back to its own size) and its alt text. The picture's
+  DrawingML is changed where it must be (`wp:inline` ↔ `wp:anchor`, extents, position, wrap,
+  `docPr/@descr`) and the rest kept; the page shows the layout as near as a web page can. Resizing
+  and moving aren't tracked; the review lists them. Charts, shapes and other drawings stay as they are
 - Add comments (toolbar button or Ctrl+Alt+M) on the selected text, or the word at the caret, with
   your name (asked once, shared with Track Changes): they appear in the comments panel and are
   written to `comments.xml` (created if the document has none) next to the comments already there.
@@ -56,7 +74,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - See what you can't edit, read-only and in plain language: headers and footers in the page
   margins (tabs switch between first page, other or even pages and sections when there are several); comments with their replies and resolved state in a side panel (click one to
   highlight its text); numbered footnotes with their text on hover; fields labelled by what they
-  are ("Page number – Word updates it"). Clicking read-only content (a tracked change, picture,
+  are ("Page number – Word updates it"). Clicking read-only content (a tracked change, chart,
   equation, locked field or cell) says in the status bar what it is and where to edit it, and puts
   the caret beside it, as Word does; typing in it, or in a header, footer or comment, says why
   nothing happens instead of doing nothing (or typing where the caret was before)
@@ -202,8 +220,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
-- Pictures go in line with the text; they can't be resized, wrapped or positioned here. Cells can't
-  be merged or split, and tables whose rows or cells are content controls are changed in Word
+- Floating pictures are shown as near to Word's layout as a web page allows (text wraps around a
+  picture's rectangle, not its outline); pictures can't be cropped, rotated or given effects here.
+  Tables whose rows or cells are content controls are changed in Word
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
   lists (not highlight); pictures within copied text and links (their text is kept) are not added

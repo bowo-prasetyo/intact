@@ -27,12 +27,16 @@ import {
 } from './contentControls.js';
 import {
   trackedChangeLabel, paragraphMarkLabel, paragraphMarkRevision, inlineRevisionKind, formattingChange, rowRevision,
-  tablePropertyChanges,
+  tablePropertyChanges, cellRevision,
 } from './revisions.js';
 import { reviewParagraphs, tableSummary } from './review.js';
 import {
+  pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX,
+} from './pictures.js';
+import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, hasWrappedParts, insertRows, deleteRows, insertColumns, deleteColumns,
-  fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml,
+  fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
+  markCell, deleteCellTracked, undeleteCell, acceptInsertedCell, removeCells,
 } from './tables.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
@@ -432,6 +436,11 @@ export class DocxDocument {
       const change = formattingChange(this.raw[Number(kind === 'run' ? d.rpr : d.ppr)]);
       return change && { kind: 'format', mark: false, own: false, para: kind === 'para', ...change };
     }
+    if (kind === 'cells') {
+      const tc = this.cellXml(el);
+      const rev = tc && cellRevision(tc);
+      return rev && { kind: rev.kind, mark: false, own: false, cells: true, author: rev.author, date: rev.date };
+    }
     if (kind === 'row') {
       const rev = this.rowXml(el) && rowRevision(this.rowXml(el));
       return rev && { kind: rev.kind, mark: false, own: false, row: true, author: rev.author, date: rev.date };
@@ -460,6 +469,7 @@ export class DocxDocument {
     const { el } = item;
     if (item.kind === 'run' || item.kind === 'para') return this.resolveFormatting(item, accept);
     if (item.kind === 'row') return this.resolveRow(el, accept);
+    if (item.kind === 'cells') return this.resolveCells(el, accept);
     const rev = this.revisionOf(el);
     if (!rev) return;
     const keep = (rev.kind === 'ins') === accept;
@@ -873,6 +883,7 @@ export class DocxDocument {
         if (!url) continue;
         const img = document.createElement('img');
         img.src = url;
+        img.draggable = false; // a selected floating picture is moved by Intact itself
         const docPr = node.getElementsByTagNameNS(NS.wp, 'docPr')[0];
         img.alt = docPr?.getAttribute('descr') || '';
         if (extent) {
@@ -883,7 +894,15 @@ export class DocxDocument {
         break;
       }
       if (span.childNodes.length) {
-        span.title = `${describe(node)} – kept as it is; edit it in Word`;
+        const info = local === 'r' && pictureInfo(node);
+        if (info) {
+          // A picture laid out here: selected by a click, then resized, wrapped and positioned.
+          span.classList.add('picture');
+          span.title = 'Picture – click to select it: drag a corner to resize, or use Layout Options';
+          this.stylePicture(span, info);
+        } else {
+          span.title = `${describe(node)} – kept as it is; edit it in Word`;
+        }
         return span;
       }
     }
@@ -1093,6 +1112,58 @@ export class DocxDocument {
     td.style.width = w && wAttr(w, 'type') === 'dxa' ? `${Number(wAttr(w, 'w')) / 15}px` : '';
     const shd = wAttr(wChild(tcPr, 'shd'), 'fill');
     td.style.backgroundColor = shd && /^[0-9a-f]{6}$/i.test(shd) ? '#' + shd : '';
+    // A cell inserted or deleted with tracking (a tracked column): cells of one change share a key.
+    const rev = cellRevision(tc);
+    if (rev) {
+      td.dataset.revCell = rev.kind;
+      td.dataset.revKey = `${rev.kind}|${rev.author || ''}|${rev.date || ''}`;
+      td.title = `Cell ${rev.kind === 'ins' ? 'inserted' : 'deleted'}${byWhom(rev)} – tracked change: Accept or Reject on the toolbar`;
+    } else if (td.dataset.revCell) {
+      delete td.dataset.revCell;
+      delete td.dataset.revKey;
+      td.removeAttribute('title');
+    }
+  }
+
+  /** The XML cell (<w:tc>) a rendered cell stands for (rows and cells match in order). */
+  cellXml(td) {
+    const tr = this.rowXml(td.parentElement);
+    return tr ? cellsOf(tr)[[...td.parentElement.cells].indexOf(td)] || null : null;
+  }
+
+  /** The rendered cells of the same tracked cell change as `td` (one tracked column), in order. */
+  cellGroup(td) {
+    const table = td.closest('table');
+    return this.tableRows(table).flatMap((r) => [...r.cells]).filter((c) => c.dataset.revKey && c.dataset.revKey === td.dataset.revKey);
+  }
+
+  /**
+   * A tracked cell change (a column inserted or deleted with tracking), all its cells at once: an
+   * insertion accepted or a deletion rejected keeps the cells (a deleted cell's text comes back);
+   * otherwise the cells go, with their grid columns.
+   */
+  resolveCells(td, accept) {
+    const table = td.closest('table');
+    const group = this.cellGroup(td);
+    const kind = td.dataset.revCell;
+    const rows = this.tableRows(table);
+    const at = group.map((c) => [rows.indexOf(c.parentElement), [...c.parentElement.cells].indexOf(c)]);
+    const pick = (tbl) => at.map(([r, i]) => cellsOf(rowsOf(tbl)[r])[i]).filter(Boolean);
+    if ((kind === 'ins') === accept) {
+      if (kind === 'ins') this.editTable(table, (tbl) => pick(tbl).forEach(acceptInsertedCell));
+      else {
+        this.editTable(table, (tbl) => pick(tbl).forEach((tc) => {
+          const copy = tc.cloneNode(true); // rendered again, its text no longer deleted
+          undeleteCell(copy);
+          tc.replaceWith(copy);
+        }), { withEdits: true, keepInsertions: true });
+      }
+    } else {
+      this.editTable(table, (tbl) => {
+        removeCells(tbl, pick(tbl));
+        fitWidths(tbl, { before: Infinity, textWidth: 0 });
+      });
+    }
   }
 
   // ---------------------------------------------------------------- inserting pictures
@@ -1203,6 +1274,102 @@ export class DocxDocument {
     this.zip.file('[Content_Types].xml', serializeXml(ct));
   }
 
+  // ---------------------------------------------------------------- picture layout
+
+  /** The layout of a rendered picture (a span.picture): see pictures.js pictureInfo. */
+  pictureLayout(span) {
+    return pictureInfo(this.raw[Number(span.dataset.raw)]);
+  }
+
+  /**
+   * Shows a picture as it is laid out, as near as a web page can: in line; floating left or right
+   * (or centred) with the text around it; on a line of its own; or behind or in front of the text at
+   * its position. Offsets from the paragraph are measured from where the picture's run is.
+   */
+  stylePicture(span, info = this.pictureLayout(span)) {
+    const img = span.querySelector('img');
+    const w = info.cx / EMU_PER_PX;
+    const h = info.cy / EMU_PER_PX;
+    if (img) {
+      img.style.width = `${w}px`;
+      img.style.height = `${h}px`;
+      img.alt = info.descr;
+    }
+    span.dataset.wrap = info.wrap;
+    span.removeAttribute('style');
+    if (info.wrap === 'inline') return;
+    const page = this.page;
+    const content = page.width - page.left - page.right;
+    const px = (emu) => (emu || 0) / EMU_PER_PX;
+    // Horizontal place within the text column: from the left margin.
+    let left = 0;
+    const { h: hp, v: vp } = info;
+    if (hp.align === 'center') left = (content - w) / 2;
+    else if (hp.align === 'right' || hp.align === 'outside') left = content - w;
+    else if (hp.align == null) left = px(hp.offset) - (hp.relativeFrom === 'page' ? page.left : 0);
+    const fromParagraph = !vp.relativeFrom || ['paragraph', 'line'].includes(vp.relativeFrom);
+    const top = vp.align == null ? px(vp.offset) : 0;
+    const st = span.style;
+    if (info.wrap === 'behind' || info.wrap === 'front') {
+      st.position = 'absolute';
+      st.left = `${page.left + left}px`;
+      st.zIndex = info.wrap === 'behind' ? '-1' : '2';
+      if (fromParagraph) st.marginTop = `${top}px`;
+      else {
+        const area = vp.relativeFrom === 'page' ? page.minHeight : page.minHeight - page.top - page.bottom;
+        const base = vp.relativeFrom === 'page' ? 0 : page.top;
+        st.top = `${base + (vp.align === 'center' ? (area - h) / 2 : vp.align === 'bottom' ? area - h : vp.align === 'top' ? 0 : top)}px`;
+      }
+      return;
+    }
+    if (fromParagraph) st.marginTop = `${top}px`;
+    if (info.wrap === 'topAndBottom') {
+      st.display = 'block';
+      st.width = `${w}px`;
+      st.marginLeft = hp.align === 'center' ? 'auto' : hp.align === 'right' ? 'auto' : `${Math.max(0, left)}px`;
+      if (hp.align === 'center') st.marginRight = 'auto';
+      return;
+    }
+    // Square, tight and through: the text flows around it.
+    if (hp.align === 'right' || (hp.align == null && left + w / 2 > content / 2 + 1)) {
+      st.float = 'right';
+      st.marginLeft = '10px';
+      if (hp.align == null) st.marginRight = `${Math.max(0, content - left - w)}px`;
+    } else {
+      st.float = 'left';
+      st.marginRight = '10px';
+      st.marginLeft = `${Math.max(0, left)}px`;
+    }
+  }
+
+  /**
+   * Changes a picture's layout: `change(run)` changes a copy of its run (see pictures.js), which
+   * replaces it (so Undo stays exact), and the picture is shown again.
+   */
+  changePicture(span, change) {
+    const run = this.raw[Number(span.dataset.raw)].cloneNode(true);
+    change(run);
+    span.dataset.raw = this.keep(run);
+    this.stylePicture(span, pictureInfo(run));
+  }
+
+  setPictureSize(span, cx, cy) {
+    this.changePicture(span, (run) => resizePicture(run, cx, cy));
+  }
+
+  setPictureWrap(span, wrap) {
+    this.zOrder = (this.zOrder || 251659264) + 1024;
+    this.changePicture(span, (run) => setWrap(run, wrap, this.zOrder));
+  }
+
+  setPicturePosition(span, position) {
+    this.changePicture(span, (run) => setPosition(run, position));
+  }
+
+  setPictureDescription(span, text) {
+    this.changePicture(span, (run) => setDescription(run, text));
+  }
+
   // ---------------------------------------------------------------- table structure
 
   /** The rendered rows of a table, in order (they stand for its <w:tr> elements, in order). */
@@ -1237,8 +1404,8 @@ export class DocxDocument {
    * are (with any edits in them), new ones are rendered. Cells' edits are kept in the copy first
    * when `withEdits` (for rows rebuilt from XML). Returns false if no rows are left: the table goes.
    */
-  editTable(table, edit, { withEdits = false } = {}) {
-    const tbl = withEdits ? this.tableWithEdits(table, true) : this.raw[Number(table.dataset.raw)].cloneNode(true);
+  editTable(table, edit, { withEdits = false, keepInsertions = false } = {}) {
+    const tbl = withEdits ? this.tableWithEdits(table, !keepInsertions) : this.raw[Number(table.dataset.raw)].cloneNode(true);
     const domRows = this.tableRows(table);
     const rowOf = new Map();
     const cellOf = new Map();
@@ -1339,7 +1506,7 @@ export class DocxDocument {
     if (reason) return { reason };
     const domRows = this.tableRows(table).slice(from, to + 1);
     if (!tracked) {
-      const kept = domRows.find((r) => r.dataset.revRow || r.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para]'));
+      const kept = domRows.find((r) => r.dataset.revRow || r.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para], td[data-rev-cell]'));
       if (kept) return { reason: 'The rows hold tracked changes: accept or reject them first, or turn on Track changes' };
       return { removed: !this.editTable(table, (tbl) => deleteRows(tbl, range(from, to))) };
     }
@@ -1379,30 +1546,60 @@ export class DocxDocument {
    * as wide as the column next to them; a table that fitted the page narrows to fit. Column changes
    * aren't tracked. Returns { reason } or {}.
    */
-  insertTableColumns(table, start, span, count, right) {
+  insertTableColumns(table, start, span, count, right, tracked = null) {
     const reason = this.tableLocked(table);
     if (reason) return { reason };
     const at = right ? start + span : start;
     const like = right ? start + span - 1 : start;
+    const rev = tracked && this.rowRevisionMaker(tracked);
     this.editTable(table, (tbl) => {
       const before = totalWidth(tbl);
-      insertColumns(tbl, at, count, like);
+      const made = insertColumns(tbl, at, count, like);
+      if (rev) for (const tc of made) markCell(tc, rev('cellIns')); // a tracked column: its cells inserted
       fitWidths(tbl, { before, textWidth: this.textWidth });
     });
     return {};
   }
 
-  /** Deletes grid columns `from`..`to` (not tracked). Returns { removed } (the table went) or { reason }. */
-  deleteTableColumns(table, from, to) {
+  /**
+   * Deletes grid columns `from`..`to`. While tracking, the cells wholly in them are marked deleted
+   * (<w:cellDel>, their text in <w:del>), as Word tracks a deleted column; cells spanning into them
+   * narrow when the deletion is accepted. A column you inserted while tracking just goes.
+   * Returns { removed } (the table went) or { reason }.
+   */
+  deleteTableColumns(table, from, to, tracked = null) {
     const reason = this.tableLocked(table);
     if (reason) return { reason };
     const tbl = this.raw[Number(table.dataset.raw)];
+    if (tracked) {
+      const targets = this.tableRows(table).flatMap((row, i) => {
+        const cells = layout(rowsOf(tbl)[i]);
+        return [...row.cells].map((td, j) => ({ td, i, j, c: cells[j] }))
+          .filter(({ c }) => c && c.start >= from && c.start + c.span - 1 <= to);
+      });
+      if (!targets.length) return { reason: 'No cell lies wholly in these columns: nothing to delete' };
+      const own = (t) => t.td.dataset.revCell === 'ins' && Number(cellRevision(t.c.tc)?.id) >= this.firstNewId;
+      if (targets.every(own)) return this.deleteTableColumns(table, from, to); // your own inserted column
+      if (targets.some((t) => t.td.dataset.revCell)) return { reason: 'These columns hold a tracked column change: accept or reject it first' };
+      const rev = this.rowRevisionMaker(tracked);
+      this.editTable(table, (t) => {
+        for (const { i, j } of targets) {
+          const tc = cellsOf(rowsOf(t)[i])[j];
+          const copy = tc.cloneNode(true); // rendered again, its text marked deleted
+          deleteCellTracked(copy, rev);
+          tc.replaceWith(copy);
+        }
+      }, { withEdits: true });
+      return {};
+    }
     const held = this.tableRows(table).some((row, i) => {
       if (row.dataset.revRow) return false;
       const cells = layout(rowsOf(tbl)[i]);
-      // Cells wholly in the columns go (the others only narrow).
+      // Cells wholly in the columns go (the others only narrow): none may hold someone's tracked
+      // change (a column you inserted while tracking may go).
       return [...row.cells].some((td, j) => cells[j] && cells[j].start >= from && cells[j].start + cells[j].span - 1 <= to
-        && td.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para]'));
+        && (td.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para]')
+          || (td.dataset.revCell && !(td.dataset.revCell === 'ins' && Number(cellRevision(cells[j].tc)?.id) >= this.firstNewId))));
     });
     if (held) return { reason: 'Cells in these columns hold tracked changes: accept or reject them first' };
     return { removed: !this.editTable(table, (tbl2) => {
@@ -1411,13 +1608,63 @@ export class DocxDocument {
     }) };
   }
 
+  /**
+   * Merges the cells of rendered rows `r0`..`r1` and grid columns `c0`..`c1` (grown to whole cells,
+   * as Word does) into one: their content goes into the first, one cell after another (empty cells
+   * add nothing). Returns { cell } (the merged cell) or { reason }.
+   */
+  mergeTableCells(table, [r0, r1], [c0, c1]) {
+    const reason = this.tableLocked(table);
+    if (reason) return { reason };
+    const tbl = this.raw[Number(table.dataset.raw)];
+    const area = mergeArea(tbl, r0, r1, c0, c1);
+    if (!area) return { reason: 'These cells can’t be merged: select a rectangle of cells' };
+    const cells = areaCells(tbl, area);
+    if (cells.flat().length < 2) return { reason: 'Select the cells to merge: more than one' };
+    const domRows = this.tableRows(table);
+    const tds = cells.map((row, i) => row.map((c) => domRows[area.r0 + i].cells[c.index]));
+    if (tds.flat().some((td) => !td || td.dataset.revCell) || domRows.slice(area.r0, area.r1 + 1).some((r) => r.dataset.revRow)) {
+      return { reason: 'These cells are a tracked change: accept or reject it first' };
+    }
+    const target = tds[0][0];
+    const empty = (td) => !td.textContent.trim() && !td.querySelector('img, .raw-inline, .sdt, table');
+    for (const td of tds.flat().slice(1)) {
+      if (!empty(td)) {
+        if (empty(target)) target.replaceChildren();
+        target.append(...td.childNodes);
+      }
+      td.replaceChildren(this.emptyParagraph());
+    }
+    this.editTable(table, (t) => {
+      mergeCells(t, area);
+      fitWidths(t, { before: Infinity, textWidth: 0 });
+    });
+    return { cell: target };
+  }
+
+  /** Splits a rendered cell into `cols` × `rows` cells (see tables.js splitCell). Returns {} or { reason }. */
+  splitTableCell(table, td, cols, rows) {
+    const reason = this.tableLocked(table);
+    if (reason) return { reason };
+    if (td.dataset.revCell || td.parentElement.dataset.revRow) return { reason: 'This cell is a tracked change: accept or reject it first' };
+    const rowIndex = this.tableRows(table).indexOf(td.parentElement);
+    const cellIndex = [...td.parentElement.cells].indexOf(td);
+    const trial = splitCell(this.raw[Number(table.dataset.raw)].cloneNode(true), rowIndex, cellIndex, cols, rows);
+    if (trial.reason) return trial;
+    this.editTable(table, (t) => {
+      splitCell(t, rowIndex, cellIndex, cols, rows);
+      fitWidths(t, { before: Infinity, textWidth: 0 });
+    });
+    return {};
+  }
+
   /** Deletes a whole table: its rows marked deleted while tracking, else the table goes. */
   deleteTable(table, tracked = null) {
     const rows = this.tableRows(table);
     if (!tracked) {
       const reason = this.tableLocked(table);
       if (reason && !reason.startsWith('This table’s rows')) return { reason };
-      if (table.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para], [data-rev-row]')) {
+      if (table.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para], [data-rev-row], [data-rev-cell]')) {
         return { reason: 'The table holds tracked changes: accept or reject them first, or turn on Track changes' };
       }
       table.remove();
@@ -1621,6 +1868,13 @@ export class DocxDocument {
       const rev = wChild(trPr, 'ins') || wChild(trPr, 'del');
       if (rev && Number(wAttr(rev, 'id')) >= this.firstNewId) for (const p of tr.getElementsByTagNameNS(W, 'p')) trackedParagraphs.add(p);
     }
+    let cellsTracked = 0;
+    for (const tc of this.body.getElementsByTagNameNS(W, 'tc')) {
+      const rev = cellRevision(tc);
+      if (!rev || Number(rev.id) < this.firstNewId) continue;
+      cellsTracked++;
+      for (const p of tc.getElementsByTagNameNS(W, 'p')) trackedParagraphs.add(p);
+    }
     const styleName = (id) => {
       const name = (id ? this.styles.byId.get(id)?.name || id : this.styles.byId.get(this.styles.defaultParagraph)?.name) || 'Normal';
       return name[0].toUpperCase() + name.slice(1); // built-in names are stored as "heading 1"
@@ -1644,6 +1898,7 @@ export class DocxDocument {
       trackingSwitched: this.tracking !== this.trackRevisions,
       stylesAdded: this.styles.changed,
       layout: tableSummary(this.originalBody, this.body),
+      cellsTracked,
       rowsTracked: [...this.body.getElementsByTagNameNS(W, 'trPr')].reduce((n, trPr) => {
         const rev = wChild(trPr, 'ins') || wChild(trPr, 'del');
         return n + (rev && Number(wAttr(rev, 'id')) >= this.firstNewId ? 1 : 0);

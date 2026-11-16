@@ -194,6 +194,7 @@ export function insertRows(tbl, index, count, below, revision = null) {
  * them (on the `like` side).
  */
 export function insertColumns(tbl, at, count, like) {
+  const made = [];
   for (const tr of rowsOf(tbl)) {
     const cells = layout(tr);
     const before = rowValue(tr, 'gridBefore');
@@ -215,6 +216,7 @@ export function insertColumns(tbl, at, count, like) {
     const left = cells.find((c) => c.start + c.span === at);
     const model = (like < at ? left || after : after || left).tc;
     const fresh = Array.from({ length: count }, () => blankCell(model));
+    made.push(...fresh);
     if (after) after.tc.before(...fresh);
     else left.tc.after(...fresh);
   }
@@ -224,6 +226,7 @@ export function insertColumns(tbl, at, count, like) {
   const fresh = Array.from({ length: count }, () => createW(tbl.ownerDocument, 'gridCol', { w: width }));
   if (cols[at]) cols[at].before(...fresh);
   else grid.append(...fresh);
+  return made; // the new cells (not cells widened across the place)
 }
 
 /** Deletes grid columns `from` to `to` (inclusive): cells in them go, cells spanning them narrow. */
@@ -302,6 +305,12 @@ export const totalWidth = (tbl) => gridWidths(tbl).reduce((a, b) => a + b, 0);
  */
 export function deleteRowTracked(tr, rev) {
   markRow(tr, rev('del'));
+  deleteRunsTracked(tr, rev);
+}
+
+/** Puts the text in `el` (a row or cell) in <w:del> made by `rev('del')`, as a tracked deletion. */
+function deleteRunsTracked(el, rev) {
+  const tr = el;
   for (const r of [...tr.getElementsByTagNameNS(W, 'r')]) {
     let inside = null;
     for (let n = r.parentNode; n && n !== tr; n = n.parentNode) {
@@ -322,10 +331,10 @@ export function deleteRowTracked(tr, rev) {
   }
 }
 
-/** Rejecting a deleted row brings its text back: its deletions are undone. */
+/** Rejecting a deleted row (or cell) brings its text back: its deletions are undone. */
 export function undeleteRow(tr) {
   for (const del of [...tr.getElementsByTagNameNS(W, 'del')]) {
-    if (del.parentNode?.namespaceURI === W && del.parentNode.localName === 'trPr') continue;
+    if (del.parentNode?.namespaceURI === W && ['trPr', 'tcPr'].includes(del.parentNode.localName)) continue;
     if (del.parentNode?.namespaceURI === W && del.parentNode.localName === 'rPr') continue; // a paragraph mark
     for (const [from, to] of [['delText', 't'], ['delInstrText', 'instrText']]) {
       for (const t of [...del.getElementsByTagNameNS(W, from)]) {
@@ -364,4 +373,223 @@ export function newTableXml(doc, rows, cols, textWidth, styleId, revision = null
     }
   }
   return tbl;
+}
+
+// ---------------------------------------------------------------- merging and splitting cells
+
+const cellsWithin = (tr, from, to) => layout(tr).filter((c) => c.start >= from && c.start + c.span - 1 <= to);
+
+/**
+ * The cells to merge for a selection of rows `r0`..`r1` and grid columns `c0`..`c1`, grown (as Word
+ * does) until no cell or vertical merge sticks out of it: { r0, r1, c0, c1 }, or null if it isn't a
+ * rectangle of whole cells (a row ends inside it).
+ */
+export function mergeArea(tbl, r0, r1, c0, c1) {
+  const rows = rowsOf(tbl);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let r = r0; r <= r1; r++) {
+      for (const c of layout(rows[r])) {
+        if (c.start + c.span - 1 < c0 || c.start > c1) continue;
+        if (c.start < c0) { c0 = c.start; changed = true; }
+        if (c.start + c.span - 1 > c1) { c1 = c.start + c.span - 1; changed = true; }
+        // A vertical merge running out of the area at the top or bottom pulls the area with it.
+        if (r === r0 && vMerge(c.tc) === 'continue' && r0 > 0) { r0--; changed = true; }
+        const below = r === r1 && rows[r + 1] && layout(rows[r + 1]).find((d) => d.start === c.start);
+        if (below && vMerge(c.tc) && vMerge(below.tc) === 'continue') { r1++; changed = true; }
+      }
+    }
+  }
+  for (let r = r0; r <= r1; r++) {
+    const covered = cellsWithin(rows[r], c0, c1).reduce((n, c) => n + c.span, 0);
+    if (covered !== c1 - c0 + 1) return null;
+  }
+  return { r0, r1, c0, c1 };
+}
+
+/** The cells of `area` (see mergeArea), row by row: [[{ tc, start, span, index }]] (index: in its row). */
+export function areaCells(tbl, { r0, r1, c0, c1 }) {
+  const rows = rowsOf(tbl);
+  const out = [];
+  for (let r = r0; r <= r1; r++) {
+    const all = layout(rows[r]);
+    out.push(all.map((c, index) => ({ ...c, index })).filter((c) => c.start >= c0 && c.start + c.span - 1 <= c1));
+  }
+  return out;
+}
+
+/**
+ * Merges the cells of `area` into one, as Word does: the first cell of each row spans the area's
+ * columns (the others go), and with several rows the first row's cell starts a vertical merge the
+ * rows below continue. (The cells' content is moved by the caller.)
+ */
+export function mergeCells(tbl, area) {
+  const width = area.c1 - area.c0 + 1;
+  areaCells(tbl, area).forEach((cells, i) => {
+    const [first, ...rest] = cells;
+    for (const c of rest) c.tc.parentNode.removeChild(c.tc);
+    setSpan(first.tc, width);
+    setVMerge(first.tc, area.r1 > area.r0 ? (i === 0 ? 'restart' : 'continue') : null);
+    if (i > 0) emptyCell(first.tc);
+  });
+}
+
+/**
+ * Makes sure the grid has a column boundary at `x` twips from the table's start (within `near`
+ * twips of one there already counts): the column it falls in is split in two, and cells covering
+ * that column in every row span one more. Returns the boundary's index.
+ */
+function boundaryAt(tbl, x, near = 20) {
+  const grid = wChildren(wChild(tbl, 'tblGrid'), 'gridCol');
+  const widths = grid.map((c) => int(c, 'w'));
+  let edge = 0;
+  for (let g = 0; g < widths.length; g++) {
+    if (g > 0 && Math.abs(edge - x) <= near) return g;
+    if (x > edge + near && x < edge + widths[g] - near) {
+      grid[g].setAttributeNS(W, 'w:w', String(x - edge));
+      grid[g].after(createW(tbl.ownerDocument, 'gridCol', { w: edge + widths[g] - x }));
+      for (const tr of rowsOf(tbl)) {
+        const before = rowValue(tr, 'gridBefore');
+        const cell = layout(tr).find((c) => c.start <= g && g < c.start + c.span);
+        if (g < before) setRowValue(tr, 'gridBefore', before + 1);
+        else if (cell) setSpan(cell.tc, cell.span + 1);
+        else setRowValue(tr, 'gridAfter', rowValue(tr, 'gridAfter') + 1);
+      }
+      return g + 1;
+    }
+    edge += widths[g];
+  }
+  return Math.abs(edge - x) <= near ? widths.length : null;
+}
+
+/** The rows of the vertical merge a cell is in (just its own row if none): [first, last]. */
+function mergeRows(tbl, rowIndex, start) {
+  const rows = rowsOf(tbl);
+  const at = (r) => layout(rows[r]).find((c) => c.start === start);
+  let first = rowIndex;
+  while (first > 0 && vMerge(at(first)?.tc) === 'continue' && at(first - 1) && vMerge(at(first - 1).tc)) first--;
+  let last = rowIndex;
+  while (rows[last + 1] && at(last + 1) && vMerge(at(last + 1).tc) === 'continue' && vMerge(at(last).tc)) last++;
+  return [first, last];
+}
+
+/**
+ * Splits a cell (row `rowIndex`, cell `cellIndex`) into `cols` × `rows` cells, as Word's Split Cells
+ * does: columns of equal width (new grid columns where needed: cells across them in other rows
+ * span them), its content in the first; new rows below it, where the row's other cells are merged
+ * vertically. A cell merged across several rows splits into 1 row (each keeping the merge) or into
+ * that many rows (the merge undone). Returns { reason } if it can't be split so.
+ */
+export function splitCell(tbl, rowIndex, cellIndex, cols, rows) {
+  const cell = layout(rowsOf(tbl)[rowIndex])[cellIndex];
+  if (!cell) return { reason: 'There is no cell to split here' };
+  const [first, last] = mergeRows(tbl, rowIndex, cell.start);
+  const merged = last - first + 1;
+  if (merged > 1 && rows !== 1 && rows !== merged) return { reason: `This cell is merged across ${merged} rows: split it into 1 or ${merged} rows` };
+  const at = (r) => layout(rowsOf(tbl)[r]).find((c) => c.start === cell.start);
+  const keepMerge = merged > 1 && rows === 1;
+  if (merged > 1 && rows === merged) for (let r = first; r <= last; r++) setVMerge(at(r).tc, null);
+  if (cols > 1) {
+    const widths = gridWidths(tbl);
+    const x0 = widths.slice(0, cell.start).reduce((a, b) => a + b, 0);
+    const span = widths.slice(cell.start, cell.start + cell.span).reduce((a, b) => a + b, 0);
+    if (span / cols < 60) return { reason: 'The cell is too narrow to split into that many columns' };
+    const bounds = [];
+    for (let k = 1; k < cols; k++) bounds.push(boundaryAt(tbl, x0 + Math.round((k * span) / cols)));
+    const ends = [cell.start, ...bounds, null];
+    for (let r = merged > 1 ? first : rowIndex; r <= (merged > 1 ? last : rowIndex); r++) {
+      const c = at(r);
+      ends[ends.length - 1] = c.start + c.span;
+      const kind = keepMerge ? vMerge(c.tc) : null;
+      setSpan(c.tc, ends[1] - ends[0]);
+      let prev = c.tc;
+      for (let k = 1; k < cols; k++) {
+        const fresh = blankCell(c.tc);
+        setSpan(fresh, ends[k + 1] - ends[k]);
+        if (kind) setVMerge(fresh, kind);
+        prev.after(fresh);
+        prev = fresh;
+      }
+    }
+  }
+  if (rows > 1 && merged === 1) {
+    const tr = rowsOf(tbl)[rowIndex];
+    const from = cell.start;
+    const to = cell.start + cell.span - 1;
+    const inside = (c) => c.start >= from && c.start + c.span - 1 <= to;
+    for (const c of layout(tr)) if (!inside(c) && !vMerge(c.tc)) setVMerge(c.tc, 'restart');
+    const made = [];
+    for (let k = 1; k < rows; k++) {
+      const copy = blankRow(tr);
+      const props = wChild(copy, 'trPr');
+      removeW(props, 'tblHeader');
+      if (props && !elementChildren(props).length) copy.removeChild(props);
+      for (const c of layout(copy)) if (!inside(c)) setVMerge(c.tc, 'continue');
+      made.push(copy);
+    }
+    tr.after(...made);
+  }
+  return {};
+}
+
+// ---------------------------------------------------------------- tracked columns
+
+/** Marks a cell inserted or deleted with tracking: `rev` is the <w:cellIns> or <w:cellDel>. */
+export function markCell(tc, rev) {
+  const props = tcPr(tc);
+  removeW(props, 'cellIns', 'cellDel');
+  const after = TCPR_ORDER.indexOf(rev.localName);
+  props.insertBefore(rev, wChildren(props).find((c) => TCPR_ORDER.indexOf(c.localName) > after) || null);
+}
+
+/** A cell deleted with tracking, as Word writes it: <w:cellDel>, and its text in <w:del>. */
+export function deleteCellTracked(tc, rev) {
+  markCell(tc, rev('cellDel'));
+  deleteRunsTracked(tc, rev);
+}
+
+/** A deleted cell rejected: its revision goes and its text comes back. */
+export function undeleteCell(tc) {
+  removeW(wChild(tc, 'tcPr'), 'cellDel');
+  undeleteRow(tc);
+}
+
+/** An inserted cell accepted: its revision goes. */
+export function acceptInsertedCell(tc) {
+  removeW(wChild(tc, 'tcPr'), 'cellIns');
+}
+
+/**
+ * Takes cells out of a table (an inserted column rejected, a deleted one accepted): grid columns
+ * that no other cell starts in are deleted (cells spanning them narrow); a cell elsewhere goes and
+ * its row ends early (gridAfter), as Word keeps such a row.
+ */
+export function removeCells(tbl, tcs) {
+  const set = new Set(tcs);
+  const columns = new Set();
+  for (const tr of rowsOf(tbl)) for (const c of layout(tr)) if (set.has(c.tc)) for (let g = c.start; g < c.start + c.span; g++) columns.add(g);
+  const removable = [...columns].filter((g) => rowsOf(tbl).every((tr) => {
+    const c = layout(tr).find((d) => d.start <= g && g < d.start + d.span);
+    return !c || set.has(c.tc) || c.span > 1;
+  })).sort((a, b) => b - a);
+  // Cells in removable columns go with them; any other goes on its own.
+  for (const tr of rowsOf(tbl)) {
+    for (const c of layout(tr)) {
+      if (!set.has(c.tc)) continue;
+      const inRemovable = [...Array(c.span).keys()].every((k) => removable.includes(c.start + k));
+      if (!inRemovable) {
+        tr.removeChild(c.tc);
+        setRowValue(tr, 'gridAfter', rowValue(tr, 'gridAfter') + c.span);
+      }
+    }
+  }
+  // Contiguous removable columns, from the right, so indices stay right.
+  let i = 0;
+  while (i < removable.length) {
+    let j = i;
+    while (j + 1 < removable.length && removable[j + 1] === removable[j] - 1) j++;
+    deleteColumns(tbl, removable[j], removable[i]);
+    i = j + 1;
+  }
 }
