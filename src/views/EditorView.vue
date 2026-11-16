@@ -1379,6 +1379,11 @@ const cellOf = (node) => (node?.nodeType === 1 ? node : node?.parentElement)?.cl
  */
 function tableSelection() {
   const range = selectionInPage() || savedRange;
+  // A read-only cell just clicked holds no caret: it is the cell meant (see clickReadOnly).
+  const clicked = !selectionInPage() && lastReadOnly?.isConnected && lastReadOnly.closest('td');
+  if (clicked && page.value.contains(clicked) && clicked.closest('table').dataset.raw != null) {
+    return { table: clicked.closest('table'), cell: clicked, rows: [0, 0], cols: [0, 0], newCols: 1, multi: false };
+  }
   const a = range && cellOf(range.startContainer);
   if (!a || !page.value.contains(a)) return null;
   const table = a.closest('table');
@@ -1453,8 +1458,9 @@ const plural = (n, one, many = `${one}s`) => (n === 1 ? one : `${n} ${many}`);
 /** Insert or delete rows, columns or the table, from the Table layout menu (as Word's Layout tab). */
 function tableAction(kind) {
   tableMenu.open = false;
+  const before = tableSelection(); // before refocusing, which may put back an older selection
   refocus();
-  const sel = tableSelection();
+  const sel = before?.cell.isConnected ? before : tableSelection();
   if (!sel) {
     message.value = 'Click in a table first';
     return;
@@ -2386,6 +2392,7 @@ function clickReadOnly(el, e) {
   lastReadOnly = beside ? null : el;
   if (!beside) {
     document.activeElement?.blur();
+    state.table = !!tableSelection(); // a read-only cell: still in its table, for Table layout to say why
     return;
   }
   el.parentElement.closest('[contenteditable="true"]')?.focus({ preventScroll: true });
