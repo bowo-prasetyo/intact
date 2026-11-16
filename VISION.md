@@ -101,6 +101,7 @@ Saying no to these keeps the product small enough to keep its promises:
   fields ✔; resize, wrap and position pictures ✔; crop, rotate and add effects ✔; picture styles, 3-D and artistic effects ✔; 3-D lighting and all of Word's artistic effects ✔; wrap text to a
   picture's outline ✔
 - Edit footnotes and endnotes ✔; show equations ✔
+- Apply the document's own paragraph styles ✔; say when fields Word updates may be out of date ✔
 - Edit headers and footers
 - Installable offline app (PWA)
 

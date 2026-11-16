@@ -7,7 +7,13 @@
       </header>
 
       <ul v-if="notes.length" class="notes">
-        <li v-for="(n, i) in notes" :key="i" :class="n.kind">{{ n.text }}</li>
+        <li v-for="(n, i) in notes" :key="i" :class="n.kind">
+          {{ n.text }}
+          <label v-if="n.fields" class="update-fields">
+            <input type="checkbox" :checked="updateOnOpen" @change="setUpdateOnOpen($event.target.checked)" />
+            Ask Word to update them when the file is opened
+          </label>
+        </li>
       </ul>
 
       <ol v-if="shown.length" class="changes">
@@ -51,7 +57,14 @@ const props = defineProps({
   author: { type: String, default: '' },
   skip: { type: Boolean, default: false },
 });
-defineEmits(['close', 'download', 'skip']);
+const emit = defineEmits(['close', 'download', 'skip', 'update-fields']);
+
+// Word's "update fields on open" (w:updateFields), set from the fields note.
+const updateOnOpen = ref(!!props.review.fields?.updateOnOpen);
+function setUpdateOnOpen(on) {
+  updateOnOpen.value = on;
+  emit('update-fields', on);
+}
 
 const KIND = { changed: 'Changed', added: 'Added', removed: 'Removed' };
 const LIMIT = 100;
@@ -84,6 +97,20 @@ const summary = computed(() => {
 const notes = computed(() => {
   const r = props.review;
   const out = [];
+  // Fields Word works out (tables of contents, cross-references, caption numbers) show what they
+  // showed when the file was last saved in Word: after editing the text they may be out of date.
+  const f = r.fields;
+  const l = r.layout;
+  const edited = r.paragraphs.length > 0 || (l && Object.keys(l.before).some((k) => l.before[k] !== l.after[k]));
+  if (f?.updatable.length && edited) {
+    const what = f.updatable.join(', ').replace(/, ([^,]*)$/, ' and $1');
+    out.push(f.alreadyUpdating
+      ? { kind: 'info', text: `This document has ${what}. The file asks Word to update them when it is opened.` }
+      : { kind: 'warn', fields: true, text: `This document has ${what}, which Word updates, not Intact: they may be out of date after your changes. In Word, select all (Ctrl+A) and press F9 to update them before you send the file.` });
+  }
+  if (f?.citationsChanged) {
+    out.push({ kind: 'warn', text: 'Citations were added or removed, but the bibliography doesn’t change until it is refreshed in Word, with your reference manager (Zotero, EndNote, Mendeley) or References › Update Citations and Bibliography.' });
+  }
   if (r.insertions || r.deletions || r.rowsTracked || r.cellsTracked) {
     const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion'), r.rowsTracked && plural(r.rowsTracked, 'table row'), r.cellsTracked && plural(r.cellsTracked, 'table cell')]
       .filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
@@ -175,6 +202,7 @@ h2 { margin: 0; font-size: 18px; }
 .notes .good { border-left: 3px solid #2e7d32; }
 .notes .warn { border-left: 3px solid #c77700; }
 .notes .info { border-left: 3px solid var(--border); }
+.update-fields { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-weight: 600; }
 .changes { flex: 1; overflow: auto; margin: 12px 0 0; padding: 0 20px; list-style: none; }
 .change { padding: 10px 0; border-top: 1px solid var(--border); }
 .where { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }

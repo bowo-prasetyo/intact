@@ -47,6 +47,11 @@ export class StyleSheet {
         pPr: wChild(s, 'pPr'),
         rPr: wChild(s, 'rPr'),
         isDefault: ['1', 'true', 'on'].includes(wAttr(s, 'default') || ''),
+        // For the style menu: hidden from Word's lists, in its style gallery, and its place there.
+        hidden: onOff(wChild(s, 'semiHidden')) === true || onOff(wChild(s, 'hidden')) === true,
+        unhideWhenUsed: onOff(wChild(s, 'unhideWhenUsed')) === true,
+        quick: onOff(wChild(s, 'qFormat')) === true,
+        priority: Number(wAttr(wChild(s, 'uiPriority'), 'val') ?? 99),
       };
       this.byId.set(info.id, info);
       if (info.type === 'paragraph' && info.isDefault) this.defaultParagraph = info.id;
@@ -102,6 +107,32 @@ export class StyleSheet {
     this.changed = true;
     this.reindex();
     return id;
+  }
+
+  /**
+   * The document's own paragraph styles for the style menu, after Normal, Title and Heading 1–3:
+   * [{ id, label }]. As Word's style gallery offers them: headings (4–9) the file defines, styles
+   * in the gallery (w:qFormat) that aren't hidden, and any style the text already uses (`used`, a
+   * Set of ids). Headings first, then in Word's order (w:uiPriority), then by name.
+   */
+  paragraphChoices(used = new Set()) {
+    const out = [];
+    for (const s of this.byId.values()) {
+      if (s.type !== 'paragraph' || !s.id || s.id === this.defaultParagraph) continue;
+      if (['title', 'h1', 'h2', 'h3'].includes(this.kindOf(s.id))) continue;
+      const heading = /^heading ([1-9])$/i.exec(s.name);
+      const offered = used.has(s.id) || heading || (s.quick && (!s.hidden || s.unhideWhenUsed));
+      if (offered) out.push({ id: s.id, label: this.label(s.id), heading: heading ? Number(heading[1]) : 10, priority: s.priority });
+    }
+    out.sort((a, b) => a.heading - b.heading || a.priority - b.priority || a.label.localeCompare(b.label));
+    return out.map(({ id, label }) => ({ id, label }));
+  }
+
+  /** A style's name as Word shows it: built-in names are stored in lower case ("heading 4", "toc 1"). */
+  label(styleId) {
+    const name = this.byId.get(styleId)?.name || styleId || '';
+    if (/[A-Z]/.test(name)) return name;
+    return name.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^Toc\b/, 'TOC');
   }
 
   /** Classifies a paragraph style id as 'title', 'h1'..'h6' or null. */

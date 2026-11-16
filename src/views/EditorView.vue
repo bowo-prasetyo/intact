@@ -22,9 +22,10 @@
         <option value="h1">Heading 1</option>
         <option value="h2">Heading 2</option>
         <option value="h3">Heading 3</option>
-        <option v-if="!['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)" :value="state.block" disabled>
-          {{ state.block === 'other' ? 'Other style' : state.block.replace('h', 'Heading ') }}
-        </option>
+        <optgroup v-if="styleChoices.length" label="In this document">
+          <option v-for="c in styleChoices" :key="c.id" :value="`style:${c.id}`">{{ c.label }}</option>
+        </optgroup>
+        <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
       </select>
       <span class="sep" />
       <button type="button" title="Bold (Ctrl+B)" :class="{ on: state.bold }" @click="exec('bold')"><b>B</b></button>
@@ -411,7 +412,7 @@
       <button type="button" class="no-color" @click="pickHighlight(null)">No colour</button>
     </div>
 
-    <ReviewDialog v-if="reviewData" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" />
+    <ReviewDialog v-if="reviewData" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -471,6 +472,10 @@ const saving = ref(false);
 const message = ref('');
 const words = ref(0);
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
+// The document's own paragraph styles, offered in the style menu after the built-in ones.
+const styleChoices = ref([]);
+const knownBlock = computed(() => ['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)
+  || styleChoices.value.some((c) => `style:${c.id}` === state.block));
 const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null, table: false });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
@@ -567,6 +572,7 @@ onMounted(() => {
   document.head.append(styleEl);
   refreshCss();
   page.value.replaceChildren(doc.render());
+  styleChoices.value = doc.styleChoices();
   renderVariants(headerEl.value, 'header');
   renderVariants(footerEl.value, 'footer');
   threads.value = commentThreads();
@@ -709,7 +715,7 @@ function onSelectionChange() {
   state.strike = document.queryCommandState('strikeThrough');
   Object.assign(state, (({ superscript, subscript, highlight }) => ({ sup: superscript, sub: subscript, highlight }))(formatState(range)));
   const block = startBlock(range);
-  state.block = block ? doc.blockKind(block.dataset.style) : 'normal';
+  state.block = block ? doc.blockValue(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
   state.align = { start: 'left', end: 'right' }[align] || align;
   state.list = block ? doc.listKind(doc.listOf(block)) : null;
@@ -837,14 +843,20 @@ function selectedBlocks(range) {
   return one ? [one] : [];
 }
 
+/**
+ * Applies a paragraph style from the style menu to the selected paragraphs: a built-in one
+ * ('normal', 'title', 'h1'–'h3', added to the file if missing) or one of the document's own
+ * ('style:<id>').
+ */
 function applyBlockStyle(kind) {
   restoreSelection();
   const range = selectionInPage();
   if (!range) return;
   undoStack.flush();
-  const styleId = doc.styleIdFor(kind);
+  const own = kind.startsWith('style:') ? kind.slice(6) : null;
+  const styleId = own || doc.styleIdFor(kind);
   refreshCss(); // a missing builtin style may just have been added
-  const tag = kind === 'normal' ? 'p' : kind === 'title' ? 'h1' : kind;
+  const tag = own ? doc.tagFor(own) : kind === 'normal' ? 'p' : kind === 'title' ? 'h1' : kind;
   const { startContainer, startOffset, endContainer, endOffset } = range;
   const replaced = new Map();
   for (const block of selectedBlocks(range)) {

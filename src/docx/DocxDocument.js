@@ -37,6 +37,7 @@ import {
 } from './pictures.js';
 import { drawPicture } from './pictureView.js';
 import { ommlToMathml, isEquation } from './omml.js';
+import { fieldReview } from './fields.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -65,6 +66,10 @@ const newParaId = () => (Math.floor(Math.random() * 0x7ffffffe) + 1).toString(16
 const SETTINGS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings';
 const SETTINGS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml';
 // The settings that come before <w:trackRevisions> in CT_Settings.
+// The settings after w:updateFields in CT_Settings, in order.
+const AFTER_UPDATE_FIELDS = new Set(['hdrShapeDefaults', 'footnotePr', 'endnotePr', 'compat', 'docVars', 'rsids', 'attachedSchema',
+  'themeFontLang', 'clrSchemeMapping', 'doNotIncludeSubdocsInStats', 'doNotAutoCompressPictures', 'forceUpgrade', 'captions',
+  'readModeInkLockDown', 'smartTagType', 'shapeDefaults', 'doNotEmbedSmartTags', 'decimalSymbol', 'listSeparator']);
 const BEFORE_TRACK_REVISIONS = new Set([
   'writeProtection', 'view', 'zoom', 'removePersonalInformation', 'removeDateAndTime', 'doNotDisplayPageBoundaries',
   'displayBackgroundShape', 'printPostScriptOverText', 'printFractionalCharacterWidth', 'printFormsData',
@@ -168,6 +173,9 @@ export class DocxDocument {
     this.settingsText = settings ? await this.text(settings.path) : null;
     this.trackRevisions = onOff(wChild(settings?.xml.documentElement, 'trackRevisions')) === true;
     this.tracking = this.trackRevisions;
+    // Word updates fields (tables of contents, cross-references…) on opening if the file asks it to.
+    this.updateFieldsSet = onOff(wChild(settings?.xml.documentElement, 'updateFields')) === true;
+    this.updateFields = false; // asked for in the review, this session
     // New revisions get ids above every id in the document.
     let maxId = 0;
     for (const xml of [this.xml, ...Object.values(this.noteParts).map((p) => p.xml)]) {
@@ -388,6 +396,30 @@ export class DocxDocument {
   styleIdFor(kind) {
     if (kind === 'normal') return null;
     return this.styles.ensureBuiltin(kind);
+  }
+
+  /** The document's own paragraph styles for the style menu (see StyleSheet.paragraphChoices). */
+  styleChoices() {
+    const used = new Set();
+    for (const xml of [this.xml, ...Object.values(this.noteParts).map((p) => p.xml)]) {
+      for (const el of xml.getElementsByTagNameNS(W, 'pStyle')) used.add(wAttr(el, 'val'));
+    }
+    return this.styles.paragraphChoices(used);
+  }
+
+  /** The style menu's value for a paragraph style: 'normal', 'title', 'h1'–'h3', or 'style:<id>'. */
+  blockValue(styleId) {
+    const kind = this.blockKind(styleId);
+    return ['normal', 'title', 'h1', 'h2', 'h3'].includes(kind) ? kind : `style:${styleId}`;
+  }
+
+  styleLabel(styleId) {
+    return this.styles.label(styleId);
+  }
+
+  /** The element a paragraph in style `styleId` is rendered as: h1–h6 for a title or heading, else p. */
+  tagFor(styleId) {
+    return HEADING_TAG[this.styles.kindOf(styleId)] || 'p';
   }
 
   blockKind(styleId) {
@@ -2578,6 +2610,7 @@ export class DocxDocument {
         return n + (rev && Number(wAttr(rev, 'id')) >= this.firstNewId ? 1 : 0);
       }, 0),
       listsAdded: this.numberingChanged,
+      fields: { ...fieldReview(this.originalBody, this.body), updateOnOpen: this.updateFields, alreadyUpdating: this.updateFieldsSet },
     };
   }
 
@@ -2623,28 +2656,39 @@ export class DocxDocument {
   }
 
   /**
-   * Saves whether Track Changes is on (w:trackRevisions), so Word keeps tracking for the recipient.
-   * settings.xml is only rewritten when it was switched; switched back, the original goes back.
+   * Saves whether Track Changes is on (w:trackRevisions), so Word keeps tracking for the recipient,
+   * and, if asked for in the review, that Word should update fields on opening (w:updateFields).
+   * settings.xml is only rewritten for one of those; when neither applies any more, the original
+   * goes back.
    */
   async writeSettings() {
-    if (this.tracking === this.trackRevisions) {
+    const tracking = this.tracking !== this.trackRevisions;
+    const fields = this.updateFields && !this.updateFieldsSet;
+    if (!tracking && !fields) {
       if (this.settingsChanged) this.zip.file(this.settingsPath, this.settingsText);
       this.settingsChanged = false;
       return;
     }
     this.settingsChanged = true;
     if (!this.settingsPath) {
-      this.settingsPath = await this.addPart('settings.xml', `${XML_HEADER}<w:settings xmlns:w="${W}"><w:trackRevisions/></w:settings>`, SETTINGS_REL, SETTINGS_CT);
       this.settingsText = `${XML_HEADER}<w:settings xmlns:w="${W}"/>`;
-      return;
+      this.settingsPath = await this.addPart('settings.xml', this.settingsText, SETTINGS_REL, SETTINGS_CT);
     }
     const doc = parseXml(this.settingsText);
     const root = doc.documentElement;
-    if (this.tracking) {
+    if (tracking && this.tracking) {
       const before = wChildren(root).filter((c) => BEFORE_TRACK_REVISIONS.has(c.localName)).pop();
       root.insertBefore(createW(doc, 'trackRevisions'), before ? before.nextSibling : root.firstChild);
-    } else {
+    } else if (tracking) {
       removeW(root, 'trackRevisions');
+    }
+    if (fields) {
+      removeW(root, 'updateFields');
+      const update = createW(doc, 'updateFields');
+      update.setAttributeNS(W, 'w:val', 'true');
+      // In schema order: before the settings that follow it (and any extension elements).
+      const after = [...root.children].find((c) => c.namespaceURI !== W || AFTER_UPDATE_FIELDS.has(c.localName));
+      root.insertBefore(update, after || null);
     }
     this.zip.file(this.settingsPath, serializeXml(doc));
   }
