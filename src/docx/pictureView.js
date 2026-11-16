@@ -5,24 +5,16 @@
 //   .pic-shadow  the shadow and glow (drop shadows of what is inside);
 //     .pic-box   the picture cut to its shape and crop, with its border, soft edges and bevel;
 //   .pic-reflect its reflection, below it.
-// What a web page can't draw exactly (3-D lighting, materials) is approximated.
+// A bevel is lit per pixel, from its profile, the light rig and the material (see lighting.js);
+// a 3-D rotation is a CSS 3-D transform with the file's angles and perspective.
+
+import { lightingLayer, cameraTransform } from './lighting.js';
 
 const EMU_PER_PX = 9525;
 const px = (emu) => (emu || 0) / EMU_PER_PX;
 const rgba = (hex, alpha = 1) => {
   const n = parseInt(hex || '000000', 16);
   return `rgb(${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255} / ${Math.round(alpha * 1000) / 10}%)`;
-};
-
-/** A camera of Word's 3-D Rotation, as near as CSS 3-D transforms come. */
-const CAMERA_CSS = {
-  perspectiveRight: 'perspective(900px) rotateY(-22deg)',
-  perspectiveLeft: 'perspective(900px) rotateY(22deg)',
-  perspectiveRelaxed: 'perspective(900px) rotateX(32deg)',
-  perspectiveFront: 'perspective(900px)',
-  isometricOffAxis1Right: 'perspective(1400px) rotateX(12deg) rotateY(-32deg)',
-  isometricOffAxis1Left: 'perspective(1400px) rotateX(12deg) rotateY(32deg)',
-  isometricTopUp: 'rotateX(50deg) rotateZ(-45deg) scale(0.85)',
 };
 
 /** The CSS for a shape (Word's preset geometry, with its default adjustments): { radius, clip }. */
@@ -115,7 +107,7 @@ export function drawPicture(span, { w, h, look, url, alt, inline }) {
   st.width = `${w}px`;
   st.height = `${h}px`;
   // Turned (and in 3-D): the camera first, then the rotation and flips.
-  const turns = [CAMERA_CSS[look.camera] || (look.camera ? 'perspective(1000px) rotateY(-15deg)' : ''), look.rot && `rotate(${look.rot}deg)`, look.flipH && 'scaleX(-1)', look.flipV && 'scaleY(-1)']
+  const turns = [cameraTransform(look, w, h), look.rot && `rotate(${look.rot}deg)`, look.flipH && 'scaleX(-1)', look.flipV && 'scaleY(-1)']
     .filter(Boolean).join(' ');
   st.transform = turns;
   span.dataset.turn = turns;
@@ -166,16 +158,16 @@ export function drawPicture(span, { w, h, look, url, alt, inline }) {
       filter: colourFilter(look),
     });
   }
-  // A bevel: light on the top and left edges, shade on the bottom and right, as wide as the bevel.
-  if (look.bevel) {
-    const b = Math.max(1.5, Math.min(px(look.bevel.w), Math.min(w, h) / 4));
-    const bevel = document.createElement('span');
-    bevel.className = 'pic-bevel';
-    Object.assign(bevel.style, {
-      position: 'absolute', inset: '0', borderRadius: 'inherit', pointerEvents: 'none',
-      boxShadow: `inset ${b}px ${b}px ${b}px rgb(255 255 255 / 55%), inset ${-b}px ${-b}px ${b}px rgb(0 0 0 / 35%)`,
-    });
-    box.append(bevel);
+  // A bevel, lit: the light and shade the light rig and material give it (see lighting.js).
+  const lit = lightingLayer({ w, h, geometry: look.geometry, bevel: look.bevel, material: look.material, light: look.light });
+  if (lit) {
+    const layer = document.createElement('img');
+    layer.className = 'pic-bevel';
+    layer.alt = '';
+    layer.draggable = false;
+    layer.src = lit;
+    Object.assign(layer.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', borderRadius: 'inherit', pointerEvents: 'none', maxWidth: 'none', margin: '0', filter: '' });
+    box.append(layer);
   }
   // A reflection below it, from the file's distance and start and end transparency and position.
   if (look.reflection) {

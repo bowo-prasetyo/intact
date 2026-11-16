@@ -299,11 +299,20 @@ export function pictureLook(r) {
     } : null,
     bevel: bevel ? { prst: bevel.getAttribute('prst') || 'circle', w: num(bevel, 'w', 76200), h: num(bevel, 'h', 76200) } : null,
     camera: camera && camera.getAttribute('prst') !== 'orthographicFront' ? camera.getAttribute('prst') : null,
+    // A rotation set by angles (Word's X, Y and Z rotation; a:rot lon, lat, rev) and a perspective (fov).
+    rotation3d: camera && (child(camera, A, 'rot') || camera.hasAttribute('fov')) ? {
+      x: num(child(camera, A, 'rot'), 'lon') / 60000, y: num(child(camera, A, 'rot'), 'lat') / 60000,
+      z: num(child(camera, A, 'rot'), 'rev') / 60000, perspective: num(camera, 'fov') / 60000,
+    } : null,
+    light: lightOf(child(spPr, A, 'scene3d')),
     material: child(spPr, A, 'sp3d')?.getAttribute('prstMaterial') || null,
     greyscale: !!child(blip, A, 'grayscl'),
     brightness: pct(lum?.getAttribute('bright')),
     contrast: pct(lum?.getAttribute('contrast')),
-    artistic: original ? { effect: original.getAttribute('effect'), original: original.getAttributeNS(NS.r, 'embed') } : null,
+    artistic: original ? {
+      effect: original.getAttribute('effect'), original: original.getAttributeNS(NS.r, 'embed'),
+      amount: original.hasAttribute('amount') ? Number(original.getAttribute('amount')) : null,
+    } : null,
   };
 }
 
@@ -468,26 +477,56 @@ export function setGeometry(r, prst) {
   geom.setAttribute('prst', prst || 'rect');
 }
 
+/** A scene's light rig: { rig, dir, angle (degrees, Word's lighting Angle) }, or null. */
+function lightOf(scene) {
+  const rig = child(scene, A, 'lightRig');
+  if (!rig) return null;
+  return { rig: rig.getAttribute('rig') || 'threePt', dir: rig.getAttribute('dir') || 't', angle: num(child(rig, A, 'rot'), 'rev') / 60000 };
+}
+
+/** Word's materials and lighting (3-D Format), by Word's names. */
+export const MATERIALS = [
+  ['matte', 'Matte'], ['warmMatte', 'Warm Matte'], ['plastic', 'Plastic'], ['metal', 'Metal'], ['dkEdge', 'Dark Edge'],
+  ['softEdge', 'Soft Edge'], ['flat', 'Flat'], ['legacyWireframe', 'Wireframe'], ['powder', 'Powder'],
+  ['translucentPowder', 'Translucent Powder'], ['clear', 'Clear'], ['softmetal', 'Soft Metal'],
+];
+export const LIGHTS = [
+  ['threePt', 'Three Point'], ['balanced', 'Balanced'], ['soft', 'Soft'], ['harsh', 'Harsh'], ['flood', 'Flood'],
+  ['contrasting', 'Contrasting'], ['morning', 'Morning'], ['sunrise', 'Sunrise'], ['sunset', 'Sunset'],
+  ['chilly', 'Chilly'], ['freezing', 'Freezing'], ['flat', 'Flat'], ['twoPt', 'Two Point'], ['glow', 'Glow'], ['brightRoom', 'Bright Room'],
+];
+
 /**
- * A picture's 3-D format (a:scene3d, a:sp3d): a bevel on its top edge (Word's sizes, 6 pt × 2 pt
- * unless given), a 3-D rotation (camera) and a material. Nothing set takes the 3-D format off.
+ * A picture's 3-D format and rotation (a:scene3d, a:sp3d), as Word's 3-D Format and 3-D Rotation
+ * set them: a bevel on its top edge ({ prst, w, h } in EMU, Word's 6 pt × 2 pt unless given), a
+ * material, a light rig ({ rig, dir, angle }), a camera preset, and a rotation by angles
+ * ({ x, y, z, perspective } in degrees, written as a:rot and the camera's field of view).
+ * Nothing set takes the 3-D format off.
  */
-export function set3D(r, { bevel = null, camera = null, material = null } = {}) {
+export function set3D(r, { bevel = null, camera = null, material = null, light = null, rotation = null } = {}) {
   const doc = r.ownerDocument;
   const spPr = spPrOf(r);
   for (const local of ['scene3d', 'sp3d']) {
     const old = child(spPr, A, local);
     if (old) spPr.removeChild(old);
   }
-  if (!bevel && !camera && !material) return;
+  const turned = rotation && (rotation.x || rotation.y || rotation.z || rotation.perspective);
+  const lit = light && (light.rig !== 'threePt' || light.dir !== 't' || light.angle);
+  if (!bevel && !camera && !material && !turned && !lit) return;
   const scene = makeA(doc, 'scene3d');
-  scene.appendChild(makeA(doc, 'camera', { prst: camera || 'orthographicFront' }));
-  scene.appendChild(makeA(doc, 'lightRig', { rig: 'threePt', dir: 't' }));
+  const cam = scene.appendChild(makeA(doc, 'camera', { prst: camera || (rotation?.perspective ? 'perspectiveFront' : 'orthographicFront') }));
+  if (rotation?.perspective) cam.setAttribute('fov', String(Math.round(rotation.perspective * 60000)));
+  if (rotation && (rotation.x || rotation.y || rotation.z)) {
+    const deg = (v) => String(Math.round((((Number(v) || 0) % 360) + 360) % 360 * 60000));
+    cam.appendChild(makeA(doc, 'rot', { lat: deg(rotation.y), lon: deg(rotation.x), rev: deg(rotation.z) }));
+  }
+  const rig = scene.appendChild(makeA(doc, 'lightRig', { rig: light?.rig || 'threePt', dir: light?.dir || 't' }));
+  if (light?.angle) rig.appendChild(makeA(doc, 'rot', { lat: 0, lon: 0, rev: Math.round((((light.angle % 360) + 360) % 360) * 60000) }));
   placeIn(spPr, scene, SPPR_ORDER);
   const sp3d = makeA(doc, 'sp3d', material ? { prstMaterial: material } : {});
   if (bevel) {
     const b = typeof bevel === 'string' ? { prst: bevel } : bevel;
-    sp3d.appendChild(makeA(doc, 'bevelT', { w: b.w ?? 76200, h: b.h ?? 25400, prst: b.prst || 'circle' }));
+    sp3d.appendChild(makeA(doc, 'bevelT', { w: Math.round(b.w ?? 76200), h: Math.round(b.h ?? 25400), prst: b.prst || 'circle' }));
   }
   placeIn(spPr, sp3d, SPPR_ORDER);
 }
@@ -563,10 +602,14 @@ export function applyPictureStyle(r, style) {
 
 // ---------------------------------------------------------------- artistic effects
 
-/** Artistic effects Intact draws, by Word's names (the a14 element Word uses for each, for reference). */
+/** Word's artistic effects, by Word's names, all drawn here (see editor/artistic.js). */
 export const ARTISTIC = [
-  ['blur', 'Blur'], ['pencilGrayscale', 'Pencil Grayscale'], ['lineDrawing', 'Line Drawing'],
-  ['glowEdges', 'Glow Edges'], ['photocopy', 'Photocopy'],
+  ['marker', 'Marker'], ['pencilGrayscale', 'Pencil Grayscale'], ['pencilSketch', 'Pencil Sketch'], ['lineDrawing', 'Line Drawing'],
+  ['chalkSketch', 'Chalk Sketch'], ['paintStrokes', 'Paint Strokes'], ['paintBrush', 'Paint Brush'], ['glowDiffused', 'Glow Diffused'],
+  ['blur', 'Blur'], ['lightScreen', 'Light Screen'], ['watercolorSponge', 'Watercolor Sponge'], ['filmGrain', 'Film Grain'],
+  ['mosaicBubbles', 'Mosaic Bubbles'], ['glass', 'Glass'], ['cement', 'Cement'], ['texturizer', 'Texturizer'],
+  ['crisscrossEtching', 'Crisscross Etching'], ['pastelsSmooth', 'Pastels Smooth'], ['plasticWrap', 'Plastic Wrap'],
+  ['cutout', 'Cutout'], ['photocopy', 'Photocopy'], ['glowEdges', 'Glow Edges'],
 ];
 
 /**
@@ -574,7 +617,7 @@ export const ARTISTIC = [
  * drawn image), and the original is kept (`original`, with the effect's name) in an extension of the
  * picture, so the effect can be changed or taken off here. Word shows the drawn picture.
  */
-export function setArtistic(r, { effect, rendered, original }) {
+export function setArtistic(r, { effect, rendered, original, amount = null }) {
   const doc = r.ownerDocument;
   const blip = child(blipFillOf(r), A, 'blip');
   clearArtisticMark(blip);
@@ -585,6 +628,7 @@ export function setArtistic(r, { effect, rendered, original }) {
   const el = ext.appendChild(doc.createElementNS(INTACT_PIC, 'intact:original'));
   el.setAttributeNS(NS.r, 'r:embed', original);
   el.setAttribute('effect', effect);
+  if (amount != null) el.setAttribute('amount', String(Math.round(amount)));
 }
 
 /** Takes an artistic effect off: the original picture shows again. */

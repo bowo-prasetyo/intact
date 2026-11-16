@@ -292,7 +292,8 @@
             <option v-if="!SHAPES.some(([v]) => v === picturePanel.shape)" :value="picturePanel.shape" disabled>As set in Word</option>
           </select>
         </label>
-        <div class="size-row">
+        <fieldset class="sub">
+          <legend>3-D format</legend>
           <label>Bevel
             <select v-model="picturePanel.bevel" @change="apply3D">
               <option value="">None</option>
@@ -300,14 +301,42 @@
               <option v-if="picturePanel.bevel && !BEVELS.some(([v]) => v === picturePanel.bevel)" :value="picturePanel.bevel" disabled>As set in Word</option>
             </select>
           </label>
-          <label>3-D rotation
-            <select v-model="picturePanel.camera" @change="apply3D">
+          <div class="size-row">
+            <label>Bevel width (pt) <input v-model.number="picturePanel.bevelW" type="number" min="0" step="0.5" :disabled="!picturePanel.bevel" @change="apply3D" /></label>
+            <label>Bevel height (pt) <input v-model.number="picturePanel.bevelH" type="number" min="0" step="0.5" :disabled="!picturePanel.bevel" @change="apply3D" /></label>
+          </div>
+          <label>Material
+            <select v-model="picturePanel.material" @change="apply3D">
+              <option value="">As Word chooses (Warm Matte)</option>
+              <option v-for="[value, label] in MATERIALS" :key="value" :value="value">{{ label }}</option>
+            </select>
+          </label>
+          <div class="size-row">
+            <label>Lighting
+              <select v-model="picturePanel.lightRig" @change="apply3D">
+                <option v-for="[value, label] in LIGHTS" :key="value" :value="value">{{ label }}</option>
+                <option v-if="!LIGHTS.some(([v]) => v === picturePanel.lightRig)" :value="picturePanel.lightRig" disabled>As set in Word</option>
+              </select>
+            </label>
+            <label>Light angle (°) <input v-model.number="picturePanel.lightAngle" type="number" step="5" @change="apply3D" /></label>
+          </div>
+        </fieldset>
+        <fieldset class="sub">
+          <legend>3-D rotation</legend>
+          <label>Preset
+            <select v-model="picturePanel.camera" @change="applyCameraPreset">
               <option value="">None</option>
               <option v-for="[value, label] in CAMERAS" :key="value" :value="value">{{ label }}</option>
               <option v-if="picturePanel.camera && !CAMERAS.some(([v]) => v === picturePanel.camera)" :value="picturePanel.camera" disabled>As set in Word</option>
             </select>
           </label>
-        </div>
+          <div class="size-row">
+            <label>X rotation (°) <input v-model.number="picturePanel.rotX" type="number" step="5" @change="apply3D('angles')" /></label>
+            <label>Y rotation (°) <input v-model.number="picturePanel.rotY" type="number" step="5" @change="apply3D('angles')" /></label>
+            <label>Z rotation (°) <input v-model.number="picturePanel.rotZ" type="number" step="5" @change="apply3D('angles')" /></label>
+            <label>Perspective (°) <input v-model.number="picturePanel.perspective" type="number" min="0" max="120" step="5" @change="apply3D('angles')" /></label>
+          </div>
+        </fieldset>
       </details>
       <details>
         <summary>Artistic effects</summary>
@@ -317,6 +346,7 @@
             <option v-for="[value, label] in ARTISTIC" :key="value" :value="value">{{ label }}</option>
           </select>
         </label>
+        <label>Amount <input v-model.number="picturePanel.amount" type="range" min="0" max="100" step="5" :disabled="!picturePanel.artistic || picturePanel.drawing" @change="applyArtistic" /></label>
         <p class="note">Drawn into the picture, which Word shows as it is here; the original is kept, so the effect can be changed or taken off here.</p>
       </details>
       <label class="alt">Alt text (describe the picture for people who can't see it)
@@ -424,7 +454,8 @@ import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../ed
 import { drawMarks } from '../editor/marks.js';
 import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
-import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC } from '../docx/pictures.js';
+import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC, MATERIALS, LIGHTS } from '../docx/pictures.js';
+import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import {
@@ -1069,6 +1100,7 @@ const picturePanel = reactive({
   cropL: 0, cropT: 0, cropR: 0, cropB: 0, rot: 0, flipH: false, flipV: false,
   border: 'none', borderColor: '#000000', shadow: false, glow: false, softEdge: false, reflection: false, colour: 'normal', brightness: 0, contrast: 0,
   style: '', shape: 'rect', bevel: '', camera: '', artistic: '', drawing: false,
+  bevelW: 6, bevelH: 2, material: '', lightRig: 'threePt', lightAngle: 0, rotX: 0, rotY: 0, rotZ: 0, perspective: 0, amount: 50,
 });
 const BORDERS = { thin: 0.75, medium: 1.5, thick: 3 };
 const picturePanelEl = ref(null);
@@ -1237,6 +1269,13 @@ function fillPicturePanel() {
     border, borderColor: `#${look.border?.color || '000000'}`.toLowerCase(), shadow: !!look.shadow, glow: !!look.glow, softEdge: !!look.softEdge,
     reflection: !!look.reflection, colour: look.greyscale ? 'greyscale' : 'normal', brightness: round(look.brightness * 100), contrast: round(look.contrast * 100),
     style: '', shape: look.geometry, bevel: look.bevel?.prst || '', camera: look.camera || '', artistic: look.artistic?.effect || '',
+    amount: look.artistic?.amount ?? 50,
+    bevelW: round((look.bevel?.w ?? 76200) / 12700, 1), bevelH: round((look.bevel?.h ?? 25400) / 12700, 1),
+    material: look.material || '', lightRig: look.light?.rig || 'threePt', lightAngle: round(look.light?.angle || 0),
+    ...(() => {
+      const [x, y, z, fov] = look.rotation3d ? [look.rotation3d.x, look.rotation3d.y, look.rotation3d.z, look.rotation3d.perspective] : CAMERA_ANGLES[look.camera] || [0, 0, 0, 0];
+      return { rotX: round(x, 1), rotY: round(y, 1), rotZ: round(z, 1), perspective: round(fov, 1) };
+    })(),
   });
 }
 
@@ -1419,10 +1458,33 @@ function applyShape() {
   changePicture((s) => doc.setPictureGeometry(s, picturePanel.shape), `Picture shape: ${label}`);
 }
 
-function apply3D() {
+/**
+ * The 3-D format and rotation from the panel, as Word's 3-D Format and 3-D Rotation set them. The
+ * angles (X, Y, Z rotation, perspective) are written when changed (`how` 'angles') or already set;
+ * a preset alone stays a preset.
+ */
+function apply3D(how) {
+  const p = picturePanel;
   const look = doc.pictureLookOf(picture.el);
-  const bevel = picturePanel.bevel ? (look.bevel?.prst === picturePanel.bevel ? look.bevel : picturePanel.bevel) : null;
-  changePicture((s) => doc.setPicture3D(s, { bevel, camera: picturePanel.camera || null, material: look.material }), '3-D format changed');
+  const bevel = p.bevel ? { prst: p.bevel, w: Math.max(0, Number(p.bevelW) || 0) * 12700, h: Math.max(0, Number(p.bevelH) || 0) * 12700 } : null;
+  const angles = how === 'angles' || look.rotation3d;
+  const rotation = angles ? { x: Number(p.rotX) || 0, y: Number(p.rotY) || 0, z: Number(p.rotZ) || 0, perspective: Math.max(0, Number(p.perspective) || 0) } : null;
+  changePicture((s) => doc.setPicture3D(s, {
+    bevel, camera: p.camera || null, material: p.material || null, rotation,
+    light: { rig: p.lightRig || 'threePt', dir: look.light?.dir || 't', angle: Number(p.lightAngle) || 0 },
+  }), how === 'angles' ? '3-D rotation changed' : '3-D format changed');
+}
+
+/** A 3-D rotation preset: its angles replace any set by hand. */
+function applyCameraPreset() {
+  const p = picturePanel;
+  const look = doc.pictureLookOf(picture.el);
+  const bevel = p.bevel ? { prst: p.bevel, w: Math.max(0, Number(p.bevelW) || 0) * 12700, h: Math.max(0, Number(p.bevelH) || 0) * 12700 } : null;
+  const label = CAMERAS.find(([v]) => v === p.camera)?.[1];
+  changePicture((s) => doc.setPicture3D(s, {
+    bevel, camera: p.camera || null, material: p.material || null,
+    light: { rig: p.lightRig || 'threePt', dir: look.light?.dir || 't', angle: Number(p.lightAngle) || 0 },
+  }), label ? `3-D rotation: ${label}` : '3-D rotation taken off');
 }
 
 /** An artistic effect: the picture is drawn with it here (the original kept), or taken off. */
@@ -1438,8 +1500,9 @@ async function applyArtistic() {
   picturePanel.drawing = true;
   message.value = `Drawing ${label}…`;
   try {
-    const png = await renderArtistic(doc.pictureOriginal(span).url, effect);
-    changePicture((s) => doc.setPictureArtistic(s, effect, png), `Artistic effect: ${label}`);
+    const amount = Number(picturePanel.amount) || 0;
+    const png = await renderArtistic(doc.pictureOriginal(span).url, effect, amount);
+    changePicture((s) => doc.setPictureArtistic(s, effect, png, amount), `Artistic effect: ${label}`);
   } catch (err) {
     message.value = err.message || 'The effect couldn’t be drawn';
   } finally {
@@ -3200,6 +3263,7 @@ async function close() {
 .picture-panel .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .picture-panel .buttons button[aria-pressed="true"] { background: var(--active); }
 .picture-panel input[type=color] { width: 100%; height: 26px; padding: 0 2px; }
+.picture-panel fieldset.sub { border-style: dashed; }
 .picture-panel .note { margin: 0; color: var(--muted); font-size: 12px; }
 .layout-options {
   position: absolute; z-index: 6; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;

@@ -1713,14 +1713,14 @@ export class DocxDocument {
    * An artistic effect on a picture: `png` (bytes) is the picture drawn with it, added as a new
    * picture file; the original is kept (see pictures.js setArtistic). `effect` null takes it off.
    */
-  setPictureArtistic(span, effect, png = null) {
+  setPictureArtistic(span, effect, png = null, amount = null) {
     const { rid: original } = this.pictureOriginal(span);
     if (!effect) {
       this.changePicture(span, (run) => clearArtistic(run));
       return;
     }
     const { rid } = this.addMedia(png, 'image/png');
-    this.changePicture(span, (run) => setArtistic(run, { effect, rendered: rid, original }));
+    this.changePicture(span, (run) => setArtistic(run, { effect, rendered: rid, original, amount }));
   }
 
   setPictureDescription(span, text) {
