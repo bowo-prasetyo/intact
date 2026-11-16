@@ -35,9 +35,10 @@ import {
   pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX, pictureLook, setCrop, setRotation, setEffects, wrapPolygon, setWrapPolygon,
 } from './pictures.js';
 import {
-  rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, isWrappedCell, insertRows, deleteRows, insertColumns, deleteColumns,
+  rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
   markCell, deleteCellTracked, undeleteCell, acceptInsertedCell, removeCells, removeRow, resolveMerge, restoreGrid, dropGridChange,
+  hMerge, isTrackedHMerge, resolveCellProps, normalizeHMerge,
 } from './tables.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
@@ -1260,6 +1261,23 @@ export class DocxDocument {
 
   /** A row's tracked insertion or deletion, shown on the row. */
   applyRowProps(row, tr, rowWrappers = []) {
+    // Cells merged across the row with w:hMerge: the first spans them, the others are hidden (but
+    // kept, as in the file, so rendered cells still match the row's cells).
+    let restart = null;
+    cellsOf(tr).forEach((tc, j) => {
+      const td = row.cells[j];
+      if (!td) return;
+      const h = hMerge(tc);
+      if (h === 'continue' && restart) {
+        restart.colSpan += td.colSpan || 1;
+        td.style.display = 'none';
+        td.classList.add('hmerge');
+      } else {
+        td.style.display = '';
+        td.classList.remove('hmerge');
+        restart = h === 'restart' ? td : null;
+      }
+    });
     const rev = rowRevision(tr);
     if (rev) {
       row.dataset.revRow = rev.kind; // a tracked row, accepted or rejected on the toolbar
@@ -1325,10 +1343,11 @@ export class DocxDocument {
       delete td.dataset.revKey;
       td.removeAttribute('title');
     }
-    const merge = wChild(tcPr, 'cellMerge');
+    // A tracked merge across a row is a tracked change of the cells' properties that sets w:hMerge.
+    const merge = wChild(tcPr, 'cellMerge') || (isTrackedHMerge(tc) ? wChild(tcPr, 'tcPrChange') : null);
     if (merge) {
       // A tracked merge or split down a column: its cells share a key (author and time).
-      td.dataset.revMerge = wAttr(merge, 'vMerge') === 'cont' ? 'merge' : 'split';
+      td.dataset.revMerge = merge.localName === 'tcPrChange' || wAttr(merge, 'vMerge') === 'cont' ? 'merge' : 'split';
       td.dataset.revMergeKey = `${wAttr(merge, 'author') || ''}|${wAttr(merge, 'date') || ''}`;
       if (!rev) td.title = `Cells ${td.dataset.revMerge === 'merge' ? 'merged' : 'split'}${byWhom({ author: wAttr(merge, 'author'), date: wAttr(merge, 'date') })} – tracked change: Accept or Reject on the toolbar`;
     } else if (td.dataset.revMerge) {
@@ -1336,7 +1355,7 @@ export class DocxDocument {
       delete td.dataset.revMergeKey;
       if (!rev) td.removeAttribute('title');
     }
-    const change = propertyChange(tc);
+    const change = !isTrackedHMerge(tc) && propertyChange(tc);
     if (change) {
       td.dataset.fmtCell = '1'; // a tracked change to the cell's properties (width, shading…)
       if (!rev) td.title = `Cell formatting changed${byWhom(change)} – tracked change: Accept or Reject on the toolbar`;
@@ -1949,37 +1968,35 @@ export class DocxDocument {
     if (cells.flat().length < 2) return { reason: 'Select the cells to merge: more than one' };
     const domRows = this.tableRows(table);
     const tds = cells.map((row, i) => row.map((c) => domRows[area.r0 + i].cells[c.index]));
-    if (cells.flat().some((c) => isWrappedCell(c.tc))) return { reason: 'Cells that are fields can’t be merged: merge them in Word' };
-    if (tds.flat().some((td) => !td || td.dataset.revCell || td.dataset.revMerge) || domRows.slice(area.r0, area.r1 + 1).some((r) => r.dataset.revRow)) {
+    if (tds.flat().some((td) => !td || td.dataset.revCell || td.dataset.revMerge || td.classList.contains('hmerge')) || domRows.slice(area.r0, area.r1 + 1).some((r) => r.dataset.revRow)) {
       return { reason: 'These cells are a tracked change: accept or reject it first' };
     }
-    const down = area.r1 > area.r0 && !!tracked; // merging down the rows: tracked while tracking
-    if (down && tds.slice(1).flat().some((td) => td.querySelector('[data-tracked], [data-tc], [data-tc-mark], [data-rev-mark]'))) {
+    // Cells that are fields merge too (the merged cell is the first one's field), unless a field
+    // can't be edited here: a locked one, one linked to data, a check box or a list.
+    if (tds.flat().some((td) => td.contentEditable === 'false')) {
+      return { reason: 'A cell to merge is a field that can’t be changed here (locked, linked to data, or not a text field): merge it in Word' };
+    }
+    if (tracked && tds.flat().slice(1).some((td) => td.querySelector('[data-tracked], [data-tc], [data-tc-mark], [data-rev-mark]'))) {
       return { reason: 'These cells hold tracked changes: accept or reject them first' };
     }
     const target = tds[0][0];
-    const empty = (td) => !td.textContent.trim() && !td.querySelector('img, .raw-inline, .sdt, table');
-    // Across each row (never tracked: Word can't record it), the cells' content joins the row's first cell.
-    tds.forEach((row) => {
-      for (const td of row.slice(1)) {
-        if (!empty(td)) {
-          if (empty(row[0])) row[0].replaceChildren();
-          row[0].append(...td.childNodes);
-        }
-        td.replaceChildren(this.emptyParagraph());
-      }
-    });
-    // Down the rows: moved into the merged cell, or, tracked, copied in as an insertion and left
-    // as a deletion where it was (so rejecting the merge puts it back).
-    for (const row of tds.slice(1)) {
-      const td = row[0];
+    // A field still showing its placeholder counts as empty: its placeholder text isn't moved.
+    const empty = (td) => td.classList.contains('showing-placeholder') || (!td.textContent.trim() && !td.querySelector('img, .raw-inline, .sdt, table'));
+    const clear = (td) => {
+      td.replaceChildren();
+      td.classList.remove('showing-placeholder');
+    };
+    // Their content goes into the merged cell, one cell after another; tracked, it is copied in as
+    // an insertion and left as a deletion where it was (so rejecting the merge puts it back).
+    for (const td of tds.flat().slice(1)) {
       if (empty(td)) continue;
-      if (!down) {
-        if (empty(target)) target.replaceChildren();
+      if (!tracked) {
+        if (empty(target)) clear(target);
         target.append(...td.childNodes);
         td.replaceChildren(this.emptyParagraph());
         continue;
       }
+      if (empty(target)) clear(target);
       for (const block of [...td.children]) {
         const copy = block.cloneNode(true);
         copy.dataset.tcMark = 'ins';
@@ -1990,7 +2007,8 @@ export class DocxDocument {
         block.replaceChildren(this.trackedSpan('del', tracked, [...block.childNodes]));
       }
     }
-    const rev = down && this.rowRevisionMaker(tracked);
+    if (!target.firstElementChild) target.append(this.emptyParagraph());
+    const rev = tracked && this.rowRevisionMaker(tracked);
     this.editTable(table, (t) => {
       mergeCells(t, area, rev);
       fitWidths(t, { before: Infinity, textWidth: 0 });
@@ -2060,10 +2078,15 @@ export class DocxDocument {
     }
     const rows = this.tableRows(table);
     const at = group.map((c) => [rows.indexOf(c.parentElement), [...c.parentElement.cells].indexOf(c)]);
-    this.editTable(table, (tbl) => at.forEach(([r, i]) => {
-      const tc = cellsOf(rowsOf(tbl)[r])[i];
-      if (tc) resolveMerge(tc, accept);
-    }));
+    this.editTable(table, (tbl) => {
+      const tcs = at.map(([r, i]) => cellsOf(rowsOf(tbl)[r])[i]).filter(Boolean);
+      for (const tc of tcs) {
+        resolveMerge(tc, accept);
+        if (isTrackedHMerge(tc)) resolveCellProps(tc, accept);
+      }
+      if (accept) normalizeHMerge(tbl); // accepted across a row: one cell spanning the columns, as Word writes it
+      fitWidths(tbl, { before: Infinity, textWidth: 0 });
+    });
   }
 
   /** Deletes a whole table: its rows marked deleted while tracking, else the table goes. */

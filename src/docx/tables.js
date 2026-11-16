@@ -522,10 +522,21 @@ export function areaCells(tbl, { r0, r1, c0, c1 }) {
  */
 export function mergeCells(tbl, area, rev = null) {
   const width = area.c1 - area.c0 + 1;
+  // Across a row, tracked: the cells stay, merged with w:hMerge (which Word reads), each with a
+  // tracked property change keeping its old properties, so rejecting the merge undoes it.
+  const across = rev && area.c1 > area.c0;
   areaCells(tbl, area).forEach((cells, i) => {
     const [first, ...rest] = cells;
-    for (const c of rest) detach(c.tc);
-    setSpan(first.tc, width);
+    if (across) {
+      cells.forEach((c, k) => {
+        const old = oldProps(c.tc);
+        setHMerge(c.tc, k === 0 ? 'restart' : 'continue');
+        markPropChange(c.tc, rev('tcPrChange'), old);
+      });
+    } else {
+      for (const c of rest) detach(c.tc);
+      setSpan(first.tc, width);
+    }
     const was = vMerge(first.tc);
     const now = area.r1 > area.r0 ? (i === 0 ? 'restart' : 'continue') : null;
     setVMerge(first.tc, now);
@@ -748,4 +759,79 @@ export function dropGridChange(tbl, key) {
   const grid = wChild(tbl, 'tblGrid');
   const change = wChild(grid, 'tblGridChange');
   if (change && `${wAttr(change, 'author') || ''}|${wAttr(change, 'date') || ''}` === key) grid.removeChild(change);
+}
+
+// ---------------------------------------------------------------- merges across a row (w:hMerge)
+
+/** A cell's horizontal merge, as older Word files (and tracked merges) mark it: 'restart', 'continue' or null. */
+export function hMerge(tc) {
+  const h = wChild(wChild(tc, 'tcPr'), 'hMerge');
+  if (!h) return null;
+  return wAttr(h, 'val') === 'restart' ? 'restart' : 'continue';
+}
+
+function setHMerge(tc, kind) {
+  if (!kind) {
+    removeW(wChild(tc, 'tcPr'), 'hMerge');
+    return;
+  }
+  const h = ensureOrdered(tcPr(tc), 'hMerge', TCPR_ORDER);
+  if (kind === 'restart') h.setAttributeNS(W, 'w:val', 'restart');
+  else h.removeAttributeNS(W, 'val');
+}
+
+/** A copy of a cell's properties as they are, without revisions: the "old" side of a tracked change. */
+function oldProps(tc) {
+  const old = (wChild(tc, 'tcPr') || createW(tc.ownerDocument, 'tcPr')).cloneNode(true);
+  removeW(old, 'tcPrChange', 'cellIns', 'cellDel', 'cellMerge');
+  return old;
+}
+
+/** Records a tracked change of a cell's properties: `rev` (<w:tcPrChange>) holds the old ones. */
+function markPropChange(tc, rev, old) {
+  const props = tcPr(tc);
+  removeW(props, 'tcPrChange');
+  rev.appendChild(old);
+  props.appendChild(rev);
+}
+
+/** True if a cell's properties have a tracked change that merges it across its row (w:hMerge). */
+export function isTrackedHMerge(tc) {
+  const props = wChild(tc, 'tcPr');
+  return !!wChild(props, 'tcPrChange') && !!wChild(props, 'hMerge');
+}
+
+/** A tracked change of a cell's properties, resolved: accepted, its record goes; rejected, the old properties come back. */
+export function resolveCellProps(tc, accept) {
+  const props = wChild(tc, 'tcPr');
+  const change = wChild(props, 'tcPrChange');
+  if (!change) return;
+  props.removeChild(change);
+  if (accept) return;
+  const kept = ['cellIns', 'cellDel', 'cellMerge'].map((local) => wChild(props, local)).filter(Boolean);
+  const old = wChild(change, 'tcPr');
+  while (props.firstChild) props.removeChild(props.firstChild);
+  for (const n of [...(old?.childNodes || [])]) props.appendChild(n);
+  for (const n of kept) props.appendChild(n);
+}
+
+/**
+ * Cells merged across a row with w:hMerge (no change pending) become one cell spanning the columns
+ * (w:gridSpan), as Word writes a merge: the first keeps its content, the others go.
+ */
+export function normalizeHMerge(tbl) {
+  for (const tr of rowsOf(tbl)) {
+    let restart = null;
+    for (const c of layout(tr)) {
+      const h = hMerge(c.tc);
+      const pending = !!wChild(wChild(c.tc, 'tcPr'), 'tcPrChange');
+      if (h === 'continue' && restart && !pending) {
+        setSpan(restart.tc, span(restart.tc) + c.span);
+        detach(c.tc);
+      } else {
+        restart = h === 'restart' && !pending ? c : null;
+        if (restart) setHMerge(c.tc, null);
+      }
+    }
+  }
 }

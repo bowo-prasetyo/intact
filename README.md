@@ -43,13 +43,17 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   (grown to whole cells where a merged cell sticks out) into one spanning them across (`gridSpan`)
   and down (`vMerge`), their content one after another in it; Split cells… divides a cell into
   columns of equal width (adding grid columns that the other rows span where needed) and rows (the
-  row's other cells merged down), and a merged cell splits back into the cells it spans. While
-  tracking they are tracked in the ways a Word document can record them: cells merged down a column
-  (or split back) with `w:cellMerge`, the text moved shown inserted in the merged cell and deleted
-  where it was; cells split into columns as inserted cells, the old grid kept (`tblGridChange`) so
-  rejecting gives the widths back; into rows as inserted rows. Each is one change to accept or
-  reject. Cells merged across a row can't be recorded in a Word document: that part is done
-  directly, and the status bar says so
+  row's other cells merged down), and a merged cell splits back into the cells it spans. Cells that
+  are text fields merge too (the merged cell is the first one's field; a placeholder isn't moved);
+  locked fields, fields linked to data and other kinds of field don't, and the status bar says
+  why. While tracking, merging and splitting are tracked as a Word document records them: cells
+  merged across a row with `w:hMerge`, each cell's old properties kept in a tracked property change
+  (`tcPrChange`); cells merged down a column (or split back) with `w:cellMerge`; the text moved
+  shown inserted in the merged cell and deleted where it was; cells split into columns as inserted
+  cells, the old grid kept (`tblGridChange`) so rejecting gives the widths back; into rows as
+  inserted rows. Each is one change to accept or reject; accepting a merge across a row leaves one
+  cell spanning the columns (`gridSpan`), as Word writes a merge. Cells an older Word file merged
+  with `w:hMerge` show merged
 - Insert pictures (PNG, JPEG, GIF or BMP) from the toolbar, by pasting a picture on its own (such as
   a screenshot) or by dropping picture files on the page: in line with the text at the caret, at
   their size or narrowed to fit between the margins, tracked while tracking. The picture's file,
@@ -245,8 +249,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 - Floating pictures are shown as near to Word's layout as a web page allows (rotation, shadows and
   reflections are approximated; a wrap outline isn't rotated with the picture); 3-D effects, artistic
-  effects and picture styles are kept but set in Word. Cells merged across a row can't be tracked
-  (Word documents have no way to record it), and cells that are fields can't be merged
+  effects and picture styles are kept but set in Word. Field cells that are locked, linked to data
+  or not text fields can't be merged
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
   lists (not highlight); pictures within copied text and links (their text is kept) are not added

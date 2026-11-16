@@ -1499,11 +1499,7 @@ function tableAction(kind) {
   } else if (kind === 'merge') {
     res = doc.mergeTableCells(table, sel.rows, sel.cols, tracked);
     if (res.cell) focus = res.cell;
-    // Word documents can record cells merged down a column as a tracked change, but not across a row.
-    done = !tracked ? 'Cells merged'
-      : res.down && !res.across ? 'Cells merged (tracked)'
-        : res.down ? 'Cells merged – tracked down the rows; merging across a row can’t be tracked in a Word document'
-          : 'Cells merged – merging across a row can’t be tracked in a Word document, so it isn’t marked';
+    done = tracked ? 'Cells merged (tracked)' : 'Cells merged';
   } else if (kind === 'split') {
     const { cols, rows } = splitDialog;
     res = doc.splitTableCell(table, cell, cols, rows, tracked);

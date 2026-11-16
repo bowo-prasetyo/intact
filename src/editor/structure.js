@@ -17,7 +17,7 @@ export function isAtBlockStart(range, block) {
 /** The editable cell `step` cells after (or before) `cell` in reading order, skipping merged cells. */
 export function adjacentCell(cell, step) {
   const table = cell.closest('table');
-  const cells = [...table.rows].flatMap((r) => [...r.cells]).filter((c) => c === cell || !c.classList.contains('vmerge'));
+  const cells = [...table.rows].flatMap((r) => [...r.cells]).filter((c) => c === cell || !(c.classList.contains('vmerge') || c.classList.contains('hmerge')));
   return cells[cells.indexOf(cell) + step] || null;
 }
 
