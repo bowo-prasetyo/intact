@@ -94,6 +94,8 @@ Saying no to these keeps the product small enough to keep its promises:
   property changes: still in Word)
 - Add a comment ✔; reply to, edit, resolve and delete comments ✔; add a table row with Tab in the
   last cell ✔
+- Insert tables and pictures ✔; insert and delete table rows and columns ✔ (merging and splitting
+  cells, resizing pictures: still in Word)
 - Edit headers, footers and footnotes
 - Installable offline app (PWA)
 

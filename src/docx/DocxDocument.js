@@ -29,7 +29,11 @@ import {
   trackedChangeLabel, paragraphMarkLabel, paragraphMarkRevision, inlineRevisionKind, formattingChange, rowRevision,
   tablePropertyChanges,
 } from './revisions.js';
-import { reviewParagraphs } from './review.js';
+import { reviewParagraphs, tableSummary } from './review.js';
+import {
+  rowsOf, cellsOf, layout, cellPosition, gridWidths, hasWrappedParts, insertRows, deleteRows, insertColumns, deleteColumns,
+  fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml,
+} from './tables.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
 } from './commentRemoval.js';
@@ -68,6 +72,10 @@ const FLATTEN_INLINE = new Set(['smartTag', 'customXml', 'dir', 'bdo']);
 const TRACKED_INLINE = { ins: 'Inserted', moveTo: 'Moved here', del: 'Deleted', moveFrom: 'Moved away' };
 const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'TABLE', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER']);
 const HEADING_TAG = { title: 'h1', h1: 'h1', h2: 'h2', h3: 'h3', h4: 'h4', h5: 'h5', h6: 'h6' };
+const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+// Pictures that can be inserted: the formats every version of Word shows.
+const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
 
 export class DocxDocument {
@@ -89,6 +97,7 @@ export class DocxDocument {
     this.zip = zip;
     this.name = name;
     this.mediaUrls = new Map();
+    this.newMedia = new Map(); // pictures inserted this session: relationship id -> { path, target, data, ext, type }
   }
 
   async text(path) {
@@ -152,6 +161,7 @@ export class DocxDocument {
     // Annotations (comments, revisions, bookmarks) share one id space: new ones come from here.
     for (const c of this.comments) if (Number(c.id) > maxId) maxId = Number(c.id);
     this.nextId = maxId + 1;
+    this.firstNewId = this.nextId; // ids from here on are this session's
     this.newComments = []; // comments added this session (see addComment)
     const loadVariants = async (local) => {
       const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd).map(async (v) => {
@@ -581,7 +591,11 @@ export class DocxDocument {
     const table = tr.closest('table');
     const rows = [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
     const index = rows.indexOf(tr);
-    const tbl = this.raw[Number(table.dataset.raw)].cloneNode(true);
+    const current = tableParts(this.raw[Number(table.dataset.raw)], 'tr')[index]?.el;
+    const was = current && rowRevision(current);
+    if (!was) return;
+    // A deleted row rejected is rendered again: from the table with the edits made in it.
+    const tbl = was.kind === 'del' && !accept ? this.tableWithEdits(table) : this.raw[Number(table.dataset.raw)].cloneNode(true);
     const row = tableParts(tbl, 'tr')[index]?.el;
     const rev = row && rowRevision(row);
     if (!rev) return;
@@ -589,8 +603,16 @@ export class DocxDocument {
       const trPr = wChild(row, 'trPr');
       removeW(trPr, 'ins', 'del');
       if (!elementChildren(trPr).length) row.removeChild(trPr);
-      delete tr.dataset.revRow;
-      tr.removeAttribute('title');
+      if (rev.kind === 'del') {
+        // A deleted row rejected: its text comes back, and its cells can be edited again.
+        undeleteRow(row);
+        const fresh = this.renderRow(row);
+        this.markTracked(fresh, false);
+        tr.replaceWith(fresh);
+      } else {
+        delete tr.dataset.revRow;
+        tr.removeAttribute('title');
+      }
     } else {
       row.parentNode.removeChild(row);
       tr.remove();
@@ -851,7 +873,8 @@ export class DocxDocument {
         if (!url) continue;
         const img = document.createElement('img');
         img.src = url;
-        img.alt = '';
+        const docPr = node.getElementsByTagNameNS(NS.wp, 'docPr')[0];
+        img.alt = docPr?.getAttribute('descr') || '';
         if (extent) {
           img.style.width = `${Number(extent.getAttribute('cx')) / 9525}px`;
           img.style.height = `${Number(extent.getAttribute('cy')) / 9525}px`;
@@ -1013,94 +1036,407 @@ export class DocxDocument {
   /** A table row (`rowWrappers`: content controls around it), its cells editable unless locked. */
   renderRow(tr, rowWrappers = []) {
     const row = document.createElement('tr');
-    const rev = rowRevision(tr);
-    if (rev && !rowWrappers.length) {
-      row.dataset.revRow = rev.kind; // a tracked row, accepted or rejected on the toolbar
-      row.title = `Row ${rev.kind === 'ins' ? 'inserted' : 'deleted'}${byWhom(rev)} – tracked change: Accept or Reject on the toolbar`;
-    }
     if (rowWrappers.length) {
       row.classList.add('sdt-row');
       row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
     }
-    for (const { el: tc, wrappers: cellWrappers } of tableParts(tr, 'tc')) {
-      const td = document.createElement('td');
-      td.contentEditable = 'true';
-      // Content controls around whole rows or cells: the cell is the field. Anything but a text
-      // field (and anything locked or bound) stays read-only.
-      const wrappers = [...rowWrappers, ...cellWrappers];
-      if (wrappers.length) {
-        const infos = wrappers.map(controlInfo);
-        td.classList.add('sdt-cell');
-        if (cellWrappers.length) td.title = controlTitle(infos[infos.length - 1]);
-        if (infos.some((i) => i.readOnly || i.kind !== 'text')) {
-          td.contentEditable = 'false';
-          td.classList.add('sdt-locked');
-        } else if (infos[infos.length - 1].placeholder) {
-          td.classList.add('showing-placeholder');
-        }
-      }
-      const tcPr = wChild(tc, 'tcPr');
-      const span = Number(wAttr(wChild(tcPr, 'gridSpan'), 'val') || 1);
-      if (span > 1) td.colSpan = span;
-      const vMerge = wChild(tcPr, 'vMerge');
-      if (vMerge && wAttr(vMerge, 'val') !== 'restart') td.classList.add('vmerge');
-      const w = wChild(tcPr, 'tcW');
-      if (w && wAttr(w, 'type') === 'dxa') td.style.width = `${Number(wAttr(w, 'w')) / 15}px`;
-      const shd = wAttr(wChild(tcPr, 'shd'), 'fill');
-      if (shd && /^[0-9a-f]{6}$/i.test(shd)) td.style.backgroundColor = '#' + shd;
-      this.renderBlocks(tc, td);
-      if (!td.childNodes.length) td.append(this.emptyParagraph());
-      row.append(td);
-    }
+    for (const { el: tc, wrappers: cellWrappers } of tableParts(tr, 'tc')) row.append(this.renderCell(tc, rowWrappers, cellWrappers));
+    this.applyRowProps(row, tr, rowWrappers);
     return row;
   }
 
-  /**
-   * Tab in the last cell: a new row at the end of a table, as Word adds one. It copies the last
-   * row's cells (widths, merged columns, shading, paragraph formatting) with no text, but not a
-   * header row's repeat or vertical merges; while tracking (`tracked`: author and date), the row is
-   * a tracked insertion. The table gets a new copy of its XML, so Undo stays exact. Returns the new
-   * row, or null (with the reason) for rows inside a content control.
-   */
-  addTableRow(table, tracked = null) {
-    const tbl = this.raw[Number(table.dataset.raw)].cloneNode(true);
-    const rows = tableParts(tbl, 'tr');
-    const last = rows[rows.length - 1];
-    if (!last) return { row: null, reason: 'This table has no rows to copy' };
-    if (last.wrappers.length) return { row: null, reason: 'This table’s rows are in a field: add rows in Word' };
-    const tr = last.el.cloneNode(true);
-    const trPr = wChild(tr, 'trPr');
-    if (trPr) {
-      removeW(trPr, 'tblHeader', 'ins', 'del', 'trPrChange');
-      if (!elementChildren(trPr).length) tr.removeChild(trPr);
+  /** A row's tracked insertion or deletion, shown on the row. */
+  applyRowProps(row, tr, rowWrappers = []) {
+    const rev = rowRevision(tr);
+    if (rev && !rowWrappers.length) {
+      row.dataset.revRow = rev.kind; // a tracked row, accepted or rejected on the toolbar
+      row.title = `Row ${rev.kind === 'ins' ? 'inserted' : 'deleted'}${byWhom(rev)} – tracked change: Accept or Reject on the toolbar`;
+    } else if (!rowWrappers.length) {
+      delete row.dataset.revRow;
+      row.removeAttribute('title');
     }
-    if (tracked) {
-      const props = wChild(tr, 'trPr') || tr.insertBefore(createW(this.xml, 'trPr'), wChildren(tr).find((c) => c.localName === 'tc' || c.localName === 'sdt') || null);
-      const ins = createW(this.xml, 'ins');
-      ins.setAttributeNS(W, 'w:id', String(this.nextId++));
-      ins.setAttributeNS(W, 'w:author', tracked.author);
-      if (tracked.date) ins.setAttributeNS(W, 'w:date', tracked.date);
-      props.appendChild(ins);
-    }
-    for (const { el: tc } of tableParts(tr, 'tc')) {
-      const tcPr = wChild(tc, 'tcPr');
-      removeW(tcPr, 'vMerge', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange');
-      // An empty paragraph with the formatting of the cell's first one.
-      const firstPPr = wChild(wChild(tc, 'p'), 'pPr');
-      for (const c of elementChildren(tc)) if (c.localName !== 'tcPr') tc.removeChild(c);
-      const p = tc.appendChild(createW(this.xml, 'p'));
-      if (firstPPr) {
-        const pPr = p.appendChild(firstPPr.cloneNode(true));
-        removeW(wChild(pPr, 'rPr'), 'ins', 'del', 'moveTo', 'moveFrom');
+  }
+
+  /** A table cell (`rowWrappers`, `cellWrappers`: content controls around its row or itself). */
+  renderCell(tc, rowWrappers = [], cellWrappers = []) {
+    const td = document.createElement('td');
+    td.contentEditable = 'true';
+    // Content controls around whole rows or cells: the cell is the field. Anything but a text
+    // field (and anything locked or bound) stays read-only.
+    const wrappers = [...rowWrappers, ...cellWrappers];
+    if (wrappers.length) {
+      const infos = wrappers.map(controlInfo);
+      td.classList.add('sdt-cell');
+      if (cellWrappers.length) td.title = controlTitle(infos[infos.length - 1]);
+      if (infos.some((i) => i.readOnly || i.kind !== 'text')) {
+        td.contentEditable = 'false';
+        td.classList.add('sdt-locked');
+      } else if (infos[infos.length - 1].placeholder) {
+        td.classList.add('showing-placeholder');
       }
     }
-    last.el.after(tr);
+    this.applyCellProps(td, tc);
+    this.renderBlocks(tc, td);
+    if (!td.childNodes.length) td.append(this.emptyParagraph());
+    return td;
+  }
+
+  /** What a cell's properties show: columns spanned, merged with the cell above, width, shading. */
+  applyCellProps(td, tc) {
+    const tcPr = wChild(tc, 'tcPr');
+    const span = Number(wAttr(wChild(tcPr, 'gridSpan'), 'val') || 1);
+    if (span > 1) td.colSpan = span;
+    else td.removeAttribute('colspan');
+    const vMerge = wChild(tcPr, 'vMerge');
+    td.classList.toggle('vmerge', !!vMerge && wAttr(vMerge, 'val') !== 'restart');
+    const w = wChild(tcPr, 'tcW');
+    td.style.width = w && wAttr(w, 'type') === 'dxa' ? `${Number(wAttr(w, 'w')) / 15}px` : '';
+    const shd = wAttr(wChild(tcPr, 'shd'), 'fill');
+    td.style.backgroundColor = shd && /^[0-9a-f]{6}$/i.test(shd) ? '#' + shd : '';
+  }
+
+  // ---------------------------------------------------------------- inserting pictures
+
+  /**
+   * A picture from a file (PNG, JPEG, GIF or BMP) as Word inserts one: in line with the text, at its
+   * own size or narrowed to fit between the margins. Its file goes into word/media when saved (if
+   * it is still in the document). Returns { span } (the rendered picture) or { reason }.
+   */
+  async addPicture(file) {
+    const ext = PICTURE_TYPES[file.type];
+    if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF or BMP picture` };
+    const data = new Uint8Array(await file.arrayBuffer());
+    const url = URL.createObjectURL(new Blob([data], { type: file.type }));
+    const size = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight } : null);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+    if (!size) {
+      URL.revokeObjectURL(url);
+      return { reason: `${file.name ? `“${file.name}”` : 'This picture'} couldn’t be read` };
+    }
+    const maxWidth = this.textWidth / 15;
+    let { w, h } = size;
+    if (w > maxWidth) {
+      h = Math.max(1, Math.round((h * maxWidth) / w));
+      w = maxWidth;
+    }
+    let n = 1;
+    const taken = (path) => this.zip.file(path) || [...this.newMedia.values()].some((m) => m.path === path);
+    while (taken(`${this.mainDir ? this.mainDir + '/' : ''}media/image${n}.${ext}`)) n++;
+    const target = `media/image${n}.${ext}`;
+    const path = `${this.mainDir ? this.mainDir + '/' : ''}${target}`;
+    let k = 1;
+    while (this.rels.has(`rIdImage${k}`)) k++;
+    const rid = `rIdImage${k}`;
+    this.rels.set(rid, { type: IMAGE_REL, target, external: false, path });
+    this.mediaUrls.set(path, url);
+    this.newMedia.set(rid, { path, target, data, ext, type: file.type });
+    const id = await this.nextDocPrId();
+    const cx = Math.round(w * 9525);
+    const cy = Math.round(h * 9525);
+    const name = (file.name || `image${n}.${ext}`).replace(/[<>&"]/g, '');
+    const xml = `<w:r xmlns:w="${W}" xmlns:wp="${NS.wp}" xmlns:a="${NS.a}" xmlns:pic="${PIC}" xmlns:r="${NS.r}"><w:drawing>`
+      + `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>`
+      + `<wp:docPr id="${id}" name="Picture ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
+      + `<a:graphic><a:graphicData uri="${PIC}"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr>`
+      + `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+      + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`
+      + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+    const r = this.xml.importNode(parseXml(xml).documentElement, true);
+    for (const a of [...r.attributes]) if (a.name.startsWith('xmlns')) r.removeAttributeNode(a); // declared where needed when saved
+    return { span: this.rawInline(r) };
+  }
+
+  /** A drawing id no other drawing in the package has (Word wants them unique). */
+  async nextDocPrId() {
+    if (this.docPrId == null) {
+      let max = 0;
+      for (const f of Object.values(this.zip.files)) {
+        if (f.dir || !/\.xml$/.test(f.name)) continue;
+        const text = await f.async('string');
+        for (const m of text.matchAll(/<(?:\w+:)?docPr\b[^>]*?\bid="(\d+)"/g)) max = Math.max(max, Number(m[1]));
+      }
+      this.docPrId = max;
+    }
+    return ++this.docPrId;
+  }
+
+  /**
+   * Writes the pictures inserted this session that are in the document (file, relationship, content
+   * type), and takes out any written by an earlier save that no longer are.
+   */
+  async writeMedia() {
+    if (!this.newMedia.size) return;
+    const used = new Set([...this.body.getElementsByTagNameNS(NS.a, 'blip')].map((b) => b.getAttributeNS(NS.r, 'embed')));
+    const rels = parseXml((await this.text(this.relsPath)) || `<Relationships xmlns="${NS.pr}"/>`);
+    const ct = parseXml(await this.text('[Content_Types].xml'));
+    let changed = false;
+    for (const [rid, m] of this.newMedia) {
+      const rel = [...rels.documentElement.children].find((r) => r.getAttribute('Id') === rid);
+      if (used.has(rid)) {
+        if (rel) continue;
+        this.zip.file(m.path, m.data);
+        const el = rels.createElementNS(NS.pr, 'Relationship');
+        el.setAttribute('Id', rid);
+        el.setAttribute('Type', IMAGE_REL);
+        el.setAttribute('Target', m.target);
+        rels.documentElement.appendChild(el);
+        const defaults = [...ct.documentElement.children].filter((c) => c.localName === 'Default');
+        if (!defaults.some((d) => d.getAttribute('Extension')?.toLowerCase() === m.ext)) {
+          const d = ct.createElementNS(NS.ct, 'Default');
+          d.setAttribute('Extension', m.ext);
+          d.setAttribute('ContentType', m.type);
+          ct.documentElement.insertBefore(d, ct.documentElement.firstElementChild);
+        }
+        changed = true;
+      } else if (rel) {
+        this.zip.remove(m.path);
+        rel.remove();
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    this.zip.file(this.relsPath, serializeXml(rels));
+    this.zip.file('[Content_Types].xml', serializeXml(ct));
+  }
+
+  // ---------------------------------------------------------------- table structure
+
+  /** The rendered rows of a table, in order (they stand for its <w:tr> elements, in order). */
+  tableRows(table) {
+    return [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
+  }
+
+  /** Why a table's structure can't be changed here, or null. */
+  tableLocked(table) {
+    if (table?.dataset.raw == null) return 'This table can’t be changed here: change it in Word';
+    if (hasWrappedParts(this.raw[Number(table.dataset.raw)])) return 'This table’s rows or cells are fields: change its layout in Word';
+    return null;
+  }
+
+  /** Text width between the page margins, in twips. */
+  get textWidth() {
+    const p = this.page;
+    return Math.round((p.width - p.left - p.right) * 15);
+  }
+
+  /** The grid columns and row of a rendered cell: { row, start, span }. */
+  cellPosition(td) {
+    const table = td.closest('table');
+    const row = this.tableRows(table).indexOf(td.parentElement);
+    const index = [...td.parentElement.cells].indexOf(td);
+    return cellPosition(this.raw[Number(table.dataset.raw)], row, index);
+  }
+
+  /**
+   * Changes a table's structure: `edit(tbl)` changes a copy of its XML (which then replaces it, so
+   * Undo stays exact), and the rendered table follows: rows and cells still there are kept as they
+   * are (with any edits in them), new ones are rendered. Cells' edits are kept in the copy first
+   * when `withEdits` (for rows rebuilt from XML). Returns false if no rows are left: the table goes.
+   */
+  editTable(table, edit, { withEdits = false } = {}) {
+    const tbl = withEdits ? this.tableWithEdits(table, true) : this.raw[Number(table.dataset.raw)].cloneNode(true);
+    const domRows = this.tableRows(table);
+    const rowOf = new Map();
+    const cellOf = new Map();
+    rowsOf(tbl).forEach((tr, i) => {
+      if (!domRows[i]) return;
+      rowOf.set(tr, domRows[i]);
+      cellsOf(tr).forEach((tc, j) => { if (domRows[i].cells[j]) cellOf.set(tc, domRows[i].cells[j]); });
+    });
+    edit(tbl);
+    fixMerges(tbl);
+    const rows = rowsOf(tbl);
+    if (!rows.length || !gridWidths(tbl).length) {
+      table.remove();
+      return false;
+    }
+    const rendered = rows.map((tr) => {
+      const row = rowOf.get(tr);
+      if (!row) {
+        const fresh = this.renderRow(tr);
+        this.markTracked(fresh, false);
+        return fresh;
+      }
+      row.replaceChildren(...cellsOf(tr).map((tc) => {
+        const td = cellOf.get(tc);
+        if (!td) return this.renderCell(tc);
+        this.applyCellProps(td, tc);
+        return td;
+      }));
+      this.applyRowProps(row, tr);
+      return row;
+    });
+    (table.tBodies[0] || table).replaceChildren(...rendered);
     table.dataset.raw = this.keep(tbl);
     const label = trackedChangeLabel(tbl);
     if (label) table.dataset.tracked = label;
-    const row = this.renderRow(tr);
-    table.querySelector(':scope > tbody, :scope').append(row);
-    return { row, reason: null };
+    else delete table.dataset.tracked;
+    return true;
+  }
+
+  /**
+   * A copy of a table's XML with the edits made in its cells. This session's tracked changes in it
+   * get their ids now; with `dropInsertions` (its rows are being deleted) its insertions go, with
+   * their content, as deleting your own insertion removes it in Word.
+   */
+  tableWithEdits(table, dropInsertions = false) {
+    this.revisions = [];
+    const tbl = this.serializeTable(table);
+    for (const rev of this.revisions) {
+      if (dropInsertions && rev.localName === 'ins' && rev.parentNode?.localName !== 'rPr') rev.parentNode?.removeChild(rev);
+      else rev.setAttributeNS(W, 'w:id', String(this.nextId++));
+    }
+    this.revisions = [];
+    return tbl;
+  }
+
+  /** A revision of this session for a table row, with its id now: <w:ins> or <w:del>. */
+  rowRevisionMaker(tracked) {
+    return (kind = 'ins') => {
+      const rev = createW(this.xml, kind);
+      rev.setAttributeNS(W, 'w:id', String(this.nextId++));
+      rev.setAttributeNS(W, 'w:author', tracked.author || 'Author');
+      if (tracked.date) rev.setAttributeNS(W, 'w:date', tracked.date);
+      return rev;
+    };
+  }
+
+  /**
+   * Inserts `count` rows above or below rendered row `index` (copies of it, empty), tracked while
+   * tracking (`tracked`: author and date). Returns { rows } (the new rendered rows) or { reason }.
+   */
+  insertTableRows(table, index, count, below, tracked = null) {
+    const reason = this.tableLocked(table);
+    if (reason) return { reason };
+    let made = [];
+    const rev = tracked && this.rowRevisionMaker(tracked);
+    this.editTable(table, (tbl) => { made = insertRows(tbl, index, count, below, rev); });
+    const rows = this.tableRows(table);
+    const first = below ? index + 1 : index;
+    return { rows: rows.slice(first, first + made.length) };
+  }
+
+  /** Tab in the last cell: a row like the last one, below it (see insertTableRows). */
+  addTableRow(table, tracked = null) {
+    const rows = this.tableRows(table);
+    if (!rows.length) return { row: null, reason: 'This table has no rows to copy' };
+    const res = this.insertTableRows(table, rows.length - 1, 1, true, tracked);
+    if (res.reason) return { row: null, reason: res.reason.replace('change its layout', 'add rows') };
+    return { row: res.rows[0], reason: null };
+  }
+
+  /**
+   * Deletes rendered rows `from` to `to`. While tracking they are marked deleted (rows inserted
+   * this session go); otherwise they go, and so does a table left with no rows. Returns
+   * { removed } (the table went) or { reason }.
+   */
+  deleteTableRows(table, from, to, tracked = null) {
+    const reason = this.tableLocked(table);
+    if (reason) return { reason };
+    const domRows = this.tableRows(table).slice(from, to + 1);
+    if (!tracked) {
+      const kept = domRows.find((r) => r.dataset.revRow || r.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para]'));
+      if (kept) return { reason: 'The rows hold tracked changes: accept or reject them first, or turn on Track changes' };
+      return { removed: !this.editTable(table, (tbl) => deleteRows(tbl, range(from, to))) };
+    }
+    if (domRows.some((r) => r.dataset.revRow && !this.ownRow(table, r))) {
+      return { reason: 'A row is already a tracked change: accept or reject it first' };
+    }
+    const rev = this.rowRevisionMaker(tracked);
+    const removed = !this.editTable(table, (tbl) => {
+      const rows = rowsOf(tbl);
+      const own = [];
+      for (let i = from; i <= to; i++) {
+        const tr = rows[i];
+        if (!tr) continue;
+        if (this.isOwnRow(tr)) { own.push(i); continue; }
+        const copy = tr.cloneNode(true); // a new element, so the row is rendered again
+        deleteRowTracked(copy, rev);
+        tr.replaceWith(copy);
+      }
+      deleteRows(tbl, own);
+    }, { withEdits: true });
+    return { removed };
+  }
+
+  /** True for a row inserted with tracking in this session. */
+  isOwnRow(tr) {
+    const ins = wChild(wChild(tr, 'trPr'), 'ins');
+    return !!ins && Number(wAttr(ins, 'id')) >= this.firstNewId;
+  }
+
+  ownRow(table, row) {
+    const tr = this.rowXml(row);
+    return !!tr && this.isOwnRow(tr);
+  }
+
+  /**
+   * Inserts `count` columns left or right of the grid columns `start`..`start + span - 1` (a cell's),
+   * as wide as the column next to them; a table that fitted the page narrows to fit. Column changes
+   * aren't tracked. Returns { reason } or {}.
+   */
+  insertTableColumns(table, start, span, count, right) {
+    const reason = this.tableLocked(table);
+    if (reason) return { reason };
+    const at = right ? start + span : start;
+    const like = right ? start + span - 1 : start;
+    this.editTable(table, (tbl) => {
+      const before = totalWidth(tbl);
+      insertColumns(tbl, at, count, like);
+      fitWidths(tbl, { before, textWidth: this.textWidth });
+    });
+    return {};
+  }
+
+  /** Deletes grid columns `from`..`to` (not tracked). Returns { removed } (the table went) or { reason }. */
+  deleteTableColumns(table, from, to) {
+    const reason = this.tableLocked(table);
+    if (reason) return { reason };
+    const tbl = this.raw[Number(table.dataset.raw)];
+    const held = this.tableRows(table).some((row, i) => {
+      if (row.dataset.revRow) return false;
+      const cells = layout(rowsOf(tbl)[i]);
+      // Cells wholly in the columns go (the others only narrow).
+      return [...row.cells].some((td, j) => cells[j] && cells[j].start >= from && cells[j].start + cells[j].span - 1 <= to
+        && td.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para]'));
+    });
+    if (held) return { reason: 'Cells in these columns hold tracked changes: accept or reject them first' };
+    return { removed: !this.editTable(table, (tbl2) => {
+      deleteColumns(tbl2, from, to);
+      fitWidths(tbl2, { before: Infinity, textWidth: 0 });
+    }) };
+  }
+
+  /** Deletes a whole table: its rows marked deleted while tracking, else the table goes. */
+  deleteTable(table, tracked = null) {
+    const rows = this.tableRows(table);
+    if (!tracked) {
+      const reason = this.tableLocked(table);
+      if (reason && !reason.startsWith('This table’s rows')) return { reason };
+      if (table.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para], [data-rev-row]')) {
+        return { reason: 'The table holds tracked changes: accept or reject them first, or turn on Track changes' };
+      }
+      table.remove();
+      return { removed: true };
+    }
+    return this.deleteTableRows(table, 0, rows.length - 1, tracked);
+  }
+
+  /**
+   * A new table of `rows` × `cols` empty cells across the page, in the Table Grid style (added to
+   * the file if need be); while tracking, its rows are tracked insertions. Returns the rendered table.
+   */
+  newTable(rows, cols, tracked = null) {
+    const styleId = this.styles.ensureTableGrid();
+    const tbl = newTableXml(this.xml, rows, cols, this.textWidth, styleId, tracked && this.rowRevisionMaker(tracked));
+    const table = this.renderTable(tbl);
+    const label = trackedChangeLabel(tbl);
+    if (label) table.dataset.tracked = label;
+    return table;
   }
 
   /**
@@ -1279,6 +1615,12 @@ export class DocxDocument {
         if (n.namespaceURI === W && n.localName === 'p') { trackedParagraphs.add(n); break; }
       }
     }
+    // Rows inserted or deleted with tracking this session: their paragraphs are tracked too.
+    for (const tr of this.body.getElementsByTagNameNS(W, 'tr')) {
+      const trPr = wChild(tr, 'trPr');
+      const rev = wChild(trPr, 'ins') || wChild(trPr, 'del');
+      if (rev && Number(wAttr(rev, 'id')) >= this.firstNewId) for (const p of tr.getElementsByTagNameNS(W, 'p')) trackedParagraphs.add(p);
+    }
     const styleName = (id) => {
       const name = (id ? this.styles.byId.get(id)?.name || id : this.styles.byId.get(this.styles.defaultParagraph)?.name) || 'Normal';
       return name[0].toUpperCase() + name.slice(1); // built-in names are stored as "heading 1"
@@ -1301,6 +1643,11 @@ export class DocxDocument {
       tracking: this.tracking,
       trackingSwitched: this.tracking !== this.trackRevisions,
       stylesAdded: this.styles.changed,
+      layout: tableSummary(this.originalBody, this.body),
+      rowsTracked: [...this.body.getElementsByTagNameNS(W, 'trPr')].reduce((n, trPr) => {
+        const rev = wChild(trPr, 'ins') || wChild(trPr, 'del');
+        return n + (rev && Number(wAttr(rev, 'id')) >= this.firstNewId ? 1 : 0);
+      }, 0),
       listsAdded: this.numberingChanged,
     };
   }
@@ -1309,6 +1656,7 @@ export class DocxDocument {
   async save(root) {
     this.update(root);
     this.zip.file(this.mainPath, serializeXml(this.xml));
+    await this.writeMedia();
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
     await this.writeComments();
@@ -1793,6 +2141,11 @@ function markCommentRange(el, node) {
   if (node.namespaceURI !== W) return;
   if (node.localName === 'commentRangeStart') el.dataset.commentStart = wAttr(node, 'id');
   if (node.localName === 'commentRangeEnd') el.dataset.commentEnd = wAttr(node, 'id');
+}
+
+/** The numbers from `a` to `b`. */
+function range(a, b) {
+  return Array.from({ length: b - a + 1 }, (_, i) => a + i);
 }
 
 function romanLower(n) {

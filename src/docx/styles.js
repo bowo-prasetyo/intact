@@ -84,6 +84,26 @@ export class StyleSheet {
     return id;
   }
 
+  /**
+   * The id of Word's "Table Grid" table style (thin borders on every cell), added to styles.xml if
+   * it isn't there, as Word adds it when it inserts a table.
+   */
+  ensureTableGrid() {
+    for (const s of this.byId.values()) if (s.type === 'table' && s.name.toLowerCase() === 'table grid') return s.id;
+    let id = 'TableGrid';
+    while (this.byId.has(id)) id += '0';
+    const normal = [...this.byId.values()].find((s) => s.type === 'table' && (s.isDefault || s.name.toLowerCase() === 'normal table'));
+    const border = (side) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="auto"/>`;
+    const xml = `<w:style w:type="table" w:styleId="${id}"><w:name w:val="Table Grid"/>${normal ? `<w:basedOn w:val="${normal.id}"/>` : ''}<w:uiPriority w:val="39"/>`
+      + '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
+      + `<w:tblPr><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(border).join('')}</w:tblBorders></w:tblPr></w:style>`;
+    const frag = parseXml(`<root xmlns:w="${NS.w}">${xml}</root>`).documentElement;
+    this.doc.documentElement.appendChild(this.doc.importNode(wChild(frag, 'style'), true));
+    this.changed = true;
+    this.reindex();
+    return id;
+  }
+
   /** Classifies a paragraph style id as 'title', 'h1'..'h6' or null. */
   kindOf(styleId) {
     const s = styleId && this.byId.get(styleId);

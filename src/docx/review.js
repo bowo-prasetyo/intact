@@ -3,7 +3,7 @@
 // round-trip tests compare them (tests/helpers.js canonicalize): revision-session ids, paragraph
 // ids, spelling marks and how text is split into runs don't count, so an untouched paragraph is
 // never reported.
-import { NS, wChild, wAttr } from './xml.js';
+import { NS, wChild, wChildren, wAttr } from './xml.js';
 
 const W = NS.w;
 const IGNORED = new Set(['proofErr', 'lastRenderedPageBreak']);
@@ -174,6 +174,9 @@ function formattingChanges(before, after, styleName) {
   const val = (p, local) => wAttr(wChild(pPr(p), local), 'val');
   const out = [];
   if (revisions(before) > revisions(after)) return ['Tracked change accepted or rejected'];
+  const pictures = (p) => p.getElementsByTagNameNS(NS.a, 'blip').length + p.getElementsByTagNameNS(NS.v, 'imagedata').length;
+  if (pictures(after) > pictures(before)) return ['Picture added'];
+  if (pictures(after) < pictures(before)) return ['Picture removed'];
   const marks = (p) => p.getElementsByTagNameNS(W, 'commentReference').length;
   if (marks(after) > marks(before)) return ['Comment added'];
   if (marks(after) < marks(before)) return ['Comment removed'];
@@ -235,10 +238,30 @@ export function reviewParagraphs(beforeBody, afterBody, { tracked = () => false,
     added = [];
   };
   for (const op of ops) {
+    // Empty cells added or removed with rows and columns are summed up instead (see tableSummary).
+    if (op[0] === 'del' && A[op[1]].inTable && !A[op[1]].text && !revisions(A[op[1]].p)) continue;
+    if (op[0] === 'ins' && B[op[1]].inTable && !B[op[1]].text) continue;
     if (op[0] === 'same') flush();
     else if (op[0] === 'del') gone.push(op[1]);
     else added.push(op[1]);
   }
   flush();
   return entries;
+}
+
+/**
+ * Tables and pictures, before and after: { tables, rows, columns, pictures } counts for each, for
+ * the review's notes (cells added with rows and columns aren't listed one by one).
+ */
+export function tableSummary(beforeBody, afterBody) {
+  const count = (body) => {
+    const tables = [...body.getElementsByTagNameNS(W, 'tbl')];
+    return {
+      tables: tables.length,
+      rows: tables.reduce((n, t) => n + [...t.getElementsByTagNameNS(W, 'tr')].filter((tr) => closestW(tr, 'tbl') === t).length, 0),
+      columns: tables.reduce((n, t) => n + wChildren(wChild(t, 'tblGrid'), 'gridCol').length, 0),
+      pictures: body.getElementsByTagNameNS(NS.a, 'blip').length + body.getElementsByTagNameNS(NS.v, 'imagedata').length,
+    };
+  };
+  return { before: count(beforeBody), after: count(afterBody) };
 }
