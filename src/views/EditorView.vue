@@ -688,6 +688,7 @@ function closestBlock(node) {
 function onSelectionChange() {
   const range = selectionInPage();
   if (!range) return;
+  if (caretOutOfMarker(range)) return; // the selection changes again, and this runs again
   lastReadOnly = null;
   const pic = pictureInSelection(range);
   if (pic !== picture.el) {
@@ -748,6 +749,26 @@ function placeCaret(el, atStart = false) {
   const sel = window.getSelection();
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/**
+ * Firefox puts the caret inside an empty non-editable marker at the end of a line (a comment's
+ * mark, a hidden comment range or bookmark, a note's number), where typing and deleting do
+ * nothing. Puts it just after the marker instead: true if it moved.
+ */
+function caretOutOfMarker(range) {
+  if (!range.collapsed) return false;
+  let el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  let atom = null;
+  for (; el && el !== page.value && !el.isContentEditable; el = el.parentElement) atom = el;
+  if (!atom || !el?.isContentEditable || atom.tagName !== 'SPAN' || atom.textContent || atom.querySelector('img, math')) return false;
+  const after = document.createRange();
+  after.setStartAfter(atom);
+  after.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(after);
+  return true;
 }
 
 function focusEnd() {
@@ -973,11 +994,14 @@ function onInput(e) {
     markSplit(pendingSplit); // Enter while tracking: the new paragraph break is an insertion
     pendingSplit = null;
   }
-  // Never leave the page completely empty: keep at least one paragraph to type into.
-  if (!page.value.firstElementChild) {
+  // Firefox, typing over whole paragraphs (as after Select All), can put the text outside them.
+  if (!e?.isComposing) for (const n of [...page.value.childNodes]) if (n.nodeType === 3 && n.data) moveIntoParagraph(n);
+  // Never leave the page (the text above the notes) empty: keep at least one paragraph to type into.
+  const first = page.value.firstElementChild;
+  if (!first || first.classList.contains('docx-notes')) {
     const p = document.createElement('p');
     p.append(document.createElement('br'));
-    page.value.append(p);
+    page.value.insertBefore(p, first);
     placeCaret(p, true);
   }
   const range = selectionInPage();
@@ -993,6 +1017,27 @@ function onInput(e) {
   markDirty();
   refreshComments();
   if (e?.inputType?.startsWith('format')) noteUntrackedFormatting();
+}
+
+/** Moves text typed directly into the page into the paragraph after it (or a new one), caret after it. */
+function moveIntoParagraph(text) {
+  let next = text.nextSibling;
+  while (next && next.nodeType !== 1) next = next.nextSibling;
+  let p = next?.matches(BLOCK_SELECTOR) ? next : null;
+  if (p) {
+    if (!p.textContent && p.lastChild?.tagName === 'BR') p.lastChild.remove();
+    p.prepend(text);
+  } else {
+    p = document.createElement('p');
+    text.before(p);
+    p.append(text);
+  }
+  const range = document.createRange();
+  range.setStart(text, text.length);
+  range.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 function onBeforeInput(e) {
@@ -2595,9 +2640,13 @@ function onKeydown(e) {
   const notes = page.value.querySelector(':scope > .docx-notes');
   if (mod && key === 'a' && !e.shiftKey && !e.altKey && notes && range && !noteAt(range.startContainer)) {
     e.preventDefault();
+    // From the first block to the end of the last one before the notes: deleting it leaves a paragraph.
+    const first = page.value.firstElementChild;
+    const last = notes.previousElementSibling;
+    if (!last) return;
     const all = document.createRange();
-    all.setStart(page.value, 0);
-    all.setEndBefore(notes);
+    all.setStart(first, 0);
+    all.setEnd(last, last.childNodes.length);
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(all);
