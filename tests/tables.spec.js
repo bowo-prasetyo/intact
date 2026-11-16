@@ -66,6 +66,6 @@ test('rows inside a field aren\'t extended, and the status bar says why', async 
   await openInEditor(page, await buildDocx(`<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid>${rowField(`<w:tr>${CELL('Line')}</w:tr>`)}</w:tbl><w:p/>`));
   await page.locator('td', { hasText: 'Line' }).click();
   await page.keyboard.press('Tab');
-  await expect(page.locator('.statusbar [role=status]')).toHaveText('This table’s rows are in a field: add rows in Word');
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('This table’s rows or cells are fields: add rows in Word');
   await expect(page.locator('tr')).toHaveCount(1);
 });

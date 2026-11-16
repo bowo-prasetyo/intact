@@ -22,6 +22,21 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Tab and Shift+Tab move between table cells; Tab in the last cell adds a row, as in Word (a copy of
   the last row's cells, empty: widths, merged columns, shading and paragraph formatting, but not a
   header row's repeat or vertical merges), tracked while tracking changes
+- Insert tables (toolbar grid, or type any size up to Word's 63 columns) at the caret, as Word does:
+  the paragraph is split there, the table spans the page in Word's Table Grid style (added to
+  `styles.xml` if the file lacks it), and while tracking its rows are tracked insertions
+- Change a table's layout from the Table layout menu, as on Word's Layout tab: insert rows above or
+  below (as many as are selected; copies of the row, carrying vertical merges and header repeat on
+  where they fall inside them), insert columns left or right (cells spanning the place are widened,
+  the grid and widths follow, and a table that fitted the page narrows to fit), delete rows, columns
+  or the whole table. Rows are tracked while tracking (a deleted row is marked, its text struck
+  through, and accepted or rejected as one change; deleting a row you inserted removes it). Column
+  changes can't be tracked here, so they are made directly and the status bar says so; rows holding
+  someone's tracked change aren't deleted untracked
+- Insert pictures (PNG, JPEG, GIF or BMP) from the toolbar, by pasting a picture on its own (such as
+  a screenshot) or by dropping picture files on the page: in line with the text at the caret, at
+  their size or narrowed to fit between the margins, tracked while tracking. The picture's file,
+  relationship and content type are added when saving, only if it is still in the document
 - Add comments (toolbar button or Ctrl+Alt+M) on the selected text, or the word at the caret, with
   your name (asked once, shared with Track Changes): they appear in the comments panel and are
   written to `comments.xml` (created if the document has none) next to the comments already there.
@@ -50,8 +65,8 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   never in it, so they can't change the document; the choice is remembered in this browser
 - Paste with basic formatting, as Word's "merge formatting": bold, italic, underline,
   strikethrough, superscript, subscript, paragraphs, line breaks and bulleted/numbered lists come through from web pages,
-  Google Docs and Word; fonts, colours, styles, links and pictures don't (the status bar says when
-  pictures were skipped)
+  Google Docs and Word; fonts, colours, styles, links and pictures in copied text don't (the status
+  bar says when pictures were skipped; a picture copied on its own is inserted)
 - Track Changes for your own edits (toolbar button or Ctrl+Shift+E), as in Word: typing, deleting,
   Enter, Shift+Enter, paste, Replace and page breaks are recorded as tracked changes with your name
   and the date, shown in colour as you work (deleted text struck through and kept, a deleted
@@ -105,12 +120,15 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
    run's `<w:rPr>` are kept as the original XML in a side table, referenced by `data-ppr` /
    `data-rpr`. Bold/italic/underline/strike become HTML tags so the browser can edit them.
    Unsupported content becomes a non-editable placeholder (`data-raw`) holding the original XML.
-   Tables keep their XML structure; only cell contents are editable.
+   Tables keep their XML structure; cell contents are editable, and rows and columns change through
+   `src/docx/tables.js`, which edits a copy of the table's XML by grid column while the rendered
+   rows and cells (with any edits in them) are kept.
 3. **Save** – the editor DOM is walked back into WordprocessingML: stored properties are cloned,
    toggles are merged in (respecting the schema order of `CT_RPr`/`CT_PPr`), adjacent runs with the
    same formatting are merged, and placeholders are written back verbatim. Only
-   `word/document.xml` changes, plus `styles.xml` if a heading style had to be added and
-   `numbering.xml` if a new list was started.
+   `word/document.xml` changes, plus `styles.xml` if a heading or the Table Grid style had to be
+   added, `numbering.xml` if a new list was started, and for inserted pictures their files in
+   `word/media`, relationships and content types.
 4. **Content controls** – a `<w:sdt>` is shown as a frame around its rendered content. Text and
    combo box fields hold an editable `.sdt-content` island; check boxes, drop-downs and dates
    change through clicks. On save its `<w:sdtContent>` is rebuilt and its properties kept, updating
@@ -184,12 +202,11 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
-- Can't insert images or tables; rows can be added at the end of a table (Tab in the last cell),
-  but not elsewhere, and columns can't be added or removed
+- Pictures go in line with the text; they can't be resized, wrapped or positioned here. Cells can't
+  be merged or split, and tables whose rows or cells are content controls are changed in Word
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
-  lists (not highlight); pasted pictures
-  and links (their text is kept) are not added
+  lists (not highlight); pictures within copied text and links (their text is kept) are not added
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)

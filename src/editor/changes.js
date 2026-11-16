@@ -4,7 +4,7 @@
 //   run     a tracked formatting change of a run (data-fmt);
 //   mark    a tracked paragraph break (the paragraph; data-tc-mark or data-rev-mark);
 //   para    a tracked change to a paragraph's formatting (data-fmt-para);
-//   row     a tracked table row (data-rev-row).
+//   row     a tracked table row (data-rev-row); the changes in a deleted row are part of it.
 // Changes inside content saved verbatim (locked fields and cells, preserved blocks) can only be
 // accepted or rejected in Word, and aren't listed (DocxDocument.wordOnlyChanges counts them).
 
@@ -27,6 +27,11 @@ export function changeItems(root) {
     for (const el of node.children) {
       if (isInline(el)) {
         add(el, 'inline');
+        continue;
+      }
+      // A deleted row is one change: accepting it removes the row, rejecting it brings its text back.
+      if (el.tagName === 'TR' && el.dataset.revRow === 'del') {
+        add(el, 'row');
         continue;
       }
       if (el.dataset.fmt === 'run') add(el, 'run');

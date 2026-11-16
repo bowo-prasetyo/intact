@@ -57,6 +57,17 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
+      <button type="button" title="Insert picture" @click="pickPicture">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
+      </button>
+      <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
+      <button ref="tableButton" type="button" title="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
+      </button>
+      <button ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+      </button>
+      <span class="sep" />
       <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
       </button>
@@ -174,6 +185,43 @@
       </template>
     </div>
 
+    <div v-if="tableMenu.open" ref="tableMenuEl" class="change-menu" role="menu" aria-label="Table layout" :style="{ left: `${tableMenu.x}px`, top: `${tableMenu.y}px` }" @mousedown.prevent @keydown.esc="closeTableMenu" @keydown="onMenuArrows">
+      <button type="button" role="menuitem" @click="tableAction('rowsAbove')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows above` : 'Insert row above' }}</button>
+      <button type="button" role="menuitem" @click="tableAction('rowsBelow')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows below` : 'Insert row below' }}</button>
+      <button type="button" role="menuitem" @click="tableAction('columnsLeft')">{{ tableMenu.newCols > 1 ? `Insert ${tableMenu.newCols} columns to the left` : 'Insert column to the left' }}</button>
+      <button type="button" role="menuitem" @click="tableAction('columnsRight')">{{ tableMenu.newCols > 1 ? `Insert ${tableMenu.newCols} columns to the right` : 'Insert column to the right' }}</button>
+      <hr />
+      <button type="button" role="menuitem" @click="tableAction('deleteRows')">{{ tableMenu.rows > 1 ? `Delete ${tableMenu.rows} rows` : 'Delete row' }}</button>
+      <button type="button" role="menuitem" @click="tableAction('deleteColumns')">{{ tableMenu.cols > 1 ? `Delete ${tableMenu.cols} columns` : 'Delete column' }}</button>
+      <button type="button" role="menuitem" @click="tableAction('deleteTable')">Delete table</button>
+    </div>
+
+    <div v-if="tablePicker.open" ref="tablePickerEl" class="table-picker" role="dialog" aria-label="Insert table" :style="{ left: `${tablePicker.x}px`, top: `${tablePicker.y}px` }" @keydown.esc="closeTablePicker">
+      <p class="size" aria-hidden="true">{{ tablePicker.cols }} × {{ tablePicker.rows }} table</p>
+      <div class="grid" @mouseleave="tablePicker.cols = tablePicker.rows = 1">
+        <template v-for="r in PICKER_ROWS" :key="r">
+          <button
+            v-for="c in PICKER_COLS"
+            :key="c"
+            type="button"
+            class="cell"
+            :class="{ on: r <= tablePicker.rows && c <= tablePicker.cols }"
+            :tabindex="r === tablePicker.rows && c === tablePicker.cols ? 0 : -1"
+            :aria-label="`${c} by ${r} table`"
+            @mousedown.prevent
+            @mouseenter="Object.assign(tablePicker, { rows: r, cols: c })"
+            @keydown="onPickerKeydown"
+            @click="insertTable(r, c)"
+          />
+        </template>
+      </div>
+      <form class="custom" @submit.prevent="insertTable(tablePicker.customRows, tablePicker.customCols)">
+        <label>Columns <input v-model.number="tablePicker.customCols" type="number" min="1" :max="MAX_COLS" required /></label>
+        <label>Rows <input v-model.number="tablePicker.customRows" type="number" min="1" :max="MAX_ROWS" required /></label>
+        <button type="submit">Insert</button>
+      </form>
+    </div>
+
     <div v-if="palette.open" ref="paletteEl" class="palette" role="dialog" aria-label="Highlight colour" :style="{ left: `${palette.x}px`, top: `${palette.y}px` }" @mousedown.prevent @keydown.esc="closePalette">
       <div class="swatches">
         <button v-for="[name, label] in HIGHLIGHT_COLORS" :key="name" type="button" class="swatch" :class="{ current: name === highlightColor }" :style="{ background: HIGHLIGHT[name] }" :title="label" :aria-label="label" @click="pickHighlight(name)" />
@@ -237,7 +285,7 @@ const saving = ref(false);
 const message = ref('');
 const words = ref(0);
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
-const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null });
+const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null, table: false });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
 const threads = ref([]);
@@ -472,6 +520,18 @@ function onSelectionChange() {
   const align = block ? getComputedStyle(block).textAlign : 'left';
   state.align = { start: 'left', end: 'right' }[align] || align;
   state.list = block ? doc.listKind(doc.listOf(block)) : null;
+  state.table = !!tableSelection();
+}
+
+/** Back to the page with the selection it had (after a menu, a dialog or the file picker). */
+function refocus() {
+  const range = savedRange;
+  page.value.focus();
+  if (range && page.value.contains(range.commonAncestorContainer)) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
 }
 
 function restoreSelection() {
@@ -835,6 +895,312 @@ function addRow(cell) {
   undoStack.commit();
   selectCell(row.querySelector('td[contenteditable="true"]') || row.cells[0]);
   markDirty();
+}
+
+// ------------------------------------------------------------------ table layout
+
+const tableMenu = reactive({ open: false, x: 0, y: 0, rows: 1, cols: 1, newCols: 1 });
+const tableMenuEl = ref(null);
+const layoutButton = ref(null);
+
+const cellOf = (node) => (node?.nodeType === 1 ? node : node?.parentElement)?.closest('td') || null;
+
+/**
+ * The table cells selected (or the one with the caret): the table, the cell the selection starts
+ * in, and the rows and grid columns covered ([first, last]). Null outside a table.
+ */
+function tableSelection() {
+  const range = selectionInPage() || savedRange;
+  const a = range && cellOf(range.startContainer);
+  if (!a || !page.value.contains(a)) return null;
+  const table = a.closest('table');
+  if (table.dataset.raw == null) return null;
+  let b = cellOf(range.endContainer);
+  // A selection ending at the very start of a cell (as when Tab selects a whole cell) ends before it.
+  const end = range.cloneRange();
+  end.collapse(false);
+  if (b && b !== a && isAtBlockStart(end, b)) {
+    const cells = [...table.querySelectorAll(':scope > tbody > tr > td, :scope > tr > td')];
+    b = cells[cells.indexOf(b) - 1] || a;
+  }
+  if (!b || b.closest('table') !== table) b = a;
+  const pa = doc.cellPosition(a);
+  const pb = doc.cellPosition(b);
+  if (!pa || !pb) return { table, cell: a, rows: [0, 0], cols: [0, 0], newCols: 1 };
+  const cols = [Math.min(pa.start, pb.start), Math.max(pa.start + pa.span, pb.start + pb.span) - 1];
+  return {
+    table,
+    cell: a,
+    newCols: a === b ? 1 : cols[1] - cols[0] + 1, // columns to insert: one for a single (even spanning) cell
+    rows: [Math.min(pa.row, pb.row), Math.max(pa.row, pb.row)],
+    cols: [Math.min(pa.start, pb.start), Math.max(pa.start + pa.span, pb.start + pb.span) - 1],
+  };
+}
+
+function toggleTableMenu() {
+  if (tableMenu.open) return closeTableMenu();
+  const sel = tableSelection();
+  if (!sel) return;
+  const rect = layoutButton.value.getBoundingClientRect();
+  Object.assign(tableMenu, {
+    open: true,
+    x: Math.max(8, Math.min(rect.left, window.innerWidth - 240)),
+    y: rect.bottom + 4,
+    rows: sel.rows[1] - sel.rows[0] + 1,
+    cols: sel.cols[1] - sel.cols[0] + 1,
+    newCols: sel.newCols,
+  });
+  nextTick(() => tableMenuEl.value?.querySelector('button')?.focus());
+}
+
+function closeTableMenu() {
+  tableMenu.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+/** Up and Down (Home, End) move through a menu's items. */
+function onMenuArrows(e) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const items = [...e.currentTarget.querySelectorAll('button')];
+  const i = items.indexOf(document.activeElement);
+  const next = { ArrowDown: (i + 1) % items.length, ArrowUp: (i - 1 + items.length) % items.length, Home: 0, End: items.length - 1 }[e.key];
+  items[next].focus();
+}
+
+/** The rendered cell of `row` that covers grid column `col` (or its last cell). */
+function cellAtColumn(row, col) {
+  const cells = [...row.cells];
+  return cells.find((td) => {
+    const p = doc.cellPosition(td);
+    return p && p.start <= col && col < p.start + p.span;
+  }) || cells[cells.length - 1] || null;
+}
+
+const plural = (n, one, many = `${one}s`) => (n === 1 ? one : `${n} ${many}`);
+
+/** Insert or delete rows, columns or the table, from the Table layout menu (as Word's Layout tab). */
+function tableAction(kind) {
+  tableMenu.open = false;
+  refocus();
+  const sel = tableSelection();
+  if (!sel) {
+    message.value = 'Click in a table first';
+    return;
+  }
+  const locked = readOnlyAt(sel.cell, page.value);
+  if (locked) return explainReadOnly(locked, true);
+  const { table, cell } = sel;
+  const [r0, r1] = sel.rows;
+  const [c0, c1] = sel.cols;
+  const rowCount = r1 - r0 + 1;
+  const colCount = c1 - c0 + 1;
+  const tracked = trackedBy(cell);
+  const untrackedNote = tracked ? ' – column changes can’t be tracked, so they won’t be marked' : '';
+  const neighbours = { before: table.previousElementSibling, after: table.nextElementSibling, parent: table.parentElement };
+  const row = cell.parentElement;
+  undoStack.flush();
+  let res;
+  let focus = null;
+  let done = '';
+  if (kind === 'rowsAbove' || kind === 'rowsBelow') {
+    const below = kind === 'rowsBelow';
+    res = doc.insertTableRows(table, below ? r1 : r0, rowCount, below, tracked);
+    focus = res.rows && cellAtColumn(res.rows[0], c0);
+    done = `${rowCount === 1 ? 'Row' : `${rowCount} rows`} inserted ${below ? 'below' : 'above'}`;
+  } else if (kind === 'columnsLeft' || kind === 'columnsRight') {
+    const right = kind === 'columnsRight';
+    res = doc.insertTableColumns(table, c0, colCount, sel.newCols, right);
+    if (!res.reason) focus = cellAtColumn(row, right ? c1 + 1 : c0);
+    done = `${sel.newCols === 1 ? 'Column' : `${sel.newCols} columns`} inserted to the ${right ? 'right' : 'left'}${untrackedNote}`;
+  } else if (kind === 'deleteRows') {
+    res = doc.deleteTableRows(table, r0, r1, tracked);
+    done = tracked ? `${plural(rowCount, 'Row', 'rows')} marked as deleted (tracked)` : `${plural(rowCount, 'Row', 'rows')} deleted – Undo (Ctrl+Z) brings ${rowCount === 1 ? 'it' : 'them'} back`;
+    if (!res.reason && !res.removed) {
+      const rows = doc.tableRows(table);
+      focus = row.isConnected ? cellAtColumn(row, c0) : rows[Math.min(r0, rows.length - 1)] && cellAtColumn(rows[Math.min(r0, rows.length - 1)], c0);
+    }
+  } else if (kind === 'deleteColumns') {
+    res = doc.deleteTableColumns(table, c0, c1);
+    done = `${plural(colCount, 'Column', 'columns')} deleted – Undo (Ctrl+Z) brings ${colCount === 1 ? 'it' : 'them'} back${tracked ? '; column changes can’t be tracked' : ''}`;
+    if (!res.reason && !res.removed && row.isConnected) focus = cellAtColumn(row, Math.max(0, c0 - 1));
+  } else if (kind === 'deleteTable') {
+    res = doc.deleteTable(table, tracked);
+    done = tracked ? 'Table marked as deleted (tracked)' : 'Table deleted – Undo (Ctrl+Z) brings it back';
+  }
+  if (res.reason) {
+    message.value = res.reason;
+    return;
+  }
+  if (res.removed) {
+    // The caret goes where the table was: the paragraph after it (or before it).
+    if (!page.value.firstElementChild) page.value.append(doc.emptyParagraph());
+    const next = [neighbours.after, neighbours.before].find((n) => n?.isConnected);
+    const target = next?.matches(BLOCK_SELECTOR) ? next : next?.querySelector(BLOCK_SELECTOR) || neighbours.parent.querySelector(BLOCK_SELECTOR) || page.value.querySelector(BLOCK_SELECTOR);
+    if (target) placeCaret(target, next !== neighbours.before);
+  } else if (focus) {
+    placeCaret(focus.querySelector(BLOCK_SELECTOR) || focus, true);
+  } else if (cell.isConnected) {
+    placeCaret(cell.querySelector(BLOCK_SELECTOR) || cell, true);
+  }
+  doc.renumber(page.value);
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  refreshComments();
+  onSelectionChange();
+  message.value = done;
+}
+
+// ------------------------------------------------------------------ inserting tables
+
+const PICKER_ROWS = 8;
+const PICKER_COLS = 10;
+const MAX_COLS = 63; // as many as Word allows
+const MAX_ROWS = 500;
+const tablePicker = reactive({ open: false, x: 0, y: 0, rows: 1, cols: 1, customRows: 2, customCols: 3 });
+const tablePickerEl = ref(null);
+const tableButton = ref(null);
+
+function toggleTablePicker() {
+  if (tablePicker.open) return closeTablePicker();
+  const rect = tableButton.value.getBoundingClientRect();
+  Object.assign(tablePicker, { open: true, rows: 1, cols: 1, x: Math.max(8, Math.min(rect.left - 80, window.innerWidth - 250)), y: rect.bottom + 4 });
+  nextTick(() => tablePickerEl.value?.querySelector('.cell')?.focus());
+}
+
+function closeTablePicker() {
+  tablePicker.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+/** Arrow keys grow or shrink the table in the picker, as in Word; Enter inserts it. */
+function onPickerKeydown(e) {
+  const step = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] }[e.key];
+  if (!step) return;
+  e.preventDefault();
+  tablePicker.rows = Math.min(PICKER_ROWS, Math.max(1, tablePicker.rows + step[0]));
+  tablePicker.cols = Math.min(PICKER_COLS, Math.max(1, tablePicker.cols + step[1]));
+  nextTick(() => tablePickerEl.value?.querySelectorAll('.cell')[(tablePicker.rows - 1) * PICKER_COLS + tablePicker.cols - 1]?.focus());
+}
+
+/**
+ * Inserts an empty table of `rows` × `cols` at the caret, as Word does: before the paragraph if the
+ * caret is at its start (or it is empty), otherwise the paragraph is split there and the table goes
+ * between. While tracking, its rows are tracked insertions. The caret goes into its first cell.
+ */
+function insertTable(rows, cols) {
+  tablePicker.open = false;
+  refocus();
+  rows = Math.min(MAX_ROWS, Math.max(1, Math.floor(Number(rows) || 1)));
+  cols = Math.min(MAX_COLS, Math.max(1, Math.floor(Number(cols) || 1)));
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text where the table should go';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (controlAt(range.startContainer, page.value)) {
+    message.value = 'A table can’t go in a field';
+    return;
+  }
+  const tracked = trackedBy(range.startContainer);
+  undoStack.flush();
+  range.collapse(true);
+  let block = closestBlock(range.startContainer);
+  if (!block) {
+    block = doc.emptyParagraph();
+    page.value.append(block);
+  } else if (!isEmptyBlock(block) && !isAtBlockStart(range, block)) {
+    document.execCommand('insertParagraph');
+    if (tracked) markSplit(tracked);
+    block = closestBlock(selectionInPage().startContainer) || block;
+  }
+  const table = doc.newTable(rows, cols, tracked);
+  block.before(table);
+  refreshCss(); // the Table Grid style may be new
+  placeCaret(table.rows[0].cells[0].querySelector(BLOCK_SELECTOR) || table.rows[0].cells[0], true);
+  doc.renumber(page.value);
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  onSelectionChange();
+  message.value = `Table inserted: ${cols} × ${rows}${tracked ? ' (tracked)' : ''}`;
+}
+
+// ------------------------------------------------------------------ inserting pictures
+
+const pictureInput = ref(null);
+
+function pickPicture() {
+  pictureInput.value.value = '';
+  pictureInput.value.click();
+}
+
+function onPicturesPicked(e) {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) insertPictures(files);
+}
+
+/**
+ * Inserts pictures at the caret (or `at`, a range), in line with the text and replacing what is
+ * selected, as Word does; tracked while tracking.
+ */
+async function insertPictures(files, at = null) {
+  if (at) {
+    page.value.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(at);
+  } else {
+    refocus();
+  }
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text where the picture should go';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (controlAt(range.startContainer, page.value)) {
+    message.value = 'A picture can’t go in a field: insert it in Word';
+    return;
+  }
+  if (!range.collapsed && refuseRemoving([range])) return;
+  const where = range.cloneRange();
+  const made = [];
+  const reasons = [];
+  for (const file of files) {
+    const res = await doc.addPicture(file);
+    if (res.span) made.push(res.span);
+    else reasons.push(res.reason);
+  }
+  if (!made.length) {
+    message.value = reasons[0] || 'No picture was inserted';
+    return;
+  }
+  page.value.focus();
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(where);
+  undoStack.flush();
+  const tracked = trackedBy(where.startContainer);
+  if (!where.collapsed) {
+    if (tracked) deleteTracked(where, false, tracked);
+    else deleteSelection();
+  }
+  if (tracked) insertTracked(made, tracked);
+  else insertAtCaret(made);
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  onSelectionChange();
+  message.value = `${made.length === 1 ? 'Picture' : `${made.length} pictures`} inserted${tracked ? ' (tracked)' : ''}${reasons.length ? ` – ${reasons[0]}` : ''}`;
 }
 
 // ------------------------------------------------------------------ adding comments
@@ -1598,6 +1964,15 @@ function onPaste(e) {
     return;
   }
   if (!range || refuseRemoving([range])) return;
+  // A picture on its own (a screenshot, an image copied from an app): inserted as a picture.
+  // Some browsers list a copied picture only among the clipboard's items, not its files.
+  const files = e.clipboardData.files?.length ? [...e.clipboardData.files]
+    : [...(e.clipboardData.items || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+  const pictures = files.filter((f) => f.type.startsWith('image/'));
+  if (pictures.length && !e.clipboardData.getData('text/plain').trim()) {
+    insertPictures(pictures);
+    return;
+  }
   undoStack.flush();
   const html = e.clipboardData.getData('text/html');
   let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
@@ -1622,7 +1997,7 @@ function onPaste(e) {
   onInput();
   undoStack.commit();
   if (skippedImages) {
-    message.value = `${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted – pictures can't be added here yet`;
+    message.value = `${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted with the text – copy a picture on its own and paste it, or use Insert picture`;
   }
 }
 
@@ -1669,8 +2044,24 @@ function pasteBlocks(blocks, tracked = null) {
   doc.renumber(page.value);
 }
 
+/** Picture files dropped on the page are inserted where they are dropped; other files aren't. */
 function onDrop(e) {
-  if (e.dataTransfer?.files?.length) e.preventDefault();
+  const files = [...(e.dataTransfer?.files || [])];
+  if (!files.length) return;
+  e.preventDefault();
+  const pictures = files.filter((f) => f.type.startsWith('image/'));
+  if (!pictures.length) return;
+  let at = null;
+  if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+    if (pos) {
+      at = document.createRange();
+      at.setStart(pos.offsetNode, pos.offset);
+    }
+  } else if (document.caretRangeFromPoint) {
+    at = document.caretRangeFromPoint(e.clientX, e.clientY);
+  }
+  insertPictures(pictures, at && page.value.contains(at.startContainer) ? at : null);
 }
 
 function onClick(e) {
@@ -1808,6 +2199,8 @@ function markNearField(range) {
 function onDocumentMousedown(e) {
   if (chooser.open && !chooserEl.value?.contains(e.target) && !chooserTarget?.contains(e.target)) closeChooser();
   if (palette.open && !paletteEl.value?.contains(e.target) && !paletteButton.value?.contains(e.target)) palette.open = false;
+  if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
+  if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
 }
 
@@ -2105,14 +2498,14 @@ async function close() {
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .toolbar button {
-  min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font-size: 15px; cursor: pointer;
 }
 .toolbar button:hover:not(:disabled) { background: var(--hover); }
 .toolbar button:disabled { opacity: .4; cursor: default; }
 .toolbar button.on { background: var(--active); border-color: var(--border); }
 .toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }
-.sep { width: 1px; height: 22px; background: var(--border); margin: 0 6px; }
+.sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
 
 .workspace { flex: 1; min-height: 0; display: flex; }
 .canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
@@ -2147,13 +2540,27 @@ async function close() {
 .split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
 .changes-group { display: inline-flex; align-items: center; gap: 2px; }
 .labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
-@media (max-width: 1400px) { .labelled .label, .has-changes .review-toggle .label, .has-changes .track-toggle .label { display: none; } }
+@media (max-width: 1600px) { .labelled .label, .has-changes .review-toggle .label, .has-changes .track-toggle .label { display: none; } }
 .change-menu {
   position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 .change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
+.change-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.table-picker {
+  position: fixed; z-index: 10; padding: 8px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.table-picker .size { margin: 0; font-size: 13px; color: var(--muted); }
+.table-picker .grid { display: grid; grid-template-columns: repeat(10, 18px); gap: 3px; }
+.table-picker .cell { width: 18px; height: 18px; padding: 0; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); cursor: pointer; }
+.table-picker .cell.on { background: color-mix(in srgb, var(--accent) 25%, transparent); border-color: var(--accent); }
+.table-picker .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.table-picker .custom { display: flex; gap: 6px; align-items: center; font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
+.table-picker .custom label { display: flex; gap: 4px; align-items: center; }
+.table-picker .custom input { width: 48px; font: inherit; padding: 2px 4px; }
+.table-picker .custom button { font: inherit; padding: 2px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; }
 .palette {
   position: fixed; z-index: 10; width: 190px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);

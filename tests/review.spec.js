@@ -125,7 +125,7 @@ test('formatting, added and removed paragraphs and removed comments are all list
   const notes = dialog(page).locator('.notes');
   await expect(notes).toContainText('Comment by Ann Lee removed, with the text it was attached to.');
   await expect(notes).toContainText('Formatting changes are applied directly, never tracked.');
-  await expect(notes).toContainText('Paragraph styles you used are added to the file’s style list.');
+  await expect(notes).toContainText('Styles you used are added to the file’s style list.');
 });
 
 test('the review can be skipped, and still opened from the toolbar', async ({ page }) => {

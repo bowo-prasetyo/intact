@@ -73,7 +73,9 @@ const summary = computed(() => {
   if (count.added) parts.push(`${count.added} added`);
   if (count.removed) parts.push(`${count.removed} removed`);
   const r = props.review;
-  if (!parts.length) return r.trackingSwitched || r.commentsRemoved.length || r.commentsAdded?.length || r.commentsEdited?.length || r.commentsResolved?.length || r.commentsReopened?.length
+  const l = r.layout;
+  const layoutChanged = l && Object.keys(l.before).some((k) => l.before[k] !== l.after[k]);
+  if (!parts.length) return layoutChanged || r.trackingSwitched || r.commentsRemoved.length || r.commentsAdded?.length || r.commentsEdited?.length || r.commentsResolved?.length || r.commentsReopened?.length
     ? 'The text is unchanged.'
     : 'No changes: the file is the same as the one you opened.';
   return `${parts.join(', ')}.`;
@@ -82,20 +84,22 @@ const summary = computed(() => {
 const notes = computed(() => {
   const r = props.review;
   const out = [];
-  if (r.insertions || r.deletions) {
-    const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion')].filter(Boolean).join(' and ');
+  if (r.insertions || r.deletions || r.rowsTracked) {
+    const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion'), r.rowsTracked && plural(r.rowsTracked, 'table row')]
+      .filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
     out.push({ kind: 'good', text: `Recorded as tracked changes (${what}), so the recipient can accept or reject them in Word.` });
   }
   if (r.resolved?.accepted || r.resolved?.rejected) {
     const parts = [r.resolved.accepted && `accepted ${plural(r.resolved.accepted, 'tracked change')}`, r.resolved.rejected && `rejected ${plural(r.resolved.rejected, r.resolved.accepted ? 'change' : 'tracked change')}`].filter(Boolean);
     out.push({ kind: 'info', text: `You ${parts.join(' and ')}. As in Word, accepting and rejecting aren’t themselves tracked.` });
   }
-  if (r.paragraphs.some((p) => !p.tracked && !p.formatting && !p.resolved)) {
+  if (r.paragraphs.some((p) => !p.tracked && !p.resolved && (!p.formatting || /^Picture/.test(p.formatting[0])))) {
     out.push({ kind: 'warn', text: 'Some text changes aren’t tracked: the recipient won’t see them marked. Undo them and turn on Track changes to mark them.' });
   }
-  if (r.paragraphs.some((p) => p.formatting && !/^(Paragraph break|Comment|Tracked change)/.test(p.formatting[0]))) {
+  if (r.paragraphs.some((p) => p.formatting && !/^(Paragraph break|Comment|Tracked change|Picture)/.test(p.formatting[0]))) {
     out.push({ kind: 'info', text: 'Formatting changes are applied directly, never tracked.' });
   }
+  out.push(...layoutNotes(r.layout));
   if (r.trackingSwitched) {
     out.push({ kind: 'info', text: r.tracking ? 'Track Changes will be on when the file is opened in Word.' : 'Track Changes will be off when the file is opened in Word.' });
   }
@@ -109,10 +113,31 @@ const notes = computed(() => {
   for (const c of r.commentsRemoved) {
     out.push({ kind: 'info', text: `Comment by ${c.author} removed, with the text it was attached to.` });
   }
-  if (r.stylesAdded) out.push({ kind: 'info', text: 'Paragraph styles you used are added to the file’s style list.' });
+  if (r.stylesAdded) out.push({ kind: 'info', text: 'Styles you used are added to the file’s style list.' });
   if (r.listsAdded) out.push({ kind: 'info', text: 'Bulleted or numbered lists you started are added to the file’s list definitions.' });
   return out;
 });
+
+/** Tables, rows, columns and pictures added or removed (in all, as counted before and after). */
+function layoutNotes(layout) {
+  if (!layout) return [];
+  const { before, after } = layout;
+  const parts = [];
+  const change = (key, one) => {
+    const d = after[key] - before[key];
+    if (d > 0) parts.push(`${plural(d, one)} added`);
+    if (d < 0) parts.push(`${plural(-d, one)} removed`);
+  };
+  change('tables', 'table');
+  const tables = after.tables - before.tables;
+  // Rows and columns of tables added or removed whole aren't counted again.
+  if (!tables) {
+    change('rows', 'table row');
+    change('columns', 'table column');
+  }
+  change('pictures', 'picture');
+  return parts.length ? [{ kind: 'info', text: `${parts.join(', ').replace(/^./, (c) => c.toUpperCase())}.` }] : [];
+}
 
 const isEmpty = (words) => !words.some((w) => w.text.trim());
 
