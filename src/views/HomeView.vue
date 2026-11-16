@@ -2,8 +2,14 @@
   <div class="home">
     <AppHeader />
     <main class="home-main">
-      <h1>Edit Word documents in your browser</h1>
-      <p class="lead">Open a <code>.docx</code> file, edit it, and download it again. Everything happens locally — your file never leaves this device.</p>
+      <h1>Change what you need.<br /> Keep the rest <span class="brand-word">intact</span>.</h1>
+      <p class="lead">Open a <code>.docx</code>, fix it and download it again, right here in your browser.</p>
+      <ul class="promises" aria-label="What Intact promises">
+        <li v-for="p in promises" :key="p.title">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>
+          <span><strong>{{ p.title }}</strong> – {{ p.text }}</span>
+        </li>
+      </ul>
 
       <div class="actions">
         <button class="tile" type="button" :disabled="busy" @click="createNew">
@@ -43,6 +49,13 @@ const busy = ref(false);
 const error = ref('');
 const dragOver = ref(false);
 
+// The promises from VISION.md. Keep them true: a claim here that a release breaks is a bug.
+const promises = [
+  { title: 'Private', text: 'never uploaded' },
+  { title: 'Faithful', text: 'only your edits change' },
+  { title: 'Instant', text: 'nothing to install' },
+];
+
 async function run(task) {
   busy.value = true;
   error.value = '';
@@ -74,8 +87,16 @@ const createNew = () => run(newDocument);
 <style scoped>
 .home { min-height: 100vh; display: flex; flex-direction: column; }
 .home-main { max-width: 760px; margin: 0 auto; padding: 48px 16px; text-align: center; }
-h1 { font-size: clamp(1.6rem, 4vw, 2.3rem); margin: 0 0 12px; }
-.lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 36px; }
+h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0 0 14px; text-wrap: balance; }
+.brand-word { color: var(--accent); }
+.lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 16px; text-wrap: balance; }
+.promises {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px;
+  list-style: none; padding: 0; margin: 0 0 36px; font-size: .95rem;
+}
+.promises li { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.promises strong { color: var(--text); font-weight: 600; }
+.promises svg { flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
 .tile {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 32px 20px;
