@@ -79,11 +79,18 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Picture styles, shapes, 3-D and artistic effects, as on Word's Picture Format tab: a gallery of
   Word's picture styles (each written out as Word writes it: shape, border, shadow, glow, soft
   edges, reflection and 3-D format; Word keeps no reference to a style), a shape to cut the picture
-  to (`a:prstGeom`), a bevel and a 3-D rotation (`a:sp3d`, `a:scene3d`), and artistic effects
-  (blur, pencil grayscale, line drawing, glow edges, photocopy) drawn into the picture in the
-  browser and saved as a new picture, as Word saves them, with the original kept beside it in an
-  extension of the picture (`a:extLst`), so the effect can be changed or taken off here (Word shows
-  the drawn picture). The page shows every effect with the file's own values: a shadow's distance,
+  to (`a:prstGeom`), Word's 3-D Format (a bevel with its width and height, a material, a lighting
+  rig and its angle) and 3-D Rotation (a preset, or X, Y and Z rotation and a perspective;
+  `a:sp3d`, `a:scene3d`, `a:camera/a:rot`, `a:lightRig`), and all 22 of Word's artistic effects
+  (Marker, Pencil Sketch, Paint Strokes, Watercolor Sponge, Mosaic Bubbles, Glass, Plastic Wrap and
+  the rest), each with an amount, drawn into the picture in the browser and saved as a new picture,
+  as Word saves them, with the original kept beside it in an extension of the picture (`a:extLst`),
+  so the effect can be changed or taken off here (Word shows the drawn picture; Word's own record of
+  an effect needs the original in Microsoft's HD Photo format, which a browser can't write). A bevel
+  is lit per pixel, as a 3-D renderer lights it: its profile gives the surface's slope near the
+  edge, and the light rig (from its direction and angle) and the material give light and shade by
+  Lambert's and Phong's laws (`src/docx/lighting.js`); a 3-D rotation is shown with the file's
+  angles and field of view. The page shows every effect with the file's own values: a shadow's distance,
   direction, blur, colour and transparency, a glow's size and colour, soft edges' width, a
   reflection's distance and fade, a bevel's width, Word's brightness and contrast (tones moved and
   stretched about the middle, not CSS's multiply) and greyscale, the picture's shape; a turned
@@ -260,9 +267,11 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   formatting changes (bold, styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
-- A web page can't light a picture in 3-D: bevels, 3-D rotations and materials are drawn as near as
-  CSS comes (and Word's other artistic effects, such as paint strokes, are left to Word); a wrap
-  outline isn't turned with its picture. Field cells that are locked, linked to data or not text
+- 3-D lighting is worked out for a bevel's surface, not for a picture's depth (extrusion) or contour;
+  Word's preset 3-D rotations are shown with angles as near as their look (a rotation set by angles
+  is exact); artistic effects are drawn with Intact's own versions of Word's filters, so they look
+  alike rather than identical, and in Word they are part of the picture; a wrap outline isn't
+  turned with its picture. Field cells that are locked, linked to data or not text
   fields can't be merged
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and

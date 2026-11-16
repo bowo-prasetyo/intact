@@ -42,7 +42,7 @@
       </p>
       <h2>Limitations</h2>
       <ul>
-        <li>Pictures in 3-D (bevels, 3-D rotation) are drawn as near as a web page can; Word's other artistic effects, such as paint strokes, are left to Word.</li>
+        <li>3-D lighting is worked out for a bevel, not for a picture's depth; artistic effects are Intact's own versions of Word's, drawn into the picture (in Word they can't be taken off).</li>
         <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>

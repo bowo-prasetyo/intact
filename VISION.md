@@ -98,7 +98,7 @@ Saying no to these keeps the product small enough to keep its promises:
   content: accept and reject ✔
 - Insert tables and pictures ✔; insert and delete table rows and columns ✔, tracked ✔; merge and
   split cells ✔, tracked ✔, field cells too ✔; tables whose rows or cells are
-  fields ✔; resize, wrap and position pictures ✔; crop, rotate and add effects ✔; picture styles, 3-D and artistic effects ✔; wrap text to a
+  fields ✔; resize, wrap and position pictures ✔; crop, rotate and add effects ✔; picture styles, 3-D and artistic effects ✔; 3-D lighting and all of Word's artistic effects ✔; wrap text to a
   picture's outline ✔
 - Edit headers, footers and footnotes
 - Installable offline app (PWA)

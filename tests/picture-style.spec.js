@@ -52,9 +52,11 @@ test('3-D: a bevel and a 3-D rotation, written as Word\'s 3-D format and shown i
   await panel(page).getByRole('combobox', { name: 'Bevel' }).selectOption('circle');
   await expect(status(page)).toHaveText('3-D format changed');
   await openPanel(page, 'Style and 3-D');
-  await panel(page).getByRole('combobox', { name: '3-D rotation' }).selectOption('perspectiveRight');
+  await panel(page).getByRole('combobox', { name: 'Preset' }).selectOption('perspectiveRight');
+  await expect(status(page)).toHaveText('3-D rotation: Perspective: right');
   await expect(pic(page).locator('.pic-bevel')).toHaveCount(1);
-  expect(await pic(page).evaluate((s) => s.style.transform)).toBe('perspective(900px) rotateY(-22deg)');
+  // Word's preset: turned 20° about the vertical axis, a 45° field of view (40 px / tan 22.5° ≈ 97 px).
+  expect(await pic(page).evaluate((s) => s.style.transform)).toBe('perspective(97px) rotateY(-20deg)');
   const { xml } = await download(page);
   expect(xml).toContain('<a:scene3d><a:camera prst="perspectiveRight"/><a:lightRig rig="threePt" dir="t"/></a:scene3d><a:sp3d><a:bevelT w="76200" h="25400" prst="circle"/></a:sp3d></pic:spPr>');
 });
@@ -82,7 +84,7 @@ test('an artistic effect is drawn into the picture, the original kept; taking it
   await expect(status(page)).toHaveText('Artistic effect: Line Drawing');
   expect(await pic(page).locator('img').first().getAttribute('src')).not.toBe(before);
   let { zip, xml } = await download(page);
-  const blip = xml.match(/<a:blip r:embed="(rIdImage\d+)"><a:extLst><a:ext uri="\{6E8D1F2A-7B3C-4D5E-9F60-A1B2C3D4E5F6\}"><intact:original xmlns:intact="urn:intact:picture" r:embed="(rIdImage\d+)" effect="lineDrawing"\/><\/a:ext><\/a:extLst><\/a:blip>/);
+  const blip = xml.match(/<a:blip r:embed="(rIdImage\d+)"><a:extLst><a:ext uri="\{6E8D1F2A-7B3C-4D5E-9F60-A1B2C3D4E5F6\}"><intact:original xmlns:intact="urn:intact:picture" r:embed="(rIdImage\d+)" effect="lineDrawing" amount="50"\/><\/a:ext><\/a:extLst><\/a:blip>/);
   expect(blip).toBeTruthy();
   const rels = await zip.file('word/_rels/document.xml.rels').async('string');
   expect(rels).toContain(`Id="${blip[1]}"`);
