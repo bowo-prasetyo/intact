@@ -72,7 +72,8 @@ const summary = computed(() => {
   if (count.changed) parts.push(`${plural(count.changed, 'paragraph')} changed`);
   if (count.added) parts.push(`${count.added} added`);
   if (count.removed) parts.push(`${count.removed} removed`);
-  if (!parts.length) return props.review.trackingSwitched || props.review.commentsRemoved.length || props.review.commentsAdded?.length
+  const r = props.review;
+  if (!parts.length) return r.trackingSwitched || r.commentsRemoved.length || r.commentsAdded?.length || r.commentsEdited?.length || r.commentsResolved?.length || r.commentsReopened?.length
     ? 'The text is unchanged.'
     : 'No changes: the file is the same as the one you opened.';
   return `${parts.join(', ')}.`;
@@ -98,9 +99,13 @@ const notes = computed(() => {
   if (r.trackingSwitched) {
     out.push({ kind: 'info', text: r.tracking ? 'Track Changes will be on when the file is opened in Word.' : 'Track Changes will be off when the file is opened in Word.' });
   }
+  const quote = (text) => `“${text.length > 80 ? `${text.slice(0, 80)}…` : text}”`;
   for (const c of r.commentsAdded || []) {
-    out.push({ kind: 'good', text: `Comment added by ${c.author}: “${c.text.length > 80 ? `${c.text.slice(0, 80)}…` : c.text}”` });
+    out.push({ kind: 'good', text: c.parentId ? `Reply by ${c.author} to ${c.parentAuthor || 'a comment'}: ${quote(c.text)}` : `Comment added by ${c.author}: ${quote(c.text)}` });
   }
+  for (const c of r.commentsEdited || []) out.push({ kind: 'info', text: `Comment by ${c.author} edited.` });
+  for (const c of r.commentsResolved || []) out.push({ kind: 'info', text: `Comment by ${c.author} resolved.` });
+  for (const c of r.commentsReopened || []) out.push({ kind: 'info', text: `Comment by ${c.author} reopened.` });
   for (const c of r.commentsRemoved) {
     out.push({ kind: 'info', text: `Comment by ${c.author} removed, with the text it was attached to.` });
   }

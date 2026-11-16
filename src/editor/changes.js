@@ -1,7 +1,12 @@
-// Finding tracked changes in the editor, for Accept, Reject, Previous and Next: inline revisions
-// (someone's insertion or deletion, or one of this session) and paragraph breaks that are tracked.
-// Revisions inside content saved verbatim (locked fields and cells, preserved blocks) and table-row
-// revisions can only be accepted or rejected in Word, and aren't listed.
+// Finding tracked changes in the editor, for Accept, Reject, Previous and Next. An item is
+// { el, kind }:
+//   inline  someone's insertion or deletion (a span), or one of this session (data-tc);
+//   run     a tracked formatting change of a run (data-fmt);
+//   mark    a tracked paragraph break (the paragraph; data-tc-mark or data-rev-mark);
+//   para    a tracked change to a paragraph's formatting (data-fmt-para);
+//   row     a tracked table row (data-rev-row).
+// Changes inside content saved verbatim (locked fields and cells, preserved blocks) can only be
+// accepted or rejected in Word, and aren't listed (DocxDocument.wordOnlyChanges counts them).
 
 const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li';
 
@@ -14,43 +19,44 @@ function resolvable(el) {
   return !holder || holder.tagName === 'TABLE';
 }
 
-/**
- * The tracked changes under `root`, in document order: [{ el, mark }], where a paragraph break
- * (mark: true) comes after its paragraph's text.
- */
+/** The tracked changes under `root`, in document order (a paragraph's own changes after its text). */
 export function changeItems(root) {
   const out = [];
+  const add = (el, kind) => { if (resolvable(el)) out.push({ el, kind, mark: kind === 'mark' }); };
   const walk = (node) => {
     for (const el of node.children) {
       if (isInline(el)) {
-        if (resolvable(el)) out.push({ el, mark: false });
+        add(el, 'inline');
         continue;
       }
+      if (el.dataset.fmt === 'run') add(el, 'run');
       walk(el);
-      if (isMark(el) && resolvable(el)) out.push({ el, mark: true });
+      if (el.matches(BLOCKS)) {
+        if (el.dataset.fmtPara) add(el, 'para');
+        if (isMark(el)) add(el, 'mark');
+      }
+      if (el.tagName === 'TR' && el.dataset.revRow) add(el, 'row');
     }
   };
   walk(root);
   return out;
 }
 
-/** The changes that can only be accepted or rejected in Word: those in verbatim content, and tables'. */
-export function wordOnlyChanges(root) {
-  let n = 0;
-  for (const el of root.querySelectorAll('[data-tracked]')) {
-    if (isInline(el) || isMark(el)) { if (!resolvable(el)) n++; } else if (el.closest('[data-raw]') === el) n++;
-  }
-  return n;
-}
-
-/** Where a change is: the element for an inline one, the end of the paragraph for a break. */
+/** Where a change is, to select it: the span; a run's text; a paragraph's end (its break) or text; a row's cells. */
 export function itemRange(item) {
   const range = document.createRange();
-  if (item.mark) {
-    range.selectNodeContents(item.el);
+  const { el, kind } = item;
+  if (kind === 'mark') {
+    range.selectNodeContents(el);
     range.collapse(false);
+  } else if (kind === 'run' || kind === 'para') {
+    range.selectNodeContents(el);
+  } else if (kind === 'row') {
+    const cells = [...el.cells];
+    range.setStart(cells[0], 0);
+    range.setEnd(cells[cells.length - 1], cells[cells.length - 1].childNodes.length);
   } else {
-    range.selectNode(item.el);
+    range.selectNode(el);
   }
   return range;
 }
@@ -65,7 +71,7 @@ function neighbour(node, offset, dir, block) {
     n = n && n !== block ? (dir < 0 ? n.previousSibling : n.nextSibling) : null;
   } else {
     n = dir < 0 ? node.childNodes[offset - 1] : node.childNodes[offset];
-    if (!n && node !== block) return neighbour(node.parentNode, [...node.parentNode.childNodes].indexOf(node) + (dir < 0 ? 0 : 1), dir, block);
+    if (!n && node !== block && node.parentNode) return neighbour(node.parentNode, [...node.parentNode.childNodes].indexOf(node) + (dir < 0 ? 0 : 1), dir, block);
   }
   while (n && ((n.nodeType === 3 && !n.data) || n.classList?.contains('raw-hidden'))) n = dir < 0 ? n.previousSibling : n.nextSibling;
   // Into formatting around it, to a change at its edge.
@@ -74,35 +80,41 @@ function neighbour(node, offset, dir, block) {
 }
 
 /**
- * The changes a selection is on: every change it covers; or, for a caret, the change it is in or
- * next to (as when a change was just clicked), or the paragraph break it stands before.
+ * The changes a selection is on: every change it covers (a paragraph's own changes when it runs past
+ * the paragraph's end); or, for a caret, the change it is in or next to (as when one was just
+ * clicked), else a formatting change around it, the break it stands before, its paragraph's
+ * formatting change, or its row.
  */
 export function changesAt(range, items) {
   if (!range) return [];
   if (!range.collapsed) {
-    // A paragraph break is covered when the selection runs past the end of its paragraph.
-    return items.filter((item) => (item.mark
-      ? range.comparePoint(item.el, item.el.childNodes.length) === 0
-      : range.intersectsNode(item.el)));
+    return items.filter(({ el, kind }) => (kind === 'mark' || kind === 'para'
+      ? range.comparePoint(el, el.childNodes.length) === 0
+      : range.intersectsNode(el)));
   }
   const { startContainer: node, startOffset: offset } = range;
   const el = node.nodeType === 1 ? node : node.parentElement;
-  const inside = items.find((item) => !item.mark && item.el.contains(el));
+  const find = (test) => items.find(test);
+  const inside = find((i) => i.kind === 'inline' && i.el.contains(el));
   if (inside) return [inside];
   const block = el.closest(BLOCKS);
   const before = neighbour(node, offset, -1, block);
   const after = neighbour(node, offset, 1, block);
-  const next = items.find((item) => !item.mark && (item.el === before || item.el === after));
+  const next = find((i) => i.kind === 'inline' && (i.el === before || i.el === after));
   if (next) return [next];
-  // At the end of a paragraph whose break is a change.
-  const mark = block && items.find((item) => item.mark && item.el === block);
+  const run = find((i) => i.kind === 'run' && i.el.contains(el));
+  if (run) return [run];
+  const mark = block && find((i) => i.kind === 'mark' && i.el === block);
   if (mark) {
     const rest = document.createRange();
     rest.setStart(node, offset);
     rest.setEnd(block, block.childNodes.length);
     if (!rest.toString() && !rest.cloneContents().querySelector('img, .raw-inline:not(.raw-hidden)')) return [mark];
   }
-  return [];
+  const para = block && find((i) => i.kind === 'para' && i.el === block);
+  if (para) return [para];
+  const row = find((i) => i.kind === 'row' && i.el.contains(el));
+  return row ? [row] : [];
 }
 
 /**

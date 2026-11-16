@@ -147,6 +147,9 @@
         @post="postComment"
         @cancel="cancelComment"
         @delete="deleteComment"
+        @reply="replyComment"
+        @edit="editComment"
+        @resolve="resolveComment"
       />
     </div>
 
@@ -219,7 +222,7 @@ import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../edito
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
-import { changeItems, changesAt, adjacentChange, itemRange, wordOnlyChanges } from '../editor/changes.js';
+import { changeItems, changesAt, adjacentChange, itemRange } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -903,7 +906,43 @@ function cancelComment() {
   restoreSelection();
 }
 
-/** Deletes a comment added this session (its marks go from the text); Undo brings it back. */
+/** Runs a change to comments as one undoable step, then refreshes the panel. */
+function changeComments(change, done) {
+  undoStack.flush();
+  change();
+  undoStack.commit();
+  markDirty();
+  refreshComments();
+  message.value = done;
+}
+
+/** A reply to thread `id`, as in Word (written as a real reply, linked to its comment). */
+function replyComment({ id, text, name }) {
+  if (name) {
+    author.value = name;
+    named.value = true;
+    try { localStorage.setItem(AUTHOR_KEY, name); } catch { /* this session only */ }
+  }
+  let reply = null;
+  changeComments(() => { reply = doc.addReply(id, { author: author.value, text, date: revisionDate() }, page.value); }, 'Reply added');
+  if (!reply) message.value = 'This comment isn’t in the text here: reply to it in Word';
+}
+
+/** A comment's new text, kept on its mark until saved, so Undo covers it. */
+function editComment({ id, text }) {
+  const mark = commentMark(id);
+  if (!mark || !text) return;
+  changeComments(() => { mark.dataset.edit = text; }, 'Comment edited');
+}
+
+/** Resolves or reopens a thread, kept on its mark until saved, so Undo covers it. */
+function resolveComment({ id, done }) {
+  const mark = commentMark(id);
+  if (!mark) return;
+  changeComments(() => { mark.dataset.done = done ? '1' : '0'; }, done ? 'Comment resolved' : 'Comment reopened');
+}
+
+/** Deletes a comment and its replies (their marks go from the text); Undo brings them back. */
 function deleteComment(id) {
   undoStack.flush();
   for (const el of page.value.querySelectorAll(`[data-comment-start="${CSS.escape(id)}"], [data-comment-end="${CSS.escape(id)}"], [data-comment-ref="${CSS.escape(id)}"]`)) el.remove();
@@ -915,7 +954,7 @@ function deleteComment(id) {
 
 // ------------------------------------------------------------------ accepting and rejecting changes
 
-const changes = reactive({ total: 0, wordOnly: 0, formatting: 0 });
+const changes = reactive({ total: 0, wordOnly: 0 });
 const resolved = reactive({ accepted: 0, rejected: 0 }); // this session, for the review
 const changeMenu = reactive({ open: null, x: 0, y: 0 });
 const changeMenuEl = ref(null);
@@ -923,26 +962,42 @@ const acceptMenuButton = ref(null);
 const rejectMenuButton = ref(null);
 const changesTitle = computed(() => {
   const parts = [`${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'} to accept or reject here`];
-  const word = changes.wordOnly + changes.formatting;
-  if (word) parts.push(`${word} more (formatting, table rows or locked content) only in Word`);
+  if (changes.wordOnly) parts.push(`${changes.wordOnly} more (table or cell properties, or locked content) only in Word`);
   return parts.join('; ');
 });
 
 function refreshChanges() {
   if (!page.value) return;
   changes.total = changeItems(page.value).length;
-  changes.wordOnly = wordOnlyChanges(page.value);
-  changes.formatting = doc.formattingChanges(page.value);
+  changes.wordOnly = doc.wordOnlyChanges(page.value);
 }
 
-/** "the insertion by Alice", "your deletion", "the paragraph break inserted by Bob". */
-function describeChange(el) {
-  const rev = doc.revisionOf(el);
+const revisionOfItem = (item) => doc.revisionOf(item.el, ['run', 'para', 'row'].includes(item.kind) ? item.kind : null);
+
+/** "the insertion by Alice", "your deletion", "the formatting change by Eve", "the inserted row by Dan". */
+function describeChange(item) {
+  const rev = revisionOfItem(item);
   if (!rev) return 'the change';
   const who = rev.own ? 'your' : 'the';
   const by = rev.own || !rev.author ? '' : ` by ${rev.author}`;
+  if (item.kind === 'run') return `the formatting change${by}`;
+  if (item.kind === 'para') return `the paragraph formatting change${by}`;
+  if (item.kind === 'row') return `the ${rev.kind === 'ins' ? 'inserted' : 'deleted'} row${by}`;
   if (rev.mark) return `${who} paragraph break ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
   return `${who} ${rev.kind === 'ins' ? 'insertion' : 'deletion'}${by}`;
+}
+
+/** A caret left between paragraphs (or before a table) moves into the text next to it. */
+function settleCaret(range) {
+  const { startContainer: node, startOffset: offset } = range;
+  if (node.nodeType !== 1 || node.closest('[contenteditable="true"]') !== node) return range;
+  let next = node.childNodes[offset] || node.childNodes[offset - 1];
+  if (next?.tagName === 'TABLE') next = next.querySelector('td[contenteditable="true"] :is(p, h1, h2, h3, h4, h5, h6)') || next;
+  if (!next || next.nodeType !== 1 || next.tagName === 'TABLE') return range;
+  const r = document.createRange();
+  r.setStart(next, 0);
+  r.collapse(true);
+  return r;
 }
 
 /** Selects a change (an inline one, or the end of a paragraph whose break it is) and shows it. */
@@ -955,10 +1010,8 @@ function selectChange(item) {
   savedRange = range.cloneRange();
   item.el.scrollIntoView?.({ block: 'nearest' });
   flash(item.el);
-  message.value = `${describeChange(item.el).replace(/^./, (c) => c.toUpperCase())}${(() => {
-    const rev = doc.revisionOf(item.el);
-    return rev?.date ? `, ${rev.date.slice(0, 10)}` : '';
-  })()}`;
+  const rev = revisionOfItem(item);
+  message.value = `${describeChange(item).replace(/^./, (c) => c.toUpperCase())}${rev?.date ? `, ${rev.date.slice(0, 10)}` : ''}`;
 }
 
 function gotoChange(dir) {
@@ -980,25 +1033,27 @@ function resolveCurrent(accept, then = 'next') {
     message.value = 'Put the cursor on a tracked change (or select some), or use Next change';
     return;
   }
-  const what = targets.length === 1 ? describeChange(targets[0].el) : `${targets.length} changes`;
+  const what = targets.length === 1 ? describeChange(targets[0]) : `${targets.length} changes`;
   // Afterwards, the caret goes where the first change was.
+  const first = targets[0];
   const at = document.createRange();
-  if (targets[0].mark) at.setStart(targets[0].el, targets[0].el.childNodes.length);
-  else at.setStartBefore(targets[0].el);
+  if (first.kind === 'mark') at.setStart(first.el, first.el.childNodes.length);
+  else at.setStartBefore(first.kind === 'row' ? first.el.closest('table') : first.el);
   at.collapse(true);
   resolveItems(targets, accept);
   const sel = window.getSelection();
   if (at.startContainer.isConnected) {
+    const caret = settleCaret(at);
     sel.removeAllRanges();
-    sel.addRange(at);
-    savedRange = at.cloneRange();
+    sel.addRange(caret);
+    savedRange = caret.cloneRange();
   }
   message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}`;
   if (then === 'next' && targets.length === 1) {
     const next = adjacentChange(selectionInPage(), changeItems(page.value), 1);
     if (next) {
       selectChange(next);
-      message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}. Next: ${describeChange(next.el)}`;
+      message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}. Next: ${describeChange(next)}`;
     } else {
       message.value = `${accept ? 'Accepted' : 'Rejected'} ${what}. No more tracked changes`;
     }
@@ -1009,9 +1064,9 @@ function resolveAll(accept) {
   const items = changeItems(page.value);
   if (!items.length) return;
   resolveItems(items, accept);
-  const word = changes.wordOnly + changes.formatting;
+  const word = changes.wordOnly;
   message.value = `${accept ? 'Accepted' : 'Rejected'} all ${items.length} ${items.length === 1 ? 'change' : 'changes'}`
-    + (word ? `. ${word} more (formatting, table rows or locked content) can only be ${accept ? 'accepted' : 'rejected'} in Word` : '');
+    + (word ? `. ${word} more (table or cell properties, or locked content) can only be ${accept ? 'accepted' : 'rejected'} in Word` : '');
 }
 
 /** Resolves changes, last first so earlier ones stay where they are, as one undoable step. */
@@ -1019,7 +1074,7 @@ function resolveItems(items, accept) {
   closeChooser();
   undoStack.flush();
   for (const item of [...items].reverse()) {
-    if (item.el.isConnected) doc.resolveRevision(item.el, accept);
+    if (item.el.isConnected) doc.resolveRevision(item, accept);
   }
   resolved[accept ? 'accepted' : 'rejected'] += items.length;
   doc.renumber(page.value);
@@ -1783,7 +1838,17 @@ function chooseDate(iso) {
  * whose text was deleted (ids in `removed`).
  */
 function commentThreads(removed = new Set()) {
-  const comments = doc.comments.filter((c) => !removed.has(c.id));
+  // As shown: with the text and resolved state kept on their marks in the page (see commentMark).
+  const comments = doc.comments.filter((c) => !removed.has(c.id)).map((c) => {
+    const mark = commentMark(c.id);
+    const text = mark?.dataset.edit;
+    return {
+      ...c,
+      anchored: !!mark,
+      paragraphs: text != null ? text.split('\n').map((s) => s.trim()).filter(Boolean) : c.paragraphs,
+      done: mark?.dataset.done != null ? mark.dataset.done === '1' : c.done,
+    };
+  });
   const ids = new Set(comments.map((c) => c.id));
   const order = (c) => doc.commentOrder.get(c.id) ?? Infinity;
   return comments
@@ -1796,19 +1861,18 @@ function commentThreads(removed = new Set()) {
 // text, and the status bar says so, since Undo is the way back.
 let removedComments = new Set();
 
-let commentsShown = 0; // how many comments the panel was built from
+/** A comment's mark in the page: it carries the comment's edited text and resolved state. */
+function commentMark(id) {
+  return page.value?.querySelector(`[data-comment-ref="${CSS.escape(id)}"]`) || null;
+}
 
 function refreshComments() {
   if (!doc.comments.length) return;
   doc.renumberComments(page.value); // marks may have been added, removed or brought back by Undo
   const removed = doc.removedComments(page.value);
   const added = [...removed].filter((id) => !removedComments.has(id));
-  const changed = added.length || removed.size !== removedComments.size || doc.comments.length !== commentsShown;
   removedComments = removed;
-  if (changed) {
-    threads.value = commentThreads(removed);
-    commentsShown = doc.comments.length;
-  }
+  threads.value = commentThreads(removed); // edits and resolved state live on the marks, so always
   paintComments();
   if (added.length) message.value = commentRemovalMessage(added);
 }
@@ -2083,7 +2147,7 @@ async function close() {
 .split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
 .changes-group { display: inline-flex; align-items: center; gap: 2px; }
 .labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
-@media (max-width: 1400px) { .labelled .label, .has-changes .review-toggle .label { display: none; } }
+@media (max-width: 1400px) { .labelled .label, .has-changes .review-toggle .label, .has-changes .track-toggle .label { display: none; } }
 .change-menu {
   position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
@@ -2174,6 +2238,12 @@ async function close() {
 .docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }
 .docx-sheet [data-tc-mark]::after { content: '¶'; color: #6f2dbd; margin-left: 1px; }
 .docx-sheet [data-tc-mark="del"]::after { text-decoration: line-through; }
+/* Tracked formatting changes (of a run: dashed underline; of a paragraph: a bar in the margin) and
+   tracked table rows, as Word marks them. */
+.docx-sheet [data-fmt="run"] { border-bottom: 1px dashed #8e44ad; }
+.docx-sheet [data-fmt-para] { box-shadow: -10px 0 0 -8px #8e44ad; }
+.docx-sheet tr[data-rev-row="ins"] > td { background-color: #e8f5ea; }
+.docx-sheet tr[data-rev-row="del"] > td { background-color: #fbe9e7; text-decoration: line-through; }
 /* Someone else's tracked paragraph break, in the colours of their insertions and deletions. */
 .docx-sheet [data-rev-mark]::after { content: '¶'; margin-left: 1px; }
 .docx-sheet [data-rev-mark="ins"]::after { color: #1e6b34; }

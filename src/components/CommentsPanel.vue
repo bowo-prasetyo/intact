@@ -4,7 +4,7 @@
       <h2>Comments <span class="count">{{ threads.length }}</span></h2>
       <button type="button" class="close" title="Hide comments" aria-label="Hide comments" @click="$emit('close')">✕</button>
     </header>
-    <p class="note">Add comments here; reply to or resolve them in Word.</p>
+    <p class="note">Add, reply to, edit, resolve and delete comments here.</p>
     <form v-if="composing" class="composer" aria-label="New comment" @submit.prevent="post" @keydown.esc.stop="$emit('cancel')">
       <!-- No browser autocomplete: its list of earlier entries would cover the buttons below. -->
       <label v-if="askName" class="field">Your name
@@ -35,16 +35,45 @@
               <span class="author">{{ c.author }}</span>
               <time v-if="c.date" :datetime="c.date">{{ formatDate(c.date) }}</time>
             </div>
-            <p v-for="(text, i) in c.paragraphs" :key="i" class="text">{{ text }}</p>
-            <p v-if="!c.paragraphs.length" class="text empty">(no text)</p>
+            <form v-if="editing?.id === c.id" class="inline" aria-label="Edit comment" @submit.prevent="saveEdit" @click.stop @keydown.stop @keydown.esc="editing = null">
+              <textarea ref="editInput" v-model="editing.text" rows="3" aria-label="Comment text" @keydown.enter.ctrl.prevent="saveEdit" @keydown.enter.meta.prevent="saveEdit" />
+              <div class="actions">
+                <button type="button" @click="editing = null">Cancel</button>
+                <button type="submit" class="primary">Save</button>
+              </div>
+            </form>
+            <template v-else>
+              <p v-for="(text, i) in c.paragraphs" :key="i" class="text">{{ text }}</p>
+              <p v-if="!c.paragraphs.length" class="text empty">(no text)</p>
+              <div v-if="t.anchored" class="comment-actions" @click.stop>
+                <button type="button" class="link" :title="`Edit this comment by ${c.author}`" @click="startEdit(c)">Edit</button>
+                <button v-if="c !== t" type="button" class="link" title="Delete this reply (Undo brings it back)" @click="$emit('delete', c.id)">Delete</button>
+              </div>
+            </template>
           </div>
+          <form v-if="replying?.id === t.id" class="inline" aria-label="Reply" @submit.prevent="saveReply" @click.stop @keydown.stop @keydown.esc="replying = null">
+            <label v-if="askName" class="field">Your name
+              <input ref="replyName" v-model="replying.name" type="text" maxlength="100" autocomplete="off" />
+            </label>
+            <textarea ref="replyInput" v-model="replying.text" rows="2" aria-label="Reply text" @keydown.enter.ctrl.prevent="saveReply" @keydown.enter.meta.prevent="saveReply" />
+            <p v-if="replying.error" class="error" role="alert">{{ replying.error }}</p>
+            <div class="actions">
+              <button type="button" @click="replying = null">Cancel</button>
+              <button type="submit" class="primary">Reply</button>
+            </div>
+          </form>
           <div class="tags">
             <span v-if="t.n" class="tag">{{ t.n }}</span>
             <span v-else class="tag muted">Not anchored in the text</span>
             <span v-if="t.done" class="tag resolved">Resolved</span>
             <span v-if="t.isNew" class="tag new">New</span>
-            <button v-if="t.isNew" type="button" class="delete" title="Delete this comment (Undo brings it back)" @click.stop="$emit('delete', t.id)">Delete</button>
           </div>
+          <div v-if="t.anchored" class="thread-actions" @click.stop>
+            <button type="button" @click="startReply(t)">Reply</button>
+            <button type="button" @click="$emit('resolve', { id: t.id, done: !t.done })">{{ t.done ? 'Reopen' : 'Resolve' }}</button>
+            <button type="button" title="Delete this comment and its replies (Undo brings them back)" @click="$emit('delete', t.id)">Delete</button>
+          </div>
+          <p v-else class="hint">In a header, footer or note: reply to, edit or resolve it in Word.</p>
         </article>
       </li>
     </ol>
@@ -60,7 +89,7 @@ const props = defineProps({
   composing: { type: Boolean, default: false }, // show the box for a new comment
   askName: { type: Boolean, default: false }, // the author's name isn't known yet
 });
-const emit = defineEmits(['select', 'close', 'post', 'cancel', 'delete']);
+const emit = defineEmits(['select', 'close', 'post', 'cancel', 'delete', 'reply', 'edit', 'resolve']);
 
 const text = ref('');
 const nameDraft = ref('');
@@ -75,6 +104,48 @@ watch(() => props.composing, async (on) => {
   await nextTick();
   (props.askName ? nameInput.value : textInput.value)?.focus();
 }, { immediate: true });
+
+// Editing a comment, or replying to a thread: one at a time.
+const editing = ref(null); // { id, text }
+const replying = ref(null); // { id, text, name, error }
+const editInput = ref(null);
+const replyInput = ref(null);
+const replyName = ref(null);
+const first = (r) => (Array.isArray(r.value) ? r.value[0] : r.value);
+
+async function startEdit(c) {
+  replying.value = null;
+  editing.value = { id: c.id, text: c.paragraphs.join('\n') };
+  await nextTick();
+  first(editInput)?.focus();
+}
+
+function saveEdit() {
+  const { id, text } = editing.value;
+  editing.value = null;
+  emit('edit', { id, text: text.trim() });
+}
+
+async function startReply(t) {
+  editing.value = null;
+  replying.value = { id: t.id, text: '', name: '', error: '' };
+  await nextTick();
+  (props.askName ? first(replyName) : first(replyInput))?.focus();
+}
+
+function saveReply() {
+  const r = replying.value;
+  if (props.askName && !r.name.trim()) {
+    r.error = 'Your name goes on the reply';
+    return;
+  }
+  if (!r.text.trim()) {
+    r.error = 'Write the reply first';
+    return;
+  }
+  replying.value = null;
+  emit('reply', { id: r.id, text: r.text.trim(), name: r.name.trim() });
+}
 
 function post() {
   if (props.askName && !nameDraft.value.trim()) {
@@ -136,8 +207,15 @@ time { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .tag.muted { background: var(--hover); color: var(--muted); }
 .tag.resolved { background: #dcefe0; color: #1e6b34; }
 .tag.new { background: #e3ecfa; color: #2b579a; }
-.delete { margin-left: auto; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0 4px; border-radius: 4px; }
-.delete:hover { background: var(--hover); color: inherit; }
+.comment-actions { display: flex; gap: 8px; margin-top: 2px; }
+.link { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0; text-decoration: underline dotted; }
+.link:hover { color: inherit; }
+.thread-actions { display: flex; gap: 6px; margin-top: 8px; }
+.thread-actions button { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; padding: 2px 8px; cursor: pointer; }
+.thread-actions button:hover { background: var(--hover); }
+.inline { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.inline textarea { font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; resize: vertical; }
+.hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .composer { margin: 0 8px 8px; padding: 8px 10px; border: 1px solid #d0705c; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
 .field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .field input, .field textarea { font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; resize: vertical; }

@@ -52,7 +52,8 @@ test('a comment on the selected text, in a document without comments: comments.x
   const id = xml.match(/<w:commentRangeStart w:id="(\d+)"\/>/)[1];
   expect(xml).toContain(`<w:t xml:space="preserve">The fee is due within </w:t></w:r><w:commentRangeStart w:id="${id}"/><w:r><w:t xml:space="preserve">thirty days</w:t></w:r><w:commentRangeEnd w:id="${id}"/><w:r><w:commentReference w:id="${id}"/></w:r>`);
   const comments = await zip.file('word/comments.xml').async('string');
-  expect(comments).toMatch(new RegExp(`<w:comment w:id="${id}" w:author="Rita Gomez" w:date="\\d{4}-\\d\\d-\\d\\dT[\\d:]+Z" w:initials="RG"><w:p><w:r><w:annotationRef/></w:r><w:r><w:t xml:space="preserve">Is thirty right\\?</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">The contract says fourteen.</w:t></w:r></w:p></w:comment>`));
+  // The last paragraph has an id, so the comment can be replied to and resolved (commentsExtended.xml).
+  expect(comments).toMatch(new RegExp(`<w:comment w:id="${id}" w:author="Rita Gomez" w:date="\\d{4}-\\d\\d-\\d\\dT[\\d:]+Z" w:initials="RG"><w:p><w:r><w:annotationRef/></w:r><w:r><w:t xml:space="preserve">Is thirty right\\?</w:t></w:r></w:p><w:p w14:paraId="[0-9A-F]{8}"><w:r><w:t xml:space="preserve">The contract says fourteen.</w:t></w:r></w:p></w:comment>`));
   expect(await zip.file('word/_rels/document.xml.rels').async('string')).toContain('relationships/comments" Target="comments.xml"');
   expect(await zip.file('[Content_Types].xml').async('string')).toContain('PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"');
 });
