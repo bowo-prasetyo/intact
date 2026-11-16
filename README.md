@@ -76,6 +76,19 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   picture's outline, as in Word: the outline of what isn't transparent is written as the wrap
   polygon, and the page wraps the text around it (CSS `shape-outside`), as it does for a polygon
   Word drew
+- Picture styles, shapes, 3-D and artistic effects, as on Word's Picture Format tab: a gallery of
+  Word's picture styles (each written out as Word writes it: shape, border, shadow, glow, soft
+  edges, reflection and 3-D format; Word keeps no reference to a style), a shape to cut the picture
+  to (`a:prstGeom`), a bevel and a 3-D rotation (`a:sp3d`, `a:scene3d`), and artistic effects
+  (blur, pencil grayscale, line drawing, glow edges, photocopy) drawn into the picture in the
+  browser and saved as a new picture, as Word saves them, with the original kept beside it in an
+  extension of the picture (`a:extLst`), so the effect can be changed or taken off here (Word shows
+  the drawn picture). The page shows every effect with the file's own values: a shadow's distance,
+  direction, blur, colour and transparency, a glow's size and colour, soft edges' width, a
+  reflection's distance and fade, a bevel's width, Word's brightness and contrast (tones moved and
+  stretched about the middle, not CSS's multiply) and greyscale, the picture's shape; a turned
+  picture in line with the text takes the room of its turned outline, on the page and in the file
+  (`wp:effectExtent`), as in Word
 - Add comments (toolbar button or Ctrl+Alt+M) on the selected text, or the word at the caret, with
   your name (asked once, shared with Track Changes): they appear in the comments panel and are
   written to `comments.xml` (created if the document has none) next to the comments already there.
@@ -247,10 +260,10 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   formatting changes (bold, styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
-- Floating pictures are shown as near to Word's layout as a web page allows (rotation, shadows and
-  reflections are approximated; a wrap outline isn't rotated with the picture); 3-D effects, artistic
-  effects and picture styles are kept but set in Word. Field cells that are locked, linked to data
-  or not text fields can't be merged
+- A web page can't light a picture in 3-D: bevels, 3-D rotations and materials are drawn as near as
+  CSS comes (and Word's other artistic effects, such as paint strokes, are left to Word); a wrap
+  outline isn't turned with its picture. Field cells that are locked, linked to data or not text
+  fields can't be merged
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs and
   lists (not highlight); pictures within copied text and links (their text is kept) are not added

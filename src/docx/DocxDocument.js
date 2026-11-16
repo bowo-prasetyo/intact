@@ -33,7 +33,9 @@ import { reviewParagraphs, tableSummary } from './review.js';
 import { resolveRevisionsIn, countRevisions, revisionAuthors } from './resolveAll.js';
 import {
   pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX, pictureLook, setCrop, setRotation, setEffects, wrapPolygon, setWrapPolygon,
+  setGeometry, set3D, applyPictureStyle, setArtistic, clearArtistic, blipOf,
 } from './pictures.js';
+import { drawPicture } from './pictureView.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -1473,17 +1475,7 @@ export class DocxDocument {
       h = Math.max(1, Math.round((h * maxWidth) / w));
       w = maxWidth;
     }
-    let n = 1;
-    const taken = (path) => this.zip.file(path) || [...this.newMedia.values()].some((m) => m.path === path);
-    while (taken(`${this.mainDir ? this.mainDir + '/' : ''}media/image${n}.${ext}`)) n++;
-    const target = `media/image${n}.${ext}`;
-    const path = `${this.mainDir ? this.mainDir + '/' : ''}${target}`;
-    let k = 1;
-    while (this.rels.has(`rIdImage${k}`)) k++;
-    const rid = `rIdImage${k}`;
-    this.rels.set(rid, { type: IMAGE_REL, target, external: false, path });
-    this.mediaUrls.set(path, url);
-    this.newMedia.set(rid, { path, target, data, ext, type: file.type });
+    const { rid, n } = this.addMedia(data, file.type, url);
     const id = await this.nextDocPrId();
     const cx = Math.round(w * 9525);
     const cy = Math.round(h * 9525);
@@ -1498,6 +1490,32 @@ export class DocxDocument {
     const r = this.xml.importNode(parseXml(xml).documentElement, true);
     for (const a of [...r.attributes]) if (a.name.startsWith('xmlns')) r.removeAttributeNode(a); // declared where needed when saved
     return { span: this.rawInline(r) };
+  }
+
+  /**
+   * A picture file added this session (`data`, of MIME `type`; `url` shows it): a new file in
+   * word/media and a relationship to it, written on save if a picture uses it. Returns { rid, path, n }.
+   */
+  addMedia(data, type, url = URL.createObjectURL(new Blob([data], { type }))) {
+    const ext = PICTURE_TYPES[type] || 'png';
+    let n = 1;
+    const taken = (path) => this.zip.file(path) || [...this.newMedia.values()].some((m) => m.path === path);
+    while (taken(`${this.mainDir ? this.mainDir + '/' : ''}media/image${n}.${ext}`)) n++;
+    const target = `media/image${n}.${ext}`;
+    const path = `${this.mainDir ? this.mainDir + '/' : ''}${target}`;
+    let k = 1;
+    while (this.rels.has(`rIdImage${k}`)) k++;
+    const rid = `rIdImage${k}`;
+    this.rels.set(rid, { type: IMAGE_REL, target, external: false, path });
+    this.mediaUrls.set(path, url);
+    this.newMedia.set(rid, { path, target, data, ext, type });
+    return { rid, path, n };
+  }
+
+  /** The address the editor shows a picture file (by relationship id) at, or null. */
+  mediaUrl(rid) {
+    const rel = rid && this.rels.get(rid);
+    return (rel && this.mediaUrls.get(rel.path)) || null;
   }
 
   /** A drawing id no other drawing in the package has (Word wants them unique). */
@@ -1520,7 +1538,8 @@ export class DocxDocument {
    */
   async writeMedia() {
     if (!this.newMedia.size) return;
-    const used = new Set([...this.body.getElementsByTagNameNS(NS.a, 'blip')].map((b) => b.getAttributeNS(NS.r, 'embed')));
+    // Used: shown by a picture, or kept as the original of a picture with an artistic effect.
+    const used = new Set([...this.body.getElementsByTagName('*')].map((el) => el.getAttributeNS(NS.r, 'embed')).filter(Boolean));
     const rels = parseXml((await this.text(this.relsPath)) || `<Relationships xmlns="${NS.pr}"/>`);
     const ct = parseXml(await this.text('[Content_Types].xml'));
     let changed = false;
@@ -1566,42 +1585,12 @@ export class DocxDocument {
    * its position. Offsets from the paragraph are measured from where the picture's run is.
    */
   stylePicture(span, info = this.pictureLayout(span), look = pictureLook(this.raw[Number(span.dataset.raw)])) {
-    const img = span.querySelector('img');
     const w = info.cx / EMU_PER_PX;
     const h = info.cy / EMU_PER_PX;
     span.dataset.wrap = info.wrap;
     span.removeAttribute('style');
-    const st = span.style;
     this.placePicture(span, info, w, h);
-    // What shows of it: its frame, the picture cropped inside (as Word's srcRect cuts it).
-    st.width = `${w}px`;
-    st.height = `${h}px`;
-    st.overflow = 'hidden';
-    const c = look.crop;
-    const fullW = w / (1 - c.l - c.r);
-    const fullH = h / (1 - c.t - c.b);
-    if (img) {
-      img.alt = info.descr;
-      Object.assign(img.style, {
-        width: `${fullW}px`, height: `${fullH}px`, maxWidth: 'none', marginLeft: `${-c.l * fullW}px`, marginTop: `${-c.t * fullH}px`,
-        filter: [look.greyscale && 'grayscale(1)', look.brightness && `brightness(${1 + look.brightness})`, look.contrast && `contrast(${1 + look.contrast})`].filter(Boolean).join(' '),
-      });
-    }
-    // Rotation and flips, border, shadow, glow, soft edges and reflection: as near as CSS shows them.
-    const turns = [look.rot && `rotate(${look.rot}deg)`, look.flipH && 'scaleX(-1)', look.flipV && 'scaleY(-1)'].filter(Boolean).join(' ');
-    if (turns) st.transform = turns;
-    span.dataset.turn = turns;
-    if (look.border) st.outline = `${Math.max(1, look.border.width * 1.333)}px solid #${look.border.color}`;
-    const drops = [look.shadow && 'drop-shadow(3px 3px 3px rgb(0 0 0 / 40%))', look.glow && `drop-shadow(0 0 5px #${look.glow})`].filter(Boolean);
-    if (drops.length) st.filter = drops.join(' ');
-    if (look.softEdge) {
-      const fade = 'linear-gradient(to right, transparent, #000 8px, #000 calc(100% - 8px), transparent), linear-gradient(to bottom, transparent, #000 8px, #000 calc(100% - 8px), transparent)';
-      st.maskImage = fade;
-      st.webkitMaskImage = fade;
-      st.maskComposite = 'intersect';
-      st.webkitMaskComposite = 'source-in';
-    }
-    if (look.reflection) st.webkitBoxReflect = 'below 2px linear-gradient(transparent 55%, rgb(255 255 255 / 45%))';
+    drawPicture(span, { w, h, look, alt: info.descr, url: this.mediaUrl(blipOf(this.raw[Number(span.dataset.raw)])), inline: info.wrap === 'inline' });
   }
 
   /** Where a picture goes: in line, floating left or right, on a line of its own, or behind or in front of the text. */
@@ -1698,6 +1687,40 @@ export class DocxDocument {
 
   setPictureEffects(span, look) {
     this.changePicture(span, (run) => setEffects(run, look));
+  }
+
+  setPictureGeometry(span, prst) {
+    this.changePicture(span, (run) => setGeometry(run, prst));
+  }
+
+  setPicture3D(span, format) {
+    this.changePicture(span, (run) => set3D(run, format));
+  }
+
+  /** Applies a picture style (see pictures.js PICTURE_STYLES), or takes it off with null. */
+  setPictureStyle(span, style) {
+    this.changePicture(span, (run) => applyPictureStyle(run, style));
+  }
+
+  /** The picture file a picture shows without its artistic effect: its relationship id and address. */
+  pictureOriginal(span) {
+    const run = this.raw[Number(span.dataset.raw)];
+    const rid = pictureLook(run).artistic?.original || blipOf(run);
+    return { rid, url: this.mediaUrl(rid) };
+  }
+
+  /**
+   * An artistic effect on a picture: `png` (bytes) is the picture drawn with it, added as a new
+   * picture file; the original is kept (see pictures.js setArtistic). `effect` null takes it off.
+   */
+  setPictureArtistic(span, effect, png = null) {
+    const { rid: original } = this.pictureOriginal(span);
+    if (!effect) {
+      this.changePicture(span, (run) => clearArtistic(run));
+      return;
+    }
+    const { rid } = this.addMedia(png, 'image/png');
+    this.changePicture(span, (run) => setArtistic(run, { effect, rendered: rid, original }));
   }
 
   setPictureDescription(span, text) {

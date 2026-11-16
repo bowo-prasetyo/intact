@@ -19,7 +19,7 @@ const pic = (page) => page.locator('.docx-page .picture');
 async function openPanel(page, section, at = undefined) {
   await pic(page).click({ position: at }); // `at`: a spot clear of the handles on a small picture
   await page.getByTitle('Layout Options: wrapping, position, size and alt text').click();
-  if (section) await panel(page).locator('summary', { hasText: section }).click();
+  if (section) await panel(page).locator('summary').getByText(section, { exact: true }).click();
 }
 
 async function dragBy(page, locator, dx, dy) {
@@ -95,10 +95,20 @@ test('effects: border, shadow, glow, soft edges, reflection, greyscale, brightne
   await panel(page).getByRole('spinbutton', { name: 'Brightness (%)' }).fill('20');
   await panel(page).getByRole('spinbutton', { name: 'Brightness (%)' }).press('Tab');
   await expect(status(page)).toHaveText('Picture effects changed');
-  const shown = await pic(page).evaluate((s) => [s.style.outline, s.style.filter, s.querySelector('img').style.filter]);
-  expect(shown[0]).toContain('solid');
-  expect(shown[1]).toContain('drop-shadow');
-  expect(shown[2]).toBe('grayscale(1) brightness(1.2)');
+  // Shown with the file's values: the border on the picture's edge, shadow and glow, a reflection
+  // below, and Word's brightness (tones moved up by 20%) in greyscale.
+  const shown = await pic(page).evaluate((s) => ({
+    outline: s.querySelector('.pic-box').style.outline,
+    drops: s.querySelector('.pic-shadow').style.filter,
+    reflection: !!s.querySelector('.pic-reflect img'),
+    colour: s.querySelector('.pic-box img').style.filter,
+  }));
+  expect(shown.outline).toMatch(/2px/);
+  expect(shown.outline).toMatch(/solid/);
+  expect(shown.drops).toBe('drop-shadow(rgba(0, 0, 0, 0.4) 2.8px 2.8px 2.7px) drop-shadow(rgba(255, 192, 0, 0.6) 0px 0px 3.3px) drop-shadow(rgba(255, 192, 0, 0.6) 0px 0px 3.3px)');
+  expect(shown.reflection).toBe(true);
+  expect(shown.colour).toBe('url("#intact-colour-g-1000-200")');
+  expect(await page.locator('#intact-colour-g-1000-200 feFuncR').getAttribute('intercept')).toBe('0.2');
   const { xml } = await download(page);
   expect(xml).toContain('<a:blip r:embed="rId4"><a:grayscl/><a:lum bright="20000"/></a:blip>');
   expect(xml).toContain('<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:ln w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln><a:effectLst><a:glow rad="63500"><a:srgbClr val="FFC000"><a:alpha val="60000"/></a:srgbClr></a:glow><a:outerShdw blurRad="50800" dist="38100" dir="2700000" algn="tl" rotWithShape="0"><a:prstClr val="black"><a:alpha val="40000"/></a:prstClr></a:outerShdw><a:reflection ');
@@ -106,7 +116,7 @@ test('effects: border, shadow, glow, soft edges, reflection, greyscale, brightne
 
   // Taking them off again leaves the picture as it was.
   await page.getByTitle('Layout Options: wrapping, position, size and alt text').click();
-  await panel(page).locator('summary', { hasText: 'Effects' }).click();
+  await panel(page).locator('summary').getByText('Effects', { exact: true }).click();
   await panel(page).getByRole('combobox', { name: 'Border', exact: true }).selectOption('none');
   for (const name of ['Shadow', 'Glow', 'Soft edges', 'Reflection']) await panel(page).getByRole('checkbox', { name }).uncheck();
   await panel(page).getByRole('combobox', { name: 'Colour' }).selectOption('normal');
