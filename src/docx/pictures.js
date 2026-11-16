@@ -228,34 +228,82 @@ const SPPR_ORDER = ['xfrm', 'custGeom', 'prstGeom', 'noFill', 'solidFill', 'grad
 const EFFECT_ORDER = ['blur', 'fillOverlay', 'glow', 'innerShdw', 'outerShdw', 'prstShdw', 'reflection', 'softEdge'];
 const pct = (v) => (Number(v) || 0) / 100000; // DrawingML percentages are in 1/1000 of a percent
 
+// Office's default theme colours, for effects given as theme colours (accent1 and so on).
+const THEME = {
+  accent1: '4472C4', accent2: 'ED7D31', accent3: 'A5A5A5', accent4: 'FFC000', accent5: '5B9BD5', accent6: '70AD47',
+  tx1: '000000', bg1: 'FFFFFF', dk1: '000000', lt1: 'FFFFFF', tx2: '44546A', bg2: 'E7E6E6', dk2: '44546A', lt2: 'E7E6E6',
+};
+const PRESET_COLORS = { black: '000000', white: 'FFFFFF', gray: '808080', red: 'FF0000', blue: '0000FF', green: '008000', yellow: 'FFFF00' };
+
+/** The colour inside a DrawingML element (srgbClr, schemeClr, prstClr, sysClr), with its alpha: { color, alpha } or null. */
+function colorIn(el) {
+  const c = el && [...el.children].find((k) => k.namespaceURI === A && /Clr$/.test(k.localName));
+  if (!c) return null;
+  let color = '000000';
+  if (c.localName === 'srgbClr') color = c.getAttribute('val') || color;
+  else if (c.localName === 'schemeClr') color = THEME[c.getAttribute('val')] || color;
+  else if (c.localName === 'prstClr') color = PRESET_COLORS[c.getAttribute('val')] || color;
+  else if (c.localName === 'sysClr') color = c.getAttribute('lastClr') || color;
+  const alpha = child(c, A, 'alpha');
+  return { color: color.toUpperCase(), alpha: alpha ? pct(alpha.getAttribute('val')) : 1 };
+}
+
+const num = (el, attr, dflt = 0) => {
+  const v = Number(el?.getAttribute(attr));
+  return Number.isFinite(v) && el?.hasAttribute(attr) ? v : dflt;
+};
+
+const A14 = 'http://schemas.microsoft.com/office/drawing/2010/main';
+/** Where Intact keeps a picture's original when an artistic effect is drawn into it (Word ignores what it doesn't know in extLst). */
+export const INTACT_PIC = 'urn:intact:picture';
+const ORIGINAL_EXT = '{6E8D1F2A-7B3C-4D5E-9F60-A1B2C3D4E5F6}';
+
 /**
- * Crop, rotation and effects of a picture: { crop: { l, t, r, b } (fractions), rot (degrees),
- * flipH, flipV, border: { color, width (pt) } | null, shadow, glow, softEdge, reflection,
- * greyscale, brightness, contrast (−1 to 1) }.
+ * Crop, rotation, shape, border, effects, 3-D and colour of a picture, with the values the file
+ * gives (lengths in EMU, angles in degrees, alphas and percentages from 0 to 1):
+ * { crop, rot, flipH, flipV, geometry, border: { color, width (pt), alpha } | null,
+ *   shadow: { blur, dist, dir, color, alpha } | null, glow: { rad, color, alpha } | null,
+ *   softEdge: { rad } | null, reflection: { blur, dist, stA, endA, endPos } | null,
+ *   bevel: { prst, w, h } | null, camera, material, greyscale, brightness, contrast,
+ *   artistic: { effect, original (relationship id) } | null }.
  */
 export function pictureLook(r) {
   const src = child(blipFillOf(r), A, 'srcRect');
   const spPr = child(picOf(r), PIC, 'spPr');
   const xfrm = child(spPr, A, 'xfrm');
   const ln = child(spPr, A, 'ln');
-  const fill = child(ln, A, 'solidFill');
-  const color = child(fill, A, 'srgbClr')?.getAttribute('val');
   const effects = child(spPr, A, 'effectLst');
   const blip = child(blipFillOf(r), A, 'blip');
   const lum = child(blip, A, 'lum');
+  const shadow = child(effects, A, 'outerShdw');
+  const glow = child(effects, A, 'glow');
+  const soft = child(effects, A, 'softEdge');
+  const reflection = child(effects, A, 'reflection');
+  const bevel = child(child(spPr, A, 'sp3d'), A, 'bevelT');
+  const camera = child(child(spPr, A, 'scene3d'), A, 'camera');
+  const lineColor = colorIn(child(ln, A, 'solidFill'));
+  const original = blip && [...blip.getElementsByTagNameNS(INTACT_PIC, 'original')][0];
   return {
     crop: { l: pct(src?.getAttribute('l')), t: pct(src?.getAttribute('t')), r: pct(src?.getAttribute('r')), b: pct(src?.getAttribute('b')) },
-    rot: (Number(xfrm?.getAttribute('rot')) || 0) / 60000,
+    rot: num(xfrm, 'rot') / 60000,
     flipH: xfrm?.getAttribute('flipH') === '1',
     flipV: xfrm?.getAttribute('flipV') === '1',
-    border: ln && !child(ln, A, 'noFill') ? { color: color || '000000', width: (Number(ln.getAttribute('w')) || 9525) / 12700 } : null,
-    shadow: !!child(effects, A, 'outerShdw'),
-    glow: child(effects, A, 'glow') ? (child(child(effects, A, 'glow'), A, 'srgbClr')?.getAttribute('val') || 'FFC000') : null,
-    softEdge: !!child(effects, A, 'softEdge'),
-    reflection: !!child(effects, A, 'reflection'),
+    geometry: child(spPr, A, 'prstGeom')?.getAttribute('prst') || 'rect',
+    border: ln && !child(ln, A, 'noFill') ? { color: lineColor?.color || '000000', alpha: lineColor?.alpha ?? 1, width: num(ln, 'w', 9525) / 12700 } : null,
+    shadow: shadow ? { blur: num(shadow, 'blurRad'), dist: num(shadow, 'dist'), dir: num(shadow, 'dir') / 60000, ...(colorIn(shadow) || { color: '000000', alpha: 1 }) } : null,
+    glow: glow ? { rad: num(glow, 'rad'), ...(colorIn(glow) || { color: 'FFC000', alpha: 1 }) } : null,
+    softEdge: soft ? { rad: num(soft, 'rad') } : null,
+    reflection: reflection ? {
+      blur: num(reflection, 'blurRad'), dist: num(reflection, 'dist'),
+      stA: pct(num(reflection, 'stA', 100000)), endA: pct(num(reflection, 'endA', 0)), endPos: pct(num(reflection, 'endPos', 100000)),
+    } : null,
+    bevel: bevel ? { prst: bevel.getAttribute('prst') || 'circle', w: num(bevel, 'w', 76200), h: num(bevel, 'h', 76200) } : null,
+    camera: camera && camera.getAttribute('prst') !== 'orthographicFront' ? camera.getAttribute('prst') : null,
+    material: child(spPr, A, 'sp3d')?.getAttribute('prstMaterial') || null,
     greyscale: !!child(blip, A, 'grayscl'),
     brightness: pct(lum?.getAttribute('bright')),
     contrast: pct(lum?.getAttribute('contrast')),
+    artistic: original ? { effect: original.getAttribute('effect'), original: original.getAttributeNS(NS.r, 'embed') } : null,
   };
 }
 
@@ -306,6 +354,19 @@ export function setRotation(r, { rot, flipH, flipV }) {
   const deg = ((Math.round(Number(rot) || 0) % 360) + 360) % 360;
   if (deg) xfrm.setAttribute('rot', String(deg * 60000));
   else xfrm.removeAttribute('rot');
+  // In line with the text, a turned picture takes the room of its turned outline, as Word records
+  // it (wp:effectExtent), so the text makes way for its corners.
+  const frame = frameOf(r);
+  if (frame.localName === 'inline') {
+    const info = pictureInfo(r);
+    const { dx, dy } = turnedRoom(info.cx, info.cy, deg);
+    let extent = child(frame, WP, 'effectExtent');
+    if (!extent) {
+      extent = make(r.ownerDocument, 'effectExtent');
+      child(frame, WP, 'extent').after(extent);
+    }
+    for (const [side, v] of [['l', dx], ['t', dy], ['r', dx], ['b', dy]]) extent.setAttribute(side, String(Math.round(v)));
+  }
   for (const [name, on] of [['flipH', flipH], ['flipV', flipV]]) {
     if (on) xfrm.setAttribute(name, '1');
     else xfrm.removeAttribute(name);
@@ -315,37 +376,45 @@ export function setRotation(r, { rot, flipH, flipV }) {
 /**
  * A picture's effects, as Word's Picture Border, Effects and Colour menus set them: a border
  * (colour, width in points), an outer shadow, a glow, soft edges, a reflection; greyscale,
- * brightness and contrast. Effects it doesn't set (blur, inner shadows, 3-D…) are kept.
+ * brightness and contrast. An effect left on keeps the values it has (only one turned on gets
+ * Word's default); effects it doesn't set (blur, inner shadows…) are kept.
  */
 export function setEffects(r, look) {
   const doc = r.ownerDocument;
   const spPr = spPrOf(r);
   const oldLn = child(spPr, A, 'ln');
-  if (oldLn) spPr.removeChild(oldLn);
-  if (look.border) {
-    const ln = makeA(doc, 'ln', { w: Math.round((Number(look.border.width) || 0.75) * 12700) });
-    ln.appendChild(makeA(doc, 'solidFill')).appendChild(makeA(doc, 'srgbClr', { val: (look.border.color || '000000').replace('#', '').toUpperCase() }));
-    placeIn(spPr, ln, SPPR_ORDER);
+  const wanted = look.border ? Math.round((Number(look.border.width) || 0.75) * 12700) : 0;
+  const color = (look.border?.color || '000000').replace('#', '').toUpperCase();
+  const same = oldLn && look.border && num(oldLn, 'w', 9525) === wanted && colorIn(child(oldLn, A, 'solidFill'))?.color === color;
+  if (!same) {
+    if (oldLn) spPr.removeChild(oldLn);
+    if (look.border) {
+      const ln = makeA(doc, 'ln', { w: wanted });
+      ln.appendChild(makeA(doc, 'solidFill')).appendChild(makeA(doc, 'srgbClr', { val: color }));
+      placeIn(spPr, ln, SPPR_ORDER);
+    }
   }
   let effects = child(spPr, A, 'effectLst');
   if (!effects) effects = makeA(doc, 'effectLst');
-  for (const local of ['glow', 'outerShdw', 'reflection', 'softEdge']) {
-    const old = child(effects, A, local);
-    if (old) effects.removeChild(old);
-  }
   const add = (el) => placeIn(effects, el, EFFECT_ORDER);
-  if (look.glow) {
+  const toggle = (local, on, make) => {
+    const old = child(effects, A, local);
+    if (on && !old) add(make());
+    else if (!on && old) effects.removeChild(old);
+  };
+  toggle('glow', look.glow, () => {
     const glow = makeA(doc, 'glow', { rad: 63500 });
-    glow.appendChild(makeA(doc, 'srgbClr', { val: String(look.glow).replace('#', '').toUpperCase() })).appendChild(makeA(doc, 'alpha', { val: 60000 }));
-    add(glow);
-  }
-  if (look.shadow) {
+    const c = typeof look.glow === 'string' ? look.glow : 'FFC000';
+    glow.appendChild(makeA(doc, 'srgbClr', { val: c.replace('#', '').toUpperCase() })).appendChild(makeA(doc, 'alpha', { val: 60000 }));
+    return glow;
+  });
+  toggle('outerShdw', look.shadow, () => {
     const shadow = makeA(doc, 'outerShdw', { blurRad: 50800, dist: 38100, dir: 2700000, algn: 'tl', rotWithShape: 0 });
     shadow.appendChild(makeA(doc, 'prstClr', { val: 'black' })).appendChild(makeA(doc, 'alpha', { val: 40000 }));
-    add(shadow);
-  }
-  if (look.reflection) add(makeA(doc, 'reflection', { blurRad: 6350, stA: 50000, endA: 300, endPos: 55000, dir: 5400000, sy: -100000, algn: 'bl', rotWithShape: 0 }));
-  if (look.softEdge) add(makeA(doc, 'softEdge', { rad: 63500 }));
+    return shadow;
+  });
+  toggle('reflection', look.reflection, () => makeA(doc, 'reflection', { blurRad: 6350, stA: 50000, endA: 300, endPos: 55000, dir: 5400000, sy: -100000, algn: 'bl', rotWithShape: 0 }));
+  toggle('softEdge', look.softEdge, () => makeA(doc, 'softEdge', { rad: 63500 }));
   if (effects.children.length && !effects.parentNode) placeIn(spPr, effects, SPPR_ORDER);
   else if (!effects.children.length && effects.parentNode) spPr.removeChild(effects);
   const blip = child(blipFillOf(r), A, 'blip');
@@ -364,6 +433,178 @@ export function setEffects(r, look) {
     if (contrast) lum.setAttribute('contrast', String(contrast));
     blip.insertBefore(lum, ext);
   }
+}
+
+// ---------------------------------------------------------------- shapes, 3-D and picture styles
+
+/** Shapes a picture can be cut to, as Word's Crop to Shape offers the common ones. */
+export const SHAPES = [
+  ['rect', 'Rectangle'], ['roundRect', 'Rounded rectangle'], ['ellipse', 'Oval'],
+  ['snip2DiagRect', 'Diagonal corners snipped'], ['round2DiagRect', 'Diagonal corners rounded'], ['snip1Rect', 'Single corner snipped'],
+];
+
+/** Bevels (the top edge of Word's 3-D Format) and 3-D rotations, by Word's names. */
+export const BEVELS = [
+  ['circle', 'Circle'], ['relaxedInset', 'Relaxed inset'], ['cross', 'Cross'], ['coolSlant', 'Cool slant'],
+  ['angle', 'Angle'], ['softRound', 'Soft round'], ['convex', 'Convex'],
+];
+export const CAMERAS = [
+  ['isometricOffAxis1Right', 'Off axis 1: right'], ['isometricOffAxis1Left', 'Off axis 1: left'],
+  ['perspectiveRight', 'Perspective: right'], ['perspectiveLeft', 'Perspective: left'],
+  ['perspectiveRelaxed', 'Perspective: relaxed'], ['isometricTopUp', 'Isometric: top up'],
+];
+
+/** Cuts a picture to a shape (a:prstGeom), as Crop to Shape does. */
+export function setGeometry(r, prst) {
+  const spPr = spPrOf(r);
+  let geom = child(spPr, A, 'prstGeom');
+  const custom = child(spPr, A, 'custGeom');
+  if (custom) spPr.removeChild(custom);
+  if (!geom) {
+    geom = makeA(r.ownerDocument, 'prstGeom');
+    geom.appendChild(makeA(r.ownerDocument, 'avLst'));
+    placeIn(spPr, geom, SPPR_ORDER);
+  }
+  geom.setAttribute('prst', prst || 'rect');
+}
+
+/**
+ * A picture's 3-D format (a:scene3d, a:sp3d): a bevel on its top edge (Word's sizes, 6 pt × 2 pt
+ * unless given), a 3-D rotation (camera) and a material. Nothing set takes the 3-D format off.
+ */
+export function set3D(r, { bevel = null, camera = null, material = null } = {}) {
+  const doc = r.ownerDocument;
+  const spPr = spPrOf(r);
+  for (const local of ['scene3d', 'sp3d']) {
+    const old = child(spPr, A, local);
+    if (old) spPr.removeChild(old);
+  }
+  if (!bevel && !camera && !material) return;
+  const scene = makeA(doc, 'scene3d');
+  scene.appendChild(makeA(doc, 'camera', { prst: camera || 'orthographicFront' }));
+  scene.appendChild(makeA(doc, 'lightRig', { rig: 'threePt', dir: 't' }));
+  placeIn(spPr, scene, SPPR_ORDER);
+  const sp3d = makeA(doc, 'sp3d', material ? { prstMaterial: material } : {});
+  if (bevel) {
+    const b = typeof bevel === 'string' ? { prst: bevel } : bevel;
+    sp3d.appendChild(makeA(doc, 'bevelT', { w: b.w ?? 76200, h: b.h ?? 25400, prst: b.prst || 'circle' }));
+  }
+  placeIn(spPr, sp3d, SPPR_ORDER);
+}
+
+// Word's Picture Styles gallery: each is a shape, border, effects and 3-D format, written out as such
+// (Word keeps no reference to the style). Lengths in EMU.
+const WHITE_FRAME = { color: 'FFFFFF', width: 7 };
+const SOFT_SHADOW = { blur: 50800, dist: 38100, dir: 45, color: '000000', alpha: 0.43 };
+export const PICTURE_STYLES = [
+  { name: 'Simple Frame, White', geometry: 'rect', border: WHITE_FRAME, shadow: SOFT_SHADOW },
+  { name: 'Simple Frame, Black', geometry: 'rect', border: { color: '000000', width: 7 } },
+  { name: 'Beveled Matte, White', geometry: 'rect', border: WHITE_FRAME, shadow: SOFT_SHADOW, bevel: { prst: 'circle', w: 25400, h: 19050 } },
+  { name: 'Metal Frame', geometry: 'rect', border: { color: 'A6A6A6', width: 7 }, bevel: { prst: 'angle', w: 50800, h: 50800 } },
+  { name: 'Drop Shadow Rectangle', geometry: 'rect', shadow: { blur: 127000, dist: 63500, dir: 45, color: '000000', alpha: 0.4 } },
+  { name: 'Rounded Diagonal Corner, White', geometry: 'round2DiagRect', border: WHITE_FRAME, shadow: SOFT_SHADOW },
+  { name: 'Snip Diagonal Corner, White', geometry: 'snip2DiagRect', border: WHITE_FRAME, shadow: SOFT_SHADOW },
+  { name: 'Moderate Frame, Black', geometry: 'rect', border: { color: '000000', width: 4.5 }, shadow: SOFT_SHADOW },
+  { name: 'Soft Edge Rectangle', geometry: 'rect', softEdge: { rad: 112500 } },
+  { name: 'Soft Edge Oval', geometry: 'ellipse', softEdge: { rad: 112500 } },
+  { name: 'Center Shadow Rectangle', geometry: 'rect', shadow: { blur: 190500, dist: 0, dir: 0, color: '000000', alpha: 0.4 } },
+  { name: 'Reflected Rounded Rectangle', geometry: 'roundRect', reflection: { blur: 12700, dist: 0, stA: 0.38, endA: 0.003, endPos: 0.38 } },
+  { name: 'Bevel Rectangle', geometry: 'rect', shadow: SOFT_SHADOW, bevel: { prst: 'circle', w: 63500, h: 25400 } },
+  { name: 'Bevel Perspective', geometry: 'rect', border: WHITE_FRAME, bevel: { prst: 'circle', w: 25400, h: 19050 }, camera: 'perspectiveRelaxed' },
+];
+
+/**
+ * Applies a picture style, as Word's gallery does: the shape, border, shadow, glow, soft edges,
+ * reflection and 3-D format it gives replace the picture's (other effects are kept). `null` takes
+ * them all off (Word's Reset Picture keeps size and crop too).
+ */
+export function applyPictureStyle(r, style) {
+  const doc = r.ownerDocument;
+  const st = style || {};
+  setGeometry(r, st.geometry || 'rect');
+  const spPr = spPrOf(r);
+  const oldLn = child(spPr, A, 'ln');
+  if (oldLn) spPr.removeChild(oldLn);
+  if (st.border) {
+    const ln = makeA(doc, 'ln', { w: Math.round(st.border.width * 12700) });
+    ln.appendChild(makeA(doc, 'solidFill')).appendChild(makeA(doc, 'srgbClr', { val: st.border.color }));
+    ln.appendChild(makeA(doc, 'miter', { lim: 800000 }));
+    placeIn(spPr, ln, SPPR_ORDER);
+  }
+  let effects = child(spPr, A, 'effectLst');
+  if (!effects) effects = makeA(doc, 'effectLst');
+  for (const local of ['glow', 'outerShdw', 'reflection', 'softEdge']) {
+    const old = child(effects, A, local);
+    if (old) effects.removeChild(old);
+  }
+  const add = (el) => placeIn(effects, el, EFFECT_ORDER);
+  const colour = (el, { color, alpha }) => {
+    const c = el.appendChild(makeA(doc, 'srgbClr', { val: color }));
+    if (alpha != null && alpha < 1) c.appendChild(makeA(doc, 'alpha', { val: Math.round(alpha * 100000) }));
+    return el;
+  };
+  if (st.glow) add(colour(makeA(doc, 'glow', { rad: st.glow.rad }), st.glow));
+  if (st.shadow) {
+    add(colour(makeA(doc, 'outerShdw', {
+      blurRad: st.shadow.blur, dist: st.shadow.dist, dir: Math.round(st.shadow.dir * 60000), algn: st.shadow.dist ? 'tl' : 'ctr', rotWithShape: 0,
+    }), st.shadow));
+  }
+  if (st.reflection) {
+    add(makeA(doc, 'reflection', {
+      blurRad: st.reflection.blur, stA: Math.round(st.reflection.stA * 100000), endA: Math.round(st.reflection.endA * 100000),
+      endPos: Math.round(st.reflection.endPos * 100000), dist: st.reflection.dist, dir: 5400000, sy: -100000, algn: 'bl', rotWithShape: 0,
+    }));
+  }
+  if (st.softEdge) add(makeA(doc, 'softEdge', { rad: st.softEdge.rad }));
+  if (effects.children.length && !effects.parentNode) placeIn(spPr, effects, SPPR_ORDER);
+  else if (!effects.children.length && effects.parentNode) spPr.removeChild(effects);
+  set3D(r, { bevel: st.bevel || null, camera: st.camera || null });
+}
+
+// ---------------------------------------------------------------- artistic effects
+
+/** Artistic effects Intact draws, by Word's names (the a14 element Word uses for each, for reference). */
+export const ARTISTIC = [
+  ['blur', 'Blur'], ['pencilGrayscale', 'Pencil Grayscale'], ['lineDrawing', 'Line Drawing'],
+  ['glowEdges', 'Glow Edges'], ['photocopy', 'Photocopy'],
+];
+
+/**
+ * An artistic effect drawn into the picture: the picture shows `rendered` (a relationship id of the
+ * drawn image), and the original is kept (`original`, with the effect's name) in an extension of the
+ * picture, so the effect can be changed or taken off here. Word shows the drawn picture.
+ */
+export function setArtistic(r, { effect, rendered, original }) {
+  const doc = r.ownerDocument;
+  const blip = child(blipFillOf(r), A, 'blip');
+  clearArtisticMark(blip);
+  blip.setAttributeNS(NS.r, 'r:embed', rendered);
+  let extLst = child(blip, A, 'extLst');
+  if (!extLst) extLst = blip.appendChild(makeA(doc, 'extLst'));
+  const ext = extLst.appendChild(makeA(doc, 'ext', { uri: ORIGINAL_EXT }));
+  const el = ext.appendChild(doc.createElementNS(INTACT_PIC, 'intact:original'));
+  el.setAttributeNS(NS.r, 'r:embed', original);
+  el.setAttribute('effect', effect);
+}
+
+/** Takes an artistic effect off: the original picture shows again. */
+export function clearArtistic(r) {
+  const blip = child(blipFillOf(r), A, 'blip');
+  const original = blip && [...blip.getElementsByTagNameNS(INTACT_PIC, 'original')][0];
+  if (!original) return;
+  blip.setAttributeNS(NS.r, 'r:embed', original.getAttributeNS(NS.r, 'embed'));
+  clearArtisticMark(blip);
+}
+
+function clearArtisticMark(blip) {
+  const extLst = child(blip, A, 'extLst');
+  for (const ext of [...(extLst?.children || [])]) if (ext.getAttribute('uri') === ORIGINAL_EXT) extLst.removeChild(ext);
+  if (extLst && !extLst.children.length) blip.removeChild(extLst);
+}
+
+/** The relationship id of the picture shown (a:blip/@r:embed). */
+export function blipOf(r) {
+  return child(blipFillOf(r), A, 'blip')?.getAttributeNS(NS.r, 'embed') || null;
 }
 
 // ---------------------------------------------------------------- wrapping to the outline
@@ -389,4 +630,12 @@ export function setWrapPolygon(r, points) {
   const old = child(wrap, WP, 'wrapPolygon');
   if (old) old.replaceWith(polygon);
   else wrap.appendChild(polygon);
+}
+
+/** How much more room a picture of `w` × `h` needs on each side when turned `deg` degrees: { dx, dy }. */
+export function turnedRoom(w, h, deg) {
+  const a = (deg * Math.PI) / 180;
+  const bw = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
+  const bh = Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a));
+  return { dx: Math.max(0, (bw - w) / 2), dy: Math.max(0, (bh - h) / 2) };
 }

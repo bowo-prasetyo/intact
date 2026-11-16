@@ -277,6 +277,48 @@
           <label>Contrast (%) <input v-model.number="picturePanel.contrast" type="number" min="-100" max="100" step="5" @change="applyEffects" /></label>
         </div>
       </details>
+      <details>
+        <summary>Style and 3-D</summary>
+        <label>Picture style
+          <select v-model="picturePanel.style" @change="applyStyle">
+            <option value="">Choose a style…</option>
+            <option value="none">No style (plain picture)</option>
+            <option v-for="st in PICTURE_STYLES" :key="st.name" :value="st.name">{{ st.name }}</option>
+          </select>
+        </label>
+        <label>Shape
+          <select v-model="picturePanel.shape" @change="applyShape">
+            <option v-for="[value, label] in SHAPES" :key="value" :value="value">{{ label }}</option>
+            <option v-if="!SHAPES.some(([v]) => v === picturePanel.shape)" :value="picturePanel.shape" disabled>As set in Word</option>
+          </select>
+        </label>
+        <div class="size-row">
+          <label>Bevel
+            <select v-model="picturePanel.bevel" @change="apply3D">
+              <option value="">None</option>
+              <option v-for="[value, label] in BEVELS" :key="value" :value="value">{{ label }}</option>
+              <option v-if="picturePanel.bevel && !BEVELS.some(([v]) => v === picturePanel.bevel)" :value="picturePanel.bevel" disabled>As set in Word</option>
+            </select>
+          </label>
+          <label>3-D rotation
+            <select v-model="picturePanel.camera" @change="apply3D">
+              <option value="">None</option>
+              <option v-for="[value, label] in CAMERAS" :key="value" :value="value">{{ label }}</option>
+              <option v-if="picturePanel.camera && !CAMERAS.some(([v]) => v === picturePanel.camera)" :value="picturePanel.camera" disabled>As set in Word</option>
+            </select>
+          </label>
+        </div>
+      </details>
+      <details>
+        <summary>Artistic effects</summary>
+        <label>Artistic effect
+          <select v-model="picturePanel.artistic" :disabled="picturePanel.drawing" @change="applyArtistic">
+            <option value="">None</option>
+            <option v-for="[value, label] in ARTISTIC" :key="value" :value="value">{{ label }}</option>
+          </select>
+        </label>
+        <p class="note">Drawn into the picture, which Word shows as it is here; the original is kept, so the effect can be changed or taken off here.</p>
+      </details>
       <label class="alt">Alt text (describe the picture for people who can't see it)
         <textarea v-model="picturePanel.alt" rows="2" @change="applyAlt" />
       </label>
@@ -382,7 +424,8 @@ import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../ed
 import { drawMarks } from '../editor/marks.js';
 import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
-import { WRAPS } from '../docx/pictures.js';
+import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC } from '../docx/pictures.js';
+import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -1025,6 +1068,7 @@ const picturePanel = reactive({
   open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '',
   cropL: 0, cropT: 0, cropR: 0, cropB: 0, rot: 0, flipH: false, flipV: false,
   border: 'none', borderColor: '#000000', shadow: false, glow: false, softEdge: false, reflection: false, colour: 'normal', brightness: 0, contrast: 0,
+  style: '', shape: 'rect', bevel: '', camera: '', artistic: '', drawing: false,
 });
 const BORDERS = { thin: 0.75, medium: 1.5, thick: 3 };
 const picturePanelEl = ref(null);
@@ -1190,8 +1234,9 @@ function fillPicturePanel() {
     width: round(info.cx / CM), height: round(info.cy / CM), alt: info.descr,
     cropL: round(look.crop.l * 100, 1), cropT: round(look.crop.t * 100, 1), cropR: round(look.crop.r * 100, 1), cropB: round(look.crop.b * 100, 1),
     rot: round(look.rot, 1), flipH: look.flipH, flipV: look.flipV,
-    border, borderColor: `#${look.border?.color || '000000'}`.toLowerCase(), shadow: look.shadow, glow: !!look.glow, softEdge: look.softEdge,
-    reflection: look.reflection, colour: look.greyscale ? 'greyscale' : 'normal', brightness: round(look.brightness * 100), contrast: round(look.contrast * 100),
+    border, borderColor: `#${look.border?.color || '000000'}`.toLowerCase(), shadow: !!look.shadow, glow: !!look.glow, softEdge: !!look.softEdge,
+    reflection: !!look.reflection, colour: look.greyscale ? 'greyscale' : 'normal', brightness: round(look.brightness * 100), contrast: round(look.contrast * 100),
+    style: '', shape: look.geometry, bevel: look.bevel?.prst || '', camera: look.camera || '', artistic: look.artistic?.effect || '',
   });
 }
 
@@ -1359,6 +1404,47 @@ function applyEffects() {
     greyscale: p.colour === 'greyscale', brightness: (Number(p.brightness) || 0) / 100, contrast: (Number(p.contrast) || 0) / 100,
   };
   changePicture((s) => doc.setPictureEffects(s, look), 'Picture effects changed');
+}
+
+/** A picture style from Word's gallery: its shape, border, effects and 3-D format replace the picture's. */
+function applyStyle() {
+  const name = picturePanel.style;
+  if (!name) return;
+  const style = name === 'none' ? null : PICTURE_STYLES.find((st) => st.name === name);
+  changePicture((s) => doc.setPictureStyle(s, style), style ? `Picture style: ${style.name}` : 'Picture style taken off');
+}
+
+function applyShape() {
+  const label = SHAPES.find(([v]) => v === picturePanel.shape)?.[1] || picturePanel.shape;
+  changePicture((s) => doc.setPictureGeometry(s, picturePanel.shape), `Picture shape: ${label}`);
+}
+
+function apply3D() {
+  const look = doc.pictureLookOf(picture.el);
+  const bevel = picturePanel.bevel ? (look.bevel?.prst === picturePanel.bevel ? look.bevel : picturePanel.bevel) : null;
+  changePicture((s) => doc.setPicture3D(s, { bevel, camera: picturePanel.camera || null, material: look.material }), '3-D format changed');
+}
+
+/** An artistic effect: the picture is drawn with it here (the original kept), or taken off. */
+async function applyArtistic() {
+  const span = picture.el;
+  const effect = picturePanel.artistic;
+  if (!span) return;
+  const label = ARTISTIC.find(([v]) => v === effect)?.[1];
+  if (!effect) {
+    changePicture((s) => doc.setPictureArtistic(s, null), 'Artistic effect taken off');
+    return;
+  }
+  picturePanel.drawing = true;
+  message.value = `Drawing ${label}…`;
+  try {
+    const png = await renderArtistic(doc.pictureOriginal(span).url, effect);
+    changePicture((s) => doc.setPictureArtistic(s, effect, png), `Artistic effect: ${label}`);
+  } catch (err) {
+    message.value = err.message || 'The effect couldn’t be drawn';
+  } finally {
+    picturePanel.drawing = false;
+  }
 }
 
 function applyAlt() {
@@ -3114,6 +3200,7 @@ async function close() {
 .picture-panel .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .picture-panel .buttons button[aria-pressed="true"] { background: var(--active); }
 .picture-panel input[type=color] { width: 100%; height: 26px; padding: 0 2px; }
+.picture-panel .note { margin: 0; color: var(--muted); font-size: 12px; }
 .layout-options {
   position: absolute; z-index: 6; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
