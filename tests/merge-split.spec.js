@@ -118,3 +118,26 @@ test('splitting a cell into rows merges the row\'s other cells down; a merge spl
   await split(page, 1, 3);
   await expect(status(page)).toHaveText('This cell is merged across 2 rows: split it into 1 or 2 rows');
 });
+
+test('cells that are fields merge: the merged cell is the first one\'s field; a placeholder isn\'t moved', async ({ page }) => {
+  const field = (alias, inner) => `<w:sdt><w:sdtPr><w:alias w:val="${alias}"/><w:id w:val="${alias.length}"/><w:text/></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+  const placeholder = '<w:sdt><w:sdtPr><w:alias w:val="Note"/><w:id w:val="77"/><w:showingPlcHdr/><w:text/></w:sdtPr><w:sdtContent><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Click to add a note.</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt>';
+  await openInEditor(page, await buildDocx(TABLE.replace(`${CELL('A1')}${CELL('B1')}`, `${field('Name', CELL('Ann'))}${field('City', CELL('Oslo'))}`)
+    .replace(CELL('C1'), placeholder)));
+  await selectCells(page, 'Ann', 'Click to add a note.');
+  await layout(page, 'Merge cells');
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('Cells merged');
+  await expect.poll(() => texts(page)).toEqual([['Ann|Oslo'], ['A2', 'B2', 'C2'], ['A3', '', 'C3']]);
+  const { xml } = await download(page);
+  expect(xml).toMatch(/<w:sdt><w:sdtPr><w:alias w:val="Name"\/><w:id w:val="4"\/><w:text\/><\/w:sdtPr><w:sdtContent><w:tc><w:tcPr><w:tcW w:w="9000" w:type="dxa"\/><w:gridSpan w:val="3"\/><\/w:tcPr><w:p><w:r><w:t xml:space="preserve">Ann<\/w:t><\/w:r><\/w:p><w:p><w:r><w:t xml:space="preserve">Oslo<\/w:t><\/w:r><\/w:p><\/w:tc><\/w:sdtContent><\/w:sdt><\/w:tr>/);
+  expect(xml).not.toContain('City');
+  expect(xml).not.toContain('Click to add a note.');
+});
+
+test('a field cell that isn\'t a text field (here a drop-down list) isn\'t merged, and the status bar says why', async ({ page }) => {
+  const list = `<w:sdt><w:sdtPr><w:alias w:val="Answer"/><w:dropDownList><w:listItem w:displayText="B1" w:value="b"/></w:dropDownList></w:sdtPr><w:sdtContent>${CELL('B1')}</w:sdtContent></w:sdt>`;
+  await openInEditor(page, await buildDocx(TABLE.replace(CELL('B1'), list)));
+  await selectCells(page, 'A1', 'B2');
+  await layout(page, 'Merge cells');
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('A cell to merge is a field that can’t be changed here (locked, linked to data, or not a text field): merge it in Word');
+});

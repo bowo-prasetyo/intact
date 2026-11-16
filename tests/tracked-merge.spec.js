@@ -1,8 +1,8 @@
 // Merging and splitting cells while tracking, in the ways a Word document can record them: cells
 // merged down a column (<w:cellMerge>, the text moved shown as inserted in the merged cell and
 // deleted where it was), cells split into columns (inserted cells, the old grid kept so rejecting
-// gives the widths back) and into rows (inserted rows). Each is one change to accept or reject.
-// Cells merged across a row can't be recorded: that part is done directly, and the status bar says so.
+// gives the widths back) and into rows (inserted rows), and across a row (w:hMerge, each cell's old
+// properties in a tracked property change). Each is one change to accept or reject.
 import { test, expect } from '@playwright/test';
 import { buildDocx, openInEditor, download, canonicalize, documentXmlOf } from './helpers.js';
 
@@ -87,13 +87,60 @@ test('accepting a tracked merge leaves the merged cell with all the text', async
   expect(xml).toContain('<w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">A1</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">A2</w:t></w:r></w:p></w:tc>');
 });
 
-test('merging across a row while tracking is done directly, and the status bar says why', async ({ page }) => {
+test('cells merged across a row while tracking: w:hMerge, each cell\'s old properties kept as a tracked change', async ({ page }) => {
   await openInEditor(page, await buildDocx(TABLE));
   await startTracking(page);
   await selectCells(page, 'A1', 'B1');
   await layout(page, 'Merge cells');
-  await expect(status(page)).toHaveText('Cells merged – merging across a row can’t be tracked in a Word document, so it isn’t marked');
-  await expect(page.locator('td[data-rev-merge]')).toHaveCount(0);
+  await expect(status(page)).toHaveText('Cells merged (tracked)');
+  await expect(group(page).locator('.badge')).toHaveText('1');
+  // Shown merged: the first cell spans both, with the moved text inserted; the second is hidden.
+  expect(await page.locator('tr').first().evaluate((tr) => [...tr.cells].map((td) => [td.colSpan, td.style.display, td.textContent]))).toEqual([[2, '', 'A1B1'], [1, 'none', 'B1']]);
+  const { xml } = await download(page);
+  expect(xml).toMatch(/<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"\/><w:hMerge w:val="restart"\/><w:tcPrChange w:id="\d+" w:author="Rita" w:date="[^"]+"><w:tcPr><w:tcW w:w="3000" w:type="dxa"\/><\/w:tcPr><\/w:tcPrChange><\/w:tcPr><w:p><w:r><w:t xml:space="preserve">A1<\/w:t><\/w:r><\/w:p><w:p><w:pPr><w:rPr><w:ins [^>]*\/><\/w:rPr><\/w:pPr><w:ins [^>]*><w:r><w:t xml:space="preserve">B1<\/w:t><\/w:r><\/w:ins><\/w:p><\/w:tc>/);
+  expect(xml).toMatch(/<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"\/><w:hMerge\/><w:tcPrChange w:id="\d+" w:author="Rita" w:date="[^"]+"><w:tcPr><w:tcW w:w="3000" w:type="dxa"\/><\/w:tcPr><\/w:tcPrChange><\/w:tcPr><w:p><w:del [^>]*><w:r><w:delText xml:space="preserve">B1<\/w:delText><\/w:r><\/w:del><\/w:p><\/w:tc>/);
+});
+
+test('a tracked merge across a row: rejected, exactly as before; accepted, one cell spanning the columns', async ({ page }) => {
+  const docx = await buildDocx(TABLE);
+  await openInEditor(page, docx);
+  await startTracking(page);
+  await selectCells(page, 'A2', 'B2');
+  await layout(page, 'Merge cells');
+  await page.getByTitle('More ways to reject').click();
+  await page.getByRole('menuitem', { name: 'Reject all changes' }).click();
+  await expect.poll(() => texts(page)).toEqual([['A1', 'B1'], ['A2', 'B2']]);
+  let { xml } = await download(page);
+  expect(await canonicalize(page, xml)).toEqual(await canonicalize(page, await documentXmlOf(docx)));
+
+  await selectCells(page, 'A2', 'B2');
+  await layout(page, 'Merge cells');
+  await page.getByTitle('More ways to accept').click();
+  await page.getByRole('menuitem', { name: 'Accept all changes' }).click();
+  await expect.poll(() => texts(page)).toEqual([['A1', 'B1'], ['A2B2']]);
+  ({ xml } = await download(page));
+  expect(xml).toContain('<w:tr><w:tc><w:tcPr><w:tcW w:w="6000" w:type="dxa"/><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">A2</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">B2</w:t></w:r></w:p></w:tc></w:tr>');
+  expect(xml).not.toMatch(/hMerge|tcPrChange|w:ins |w:del /);
+});
+
+test('a block of cells merged while tracking: across and down, one change', async ({ page }) => {
+  await openInEditor(page, await buildDocx(TABLE));
+  await startTracking(page);
+  await selectCells(page, 'A1', 'B2');
+  await layout(page, 'Merge cells');
+  await expect(group(page).locator('.badge')).toHaveText('1');
+  await page.getByTitle('More ways to accept').click();
+  await page.getByRole('menuitem', { name: 'Accept all changes' }).click();
+  await expect.poll(() => texts(page)).toEqual([['A1B1A2B2'], ['^']]);
+  const { xml } = await download(page);
+  expect(xml).toContain('<w:tcW w:w="6000" w:type="dxa"/><w:gridSpan w:val="2"/><w:vMerge w:val="restart"/></w:tcPr>');
+  expect(xml).toContain('<w:tcW w:w="6000" w:type="dxa"/><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr>');
+});
+
+test('cells an older Word file merged with w:hMerge show merged', async ({ page }) => {
+  await openInEditor(page, await buildDocx(TABLE.replace(CELL('A1'), '<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:hMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>A1</w:t></w:r></w:p></w:tc>')
+    .replace(CELL('B1'), '<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:hMerge/></w:tcPr><w:p/></w:tc>')));
+  expect(await page.locator('tr').first().evaluate((tr) => [...tr.cells].map((td) => [td.colSpan, td.style.display]))).toEqual([[2, ''], [1, 'none']]);
 });
 
 test('a cell split into columns while tracking: inserted cells; rejecting gives the old widths back', async ({ page }) => {

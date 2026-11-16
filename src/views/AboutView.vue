@@ -42,7 +42,7 @@
       </p>
       <h2>Limitations</h2>
       <ul>
-        <li>Floating pictures are shown as near to Word's layout as a web page allows; 3-D and artistic effects are left to Word. Cells merged across a row can't be tracked: Word documents have no way to record it.</li>
+        <li>Floating pictures are shown as near to Word's layout as a web page allows; 3-D and artistic effects are left to Word.</li>
         <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
