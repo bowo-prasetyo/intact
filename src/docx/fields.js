@@ -17,9 +17,29 @@ export function fieldKind(instr) {
   if (code === 'BIBLIOGRAPHY') return 'bibliography';
   if (code === 'ADDIN') {
     if (/ZOTERO_BIBL|EN\.REFLIST|MENDELEY BIBLIOGRAPHY|CSL_BIBLIOGRAPHY/i.test(text)) return 'bibliography';
-    if (/ZOTERO_ITEM|EN\.CITE|CSL_CITATION|MENDELEY CITATION/i.test(text)) return 'citation';
+    if (/ZOTERO_ITEM|EN\.CITE|CSL_CITATION|MENDELEY CITATION|CITAVI/i.test(text)) return 'citation';
   }
   return null;
+}
+
+/**
+ * The reference manager a citation or bibliography field belongs to, for an instruction such as
+ * " ADDIN ZOTERO_ITEM CSL_CITATION {…} ": { source: 'Zotero', kind: 'citation' | 'bibliography' },
+ * with source 'Word' for Word's own CITATION and BIBLIOGRAPHY fields. Null for other fields.
+ */
+export function referenceManager(instr) {
+  const kind = fieldKind(instr);
+  if (kind !== 'citation' && kind !== 'bibliography') return null;
+  const text = instr.trim();
+  let source = 'Word';
+  if (/^ADDIN\b/i.test(text)) {
+    if (/ZOTERO/i.test(text)) source = 'Zotero';
+    else if (/\bEN\.(CITE|REFLIST)/i.test(text)) source = 'EndNote';
+    else if (/MENDELEY|CSL_(CITATION|BIBLIOGRAPHY)/i.test(text)) source = 'Mendeley';
+    else if (/CITAVI/i.test(text)) source = 'Citavi';
+    else source = 'A reference manager';
+  }
+  return { source, kind };
 }
 
 /**

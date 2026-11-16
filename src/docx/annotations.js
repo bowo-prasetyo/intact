@@ -2,6 +2,7 @@
 // endnote text, and the header and footer of the first page. Plus plain-language names for the
 // content the editor keeps but can't edit.
 import { NS, parseXml, parseRels, wChild, wChildren, wAttr, onOff, plainText } from './xml.js';
+import { referenceManager } from './fields.js';
 
 const W = NS.w;
 const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
@@ -113,8 +114,24 @@ const FIELD_NAMES = {
 
 /** "Page number", "Cross-reference", … for a field instruction such as " PAGE \\* MERGEFORMAT ". */
 export function fieldName(instr) {
+  const ref = referenceManager(instr || '');
+  if (ref) return ref.source === 'Word' ? (ref.kind === 'citation' ? 'Citation' : 'Bibliography') : `${ref.source} ${ref.kind}`;
   const code = (instr || '').trim().split(/\s+/)[0]?.toUpperCase() || '';
   return FIELD_NAMES[code] || (code ? `Field (${code})` : 'Field');
+}
+
+/**
+ * A field's tooltip: what it is and who updates it. Citations and bibliographies from a reference
+ * manager (Zotero, EndNote, Mendeley) say that it rewrites them, so edits made here are lost.
+ */
+export function fieldTitle(instr) {
+  const ref = referenceManager(instr || '');
+  if (ref?.source === 'Word') return `${ref.kind === 'citation' ? 'Citation' : 'Bibliography'} – Word updates it from the document’s sources`;
+  if (ref) {
+    const who = ref.source === 'A reference manager' ? 'your reference manager' : ref.source;
+    return `${ref.source} ${ref.kind} – ${who} updates it in Word; edits made here are lost when it does`;
+  }
+  return `${fieldName(instr)} – Word updates it`;
 }
 
 /** What a piece of preserved content is, in words a Word user knows. */

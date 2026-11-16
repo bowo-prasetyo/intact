@@ -115,3 +115,25 @@ test('a document without such fields gets no note about them', async ({ page }) 
   await expect(notes(page)).not.toContainText('Word updates');
   await expect(review(page).getByRole('checkbox', { name: /update them/ })).toHaveCount(0);
 });
+
+test('citations and bibliographies say which reference manager they come from, and warn when typed in', async ({ page }) => {
+  const endnote = p(`${text('Earlier ')}${field('ADDIN EN.CITE &lt;EndNote&gt;&lt;/EndNote&gt;', '[3]')}`);
+  const word = p(`${text('Also ')}${field('CITATION Smi20 \\l 1033', '(Smith 2020)')}`);
+  await openInEditor(page, await buildDocx(THESIS + endnote + word));
+  const zotero = page.locator('.docx-page .field', { hasText: '(Smith, 2020)' });
+  await expect(zotero).toHaveAttribute('title', 'Zotero citation – Zotero updates it in Word; edits made here are lost when it does');
+  await expect(page.locator('.docx-page .field', { hasText: 'Jones, A.' })).toHaveAttribute('title', /^Zotero bibliography – /);
+  await expect(page.locator('.docx-page .field', { hasText: '[3]' })).toHaveAttribute('title', /^EndNote citation – EndNote updates it in Word/);
+  await expect(page.locator('.docx-page .field', { hasText: '(Smith 2020)' })).toHaveAttribute('title', 'Citation – Word updates it from the document’s sources');
+  await expect(page.locator('.docx-page .field', { hasText: 'Introduction 1' })).toHaveAttribute('title', 'Table of contents – Word updates it');
+  // Typing in one says what will happen to the edit.
+  await page.evaluate(() => {
+    const t = [...document.querySelectorAll('.docx-page .field')].find((f) => f.textContent === '(Smith, 2020)').firstChild;
+    const r = document.createRange();
+    r.setStart(t.nodeType === 3 ? t : t.firstChild, 3);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  });
+  await page.keyboard.type('x');
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('Zotero citation: Zotero replaces this text when it refreshes in Word – change it there instead');
+});

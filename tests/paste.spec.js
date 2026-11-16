@@ -43,8 +43,9 @@ const markers = (page) => page.locator('.docx-page .list').evaluateAll((els) => 
 
 test('pasting from a web page keeps bold, italic, underline and strikethrough, and nothing else', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC));
+  // A link to anything but a web or e-mail address is dropped (its text is kept); see links.spec.js.
   await pasteAt(page, {
-    html: '<meta charset="utf-8"><span style="font-family: Comic Sans MS; color: red; font-size: 30px">big <b>bold</b> <i>it</i> <u>under</u> <s>gone</s> <a href="https://evil.example/" data-rpr="0">link</a></span>',
+    html: '<meta charset="utf-8"><span style="font-family: Comic Sans MS; color: red; font-size: 30px">big <b>bold</b> <i>it</i> <u>under</u> <s>gone</s> <a href="javascript:alert(1)" data-rpr="0">link</a></span>',
     text: 'big bold it under gone link',
   });
   const p = page.locator('.docx-page p').first();

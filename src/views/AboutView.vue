@@ -23,7 +23,9 @@
         <li>Track Changes for your own edits, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
         <li>Accept and reject tracked changes, one at a time or all at once</li>
-        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript and lists</li>
+        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links</li>
+        <li>Links (Ctrl+K) to web pages, e-mail addresses and DOIs: insert, change or remove them</li>
+        <li>Word count of the document and of the selection; spelling checked in the document's language where the browser can</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
       </ul>
