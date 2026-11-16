@@ -107,7 +107,7 @@ test('preserved content is described in plain language', async ({ page }) => {
   await openInEditor(page, await buildDocx(COMMENTED, COMMENTS));
   const note = page.locator('.docx-page .note-ref');
   await expect(note).toHaveAttribute('data-n', '1');
-  await expect(note).toHaveAttribute('title', 'Footnote 1: Source: annual report. – edit it in Word');
+  await expect(note).toHaveAttribute('title', 'Footnote: Source: annual report. – click to edit it (footnotes are below the text)');
   const field = page.locator('.docx-page .field');
   await expect(field).toHaveText('4');
   await expect(field).toHaveAttribute('title', 'Page number – Word updates it');

@@ -10,6 +10,7 @@
       <h2>What you can edit</h2>
       <ul>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
+        <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it</li>
         <li>Insert tables and pictures (from the toolbar, or paste or drop a picture)</li>
         <li>Table layout: insert rows above or below and columns left or right (tracked while tracking); delete rows, columns or the table; merge and split cells</li>
         <li>Pictures: click one to resize or rotate it with its handles; Layout Options set its text wrapping (Tight and Through follow its outline), position, size, crop, rotation, effects, picture style, shape, 3-D and artistic effects, and alt text; drag a floating picture to move it</li>
@@ -29,7 +30,7 @@
       <h2>What you can see but not edit</h2>
       <p>
         Headers and footers (all of them, one at a time), comments (with replies and whether they are resolved),
-        footnotes and fields are shown as they are, labelled in plain language, and saved unchanged.
+        equations (drawn as in Word) and fields are shown as they are, labelled in plain language, and saved unchanged.
         Click anything read-only, or try to type in it, and the status bar says what it is and where to edit it.
       </p>
       <h2>What is preserved</h2>
@@ -46,6 +47,8 @@
         <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
+        <li>New footnotes can't be added; pictures, tables, page breaks and new comments can't go in a note.</li>
+        <li>Equations need a math font to look as in Word (Windows and macOS have one).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>
       <h2>Keyboard shortcuts</h2>

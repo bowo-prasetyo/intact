@@ -13,7 +13,7 @@
       <ol v-if="shown.length" class="changes">
         <li v-for="(c, i) in shown" :key="i" class="change" :class="c.kind">
           <div class="where">
-            <span>Paragraph {{ c.number }}{{ c.inTable ? ' (in a table)' : '' }}</span>
+            <span>{{ c.where ? `${c.where}, paragraph ${c.number}` : `Paragraph ${c.number}` }}{{ c.inTable ? ' (in a table)' : '' }}</span>
             <span class="kind">{{ KIND[c.kind] }}</span>
             <span v-if="c.tracked" class="tag">Tracked</span>
             <span v-else-if="c.resolved" class="tag resolved">Change accepted or rejected</span>

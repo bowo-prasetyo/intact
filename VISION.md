@@ -100,7 +100,8 @@ Saying no to these keeps the product small enough to keep its promises:
   split cells ✔, tracked ✔, field cells too ✔; tables whose rows or cells are
   fields ✔; resize, wrap and position pictures ✔; crop, rotate and add effects ✔; picture styles, 3-D and artistic effects ✔; 3-D lighting and all of Word's artistic effects ✔; wrap text to a
   picture's outline ✔
-- Edit headers, footers and footnotes
+- Edit footnotes and endnotes ✔; show equations ✔
+- Edit headers and footers
 - Installable offline app (PWA)
 
 ## How we'll know it's working
