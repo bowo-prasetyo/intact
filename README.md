@@ -78,7 +78,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Every comment can be replied to, edited, resolved (or reopened) and deleted in the panel, as in
   Word: a reply is written as a real reply (linked to its comment in `commentsExtended.xml`, which is
   created, with paragraph ids, if the file has none), resolving sets Word's "done" flag, and Undo
-  covers all of it. Deleting a comment's text deletes it too
+  covers all of it. Deleting a comment's text deletes it too. Comments anchored in a header, footer
+  or note work the same way (the panel says where they are): a reply is written into that part next
+  to its comment, inside its range, and a deleted comment's marks go from it
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
@@ -118,8 +120,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   goes. Tracked paragraph breaks show as a coloured ¶, formatting changes with a dashed underline
   or a bar in the margin, tracked rows tinted. Tracked changes to a table's, row's or cell's
   properties (`tblPrChange`, `tblGridChange`, `trPrChange`, `tcPrChange`) are changes like the
-  others: accepted, the record goes; rejected, the old properties come back. Changes only Word can
-  resolve (inside locked content) are counted, named and kept
+  others: accepted, the record goes; rejected, the old properties come back. Tracked changes inside
+  content kept as it is (a locked field, a field linked to data, a locked cell, a field such as
+  PAGE) are one change per piece: Accept or Reject resolves all of them in its XML at once, as
+  Word's Accept All in it would (insertions, deletions, moves, paragraph breaks, formatting, rows,
+  cells and merges), and the piece stays locked or linked
 - Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
   changed, with the words deleted and inserted, which changes are tracked, a warning when some
   aren't, and anything else that changes (comments removed with their text, Track Changes switched,
@@ -234,9 +239,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 ## Limitations
 
-- Tracked changes inside locked content can only be accepted or rejected in Word (the toolbar
-  counts them); your own formatting changes (bold,
-  styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
+- Tracked changes inside locked content are accepted or rejected together, not one by one; your own
+  formatting changes (bold, styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
   moved by dragging aren't tracked (cut and paste is)
 
 - Floating pictures are shown as near to Word's layout as a web page allows (rotation, shadows and
@@ -249,9 +253,8 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it)
-- Fields, footnotes, headers and footers are preserved but can't be edited; comments anchored in a
-  header, footer or note are shown but changed in Word; editing a comment's text replaces any
-  formatting within it
+- Fields, footnotes, headers and footers are preserved but can't be edited (comments in them can);
+  editing a comment's text replaces any formatting within it
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save

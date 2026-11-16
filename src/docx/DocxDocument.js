@@ -30,6 +30,7 @@ import {
   cellRevision, propertyChange,
 } from './revisions.js';
 import { reviewParagraphs, tableSummary } from './review.js';
+import { resolveRevisionsIn, countRevisions, revisionAuthors } from './resolveAll.js';
 import {
   pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX, pictureLook, setCrop, setRotation, setEffects, wrapPolygon, setWrapPolygon,
 } from './pictures.js';
@@ -203,12 +204,132 @@ export class DocxDocument {
     this.commentsInBody = commentIdsIn(this.body);
     this.commentRangesInBody = pairedCommentRanges(this.body);
     this.commentsElsewhere = new Set();
-    if (!this.commentsInBody.size) return;
+    // Comments anchored in a header, footer or note: which part each is in, and its original text.
+    this.commentStory = new Map();
+    this.storyTexts = {};
+    this.story = { edits: {}, done: {}, removed: [], replies: [] }; // changes to them (see storyState)
     const stories = Object.values(this.zip.files).filter((f) => !f.dir && /(^|\/)(header|footer|footnotes|endnotes)\d*\.xml$/.test(f.name));
     for (const f of stories) {
       const text = await f.async('string');
-      if (text.includes('commentReference')) for (const id of commentIdsIn(parseXml(text))) this.commentsElsewhere.add(id);
+      if (!text.includes('commentReference')) continue;
+      this.storyTexts[f.name] = text;
+      for (const id of commentIdsIn(parseXml(text))) {
+        this.commentsElsewhere.add(id);
+        this.commentStory.set(id, f.name);
+      }
     }
+  }
+
+  // ---------------------------------------------------------------- comments in headers, footers and notes
+
+  /** The part (header, footer, notes) a comment (or the comment it replies to) is anchored in, or null. */
+  storyOf(id) {
+    if (this.commentStory.has(id)) return this.commentStory.get(id);
+    const c = this.comments.find((x) => x.id === id);
+    return c?.parentId ? this.storyOf(c.parentId) : null;
+  }
+
+  /** Where a comment in a header, footer or note is, in words: "In a header", or null. */
+  storyPlace(id) {
+    const path = this.storyOf(id);
+    if (!path) return null;
+    const name = path.split('/').pop();
+    return name.startsWith('header') ? 'In a header' : name.startsWith('footer') ? 'In a footer'
+      : name.startsWith('footnotes') ? 'In a footnote' : 'In an endnote';
+  }
+
+  /** Changes to comments in headers, footers and notes, as a string, so the editor's Undo covers them. */
+  storyState() {
+    return JSON.stringify(this.story);
+  }
+
+  setStoryState(json) {
+    this.story = JSON.parse(json);
+  }
+
+  /** The comments removed from headers, footers and notes, with their replies. */
+  storyRemoved() {
+    const gone = new Set(this.story.removed);
+    for (let grew = gone.size > 0; grew;) {
+      grew = false;
+      for (const c of this.comments) {
+        if (c.parentId && gone.has(c.parentId) && !gone.has(c.id)) {
+          gone.add(c.id);
+          grew = true;
+        }
+      }
+    }
+    return gone;
+  }
+
+  /** True for a comment kept: not removed, and (for a reply added here) not undone. */
+  storyCommentLive(c) {
+    return !this.storyRemoved().has(c.id) && (!c.storyReply || this.story.replies.includes(c.id));
+  }
+
+  /** A reply to a comment anchored in a header, footer or note, written next to it there on save. */
+  replyInStory(parentId, { author, text, date }) {
+    const parent = this.comments.find((c) => c.id === parentId);
+    if (!parent || !this.storyOf(parentId)) return null;
+    parent.paraId ||= newParaId();
+    const id = String(this.nextId++);
+    const initials = author.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+    const reply = {
+      id, author, initials, date, text, paraId: newParaId(), parentId, done: false, isNew: true, storyReply: true,
+      paragraphs: text.split('\n').map((x) => x.trim()).filter(Boolean),
+    };
+    this.comments.push(reply);
+    this.newComments.push(reply);
+    this.story.replies.push(id);
+    return reply;
+  }
+
+  editStoryComment(id, text) {
+    this.story.edits[id] = text;
+  }
+
+  resolveStoryComment(id, done) {
+    this.story.done[id] = done;
+  }
+
+  deleteStoryComment(id) {
+    this.story.removed.push(id);
+  }
+
+  /** The ids of comments in headers, footers and notes that are kept (with replies added here). */
+  liveStoryComments() {
+    return this.comments.filter((c) => this.storyOf(c.id) && this.storyCommentLive(c)).map((c) => c.id);
+  }
+
+  /** Comments that will be in the saved file: referenced in the body, or kept in a header, footer or note. */
+  presentComments() {
+    const present = commentIdsIn(this.body);
+    for (const id of this.liveStoryComments()) present.add(id);
+    return present;
+  }
+
+  /**
+   * Writes the headers, footers and notes whose comments changed: removed comments' marks go,
+   * replies' marks go next to their comment's (inside its range, as Word writes them). A part
+   * changed by an earlier save and no longer is gets its original text back.
+   */
+  writeStories() {
+    const removed = this.commentsRemoved;
+    const replies = this.comments.filter((c) => c.storyReply && this.storyCommentLive(c) && !removed.has(c.id));
+    const docs = new Map();
+    const docFor = (path) => {
+      if (!docs.has(path)) docs.set(path, parseXml(this.storyTexts[path]));
+      return docs.get(path);
+    };
+    for (const id of removed) if (this.commentStory.has(id)) docFor(this.commentStory.get(id));
+    for (const r of replies) docFor(this.storyOf(r.parentId));
+    for (const [path, xml] of docs) {
+      pruneCommentMarkers(xml.documentElement, removed, new Set());
+      for (const r of replies.filter((x) => this.storyOf(x.parentId) === path)) addReplyMarkers(xml, r.parentId, r.id);
+      this.zip.file(path, serializeXml(xml));
+    }
+    for (const path of this.storiesWritten || []) if (!docs.has(path)) this.zip.file(path, this.storyTexts[path]);
+    this.storiesWritten = new Set(docs.keys());
   }
 
   /**
@@ -441,6 +562,10 @@ export class DocxDocument {
       const change = propertyChange(node);
       return change && { kind: 'format', mark: false, own: false, ...change };
     }
+    if (kind === 'locked') {
+      const info = this.lockedChanges(el);
+      return info && { kind: 'locked', mark: false, own: false, author: info.authors.join(', '), ...info };
+    }
     if (kind === 'merge') {
       const merge = wChild(wChild(this.cellXml(el), 'tcPr'), 'cellMerge');
       return merge && { kind: 'format', mark: false, own: false, author: wAttr(merge, 'author'), date: wAttr(merge, 'date') };
@@ -480,6 +605,7 @@ export class DocxDocument {
     if (item.kind === 'row') return this.resolveRow(el, accept);
     if (item.kind === 'cells') return this.resolveCells(el, accept);
     if (item.kind === 'merge') return this.resolveMergeCells(el, accept);
+    if (item.kind === 'locked') return this.resolveLocked(el, accept);
     if (item.kind === 'tprops' || item.kind === 'rprops' || item.kind === 'cprops') return this.resolveTableProps(item, accept);
     const rev = this.revisionOf(el);
     if (!rev) return;
@@ -648,21 +774,61 @@ export class DocxDocument {
     else delete table.dataset.tracked;
   }
 
+  // ---------------------------------------------------------------- tracked changes in locked content
+
   /**
-   * How many tracked changes under `root` can only be accepted or rejected in Word: those inside
-   * content saved verbatim (locked fields and cells, preserved blocks and items) and tracked cell
-   * merges.
+   * Content kept as it is (a locked or data-bound field, a locked cell, a field, a preserved block)
+   * holding tracked changes: { count, authors, what } for "the 2 tracked changes in the locked field
+   * “Company”", or null.
    */
-  wordOnlyChanges(root) {
-    let n = 0;
-    for (const el of root.querySelectorAll('[data-raw]')) {
-      const node = this.raw[Number(el.dataset.raw)];
-      if (node.localName === 'tbl') {
-      } else if (!el.classList.contains('inserted') && !el.classList.contains('deleted') && el.dataset.tracked) {
-        n++;
-      }
+  lockedChanges(el) {
+    const node = el.tagName === 'TD' ? this.cellXml(el) : this.raw[Number(el.dataset.raw)];
+    if (!node) return null;
+    const count = countRevisions(node);
+    if (!count) return null;
+    let what;
+    if (el.tagName === 'TD') what = 'a locked cell';
+    else if (node.localName === 'sdt' && node.namespaceURI === W) {
+      const info = controlInfo(node);
+      const kind = info.readOnly === 'locked in Word' ? 'the locked field' : info.readOnly?.startsWith('linked') ? 'the field linked to data' : 'the field';
+      what = `${kind}${info.label ? ` “${info.label}”` : ''}`;
+    } else {
+      const name = describe(node);
+      what = name.startsWith('Content Intact') ? 'content kept as it is' : `the ${name.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())}`;
     }
-    return n;
+    return { count, authors: revisionAuthors(node), what };
+  }
+
+  /**
+   * Accepts or rejects every tracked change in locked content at once (as Word's Accept All in it
+   * would), in its XML; the content is rendered again, still locked.
+   */
+  resolveLocked(el, accept) {
+    if (el.tagName === 'TD') {
+      const table = el.closest('table');
+      const r = this.tableRows(table).indexOf(el.parentElement);
+      const c = [...el.parentElement.cells].indexOf(el);
+      this.editTable(table, (tbl) => {
+        const tc = cellsOf(rowsOf(tbl)[r])[c];
+        const copy = tc.cloneNode(true); // rendered again
+        tc.replaceWith(copy);
+        resolveRevisionsIn(copy, accept);
+      });
+      return;
+    }
+    const node = resolveRevisionsIn(this.raw[Number(el.dataset.raw)].cloneNode(true), accept);
+    if (!node) {
+      el.remove();
+      return;
+    }
+    let fresh;
+    if (node.localName === 'sdt' && node.namespaceURI === W) fresh = this.renderControl(node, el.tagName === 'DIV');
+    else if (el.tagName === 'DIV') fresh = this.rawBlock(node);
+    else fresh = this.rawInline(node);
+    const holder = document.createElement('div');
+    holder.append(fresh);
+    this.markTracked(holder, false);
+    el.replaceWith(fresh);
   }
 
   keep(node) {
@@ -2088,7 +2254,17 @@ export class DocxDocument {
       wasInBody: this.commentsInBody, present: commentIdsIn(this.body), elsewhere: this.commentsElsewhere,
     });
     pruneCommentMarkers(this.body, this.commentsRemoved, this.commentRangesInBody);
+    for (const id of this.storyRemoved()) this.commentsRemoved.add(id);
     this.commentEdits = this.commentOverrides(root);
+    // Edits to comments in headers, footers and notes, where they differ from the comment as it was.
+    for (const [id, text] of Object.entries(this.story.edits)) {
+      const c = this.comments.find((x) => x.id === id);
+      if (c && text !== this.commentText(c)) this.commentEdits.set(id, { ...this.commentEdits.get(id), text });
+    }
+    for (const [id, done] of Object.entries(this.story.done)) {
+      const c = this.comments.find((x) => x.id === id);
+      if (c && done !== !!c.done) this.commentEdits.set(id, { ...this.commentEdits.get(id), done });
+    }
   }
 
   /**
@@ -2124,7 +2300,7 @@ export class DocxDocument {
     return {
       paragraphs: reviewParagraphs(this.originalBody, this.body, { tracked: (p) => trackedParagraphs.has(p), styleName }),
       commentsRemoved: this.comments.filter((c) => this.commentsRemoved.has(c.id) && !c.isNew),
-      commentsAdded: this.newComments.filter((c) => commentIdsIn(this.body).has(c.id) && !this.commentsRemoved.has(c.id))
+      commentsAdded: this.newComments.filter((c) => this.presentComments().has(c.id) && !this.commentsRemoved.has(c.id))
         .map((c) => ({ ...c, text: this.commentEdits.get(c.id)?.text ?? c.text, parentAuthor: this.comments.find((p) => p.id === c.parentId)?.author })),
       ...(() => {
         const changed = [...this.commentEdits].filter(([id]) => !this.commentsRemoved.has(id)).map(([id, e]) => ({ c: this.comments.find((x) => x.id === id), e }));
@@ -2157,6 +2333,7 @@ export class DocxDocument {
     await this.writeStyles();
     if (this.numberingChanged) await this.writeNumbering();
     await this.writeComments();
+    this.writeStories();
     await this.writeSettings();
     return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
   }
@@ -2204,7 +2381,7 @@ export class DocxDocument {
    * commentsExtended.xml. A part is created if the document has none; untouched, they stay as read.
    */
   async writeComments() {
-    const present = commentIdsIn(this.body);
+    const present = this.presentComments();
     const removed = this.commentsRemoved;
     const added = this.newComments.filter((c) => present.has(c.id) && !removed.has(c.id));
     const edits = new Map([...this.commentEdits].filter(([id]) => present.has(id) && !removed.has(id)));
@@ -2712,6 +2889,28 @@ function setCommentText(doc, comment, text) {
       t.textContent = line;
     }
   });
+}
+
+/** A reply's marks in a part's XML, next to its comment's: inside its range, its mark just after. */
+function addReplyMarkers(xml, parentId, id) {
+  const find = (local) => [...xml.getElementsByTagNameNS(W, local)].find((el) => wAttr(el, 'id') === parentId);
+  const marker = (local) => {
+    const el = xml.createElementNS(W, `w:${local}`);
+    el.setAttributeNS(W, 'w:id', id);
+    return el;
+  };
+  const ref = find('commentReference');
+  const refRun = ref?.parentNode?.localName === 'r' ? ref.parentNode : ref;
+  if (!refRun) return;
+  const start = find('commentRangeStart');
+  const end = find('commentRangeEnd');
+  if (start) start.after(marker('commentRangeStart'));
+  else refRun.before(marker('commentRangeStart'));
+  if (end) end.after(marker('commentRangeEnd'));
+  else refRun.before(marker('commentRangeEnd'));
+  const run = xml.createElementNS(W, 'w:r');
+  run.appendChild(marker('commentReference'));
+  refRun.after(run);
 }
 
 /** " by Ann on 2026-01-05", from a revision's author and date. */
