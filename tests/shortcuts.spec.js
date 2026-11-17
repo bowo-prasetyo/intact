@@ -59,7 +59,7 @@ test('Ctrl+Alt+1, 2, 3 apply headings and Ctrl+Shift+N goes back to Normal', asy
   expect(firstParagraph(xml)).not.toContain('w:pStyle');
 });
 
-test('Ctrl+Shift+L makes a bulleted list; Ctrl+M and Ctrl+Shift+M change list levels', async ({ page }) => {
+test('Ctrl+Shift+L makes a bulleted list; Ctrl+M and Ctrl+Shift+M change list levels, and indent other paragraphs', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC));
   await caretIn(page, 'Alpha');
   await page.keyboard.press('ControlOrMeta+Shift+L');
@@ -75,7 +75,15 @@ test('Ctrl+Shift+L makes a bulleted list; Ctrl+M and Ctrl+Shift+M change list le
 
   await caretIn(page, 'Bold italic');
   await page.keyboard.press('ControlOrMeta+m');
-  await expect(status(page)).toHaveText('Indenting works on list items here');
+  await page.keyboard.press('ControlOrMeta+m');
+  ({ xml } = await download(page));
+  expect(xml).toMatch(/<w:p><w:pPr><w:ind w:left="1440"\/><\/w:pPr><w:r>(<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Bold/);
+  await caretIn(page, 'Bold italic');
+  await page.keyboard.press('ControlOrMeta+Shift+M');
+  await page.keyboard.press('ControlOrMeta+Shift+M');
+  await page.keyboard.press('ControlOrMeta+Shift+M'); // at the margin already: nothing more
+  ({ xml } = await download(page));
+  expect(xml).toMatch(/<w:p><w:pPr><w:ind w:left="0"\/><\/w:pPr><w:r>(<w:rPr>.*?<\/w:rPr>)?<w:t xml:space="preserve">Bold/);
 });
 
 test('Ctrl+Space takes bold and italic off the selection', async ({ page }) => {

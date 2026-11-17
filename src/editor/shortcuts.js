@@ -10,6 +10,11 @@ export function shortcutFor(e) {
   // Ctrl+= subscript, Ctrl+Shift+= (Ctrl++) superscript; Ctrl+Shift+8 (Ctrl+*, Cmd+8) formatting marks.
   if (!e.altKey && e.code === 'Equal') return e.shiftKey ? 'superscript' : 'subscript';
   if (!e.altKey && e.code === 'Digit8') return 'formattingMarks';
+  // Ctrl+1, Ctrl+2, Ctrl+5: single, double and 1.5 line spacing; Ctrl+0: space before on or off.
+  if (!e.altKey && !e.shiftKey) {
+    const spacing = { Digit1: 'lineSingle', Digit2: 'lineDouble', Digit5: 'lineOneHalf', Digit0: 'spaceBefore' }[e.code];
+    if (spacing) return spacing;
+  }
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyM') return 'comment';
   if (!e.shiftKey && !e.altKey) {
@@ -40,7 +45,11 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+N', 'Normal style'],
   ['Ctrl+Alt+1, 2, 3', 'Heading 1, 2, 3'],
   ['Ctrl+Shift+L', 'Bulleted list'],
-  ['Tab, Shift+Tab or Ctrl+M, Ctrl+Shift+M', 'List level down or up'],
+  ['1. or * then a space, at the start of a paragraph', 'Numbered or bulleted list (Ctrl+Z types it as it is)'],
+  ['Tab, Shift+Tab', 'List level down or up'],
+  ['Ctrl+M, Ctrl+Shift+M', 'Indent or outdent (in a list: list level down or up)'],
+  ['Ctrl+1, Ctrl+5, Ctrl+2', 'Single, 1.5 and double line spacing (where the browser leaves these keys to the page)'],
+  ['Ctrl+0', 'Space before the paragraph on or off'],
   ['Ctrl+Enter', 'Page break'],
   ['Shift+Enter', 'Line break'],
   ['Ctrl+Shift+Space', 'Non-breaking space'],

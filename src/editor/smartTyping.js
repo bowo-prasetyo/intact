@@ -57,3 +57,36 @@ export function smartReplacement(before, typed) {
   if (/[\p{L}\p{N}]/u.test(typed) && /[\p{L}\p{N}.,;:!?)\]'"’”]--$/u.test(before)) return { remove: 2, text: `—${typed}` };
   return null;
 }
+
+const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+
+/**
+ * The list a paragraph starts when a space is typed after `before` (all of its text before the
+ * caret), as Word's AutoFormat "Automatic bulleted lists" and "Automatic numbered lists" do, or null:
+ *  - "*" or "•" a bulleted list, "-" a list with dash bullets;
+ *  - "1." "1)" "(1)", "a." "a)" "(a)", "A." "A)", "i." "i)" "(i)", "I." "I)": a numbered list in that
+ *    style, starting from the number typed ("3." starts at 3, "c)" at c; i, ii, iv… are Roman).
+ * Returns { kind: 'bullet' | 'number', first } with `first` as numbering.addList takes it (null for
+ * Word's default bullets).
+ */
+export function listTrigger(before) {
+  if (before === '*' || before === '•') return { kind: 'bullet', first: null };
+  if (before === '-') return { kind: 'bullet', first: { char: '-' } };
+  const m = /^(\()?([0-9]{1,3}|[a-zA-Z]|[ivx]{1,4}|[IVX]{1,4})([.)])$/.exec(before);
+  if (!m) return null;
+  const [, open, mark, close] = m;
+  if (open && close !== ')') return null; // "(1." isn't a list
+  const text = open ? '(%1)' : `%1${close}`;
+  if (/^[0-9]+$/.test(mark)) return { kind: 'number', first: { fmt: 'decimal', text, start: Number(mark) } };
+  // One letter is a lettered list, except i (Roman, as in Word); ii, iv, ix… are Roman numerals.
+  const lower = mark.toLowerCase();
+  if (mark.length === 1 && lower !== 'i') return letterList(mark, text);
+  const roman = ROMAN[lower];
+  if (!roman) return null;
+  return { kind: 'number', first: { fmt: mark === lower ? 'lowerRoman' : 'upperRoman', text, start: roman } };
+}
+
+function letterList(mark, text) {
+  const lower = mark.toLowerCase();
+  return { kind: 'number', first: { fmt: mark === lower ? 'lowerLetter' : 'upperLetter', text, start: lower.charCodeAt(0) - 96 } };
+}

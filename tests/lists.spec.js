@@ -79,15 +79,21 @@ test('Tab inside the text of a list item types a tab, as in Word', async ({ page
   await expect.poll(() => markers(page)).toEqual(['1. Alpha', '2. Beta\t']);
 });
 
-test('the level buttons work on selected list items', async ({ page }) => {
+test('the indent buttons change the level of list items, and indent other paragraphs', async ({ page }) => {
   await openInEditor(page, await buildDocx(LIST));
-  await caretAt(page, 'After the list');
-  await expect(page.getByTitle('Increase list level (Tab, Ctrl+M)')).toBeDisabled();
   await caretAt(page, 'Beta');
+  await expect(page.getByTitle('Increase list level (Tab, Ctrl+M)')).toBeVisible();
   await page.getByTitle('Increase list level (Tab, Ctrl+M)').click();
   await expect.poll(() => markers(page)).toEqual(['1. Alpha', 'a. Beta']);
   await page.getByTitle('Decrease list level (Shift+Tab, Ctrl+Shift+M)').click();
   await expect.poll(() => markers(page)).toEqual(['1. Alpha', '2. Beta']);
+  // Outside a list they are Word's Increase and Decrease Indent: half an inch at a time.
+  await caretAt(page, 'After the list');
+  await page.getByTitle('Increase indent (Ctrl+M)').click();
+  await page.getByTitle('Increase indent (Ctrl+M)').click();
+  await page.getByTitle('Decrease indent (Ctrl+Shift+M)').click();
+  const { xml } = await download(page);
+  expect(savedParagraph(xml, 'After the list')).toBe('<w:p><w:pPr><w:ind w:left="720"/></w:pPr><w:r><w:t xml:space="preserve">After the list</w:t></w:r></w:p>');
 });
 
 test('a list with a single level is not given levels it does not define', async ({ page }) => {

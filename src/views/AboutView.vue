@@ -20,7 +20,9 @@
         <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too); Clear formatting (Ctrl+Space)</li>
-        <li>Smart quotes and dashes as you type, in the text's language (turn them off in the status bar)</li>
+        <li>AutoFormat as you type: smart quotes and dashes in the text's language, and lists started by typing "1. " or "* " (turn it off in the status bar)</li>
+        <li>Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2), space before and after, and indents (Ctrl+M, Ctrl+Shift+M), with Word's Paragraph dialog</li>
+        <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3 and the document's own styles, such as Heading 4, Quote and Caption) and alignment</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
