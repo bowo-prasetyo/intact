@@ -14,6 +14,14 @@ export function shortcutFor(e) {
   if (!e.altKey && !e.shiftKey) {
     const spacing = { Digit1: 'lineSingle', Digit2: 'lineDouble', Digit5: 'lineOneHalf', Digit0: 'spaceBefore' }[e.code];
     if (spacing) return spacing;
+    // Ctrl+] and Ctrl+[: the font 1 pt bigger or smaller.
+    if (e.code === 'BracketRight') return 'growFontPoint';
+    if (e.code === 'BracketLeft') return 'shrinkFontPoint';
+  }
+  // Ctrl+Shift+> and Ctrl+Shift+<: Word's Grow Font and Shrink Font (the keys of > and <).
+  if (e.shiftKey && !e.altKey) {
+    if (e.code === 'Period') return 'growFont';
+    if (e.code === 'Comma') return 'shrinkFont';
   }
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyM') return 'comment';
@@ -36,6 +44,8 @@ export const SHORTCUTS = [
   ['Ctrl+B, Ctrl+I, Ctrl+U', 'Bold, italic, underline'],
   ['Ctrl+Space', 'Clear character formatting (bold, italic, font, size, colour…); highlight stays'],
   ['Ctrl+Shift+=, Ctrl+=', 'Superscript, subscript'],
+  ['Ctrl+Shift+>, Ctrl+Shift+<', 'Grow or shrink the font (Word\'s steps: 10, 11, 12, 14…)'],
+  ['Ctrl+], Ctrl+[', 'Font 1 pt bigger or smaller'],
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+Alt+M', 'New comment'],
@@ -56,6 +66,7 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+E', 'Track Changes on or off'],
   ['Ctrl+F, Ctrl+H', 'Find, replace'],
   ['Ctrl+Z, Ctrl+Y', 'Undo, redo'],
+  ['Ctrl+mouse wheel (or pinch) on the page', 'Zoom in or out (the buttons at the right of the status bar too)'],
   ['Ctrl+S', 'Review changes and download'],
   ['Alt+F10, then Esc', 'Go to the toolbar (arrow keys move along it), and back to the text'],
   ['Ctrl+/', 'Help: these shortcuts, and checks before you send the file'],

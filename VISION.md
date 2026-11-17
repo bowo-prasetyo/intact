@@ -119,7 +119,8 @@ Saying no to these keeps the product small enough to keep its promises:
   versioned releases for self-hosting, with checksums, SBOM and build attestation ✔
 - Right-to-left text ✔; templates and files with macros ✔; line numbers ✔
 - Print just the document ✔; lists started by typing ("1. ", "* ") ✔; line and paragraph spacing
-  and indents, with Word's Paragraph dialog ✔
+  and indents, with Word's Paragraph dialog ✔; Grow and Shrink Font ✔; AutoCorrect symbols ✔;
+  zoom ✔
 
 ## How we'll know it's working
 

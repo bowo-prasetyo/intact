@@ -63,6 +63,12 @@
           <option v-for="z in sizeChoices.others" :key="`o${z}`" :value="String(z)">{{ z }}</option>
         </optgroup>
       </select>
+      <button type="button" title="Grow font (Ctrl+Shift+>)" aria-label="Grow font" @click="growFont(1)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 13.5l3.5-10 3.5 10M2.7 10h4.6M11 6.5l2-2.5 2 2.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
+      </button>
+      <button type="button" title="Shrink font (Ctrl+Shift+<)" aria-label="Shrink font" @click="growFont(-1)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5l3-8.5 3 8.5M3.1 10.5h3.8M11 4l2 2.5 2-2.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
+      </button>
       <select v-if="characterStyles.length" class="char-style" :value="state.charStyle" aria-label="Character style" title="Character style: the document’s own" @change="applyCharacterStyle($event.target.value)">
         <option value="">No character style</option>
         <option v-for="c in characterStyles" :key="c.id" :value="c.id">{{ c.label }}</option>
@@ -566,11 +572,16 @@
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
-      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, and 1. or * then a space at the start of a paragraph a list – click to type them as they are' : 'Quotes, dashes, ellipses and list numbers are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
+      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, and 1. or * then a space at the start of a paragraph a list – click to type them as they are' : 'Quotes, dashes, ellipses and list numbers are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
       <span role="status" aria-live="polite">{{ message }}</span>
+      <span class="zoom" role="group" aria-label="Zoom">
+        <button type="button" title="Zoom out (Ctrl+mouse wheel)" aria-label="Zoom out" :disabled="zoomLevel <= ZOOMS[0]" @click="zoomBy(-1)">−</button>
+        <button type="button" class="zoom-level" :title="zoomLevel === 100 ? 'Zoom: the page at its size' : 'Back to 100%'" :aria-label="`Zoom ${zoomLevel}%${zoomLevel === 100 ? '' : ', back to 100%'}`" @click="setZoom(100)">{{ zoomLevel }}%</button>
+        <button type="button" title="Zoom in (Ctrl+mouse wheel)" aria-label="Zoom in" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
+      </span>
     </footer>
   </div>
 </template>
@@ -610,8 +621,8 @@ import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
-import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect } from '../editor/runs.js';
-import { smartQuote, smartReplacement, listTrigger } from '../editor/smartTyping.js';
+import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
+import { smartQuote, smartReplacement, listTrigger, autoCorrect } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -879,7 +890,7 @@ const aligns = [
 // Word, the body starts at the top margin or below the header, whichever is lower. Headers and
 // footers are in the page itself (see doc.renderBand), placed by CSS from these sizes.
 const footerSpace = ref(0); // the footer's height, kept free below the text
-const sheetStyle = computed(() => ({ width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px` }));
+const sheetStyle = computed(() => ({ width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px`, zoom: zoomLevel.value === 100 ? null : String(sheetZoom.value) }));
 const pageStyle = computed(() => {
   const p = doc.page;
   return {
@@ -987,7 +998,7 @@ function scheduleMarks() {
   if (!showMarks.value || marksFrame) return;
   marksFrame = requestAnimationFrame(() => {
     marksFrame = 0;
-    if (showMarks.value && page.value && marksEl.value) drawMarks(page.value, marksEl.value, page.value.closest('.canvas').getBoundingClientRect());
+    if (showMarks.value && page.value && marksEl.value) drawMarks(page.value, marksEl.value, page.value.closest('.canvas').getBoundingClientRect(), sheetZoom.value);
   });
 }
 
@@ -1027,7 +1038,7 @@ function scheduleLineNumbers() {
   if (lineFrame) return;
   lineFrame = requestAnimationFrame(() => {
     lineFrame = 0;
-    if (page.value && lineNumbersEl.value) drawLineNumbers(page.value, lineNumbersEl.value, lineSections);
+    if (page.value && lineNumbersEl.value) drawLineNumbers(page.value, lineNumbersEl.value, lineSections, sheetZoom.value);
   });
 }
 onMounted(() => {
@@ -1081,6 +1092,51 @@ const toolbarEl = ref(null);
 let toolbarNav = null;
 onMounted(() => { toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus }); });
 onBeforeUnmount(() => toolbarNav?.dispose());
+
+// ------------------------------------------------------------------ zoom
+
+// Zoom, as Word's status bar has it: the page shown bigger or smaller (CSS zoom on the sheet), the
+// document unchanged. Remembered in this browser. What is drawn over the page (formatting marks,
+// line numbers, a picture's frame) is placed in the page's own pixels, so it divides by the zoom.
+const ZOOMS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+const ZOOM_KEY = 'intact.zoom';
+const zoomLevel = ref((() => {
+  try { const z = Number(localStorage.getItem(ZOOM_KEY)); return ZOOMS.includes(z) ? z : 100; } catch { return 100; }
+})());
+const sheetZoom = computed(() => zoomLevel.value / 100);
+
+function setZoom(z) {
+  if (!ZOOMS.includes(z) || z === zoomLevel.value) return;
+  zoomLevel.value = z;
+  try { localStorage.setItem(ZOOM_KEY, String(z)); } catch { /* this session only */ }
+  nextTick(() => {
+    scheduleMarks();
+    if (hasLineNumbers) scheduleLineNumbers();
+    if (picture.el) updatePictureFrame();
+    const range = selectionInPage();
+    if (range) revealRect(range.getBoundingClientRect());
+  });
+}
+
+/** The next zoom up (1) or down (-1). */
+function zoomBy(dir) {
+  const next = dir > 0 ? ZOOMS.find((z) => z > zoomLevel.value) : [...ZOOMS].reverse().find((z) => z < zoomLevel.value);
+  if (next) setZoom(next);
+}
+
+// Ctrl+mouse wheel (and a trackpad's pinch, which browsers send as one) on the page zooms it, as in
+// Word, rather than the whole app. A step at each notch of a wheel; a pinch's small steps add up.
+let wheelDelta = 0;
+function onCanvasWheel(e) {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  wheelDelta += e.deltaY;
+  if (Math.abs(wheelDelta) < 40) return;
+  zoomBy(wheelDelta < 0 ? 1 : -1);
+  wheelDelta = 0;
+}
+onMounted(() => page.value.closest('.canvas').addEventListener('wheel', onCanvasWheel, { passive: false }));
+onBeforeUnmount(() => page.value?.closest('.canvas')?.removeEventListener('wheel', onCanvasWheel));
 
 // Wide pictures in line with the text fit a phone's screen (see editor/fitPictures.js).
 let unfitPictures = null;
@@ -1813,7 +1869,8 @@ function updatePictureFrame() {
   }
   const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
   const r = span.getBoundingClientRect(); // the picture's frame (what shows of it, cropped)
-  Object.assign(picture, { x: r.left - sheet.left, y: r.top - sheet.top, w: r.width, h: r.height, wrap: span.dataset.wrap || 'inline' });
+  const z = sheetZoom.value; // the frame is drawn in the page's own pixels
+  Object.assign(picture, { x: (r.left - sheet.left) / z, y: (r.top - sheet.top) / z, w: r.width / z, h: r.height / z, wrap: span.dataset.wrap || 'inline' });
 }
 
 /** Applies a change to the selected picture as one undoable step, keeping it selected. */
@@ -1838,7 +1895,7 @@ function startResize(e, handle) {
   if (!info) return;
   const look = doc.pictureLookOf(span);
   const start = { x: e.clientX, y: e.clientY, w: info.cx / PX, h: info.cy / PX };
-  const zoom = pictureZoom(span); // shown smaller on a narrow screen: the pointer moves in shown pixels
+  const zoom = pictureZoom(span) * sheetZoom.value; // shown smaller (or zoomed): the pointer moves in shown pixels
   const target = e.currentTarget;
   target.setPointerCapture(e.pointerId);
   let size = { w: start.w, h: start.h };
@@ -1885,7 +1942,8 @@ function onPictureMousedown(e, span) {
     const dy = ev.clientY - start.y;
     if (!moved && Math.hypot(dx, dy) < 4) return;
     moved = true;
-    span.style.transform = `translate(${dx}px, ${dy}px) ${span.dataset.turn || ''}`;
+    const z = sheetZoom.value; // moved in shown pixels, placed in the page's own
+    span.style.transform = `translate(${dx / z}px, ${dy / z}px) ${span.dataset.turn || ''}`;
     updatePictureFrame();
   };
   const up = (ev) => {
@@ -1896,8 +1954,9 @@ function onPictureMousedown(e, span) {
     span.style.transform = span.dataset.turn || '';
     const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
     const block = span.closest(BLOCK_SELECTOR) || span.parentElement;
-    const left = r.left - (sheet.left + doc.page.left);
-    const top = r.top - block.getBoundingClientRect().top;
+    const z = sheetZoom.value;
+    const left = (r.left - sheet.left) / z - doc.page.left;
+    const top = (r.top - block.getBoundingClientRect().top) / z;
     changePicture((s) => doc.setPicturePosition(s, {
       h: { relativeFrom: 'margin', offset: Math.round(left) * PX },
       v: { relativeFrom: 'paragraph', offset: Math.round(top) * PX },
@@ -2022,7 +2081,7 @@ function startCrop(e, handle) {
   const fullW = info.cx / PX / (1 - c0.l - c0.r);
   const fullH = info.cy / PX / (1 - c0.t - c0.b);
   const start = { x: e.clientX, y: e.clientY };
-  const zoom = pictureZoom(span);
+  const zoom = pictureZoom(span) * sheetZoom.value;
   const target = e.currentTarget;
   target.setPointerCapture(e.pointerId);
   let crop = c0;
@@ -3085,6 +3144,10 @@ function pickHighlight(color) {
 /** Runs one of Word's shortcuts (see editor/shortcuts.js). */
 function runShortcut(name) {
   if (['left', 'center', 'right', 'justify'].includes(name)) return alignBlocks(name);
+  if (name === 'growFont') return growFont(1);
+  if (name === 'shrinkFont') return growFont(-1);
+  if (name === 'growFontPoint') return growFont(1, true);
+  if (name === 'shrinkFontPoint') return growFont(-1, true);
   if (['bold', 'italic', 'underline'].includes(name)) return exec(name);
   if (name === 'link') return openLinkDialog();
   if (name === 'normal') return applyBlockStyle('normal');
@@ -3152,6 +3215,20 @@ function restyleSelection(mutate) {
 
 const applyFont = (value) => restyleSelection(setFont(value));
 const applyFontSize = (pt) => restyleSelection(setSize(pt));
+
+/** The size, in points, text node `node` shows (its run's, from its style), as the size box reads it. */
+function shownSize(node) {
+  const el = node.parentElement?.closest(':not(sup, sub)') || node.parentElement;
+  return Math.round(parseFloat(getComputedStyle(el).fontSize) * 0.75 * 2) / 2;
+}
+
+/**
+ * Grow Font / Shrink Font (Ctrl+Shift+> and <), as in Word: each run of the selection to the next
+ * size in Word's steps, or by 1 pt (`byPoint`: Ctrl+] and Ctrl+[).
+ */
+function growFont(dir, byPoint = false) {
+  restyleSelection(changeSize((pt) => (byPoint ? pt + dir : nextFontSize(pt, dir)), shownSize));
+}
 const applyCharacterStyle = (id) => restyleSelection(setCharacterStyle(id || null));
 
 // The font colour last chosen (this document only): the button applies it.
@@ -3214,6 +3291,7 @@ function smartTyping(e) {
   lead.setEnd(range.startContainer, range.startOffset);
   const before = lead.toString();
   const lang = range.startContainer.parentElement?.closest('[lang]')?.lang || doc.styles.language() || 'en';
+  if (range.collapsed && autoCorrectSymbol(e, range, before)) return true;
   if (e.data === ' ' && range.collapsed && autoList(e, block, range, before)) return true;
   if (range.collapsed) {
     const swap = smartReplacement(before, e.data);
@@ -3251,6 +3329,28 @@ function typeText(text) {
     if (typeUntracked(text)) onInput();
     else document.execCommand('insertText', false, text);
   }
+}
+
+/**
+ * Word's AutoCorrect for symbols: "(c)" becomes ©, "-->" an arrow and so on (see autoCorrect), as
+ * the last character is typed. That character is typed first, as an undo step of its own, so Ctrl+Z
+ * straight after gives back what was typed, as in Word. True if the key press was dealt with here.
+ */
+function autoCorrectSymbol(e, range, before) {
+  const hit = autoCorrect(before, e.data);
+  const node = range.startContainer;
+  const typedBefore = hit?.from.slice(0, -1);
+  if (!hit || node.nodeType !== 3 || node.data.slice(Math.max(0, range.startOffset - typedBefore.length), range.startOffset) !== typedBefore) return false;
+  e.preventDefault();
+  typeText(e.data);
+  undoStack.commit();
+  const now = selectionInPage();
+  const at = now?.startContainer;
+  if (!now?.collapsed || at?.nodeType !== 3 || at.data.slice(Math.max(0, now.startOffset - hit.from.length), now.startOffset) !== hit.from) return true;
+  const sel = window.getSelection();
+  sel.setBaseAndExtent(at, now.startOffset - hit.from.length, at, now.startOffset);
+  typeText(hit.to);
+  return true;
 }
 
 /**
@@ -4748,6 +4848,14 @@ async function close() {
   display: flex; gap: 24px; padding: 4px 16px; font-size: 12px; color: var(--muted);
   background: var(--surface); border-top: 1px solid var(--border);
 }
+.statusbar .zoom { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.statusbar .zoom button {
+  min-width: 24px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px; background: none;
+  color: inherit; font: inherit; line-height: 18px; cursor: pointer;
+}
+.statusbar .zoom button:hover:not(:disabled) { background: var(--hover); }
+.statusbar .zoom button:disabled { opacity: .4; cursor: default; }
+.statusbar .zoom .zoom-level { min-width: 44px; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 860px) {
   .canvas { padding: 0; }
@@ -4771,7 +4879,7 @@ async function close() {
   .editor-shell > :not(.workspace), .workspace > :not(.canvas), .docx-sheet > :not(.docx-page) { display: none !important; }
   .workspace { display: block !important; }
   .canvas { overflow: visible !important; padding: 0 !important; background: none !important; }
-  .docx-sheet { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; box-shadow: none !important; }
+  .docx-sheet { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; box-shadow: none !important; zoom: 1 !important; }
   .docx-page { padding: 0 !important; overflow: visible !important; }
   .docx-sheet .docx-hf-band.header { padding-top: 0; min-height: 0; }
   .docx-sheet .docx-hf-band.footer { position: static; padding: 12pt 0 0; min-height: 0; }

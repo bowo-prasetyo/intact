@@ -223,7 +223,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Strong or Emphasis). Nothing else is offered, so text stays on brand. The selected text's run
   properties are changed and the text is rebuilt as runs with them, so the page shows what is saved.
   Clear formatting (button or Ctrl+Space) takes direct character formatting and the character style
-  off, as Word does; highlight, language and a link's style stay
+  off, as Word does; highlight, language and a link's style stay. Grow Font and Shrink Font (the
+  buttons beside the size, Ctrl+Shift+> and Ctrl+Shift+<) step the selected text through Word's
+  sizes (… 10, 11, 12, 14, 16 … 72, then by 10), each run from its own size, and Ctrl+] and Ctrl+[
+  change it by 1 pt
 - Formatting changed while tracking is tracked, as Word records it: bold, italic, underline,
   strikethrough, superscript, subscript, highlight, font, size, colour, character style and clear
   formatting record the text's old run properties (`w:rPrChange`); paragraph style, alignment and
@@ -232,9 +235,16 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   changed back records nothing. The review lists them as tracked
 - Smart quotes and dashes as you type, as Word's AutoFormat (lists too: see above): " and ' become
   curly quotes in the text's language (“ ” ‘ ’ in English, „ “ in German, « » with no-break spaces
-  in French, and others), "--" between words an em dash, " - " an en dash and "..." an ellipsis. Typed as a key press would
-  be, so they are tracked while tracking. The AutoFormat button in the status bar turns this off
-  (remembered in this browser)
+  in French, and others), "--" between words an em dash, " - " an en dash and "..." an ellipsis;
+  and Word's AutoCorrect symbols: (c) ©, (r) ®, (tm) ™, (e) €, --> →, <-- ←, ==> ⇒, <== ⇐ and
+  <=> ⇔, replaced as the last character is typed (Ctrl+Z straight after gives back what was typed;
+  "(c)" stays as it is where it is an item's letter: at the start of a paragraph, or after "(b)").
+  Typed as a key press would be, so they are tracked while tracking. The AutoFormat button in the
+  status bar turns this off (remembered in this browser)
+- Zoom, as in Word's status bar: − and + step the page through 50% to 200%, the percentage goes
+  back to 100%, and Ctrl+mouse wheel (or a trackpad's pinch) on the page zooms it. Only how the page
+  shows changes, not the document, and it prints at its size; remembered in this browser. Formatting
+  marks, line numbers and a picture's frame and handles follow the zoom
 - The status bar counts the words and characters in the document, and those selected ("12 of 340
   words · 64 of 2104 characters"; with and without spaces in its tooltip); headers and footers aren't
   counted, as in Word; the

@@ -41,11 +41,12 @@ function lastRect(block) {
  * Draws the formatting marks of `page` into `layer` (an empty, absolutely positioned element over
  * the page), for the paragraphs within `view` (a DOMRect of the visible area) and a margin.
  */
-export function drawMarks(page, layer, view) {
+export function drawMarks(page, layer, view, zoom = 1) {
+  // `zoom`: how much bigger than its size the page is shown; marks are placed in its own pixels.
   const base = layer.getBoundingClientRect();
   const marks = [];
   const add = (char, rect, className, x = rect.left) => {
-    marks.push({ char, className, x: x - base.left, y: rect.top - base.top, h: rect.height });
+    marks.push({ char, className, x: (x - base.left) / zoom, y: (rect.top - base.top) / zoom, h: rect.height / zoom });
   };
   for (const block of page.querySelectorAll(BLOCKS)) {
     const box = block.getBoundingClientRect();
@@ -80,7 +81,8 @@ export function drawMarks(page, layer, view) {
     } else {
       // An empty paragraph: its ¶ sits where the text would start.
       const style = getComputedStyle(block);
-      add('¶', { left: box.left + parseFloat(style.paddingLeft) + parseFloat(style.textIndent || 0), top: box.top + parseFloat(style.paddingTop), height: parseFloat(style.lineHeight) || box.height }, 'para');
+      const css = (v) => (parseFloat(v) || 0) * zoom; // computed lengths are the page's own: shown zoomed
+      add('¶', { left: box.left + css(style.paddingLeft) + css(style.textIndent), top: box.top + css(style.paddingTop), height: css(style.lineHeight) || box.height }, 'para');
     }
   }
   layer.replaceChildren(...marks.map((m) => {

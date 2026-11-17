@@ -63,12 +63,13 @@ function topAt(block, offset) {
  * sheet). `sections` is the document's sections in order, each { countBy, start, distance (px),
  * restart } or null for a section without line numbers.
  */
-export function drawLineNumbers(page, layer, sections) {
+export function drawLineNumbers(page, layer, sections, zoom = 1) {
+  // `zoom`: how much bigger than its size the page is shown; numbers are placed in its own pixels.
   layer.replaceChildren();
   if (!sections.some(Boolean)) return;
   const base = layer.getBoundingClientRect();
   const style = getComputedStyle(page);
-  const textLeft = page.getBoundingClientRect().left + parseFloat(style.paddingLeft);
+  const textLeft = page.getBoundingClientRect().left + parseFloat(style.paddingLeft) * zoom;
   let section = 0;
   let settings = sections[0];
   let n = settings ? settings.start : 0;
@@ -100,8 +101,9 @@ export function drawLineNumbers(page, layer, sections) {
         const num = document.createElement('span');
         num.className = 'line-number';
         num.textContent = String(n);
-        num.style.cssText = `top: ${line.top - base.top}px; height: ${line.height}px; line-height: ${line.height}px; `
-          + `right: ${base.right - (textLeft - settings.distance)}px; font-family: ${font.fontFamily};`;
+        const h = line.height / zoom;
+        num.style.cssText = `top: ${(line.top - base.top) / zoom}px; height: ${h}px; line-height: ${h}px; `
+          + `right: ${(base.right - textLeft) / zoom + settings.distance}px; font-family: ${font.fontFamily};`;
         fragment.append(num);
       }
     }
