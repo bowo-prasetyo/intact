@@ -5,6 +5,10 @@
         <input v-model="baseName" class="filename" aria-label="File name" spellcheck="false" :style="{ width: `${Math.max(baseName.length, 4) + 2}ch` }" />
         <span class="ext">.docx</span>
         <span v-if="dirty" class="dirty" title="Unsaved changes">●</span>
+        <span v-if="labelChip" class="label-chip" tabindex="0" role="note" :title="labelChip.title" :aria-label="labelChip.title">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2.5h6l6 6-5.5 5.5-6-6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><circle cx="5.3" cy="5.8" r="1.1" fill="currentColor" /></svg>
+          <span class="text">{{ labelChip.text }}</span>
+        </span>
       </div>
       <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="requestDownload">
         {{ saving ? 'Saving…' : 'Download' }}
@@ -469,7 +473,7 @@
       </template>
     </div>
 
-    <ReviewDialog v-if="reviewData" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <ReviewDialog v-if="reviewData" @release="releaseAction" @personal="setRemovePersonal" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -636,6 +640,100 @@ const lockMessage = computed(() => {
     : doc.signatures ? 'the document is digitally signed' : 'the author recommends opening it read-only';
   return lockMode.value === 'trackedChanges' ? `${why}` : `${why} – choose Edit anyway above to change it`;
 });
+
+// ------------------------------------------------------------------ sensitivity label
+
+// The sensitivity label (Microsoft Purview) or classification marking the document carries, shown
+// beside its name, as Office shows it. Never changed here: the file keeps it as it is.
+const labelChip = computed(() => {
+  const { label, marking } = doc.properties || {};
+  if (label) {
+    const how = { privileged: 'chosen by a person', standard: 'applied by default or automatically' }[(label.method || '').toLowerCase()];
+    const when = label.date && !Number.isNaN(Date.parse(label.date)) ? new Date(label.date).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '';
+    const marks = label.markings.filter((m) => m !== 'encryption');
+    return {
+      text: label.name || 'Sensitivity label',
+      title: [
+        `Sensitivity label: ${label.name || 'set (its name isn’t stored in the file)'}`,
+        how || when ? ` – ${[how, when && `on ${when}`].filter(Boolean).join(', ')}` : '',
+        '.',
+        marks.length ? ` In Office it marks the document with a ${marks.join(', ').replace(/, ([^,]*)$/, ' and $1')}.` : '',
+        ' Intact keeps the label as it is: change it in Word.',
+      ].join(''),
+    };
+  }
+  if (marking) return { text: marking.value, title: `Classification (${marking.name}): ${marking.value}. Intact keeps it as it is: change it in Word.` };
+  return null;
+});
+
+// ------------------------------------------------------------------ before you release
+
+/** Hidden text (w:vanish) in the page: passages, how many can be removed here, and the first one. */
+function hiddenText() {
+  const spans = [...page.value.querySelectorAll('span[data-hidden]')]
+    .filter((sp) => !sp.parentElement.closest('span[data-hidden]') && sp.textContent.trim());
+  const removable = spans.filter((sp) => !readOnlyAt(sp, page.value) && !sp.closest('[data-tracked], [data-raw]') && !sp.querySelector('[data-tracked], [data-raw]'));
+  const passages = (list) => list.filter((sp) => !(sp.previousSibling?.nodeType === 1 && sp.previousSibling.matches('span[data-hidden]'))).length;
+  return { spans, removable, count: passages(spans), removableCount: passages(removable), sample: spans[0]?.textContent.trim() || '' };
+}
+
+/** What the review's "Before you release" lists (see ReviewDialog), beyond doc.inspect(). */
+function inspection() {
+  const comments = threads.value.flatMap((t) => [t, ...t.replies]);
+  const hidden = hiddenText();
+  return {
+    ...doc.inspect(),
+    comments: { count: comments.length, authors: [...new Set(comments.map((c) => c.author).filter(Boolean))] },
+    hidden: { count: hidden.count, removable: hidden.removableCount, sample: hidden.sample },
+    canChange: !textLocked.value,
+  };
+}
+
+/** Removes every comment and its replies, as one undoable step (as Word's Delete All Comments). */
+function deleteAllComments() {
+  const ids = threads.value.map((t) => t.id);
+  if (!ids.length) return;
+  undoStack.flush();
+  for (const id of ids) {
+    const marks = page.value.querySelectorAll(`[data-comment-start="${CSS.escape(id)}"], [data-comment-end="${CSS.escape(id)}"], [data-comment-ref="${CSS.escape(id)}"]`);
+    for (const el of marks) el.remove();
+    if (!marks.length && doc.storyOf(id)) doc.deleteStoryComment(id); // in a header, footer or note
+  }
+  undoStack.commit();
+  markDirty();
+  refreshComments();
+  message.value = `Removed ${count(ids.length, 'comment')} and their replies – Undo (Ctrl+Z) brings them back`;
+}
+
+/** Removes the hidden text that can be changed here, as one undoable step; not tracked, as in Word's Document Inspector. */
+function removeHiddenText() {
+  const { removable } = hiddenText();
+  if (!removable.length) return;
+  undoStack.flush();
+  for (const sp of removable) sp.remove();
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
+  countWords();
+  message.value = `Removed hidden text${tracking.value ? ' (not tracked)' : ''} – Undo (Ctrl+Z) brings it back`;
+}
+
+/** An action from "Before you release" in the review; the review then shows the document as it is now. */
+async function releaseAction(what) {
+  if (textLocked.value) return explainLock();
+  if (what === 'comments') deleteAllComments();
+  else if (what === 'changes') resolveAll(true);
+  else if (what === 'hidden') removeHiddenText();
+  await openReview();
+}
+
+/** Remove personal information from the downloaded file (or not): see doc.writePersonal. */
+async function setRemovePersonal(on) {
+  if (textLocked.value) return explainLock();
+  doc.removePersonal = on;
+  markDirty();
+  await openReview();
+}
 
 function explainLock() {
   message.value = `${{ readOnly: 'Read-only', comments: 'Only comments can be added', forms: 'Only the fields can be filled in', trackedChanges: 'Only tracked changes' }[lockMode.value]}: ${lockMessage.value}`;
@@ -3813,7 +3911,10 @@ async function openReview() {
   const review = withHostsUnlocked(() => doc.review(page.value));
   // What happens to the restrictions and signatures in the file (see "restrictions" above).
   const signature = await withHostsUnlocked(() => doc.signatureStatus(page.value));
-  reviewData.value = { ...review, signature, protection: doc.protection, overridden: unlocked.value };
+  reviewData.value = {
+    ...review, signature, protection: doc.protection, overridden: unlocked.value,
+    label: doc.properties.label, marking: doc.properties.marking, inspection: inspection(),
+  };
 }
 
 function closeReview() {
@@ -3876,6 +3977,14 @@ async function close() {
 }
 .filename:hover, .filename:focus { border-color: rgb(255 255 255 / 50%); outline: none; background: rgb(255 255 255 / 10%); }
 .ext { opacity: .7; }
+/* The sensitivity label, as Office shows it beside the name: read-only. */
+.label-chip {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 2px 9px; min-width: 0; max-width: 40ch;
+  border: 1px solid rgb(255 255 255 / 55%); border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: default; white-space: nowrap;
+}
+.label-chip svg { flex: none; }
+.label-chip .text { overflow: hidden; text-overflow: ellipsis; }
+.label-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .dirty { color: #ffd166; margin-left: 6px; }
 .primary { background: #fff; color: var(--brand); border: 0; border-radius: 4px; padding: 6px 14px; font-weight: 600; cursor: pointer; }
 .primary:disabled { opacity: .6; }

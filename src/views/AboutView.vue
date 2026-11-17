@@ -51,6 +51,14 @@
         downloaded unchanged keeps its signature; edited, its signature is removed, as in Word. Files
         encrypted with a password or by a sensitivity label can't be opened here, and say so.
       </p>
+      <h2>Before you release a document</h2>
+      <p>
+        A document's sensitivity label (or classification) is shown beside its name and never changed.
+        Before downloading, the review lists what the file carries beyond the page: comments, tracked
+        changes (their deleted text can still be read), hidden text, personal information such as the
+        author's name, other properties, custom XML data and embedded files. Comments, tracked changes,
+        hidden text and personal information can be removed there, as with Word's Document Inspector.
+      </p>
       <h2>What is preserved</h2>
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,

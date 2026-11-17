@@ -252,6 +252,22 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   unchanged, the file is the one opened, byte for byte, so its signatures stay valid; edited (after
   "Edit anyway"), the signatures are removed from the download, as Word removes them when a signed
   document is edited, rather than sent along invalid; the review says which will happen
+- See the document's sensitivity label beside its name, as Office shows it: the Microsoft Purview
+  label (`MSIP_Label_*` custom properties, or `docMetadata/LabelInfo.xml`, which doesn't store the
+  name), with who or what applied it, when, and the marking it adds, or another tool's classification
+  property (such as a protective marking). It is never changed: the file keeps it, and the review
+  says so
+- Check a document before you release it (for example under Freedom of Information): the review lists
+  what the file carries beyond the page, as Word's Document Inspector does, and removes what can be
+  removed here. Comments (Remove all comments), tracked changes, whose deleted text anyone can still
+  read (Accept all changes), hidden text (`w:vanish`; Remove hidden text, untracked as in Word) and
+  personal information: the author, last saved by, company and manager properties and the names on
+  comments and tracked changes. "Remove it from the downloaded file" takes those out (names become
+  "Author", initials "A", `people.xml` loses the accounts behind them) and sets Word's
+  `w:removePersonalInformation`, so Word keeps doing so; unticked, the parts go back as they were.
+  Other document and custom properties, custom XML data, embedded files and macros are listed, for
+  you to check in Word. Removing is one undoable step each, and not offered while the document is
+  restricted
 - Files that aren't `.docx` packages say what they are, instead of failing to unzip: encrypted with a
   password, protected by rights management (a sensitivity label that encrypts, or IRM), a Word
   97–2003 `.doc` with a `.docx` name, or something else. Intact doesn't decrypt files
@@ -443,5 +459,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   (`w:formProt`), are locked here too; "Edit anyway" opens everything. Formatting restrictions
   (allowed styles only) aren't enforced. Under "tracked changes only", the edits Intact doesn't track
   (in form fields, a picture's layout) aren't prevented in fields, and pictures can't be laid out
+- "Before you release" doesn't remove dates from comments and tracked changes, document properties
+  other than personal ones, custom XML data, embedded files or macros (it lists them), nor hidden
+  text set by a character style or inside content Intact keeps as it is (it says so). A sensitivity
+  label can't be applied or changed here
 - Signatures are recognised, not verified: Intact doesn't check that a signature is valid or who
   signed
