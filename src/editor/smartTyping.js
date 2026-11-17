@@ -90,3 +90,30 @@ function letterList(mark, text) {
   const lower = mark.toLowerCase();
   return { kind: 'number', first: { fmt: mark === lower ? 'lowerLetter' : 'upperLetter', text, start: lower.charCodeAt(0) - 96 } };
 }
+
+// Word's AutoCorrect entries for symbols, replaced as the last character is typed.
+const AUTOCORRECT = [
+  ['(c)', '©'], ['(r)', '®'], ['(tm)', '™'], ['(e)', '€'],
+  ['-->', '→'], ['<--', '←'], ['==>', '⇒'], ['<==', '⇐'], ['<=>', '⇔'],
+];
+
+/**
+ * Word's AutoCorrect for symbols: { from (the text typed, ending with `typed`), to }, when typing
+ * `typed` after `before` (the paragraph's text before the caret) completes one, else null. "(c)",
+ * "(r)" and "(e)", also in capitals, aren't replaced where they are an item's letter: at the start of
+ * the paragraph, or after the letter before them, as in "(a) one, (b) two and (c) three".
+ */
+export function autoCorrect(before, typed) {
+  const text = (before + typed).toLowerCase();
+  const hit = AUTOCORRECT.find(([from]) => text.endsWith(from));
+  if (!hit) return null;
+  const [from, to] = hit;
+  if (/^\([a-z]\)$/.test(from)) {
+    // A letter in brackets at the start of the paragraph, or after the letter before it ("(b)"
+    // before "(c)", "(d)" before "(e)"), is an item's letter, not a symbol.
+    const lead = before.slice(0, before.length - (from.length - 1));
+    const previous = String.fromCharCode(from.charCodeAt(1) - 1);
+    if (!lead.trim() || lead.toLowerCase().includes(`(${previous})`)) return null;
+  }
+  return { from: (before + typed).slice(-from.length), to };
+}

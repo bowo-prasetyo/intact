@@ -35,6 +35,34 @@ export const setSize = (pt) => (rPr) => {
   for (const local of ['sz', 'szCs']) set(ensureOrdered(rPr, local, RPR_ORDER), 'val', String(Math.round(pt * 2)));
 };
 
+// Word's Grow Font and Shrink Font (Ctrl+Shift+> and <) step through the sizes its menu offers;
+// below 8 pt and above 72 pt they go by 1 pt and by 10 pt. Word's sizes run from 1 to 1638 pt.
+const FONT_STEPS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+export const MIN_SIZE = 1;
+export const MAX_SIZE = 1638;
+
+/** The size after `pt` (dir 1) or before it (dir -1) in Word's Grow Font / Shrink Font steps. */
+export function nextFontSize(pt, dir) {
+  if (dir > 0) {
+    if (pt < 8) return Math.floor(pt) + 1;
+    return FONT_STEPS.find((s) => s > pt) ?? Math.min(MAX_SIZE, (Math.floor(pt / 10) + 1) * 10);
+  }
+  if (pt <= 8) return Math.max(MIN_SIZE, Math.ceil(pt) - 1);
+  if (pt > 72) return Math.max(72, (Math.ceil(pt / 10) - 1) * 10);
+  return [...FONT_STEPS].reverse().find((s) => s < pt);
+}
+
+/**
+ * Each run's size changed by `change(pt)` from the size it has: its own w:sz, else `sizeOf(node)`
+ * (the size it shows, from its style). As Word's Grow Font: text in several sizes grows each.
+ */
+export const changeSize = (change, sizeOf) => (rPr, node) => {
+  const own = elementChildren(rPr).find((c) => c.localName === 'sz' && c.namespaceURI === W);
+  const pt = own ? Number(wAttr(own, 'val')) / 2 : sizeOf(node);
+  if (!Number.isFinite(pt)) return;
+  setSize(Math.min(MAX_SIZE, Math.max(MIN_SIZE, change(pt))))(rPr);
+};
+
 /** A colour: { hex, theme? } (theme: w:themeColor's name), or null for Automatic. */
 export const setColor = (color) => (rPr) => {
   const c = ensureOrdered(rPr, 'color', RPR_ORDER);
@@ -120,7 +148,7 @@ function rangeBetween(host, start, end) {
 export function restyle(doc, range, mutate) {
   const nodes = portions(range).map(isolateText);
   if (!nodes.length) return null;
-  for (const node of nodes) doc.flattenRun(node, doc.mutatedRPr(doc.rPrOf(node), mutate));
+  for (const node of nodes) doc.flattenRun(node, doc.mutatedRPr(doc.rPrOf(node), (rPr) => mutate(rPr, node)));
   const r = document.createRange();
   r.setStart(nodes[0], 0);
   const last = nodes[nodes.length - 1];
