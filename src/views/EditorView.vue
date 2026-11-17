@@ -3,7 +3,7 @@
     <AppHeader>
       <div class="file">
         <input v-model="baseName" class="filename" aria-label="File name" spellcheck="false" :style="{ width: `${Math.max(baseName.length, 4) + 2}ch` }" />
-        <span class="ext">.docx</span>
+        <span class="ext" :title="extTitle">.{{ doc.format.ext }}</span>
         <span v-if="dirty" class="dirty" title="Unsaved changes">●</span>
         <span v-if="labelChip" class="label-chip" tabindex="0" role="note" :title="labelChip.title" :aria-label="labelChip.title">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2.5h6l6 6-5.5 5.5-6-6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><circle cx="5.3" cy="5.8" r="1.1" fill="currentColor" /></svg>
@@ -16,7 +16,7 @@
       <button class="ghost" type="button" @click="close">Close</button>
     </AppHeader>
 
-    <div v-if="restrictions.length" class="restriction-bar" :class="{ unlocked }" role="region" aria-label="Restrictions on this document">
+    <div v-if="restrictions.length" class="restriction-bar" :class="{ unlocked: unlocked || !lockMode }" role="region" aria-label="Restrictions on this document">
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path v-if="unlocked" d="M5.5 7V5a2.5 2.5 0 0 1 5-.6" stroke="currentColor" stroke-width="1.4" fill="none" /><path v-else d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
       <p>
         <template v-for="(r, i) in restrictions" :key="i"><strong>{{ r.title }}</strong>{{ ` ${r.text} ` }}</template>
@@ -170,6 +170,7 @@
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
           <div ref="marksEl" class="marks-layer" aria-hidden="true" />
+          <div v-if="hasLineNumbers" ref="lineNumbersEl" class="line-numbers-layer" aria-hidden="true" />
           <div v-if="picture.el" class="picture-frame" :class="{ floating: picture.wrap !== 'inline', cropping: picture.cropping }" :style="{ left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.w}px`, height: `${picture.h}px` }">
             <span v-for="h in HANDLES" :key="h" class="handle" :class="h" :title="picture.cropping ? 'Drag to crop' : h.length === 2 ? 'Drag to resize' : 'Drag to stretch'" @pointerdown.prevent.stop="picture.cropping ? startCrop($event, h) : startResize($event, h)" />
             <span v-if="!picture.cropping" class="handle rotate" title="Drag to rotate (Shift: in steps of 15°)" @pointerdown.prevent.stop="startRotate" />
@@ -531,6 +532,7 @@ import {
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { PROTECTION_LABELS } from '../docx/package.js';
 import { checkAccessibility } from '../editor/accessibility.js';
+import { drawLineNumbers } from '../editor/lineNumbers.js';
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
@@ -558,7 +560,9 @@ const words = ref(0);
 const selectedWords = ref(null); // words in the selection, as Word's status bar counts them; null if none
 const chars = reactive({ withSpaces: 0, withoutSpaces: 0 }); // characters in the text, as Word counts them
 const selectedChars = ref(null);
-const baseName = ref(doc.name.replace(/\.docx$/i, ''));
+const baseName = ref(doc.name.replace(/\.(docx|dotx|docm|dotm)$/i, ''));
+// Templates and files with macros are saved as what they are: Word refuses a .docx holding macros.
+const extTitle = { docx: 'Word document', dotx: 'Word template', docm: 'Word document with macros', dotm: 'Word template with macros' }[doc.format.ext];
 // The document's own paragraph styles, offered in the style menu after the built-in ones.
 const styleChoices = ref([]);
 const knownBlock = computed(() => ['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)
@@ -613,6 +617,9 @@ const restrictions = computed(() => {
   }
   if (doc.signatures) {
     out.push({ title: 'Digitally signed.', text: `The document has ${count(doc.signatures.count, 'digital signature')}; changing it removes ${doc.signatures.count === 1 ? 'it' : 'them'}, as in Word.` });
+  }
+  if (doc.format.macros) {
+    out.push({ title: 'Contains macros.', text: 'Intact never runs them: they are kept in the file as they are. Enable them in Word only if you trust where the file came from.' });
   }
   const w = doc.writeProtection;
   if (w) {
@@ -933,6 +940,36 @@ function watchMarks() {
   }
 }
 
+// ------------------------------------------------------------------ line numbers
+
+// Sections with line numbering show them in the margin, redrawn as the text changes (see
+// editor/lineNumbers.js); like the formatting marks, they are never part of the page.
+const lineSections = doc.lineNumbering();
+const hasLineNumbers = lineSections.some(Boolean);
+const lineNumbersEl = ref(null);
+let lineFrame = 0;
+let lineObserver = null;
+function scheduleLineNumbers() {
+  if (lineFrame) return;
+  lineFrame = requestAnimationFrame(() => {
+    lineFrame = 0;
+    if (page.value && lineNumbersEl.value) drawLineNumbers(page.value, lineNumbersEl.value, lineSections);
+  });
+}
+onMounted(() => {
+  if (!hasLineNumbers) return;
+  lineObserver = new MutationObserver(scheduleLineNumbers);
+  lineObserver.observe(page.value, { childList: true, subtree: true, characterData: true });
+  window.addEventListener('resize', scheduleLineNumbers);
+  document.fonts?.ready.then(scheduleLineNumbers);
+  scheduleLineNumbers();
+});
+onBeforeUnmount(() => {
+  lineObserver?.disconnect();
+  cancelAnimationFrame(lineFrame);
+  window.removeEventListener('resize', scheduleLineNumbers);
+});
+
 onMounted(() => {
   if (showMarks.value) watchMarks();
   document.fonts?.ready.then(scheduleMarks); // web fonts change where the text is
@@ -1018,7 +1055,8 @@ function onSelectionChange() {
   const block = startBlock(range);
   state.block = block ? doc.blockValue(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
-  state.align = { start: 'left', end: 'right' }[align] || align;
+  // As shown: in a right-to-left paragraph, start is at the right.
+  state.align = (block?.dir === 'rtl' ? { start: 'right', end: 'left' } : { start: 'left', end: 'right' })[align] || align;
   state.list = block ? doc.listKind(doc.listOf(block)) : null;
   state.table = !!tableSelection();
   const at = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
@@ -1168,7 +1206,8 @@ function alignBlocks(value) {
   const blocks = selectedBlocks(range);
   withTrackedParagraphs(blocks, () => {
     for (const block of blocks) {
-      block.style.textAlign = value;
+      // The buttons align as shown; a right-to-left paragraph stores it logically (see jcToCss).
+      block.style.textAlign = block.dir === 'rtl' ? ({ left: 'end', right: 'start' }[value] || value) : value;
       block.removeAttribute('align');
     }
   });
@@ -4007,7 +4046,7 @@ async function save() {
   if (saving.value) return;
   saving.value = true;
   try {
-    const name = `${baseName.value.trim() || 'document'}.docx`;
+    const name = `${baseName.value.trim() || 'document'}.${doc.format.ext}`;
     const blob = await withHostsUnlocked(() => doc.save(page.value));
     doc.name = name;
     const url = URL.createObjectURL(blob);
@@ -4257,6 +4296,9 @@ async function close() {
 .docx-sheet .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
 /* Formatting marks (editor/marks.js): a layer over the page that never takes clicks. */
 .docx-sheet .marks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+/* Line numbers in the margin, as Word prints them: drawn over the sheet, never part of the page. */
+.docx-sheet .line-numbers-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.docx-sheet .line-number { position: absolute; font-size: 9pt; color: #6b6b6b; text-align: right; white-space: nowrap; user-select: none; }
 .docx-sheet .fmark { position: absolute; color: #4f74b3; font-family: system-ui, sans-serif; white-space: pre; user-select: none; }
 .docx-sheet .fmark.space { transform: translateX(-50%); }
 /* Highlight, in Word's colours. */

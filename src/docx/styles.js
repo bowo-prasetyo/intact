@@ -265,9 +265,11 @@ export class StyleSheet {
   }
 
   /** CSS declarations for paragraph properties (spacing, indentation, alignment). */
-  pPrCss(pPr) {
+  pPrCss(pPr, rtl = onOff(wChild(pPr, 'bidi')) === true) {
     const css = {};
     if (!pPr) return css;
+    // A right-to-left paragraph (Arabic, Hebrew, Persian, Urdu…).
+    if (onOff(wChild(pPr, 'bidi')) === true) css.direction = 'rtl';
     const sp = wChild(pPr, 'spacing');
     if (sp) {
       const before = wAttr(sp, 'before');
@@ -292,7 +294,7 @@ export class StyleSheet {
       else if (first != null) css['text-indent'] = `${twipsToPt(first)}pt`;
     }
     const jc = wAttr(wChild(pPr, 'jc'), 'val');
-    if (jc) css['text-align'] = jcToCss(jc);
+    if (jc) css['text-align'] = jcToCss(jc, rtl);
     // Borders and shading. Word draws a border its "space" (points) away from the text.
     const pBdr = wChild(pPr, 'pBdr');
     for (const side of ['top', 'left', 'bottom', 'right']) {
@@ -450,7 +452,12 @@ export function borderCss(b) {
   return `${width}pt ${style} ${color && /^[0-9a-f]{6}$/i.test(color) ? '#' + color : 'currentColor'}`;
 }
 
-export function jcToCss(jc) {
+/**
+ * CSS text-align for w:jc. In a right-to-left paragraph (w:bidi), Word's left and right are its start
+ * and end, as LibreOffice and Word read them: the default, "left", is at the right.
+ */
+export function jcToCss(jc, rtl = false) {
+  if (rtl) return { start: 'start', left: 'start', end: 'end', right: 'end', center: 'center', both: 'justify', distribute: 'justify' }[jc] || 'start';
   return { start: 'left', left: 'left', end: 'right', right: 'right', center: 'center', both: 'justify', distribute: 'justify' }[jc] || 'left';
 }
 

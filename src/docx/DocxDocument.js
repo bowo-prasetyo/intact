@@ -84,6 +84,13 @@ const BEFORE_TRACK_REVISIONS = new Set([
   'stylePaneSortMethod', 'documentType', 'mailMerge', 'revisionView',
 ]);
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+/** The type of each kind of Word file, as it is downloaded. */
+const FORMAT_MIME = {
+  docx: DOCX_MIME,
+  dotx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+  docm: 'application/vnd.ms-word.document.macroEnabled.12',
+  dotm: 'application/vnd.ms-word.template.macroEnabled.12',
+};
 
 const SIMPLE_RUN_CHILDREN = new Set(['rPr', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen', 'lastRenderedPageBreak']);
 const HIDDEN_INLINE = new Set(['bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd', 'permStart', 'permEnd', 'moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd']);
@@ -191,6 +198,7 @@ export class DocxDocument {
     this.protection = readProtection(settings?.xml.documentElement);
     this.writeProtection = readWriteProtection(settings?.xml.documentElement);
     this.signatures = await readSignatures(this.zip);
+    await this.readFormat();
     // Document properties and the sensitivity label (see properties.js), shown, never changed, except
     // that personal information can be removed before release (removePersonal, see writePersonal).
     this.propertyPaths = propertyPaths(pkgRels);
@@ -1371,9 +1379,22 @@ export class DocxDocument {
     const kind = this.styles.kindOf(styleId);
     const el = document.createElement(HEADING_TAG[kind] || 'p');
     if (styleId) el.dataset.style = styleId;
+    // Right to left, from the paragraph or its style: the browser lays out and edits it so.
+    const own = onOff(wChild(pPr, 'bidi'));
+    const rtl = own ?? this.styles.chain(styleId || this.styles.defaultParagraph).some((s) => onOff(wChild(s.pPr, 'bidi')) === true);
+    if (rtl) el.dir = 'rtl';
+    // For line numbers (editor/lineNumbers.js): where a section ends, where Word starts a page, and
+    // paragraphs that don't count.
+    const chainHas = (local) => {
+      const v = onOff(wChild(pPr, local));
+      return v ?? this.styles.chain(styleId || this.styles.defaultParagraph).some((s) => onOff(wChild(s.pPr, local)) === true);
+    };
+    if (wChild(pPr, 'sectPr')) el.dataset.sectionEnd = '';
+    if (chainHas('pageBreakBefore')) el.dataset.pageBreakBefore = '';
+    if (chainHas('suppressLineNumbers')) el.dataset.noLineNumbers = '';
     if (pPr) {
       el.dataset.ppr = this.keep(pPr);
-      Object.assign(el.style, cssToStyle(this.styles.pPrCss(pPr)));
+      Object.assign(el.style, cssToStyle(this.styles.pPrCss(pPr, rtl)));
       // A drop cap is a paragraph of its own, in a frame the next paragraphs flow around.
       const frame = wChild(pPr, 'framePr');
       const dropCap = wAttr(frame, 'dropCap');
@@ -1416,7 +1437,8 @@ export class DocxDocument {
     let parent = outer;
     for (const child of elementChildren(container)) {
       const local = child.namespaceURI === W ? child.localName : null;
-      if (local === 'pPr' || local === 'proofErr') continue;
+      // A wrapper's own properties (smartTagPr, customXmlPr) stay with its shell (see data-wrap).
+      if (local === 'pPr' || local === 'proofErr' || local === 'smartTagPr' || local === 'customXmlPr') continue;
       const mark = local === 'r' && fieldMarker(child);
       if (mark) {
         parent.append(this.hiddenRaw(child));
@@ -1451,8 +1473,21 @@ export class DocxDocument {
       } else if (local === 'sdt') {
         parent.append(this.renderControl(child, false));
       } else if (local && FLATTEN_INLINE.has(local)) {
-        // Unwrap smart tags and similar containers: render their runs as normal text.
-        this.renderInlines(child, parent);
+        // Smart tags, custom XML, and right-to-left embeddings (w:dir) and overrides (w:bdo) wrap
+        // runs: their runs are edited as text, inside a span that keeps the wrapper (and its
+        // properties) to write around them again (see serializeInline).
+        const span = document.createElement('span');
+        span.className = 'docx-wrap';
+        const shell = child.cloneNode(false);
+        for (const pr of elementChildren(child)) if (/Pr$/.test(pr.localName)) shell.append(pr.cloneNode(true));
+        span.dataset.wrap = this.keep(shell);
+        const dir = wAttr(child, 'val');
+        if ((local === 'dir' || local === 'bdo') && (dir === 'rtl' || dir === 'ltr')) {
+          span.dir = dir;
+          if (local === 'bdo') span.style.unicodeBidi = 'bidi-override';
+        }
+        this.renderInlines(child, span);
+        parent.append(span);
       } else {
         parent.append(this.rawInline(child));
       }
@@ -1636,6 +1671,12 @@ export class DocxDocument {
         case 'noBreakHyphen': text += '‑'; break;
         case 'softHyphen': text += '­'; break;
         case 'br': case 'cr': flush(); target.append(document.createElement('br')); break;
+        case 'lastRenderedPageBreak': {
+          // Where Word began a page when it last saved: a character offset in the paragraph.
+          const block = target.closest?.('p, h1, h2, h3, h4, h5, h6');
+          if (block) block.dataset.pageBreaks = [block.dataset.pageBreaks, block.textContent.length + text.length].filter((v) => v != null && v !== '').join(',');
+          break;
+        }
         default: break;
       }
     }
@@ -1652,6 +1693,8 @@ export class DocxDocument {
     span.dataset.rpr = this.keep(rPr);
     const rStyle = wAttr(wChild(rPr, 'rStyle'), 'val');
     if (rStyle) span.dataset.rstyle = rStyle;
+    // A right-to-left run (w:rtl): its characters, digits and punctuation run right to left.
+    if (onOff(wChild(rPr, 'rtl'))) span.dir = 'rtl';
     // Hidden text (w:vanish): shown faintly here, listed in the review before release.
     if (onOff(wChild(rPr, 'vanish'))) span.dataset.hidden = '';
     // The run's language, for the browser's spelling check (and hyphenation, screen readers).
@@ -1684,6 +1727,8 @@ export class DocxDocument {
     table.className = 'docx-table';
     table.contentEditable = 'false';
     table.dataset.raw = this.keep(tbl);
+    // A right-to-left table: its first column at the right.
+    if (onOff(wChild(wChild(tbl, 'tblPr'), 'bidiVisual'))) table.dir = 'rtl';
     const tblStyle = wAttr(wChild(wChild(tbl, 'tblPr'), 'tblStyle'), 'val');
     if (tblStyle) table.dataset.tstyle = tblStyle;
     const tbody = document.createElement('tbody');
@@ -2914,18 +2959,54 @@ export class DocxDocument {
     return out;
   }
 
+  /**
+   * Line numbering of each section, in order (w:lnNumType in each w:sectPr): { countBy, start,
+   * distance (px), restart } or null. The first number shown is start + 1, as Word's "Start at".
+   */
+  lineNumbering() {
+    const sectPrs = [...this.body.getElementsByTagNameNS(W, 'sectPr')]
+      .filter((s) => s.parentNode === this.body || (s.parentNode.localName === 'pPr' && s.parentNode.parentNode?.localName === 'p'));
+    return sectPrs.map((s) => {
+      const ln = wChild(s, 'lnNumType');
+      if (!ln) return null;
+      const countBy = Number(wAttr(ln, 'countBy')) || 1;
+      const distance = wAttr(ln, 'distance');
+      return {
+        countBy,
+        start: Number(wAttr(ln, 'start')) || 0,
+        distance: distance != null && distance !== '' ? Number(distance) / 15 : 24, // twips to px; Word's auto is a quarter inch
+        restart: wAttr(ln, 'restart') || 'newPage',
+      };
+    });
+  }
+
+  /** The kind of file: .docx, a template (.dotx) or with macros (.docm, .dotm), from its main part. */
+  async readFormat() {
+    const ct = await this.text('[Content_Types].xml');
+    const main = ct && [...parseXml(ct).getElementsByTagName('Override')].find((o) => o.getAttribute('PartName') === `/${this.mainPath}`);
+    const type = main?.getAttribute('ContentType') || '';
+    const byType = /macroEnabledTemplate/i.test(type) ? 'dotm' : /macroEnabled/i.test(type) ? 'docm' : /template\.main/i.test(type) ? 'dotx' : /document\.main/i.test(type) ? 'docx' : null;
+    const ext = byType || (/\.(dotx|docm|dotm)$/i.exec(this.name)?.[1].toLowerCase()) || 'docx';
+    this.format = {
+      ext,
+      mime: FORMAT_MIME[ext],
+      template: ext === 'dotx' || ext === 'dotm',
+      macros: ext === 'docm' || ext === 'dotm' || Object.keys(this.zip.files).some((p) => /vbaProject\.bin$/i.test(p)),
+    };
+  }
+
   /** Produces a .docx Blob from the current editor content. */
   async save(root) {
     await this.write(root);
     if (this.signatures) {
       // Unchanged, the file goes back exactly as it was opened, so its signatures stay valid.
       this.signaturesRemoved = this.changed;
-      if (!this.signaturesRemoved) return new Blob([this.sourceBytes], { type: DOCX_MIME });
+      if (!this.signaturesRemoved) return new Blob([this.sourceBytes], { type: this.format.mime });
       // Changed, they no longer match the document: Word removes them when a signed document is
       // edited, and so does Intact, rather than send a file that Word shows as invalidly signed.
       await removeSignatures(this.zip, this.signatures);
     }
-    return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
+    return this.zip.generateAsync({ type: 'blob', mimeType: this.format.mime, compression: 'DEFLATE' });
   }
 
   /**
@@ -3311,10 +3392,15 @@ export class DocxDocument {
     else removeW(pPr, 'pStyle');
     const align = el?.style.textAlign || '';
     const jc = wChild(pPr, 'jc');
-    if (!align || align === 'start') {
+    // In a right-to-left paragraph alignment is logical: start (Word's "left") is at the right.
+    const rtl = el?.dir === 'rtl';
+    if (jc && jcToCss(wAttr(jc, 'val'), rtl) === align) {
+      // unchanged
+    } else if (!align || align === 'start') {
       removeW(pPr, 'jc');
-    } else if (!jc || jcToCss(wAttr(jc, 'val')) !== align) {
-      const val = { left: 'left', center: 'center', right: 'right', justify: 'both', end: 'right' }[align] || 'left';
+    } else {
+      const val = (rtl ? { left: 'right', right: 'left', end: 'right', center: 'center', justify: 'both' }
+        : { left: 'left', center: 'center', right: 'right', justify: 'both', end: 'right' })[align] || 'left';
       ensureOrdered(pPr, 'jc', PPR_ORDER).setAttributeNS(W, 'w:val', val);
     }
     if (el && this.listEdited(el)) {
@@ -3372,6 +3458,16 @@ export class DocxDocument {
     }
     if (el.dataset.sdt != null) {
       out.appendChild(this.serializeControl(el, ctx, block));
+      state.last = null;
+      return;
+    }
+    if (el.dataset.wrap != null) {
+      // A smart tag, custom XML or direction wrapper: its runs, inside it again.
+      const wrap = this.rawClone(el.dataset.wrap);
+      const before = wrap.childNodes.length;
+      const inner = { last: null };
+      for (const c of el.childNodes) this.serializeInline(c, wrap, ctx, block, inner);
+      if (wrap.childNodes.length > before) out.appendChild(wrap);
       state.last = null;
       return;
     }
