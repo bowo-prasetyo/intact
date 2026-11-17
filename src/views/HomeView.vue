@@ -28,7 +28,7 @@
           <span class="tile-icon" aria-hidden="true">📂</span>
           <span class="tile-title">Open a .docx file</span>
           <span class="tile-sub">Click to browse or drop a file here</span>
-          <input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden :disabled="busy" @change="onPick" />
+          <input type="file" accept=".docx,.dotx,.docm,.dotm,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template,application/vnd.ms-word.document.macroEnabled.12,application/vnd.ms-word.template.macroEnabled.12" hidden :disabled="busy" @change="onPick" />
         </label>
       </div>
 
@@ -73,8 +73,8 @@ async function run(task) {
 
 function load(file) {
   if (!file) return;
-  if (!/\.docx$/i.test(file.name)) {
-    error.value = 'Please choose a .docx file (older .doc files are not supported).';
+  if (!/\.(docx|dotx|docm|dotm)$/i.test(file.name)) {
+    error.value = 'Please choose a Word file: .docx, or a .dotx template, or a .docm or .dotm with macros (older .doc files are not supported).';
     return;
   }
   run(() => openFile(file));

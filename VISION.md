@@ -71,7 +71,7 @@ Saying no to these keeps the product small enough to keep its promises:
 - Round-trip test suite in CI, gating deploys ✔
 - Tracked changes preserved (read-only) ✔
 - Undo/redo for all edits; live list numbering ✔
-- Close the remaining known losses (inline `customXml`, `dir`/`bdo` wrappers)
+- Close the remaining known losses (inline `customXml`, `dir`/`bdo` wrappers) ✔
 - Deleting text never silently drops tracked changes or leaves orphaned comments ✔
 - Read-only content says what it is when clicked or typed into, instead of ignoring the keys ✔
 - Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
@@ -115,7 +115,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Show the sensitivity label or classification ✔; check for hidden information before release
   (comments, tracked changes, hidden text, personal information) and remove it ✔
 - Record edits in the document's properties ✔; check accessibility before publishing ✔
-- Installable offline app (PWA)
+- Installable offline app (PWA) ✔; the privacy promise enforced by a Content Security Policy ✔;
+  versioned releases for self-hosting, with checksums, SBOM and build attestation ✔
+- Right-to-left text ✔; templates and files with macros ✔; line numbers ✔
 
 ## How we'll know it's working
 

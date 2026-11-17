@@ -1,0 +1,25 @@
+{
+  "name": "Intact — private .docx editor",
+  "short_name": "Intact",
+  "description": "Fix a .docx in your browser and keep the rest intact. Private: no install, no account, no upload.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e9ebee",
+  "theme_color": "#0e6467",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.template": [".dotx"],
+        "application/vnd.ms-word.document.macroEnabled.12": [".docm"],
+        "application/vnd.ms-word.template.macroEnabled.12": [".dotm"]
+      }
+    }
+  ]
+}

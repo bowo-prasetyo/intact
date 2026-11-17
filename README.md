@@ -18,7 +18,22 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 
 ## Features
 
-- Open `.docx` (file picker or drag & drop) or start a blank document
+- Open `.docx` (file picker or drag & drop) or start a blank document; Word templates (`.dotx`) and
+  files with macros (`.docm`, `.dotm`) open too and are saved as what they are (the header shows the
+  extension). Macros are never run: a bar says the file contains them and that they are kept, as
+  they are, and "Before you release" lists them
+- Right-to-left text, as Word shows it: paragraphs (`w:bidi`, directly or from their style) are laid
+  out and edited right to left; Word's left and right alignment in them are logical (start and end),
+  as Word and LibreOffice read them, and the alignment buttons align as shown; runs marked
+  right-to-left (`w:rtl`) and right-to-left tables (`w:bidiVisual`, first column at the right) too.
+  Direction embeddings and overrides (`w:dir`, `w:bdo`), smart tags and inline custom XML are kept
+  around their text, also when it is edited, with their properties
+- Line numbers in the margin, as Word prints them for sections with line numbering
+  (`w:lnNumType`): every line of the text but tables, notes, headers, footers, text boxes and
+  paragraphs that suppress them, every n-th number (count by), from the starting number, restarting
+  each section or never, or each page, where Word last began one (its `w:lastRenderedPageBreak`
+  marks, page breaks and "page break before"), so the numbers match Word's printed pages while the
+  edits don't move its page breaks. Drawn over the page, never in it, and kept up to date as you type
 - Edit text in paragraphs, headings, lists and table cells
 - Bold, italic, underline, strikethrough, superscript and subscript (each turns the other off, as in
   Word), and highlight in Word's 15 highlight colours (the last colour chosen is remembered; existing
@@ -419,6 +434,55 @@ The workflow in `.github/workflows/deploy.yml` builds and deploys on every push 
 Enable it once under **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 The build uses relative asset paths (`base: './'`), so it works under any repository sub-path.
 
+## Self-hosting
+
+Organisations that can't use a public site can serve Intact from their own web server, or on a
+network with no internet at all: it is static files with no server code and no external requests.
+
+1. Download `intact-<version>.zip`, its `.sbom.cdx.json` and `SHA256SUMS` from a
+   [release](../../releases) (made by `.github/workflows/release.yml` when a `v*` tag is pushed,
+   after the tests pass).
+2. Check them:
+
+   ```bash
+   sha256sum -c SHA256SUMS
+   ```
+
+   ```bash
+   gh attestation verify intact-<version>.zip --repo bowo-prasetyo/intact
+   ```
+
+   The attestation proves the zip was built by this repository's release workflow from the tagged
+   commit. The SBOM (CycloneDX) lists what the build contains (Vue, Vue Router, JSZip).
+3. Unzip it into any directory your server serves, at any path. Serve `.webmanifest` as
+   `application/manifest+json`.
+4. Recommended response headers for its path (the page already carries the Content Security
+   Policy in a `<meta>` tag; a header adds `frame-ancestors`, which a `<meta>` can't set):
+
+   ```nginx
+   location /intact/ {
+     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; media-src 'self' blob: data:; connect-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'" always;
+     add_header Referrer-Policy "no-referrer" always;
+     add_header X-Content-Type-Options "nosniff" always;
+     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+   }
+   ```
+
+**What the browser enforces.** The Content Security Policy (`vite.config.js`, put into the built
+`index.html`) lets the page load only Intact's own files and connect nowhere (`connect-src 'none'`):
+even a script that got into the page couldn't send a document anywhere. Links opened from a
+document send no referrer. The tests check that a whole editing session breaks no rule of the policy
+and that a request to another site is refused (`tests/deployment.spec.js`).
+
+**Offline and installable.** Served over HTTPS (or from `localhost`), the built app registers a
+service worker (`src/sw-template.js`, written out as `sw.js` with the list of the build's files)
+that keeps a copy of the app's own files, so once opened it also works offline, and the browser
+offers to install it as an app (`manifest.webmanifest`), which can open `.docx` files from the
+desktop where the system supports it. The service worker caches nothing else: documents are opened
+from the device's files and never fetched, cached or stored. A new version replaces the old copy.
+
+The About page shows the version.
+
 ## Limitations
 
 - Tracked changes inside locked content are accepted or rejected together, not one by one; edits
@@ -461,10 +525,11 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   (Word draws one box around them); a drop cap in the margin is shown like one in the text
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
-- Inline `customXml`, `dir`/`bdo` (bidirectional override) and smart-tag wrappers are dropped on save
-  (their text is kept)
 - The tests cover Chromium and Firefox; Safari is untested (find and comment highlighting need
   Safari 17.2 or later)
+- Line numbers restart where Word last broke the pages, not where the edits move the breaks to; a
+  section in columns has one column of numbers, at the left; right-to-left sections (`w:bidi` in a
+  section) keep their numbers at the left and their columns in order
 - Legacy binary `.doc` files are not supported, nor files encrypted with a password or by rights
   management (sensitivity labels that encrypt, IRM): they say so when opened
 - Restrict Editing applies to the whole document: the parts Word lets everyone (or named people)

@@ -1,0 +1,47 @@
+name: Release
+
+# A versioned build for self-hosting, made when a tag such as v0.2.0 is pushed: the tests must pass,
+# then the built app is published as a GitHub release with
+#   intact-<tag>.zip            the app: static files to serve from any web server, or offline
+#   intact-<tag>.sbom.cdx.json  its software bill of materials (CycloneDX), runtime dependencies
+#   SHA256SUMS                  checksums of both, for `sha256sum -c SHA256SUMS`
+# and a build provenance attestation (`gh attestation verify intact-<tag>.zip --repo <owner>/<repo>`).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: The tag matches the package version
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm test
+      - run: npm run build
+      - name: Package
+        run: |
+          mkdir release
+          (cd dist && zip -r -X "../release/intact-${GITHUB_REF_NAME}.zip" .)
+          npm sbom --omit dev --sbom-format cyclonedx > "release/intact-${GITHUB_REF_NAME}.sbom.cdx.json"
+          (cd release && sha256sum -- * > SHA256SUMS)
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/intact-*.zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "Intact $GITHUB_REF_NAME" \
+            --notes "Static files to self-host Intact: see Self-hosting in the README. Check them with \`sha256sum -c SHA256SUMS\` and \`gh attestation verify intact-${GITHUB_REF_NAME}.zip --repo ${GITHUB_REPOSITORY}\`."

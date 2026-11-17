@@ -91,6 +91,21 @@
       <table class="shortcuts">
         <tr v-for="[keys, what] in SHORTCUTS" :key="keys"><th scope="row"><kbd>{{ keys }}</kbd></th><td>{{ what }}</td></tr>
       </table>
+      <h2>Languages, templates and line numbers</h2>
+      <p>
+        Right-to-left text (Arabic, Hebrew, Persian, Urdu) is shown and edited right to left, with Word's
+        alignment. Word templates (.dotx) and files with macros (.docm, .dotm) open and are saved as what they
+        are; macros are never run, and kept. Line numbers are shown in the margin as Word prints them.
+      </p>
+      <h2>Privacy and hosting</h2>
+      <p>
+        The browser enforces the privacy promise: a security policy lets the page load only Intact's own
+        files and connect nowhere, so a document opened here can't be sent off. Once opened online, Intact
+        also works offline, and can be installed as an app from the browser's menu; it keeps only its own
+        files, never documents. Organisations can host it themselves: each release is a zip of static
+        files, with checksums, a software bill of materials and a build attestation.
+      </p>
+      <p class="version">Version {{ version }}</p>
       <p><RouterLink to="/">← Back to start</RouterLink></p>
     </main>
   </div>
@@ -99,6 +114,8 @@
 <script setup>
 import AppHeader from '../components/AppHeader.vue';
 import { SHORTCUTS } from '../editor/shortcuts.js';
+
+const version = __APP_VERSION__; // eslint-disable-line no-undef -- set by vite.config.js
 </script>
 
 <style scoped>
