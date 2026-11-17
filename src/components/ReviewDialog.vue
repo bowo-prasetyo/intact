@@ -16,6 +16,22 @@
         </li>
       </ul>
 
+      <section v-if="review.inspection" class="release" aria-labelledby="release-title">
+        <h3 id="release-title">Before you release</h3>
+        <p v-if="!release.length" class="clean">Nothing hidden: no comments, tracked changes, hidden text or personal information.</p>
+        <ul v-else>
+          <li v-for="item in release" :key="item.id" :class="item.kind">
+            <span>{{ item.text }}</span>
+            <button v-if="item.action" type="button" :disabled="!review.inspection.canChange" @click="$emit('release', item.action)">{{ item.button }}</button>
+            <label v-if="item.personal" class="personal">
+              <input type="checkbox" :checked="review.inspection.removePersonal" :disabled="!review.inspection.canChange" @change="$emit('personal', $event.target.checked)" />
+              Remove it from the downloaded file: names on comments and tracked changes become “Author”, and the author, last saved by, company and manager go, as with Word’s Document Inspector
+            </label>
+          </li>
+        </ul>
+        <p v-if="!review.inspection.canChange && release.some((i) => i.action || i.personal)" class="locked">The document is restricted: choose Edit anyway to remove these here.</p>
+      </section>
+
       <ol v-if="shown.length" class="changes">
         <li v-for="(c, i) in shown" :key="i" class="change" :class="c.kind">
           <div class="where">
@@ -50,6 +66,7 @@
 // "Review my changes": shown before Download (or from the toolbar), so what will go back to the
 // recipient is clear: every paragraph that changed, with its words, and anything else that changes.
 import { computed, onMounted, ref } from 'vue';
+import { PERSONAL } from '../docx/properties.js';
 
 const props = defineProps({
   // From DocxDocument.review(): { paragraphs, commentsRemoved, insertions, deletions, tracking, trackingSwitched, stylesAdded, listsAdded },
@@ -58,7 +75,7 @@ const props = defineProps({
   author: { type: String, default: '' },
   skip: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'download', 'skip', 'update-fields']);
+const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal']);
 
 // Word's "update fields on open" (w:updateFields), set from the fields note.
 const updateOnOpen = ref(!!props.review.fields?.updateOnOpen);
@@ -98,6 +115,8 @@ const summary = computed(() => {
 const notes = computed(() => {
   const r = props.review;
   const out = [];
+  const label = r.label?.name || (r.label ? 'set in Office' : r.marking?.value);
+  if (label) out.push({ kind: 'info', text: `${r.label ? 'Sensitivity label' : 'Classification'} “${label}” stays on the file, unchanged.` });
   // Restrictions and signatures first: they say what the recipient gets back.
   const sig = r.signature;
   if (sig?.removed) {
@@ -160,6 +179,51 @@ const notes = computed(() => {
   return out;
 });
 
+const list = (names) => names.map((n) => `“${n}”`).join(', ').replace(/, ([^,]*)$/, ' and $1');
+const quoteValue = (v) => `“${v.length > 60 ? `${v.slice(0, 60)}…` : v}”`;
+
+/**
+ * "Before you release": what the file carries that a reader of the page may not see, as Word's
+ * Document Inspector finds it, with a way to remove what can be removed here.
+ */
+const release = computed(() => {
+  const i = props.review.inspection;
+  if (!i) return [];
+  const out = [];
+  if (i.comments.count) {
+    out.push({ id: 'comments', kind: 'warn', action: 'comments', button: 'Remove all comments', text: `${plural(i.comments.count, 'comment')}${i.comments.authors.length ? ` by ${list(i.comments.authors)}` : ''}. Comments go with the file: anyone who opens it can read them.` });
+  }
+  if (i.revisions) {
+    out.push({ id: 'changes', kind: 'warn', action: 'changes', button: 'Accept all changes', text: `${plural(i.revisions, 'tracked change')}${i.revisionAuthors.length ? ` by ${list(i.revisionAuthors)}` : ''}. Until they are accepted or rejected, the file keeps the earlier wording, deleted text included, and anyone can see it in Word.` });
+  }
+  if (i.hidden.count) {
+    const stuck = i.hidden.count - i.hidden.removable;
+    out.push({
+      id: 'hidden', kind: 'warn', action: i.hidden.removable ? 'hidden' : null, button: 'Remove hidden text',
+      text: `Hidden text: ${plural(i.hidden.count, 'passage')}, such as ${quoteValue(i.hidden.sample)} – Word doesn’t show or print it, but anyone can show it again.${stuck ? ` ${stuck === i.hidden.count ? 'It is' : `${plural(stuck, 'passage')} ${stuck === 1 ? 'is' : 'are'}`} in content Intact can’t change: remove ${stuck === 1 ? 'it' : 'them'} in Word.` : ''}` });
+  }
+  const p = i.properties || { core: [], app: [], custom: [] };
+  const props_ = [...p.core, ...p.app];
+  const personal = props_.filter((x) => PERSONAL.has(x.label));
+  const names = [...new Set([...i.comments.authors, ...i.revisionAuthors])].filter((n) => n !== 'Author');
+  if (i.removePersonal) {
+    out.push({ id: 'personal', kind: 'good', personal: true, text: 'Personal information is removed from the downloaded file.' });
+  } else if (personal.length || names.length) {
+    const parts = [personal.length && personal.map((x) => `${x.label} ${quoteValue(x.value)}`).join(', '), names.length && `names on comments and tracked changes (${list(names)})`].filter(Boolean);
+    out.push({ id: 'personal', kind: 'warn', personal: true, text: `Personal information: ${parts.join('; ')}.` });
+  }
+  const other = props_.filter((x) => !PERSONAL.has(x.label));
+  const custom = p.custom.filter((x) => !/^MSIP_Label_/.test(x.name) && x.value);
+  if (other.length || custom.length) {
+    const parts = [other.map((x) => `${x.label} ${quoteValue(x.value)}`).join(', '), custom.length && `custom: ${custom.map((x) => `${x.name} ${quoteValue(x.value)}`).join(', ')}`].filter(Boolean);
+    out.push({ id: 'properties', kind: 'info', text: `Document properties: ${parts.join('; ')}. They go with the file: change them in Word (File › Info) if they shouldn’t.` });
+  }
+  if (i.customXml) out.push({ id: 'customXml', kind: 'info', text: `${plural(i.customXml, 'custom XML data part')}, such as document-library properties or data linked to fields. Kept as it is: check ${i.customXml === 1 ? 'it' : 'them'} with Word’s Document Inspector if ${i.customXml === 1 ? 'it' : 'they'} may hold information you don’t want to release.` });
+  if (i.embedded) out.push({ id: 'embedded', kind: 'info', text: `${plural(i.embedded, 'embedded file')} (such as a spreadsheet behind a chart): ${i.embedded === 1 ? 'it' : 'they'} can hold more than the page shows. Check ${i.embedded === 1 ? 'it' : 'them'} in Word.` });
+  if (i.macros) out.push({ id: 'macros', kind: 'warn', text: 'The file contains macros (Visual Basic code). Kept as they are; check them in Word before you release it.' });
+  return out;
+});
+
 /** Tables, rows, columns and pictures added or removed (in all, as counted before and after). */
 function layoutNotes(layout) {
   if (!layout) return [];
@@ -217,6 +281,19 @@ h2 { margin: 0; font-size: 18px; }
 .notes .good { border-left: 3px solid #2e7d32; }
 .notes .warn { border-left: 3px solid #c77700; }
 .notes .info { border-left: 3px solid var(--border); }
+.release { margin: 14px 20px 0; font-size: 13px; }
+.release h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.release ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.release li { padding: 6px 10px; border-radius: 4px; background: var(--hover); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.release li > span { flex: 1 1 280px; }
+.release .good { border-left: 3px solid #2e7d32; }
+.release .warn { border-left: 3px solid #c77700; }
+.release .info { border-left: 3px solid var(--border); }
+.release button { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
+.release button:hover:not(:disabled) { background: var(--hover); }
+.release button:disabled, .release input:disabled + * { opacity: .5; cursor: default; }
+.release .personal { flex: 1 1 100%; display: flex; gap: 6px; align-items: flex-start; color: var(--muted); }
+.release .clean, .release .locked { margin: 0; color: var(--muted); }
 .update-fields { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-weight: 600; }
 .changes { flex: 1; overflow: auto; margin: 12px 0 0; padding: 0 20px; list-style: none; }
 .change { padding: 10px 0; border-top: 1px solid var(--border); }

@@ -42,6 +42,7 @@ import { ommlToMathml, isEquation } from './omml.js';
 import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
 import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
+import { propertyPaths, readProperties, personalParts, anonymize } from './properties.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -190,6 +191,13 @@ export class DocxDocument {
     this.protection = readProtection(settings?.xml.documentElement);
     this.writeProtection = readWriteProtection(settings?.xml.documentElement);
     this.signatures = await readSignatures(this.zip);
+    // Document properties and the sensitivity label (see properties.js), shown, never changed, except
+    // that personal information can be removed before release (removePersonal, see writePersonal).
+    this.propertyPaths = propertyPaths(pkgRels);
+    this.properties = await readProperties(this.zip, pkgRels);
+    this.removePersonal = false;
+    this.removePersonalSet = !!wChild(settings?.xml.documentElement, 'removePersonalInformation');
+    this.anonymized = new Map(); // part -> { written, original }: what writePersonal changed
     // The package's parts as opened, to tell whether a save changes anything (see packageChanged).
     this.openedEntries = new Map(Object.entries(this.zip.files));
     this.tracking = this.trackRevisions;
@@ -1637,6 +1645,8 @@ export class DocxDocument {
     span.dataset.rpr = this.keep(rPr);
     const rStyle = wAttr(wChild(rPr, 'rStyle'), 'val');
     if (rStyle) span.dataset.rstyle = rStyle;
+    // Hidden text (w:vanish): shown faintly here, listed in the review before release.
+    if (onOff(wChild(rPr, 'vanish'))) span.dataset.hidden = '';
     // The run's language, for the browser's spelling check (and hyphenation, screen readers).
     const lang = wAttr(wChild(rPr, 'lang'), 'val');
     if (lang && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i.test(lang)) span.lang = lang;
@@ -2973,6 +2983,55 @@ export class DocxDocument {
     this.writeParts();
     this.writeStories();
     await this.writeSettings();
+    await this.writePersonal();
+  }
+
+  /**
+   * Removes personal information from the parts that hold it, when asked for (as Word's Document
+   * Inspector does): names on comments and tracked changes, and the author, last saved by, company
+   * and manager properties. A part changed by an earlier save and not rewritten since goes back to
+   * how it was first, so switching the option off restores everything.
+   */
+  async writePersonal() {
+    for (const [path, { written, original }] of this.anonymized) {
+      if (this.zip.files[path] === written) this.zip.file(path, await original.async('uint8array'));
+    }
+    this.anonymized.clear();
+    if (!this.removePersonal) return;
+    for (const path of personalParts(this.zip, this.mainDir, this.propertyPaths)) {
+      const original = this.zip.files[path];
+      if (!original) continue;
+      const out = anonymize(await original.async('string'));
+      if (out == null) continue;
+      this.zip.file(path, out);
+      this.anonymized.set(path, { written: this.zip.files[path], original });
+    }
+  }
+
+  /**
+   * What a document can carry that isn't on the page, for the review's "Before you release":
+   * tracked changes (and who made them), the document's properties, custom XML data, embedded files
+   * and macros. Comments and hidden text are counted by the editor, which shows them.
+   */
+  inspect() {
+    const outs = [this.xml, ...NOTE_KINDS.map((k) => this.notesOut?.[k]).filter(Boolean), ...Object.values(this.partsOut || {})];
+    const authors = new Set();
+    let revisions = 0;
+    for (const xml of outs) {
+      const root = xml.documentElement || xml;
+      revisions += countRevisions(root);
+      for (const a of revisionAuthors(root)) authors.add(a);
+    }
+    const files = Object.keys(this.zip.files);
+    return {
+      revisions,
+      revisionAuthors: [...authors],
+      properties: this.properties,
+      removePersonal: this.removePersonal,
+      customXml: files.filter((p) => /^customXml\/item\d+\.xml$/i.test(p)).length,
+      embedded: files.filter((p) => /\/embeddings\/[^/]+$/i.test(p)).length,
+      macros: files.some((p) => /vbaProject\.bin$/i.test(p)),
+    };
   }
 
   async writeStyles() {
@@ -2993,7 +3052,9 @@ export class DocxDocument {
   async writeSettings() {
     const tracking = this.tracking !== this.trackRevisions;
     const fields = this.updateFields && !this.updateFieldsSet;
-    if (!tracking && !fields) {
+    // Word keeps removing personal information on its own saves (w:removePersonalInformation).
+    const personal = this.removePersonal && !this.removePersonalSet;
+    if (!tracking && !fields && !personal) {
       if (this.settingsChanged) this.zip.file(this.settingsPath, this.settingsText);
       this.settingsChanged = false;
       return;
@@ -3010,6 +3071,10 @@ export class DocxDocument {
       root.insertBefore(createW(doc, 'trackRevisions'), before ? before.nextSibling : root.firstChild);
     } else if (tracking) {
       removeW(root, 'trackRevisions');
+    }
+    if (personal) {
+      const before = wChildren(root).filter((c) => ['writeProtection', 'view', 'zoom'].includes(c.localName)).pop();
+      root.insertBefore(createW(doc, 'removePersonalInformation'), before ? before.nextSibling : root.firstChild);
     }
     if (fields) {
       removeW(root, 'updateFields');
