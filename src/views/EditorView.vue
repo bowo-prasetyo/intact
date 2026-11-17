@@ -553,6 +553,7 @@ import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
 import { rovingToolbar } from '../editor/toolbar.js';
+import { fitPictures, pictureZoom } from '../editor/fitPictures.js';
 import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
 import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC, MATERIALS, LIGHTS } from '../docx/pictures.js';
@@ -1024,6 +1025,11 @@ let toolbarNav = null;
 onMounted(() => { toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus }); });
 onBeforeUnmount(() => toolbarNav?.dispose());
 
+// Wide pictures in line with the text fit a phone's screen (see editor/fitPictures.js).
+let unfitPictures = null;
+onMounted(() => { unfitPictures = fitPictures(page.value); });
+onBeforeUnmount(() => unfitPictures?.());
+
 // ------------------------------------------------------------------ draft
 
 // While there are changes not downloaded, a copy of the document is kept in this browser (see
@@ -1208,18 +1214,34 @@ function placeCaret(el, atStart = false) {
 }
 
 /**
- * Firefox puts the caret inside an empty non-editable marker at the end of a line (a comment's
- * mark, a hidden comment range or bookmark, a note's number), where typing and deleting do
- * nothing. Puts it just after the marker instead: true if it moved.
+ * Firefox puts the caret inside non-editable text at the edge of a line, where typing and deleting
+ * do nothing: in an empty marker (a comment's mark, a hidden comment range or bookmark, a note's
+ * number), or at the start or end of read-only text such as someone's tracked change ending a
+ * paragraph (End puts it there). Puts it just outside instead, after an empty marker or on the side
+ * of the text it is at: true if it moved. A caret inside such text, away from its edges, stays.
  */
 function caretOutOfMarker(range) {
   if (!range.collapsed) return false;
   let el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
   let atom = null;
   for (; el && el !== page.value && !el.isContentEditable; el = el.parentElement) atom = el;
-  if (!atom || !el?.isContentEditable || atom.tagName !== 'SPAN' || atom.textContent || atom.querySelector('img, math')) return false;
+  if (!atom || !el?.isContentEditable || atom.tagName !== 'SPAN' || atom.querySelector('img, math')) return false;
+  let before = false;
+  if (atom.textContent) {
+    const textOn = (side) => {
+      const r = document.createRange();
+      r.selectNodeContents(atom);
+      if (side === 'before') r.setEnd(range.startContainer, range.startOffset);
+      else r.setStart(range.startContainer, range.startOffset);
+      return r.toString();
+    };
+    if (!textOn('after')) before = false;
+    else if (!textOn('before')) before = true;
+    else return false; // within the text: where the reader put it
+  }
   const after = document.createRange();
-  after.setStartAfter(atom);
+  if (before) after.setStartBefore(atom);
+  else after.setStartAfter(atom);
   after.collapse(true);
   const sel = window.getSelection();
   sel.removeAllRanges();
@@ -1759,12 +1781,13 @@ function startResize(e, handle) {
   if (!info) return;
   const look = doc.pictureLookOf(span);
   const start = { x: e.clientX, y: e.clientY, w: info.cx / PX, h: info.cy / PX };
+  const zoom = pictureZoom(span); // shown smaller on a narrow screen: the pointer moves in shown pixels
   const target = e.currentTarget;
   target.setPointerCapture(e.pointerId);
   let size = { w: start.w, h: start.h };
   const move = (ev) => {
-    const dx = (ev.clientX - start.x) * (handle.includes('w') ? -1 : handle.includes('e') ? 1 : 0);
-    const dy = (ev.clientY - start.y) * (handle.includes('n') ? -1 : handle.includes('s') ? 1 : 0);
+    const dx = ((ev.clientX - start.x) / zoom) * (handle.includes('w') ? -1 : handle.includes('e') ? 1 : 0);
+    const dy = ((ev.clientY - start.y) / zoom) * (handle.includes('n') ? -1 : handle.includes('s') ? 1 : 0);
     let w = start.w + dx;
     let h = start.h + dy;
     if (handle.length === 2) {
@@ -1942,12 +1965,13 @@ function startCrop(e, handle) {
   const fullW = info.cx / PX / (1 - c0.l - c0.r);
   const fullH = info.cy / PX / (1 - c0.t - c0.b);
   const start = { x: e.clientX, y: e.clientY };
+  const zoom = pictureZoom(span);
   const target = e.currentTarget;
   target.setPointerCapture(e.pointerId);
   let crop = c0;
   const move = (ev) => {
-    const dx = (ev.clientX - start.x) / fullW;
-    const dy = (ev.clientY - start.y) / fullH;
+    const dx = (ev.clientX - start.x) / zoom / fullW;
+    const dy = (ev.clientY - start.y) / zoom / fullH;
     crop = {
       l: handle.includes('w') ? c0.l + dx : c0.l,
       r: handle.includes('e') ? c0.r - dx : c0.r,
@@ -4277,8 +4301,12 @@ async function close() {
   display: flex; flex-direction: column;
 }
 .docx-page {
-  flex: 1; box-sizing: border-box; outline: none;
+  flex: 1; box-sizing: border-box; outline: none; min-width: 0;
   white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; caret-color: #000;
+  /* What lies past the page's edges (a floating picture placed partly off the page, or one placed
+     for a wider page than a phone's) is cut off there, as Word cuts it off at the edge of the paper,
+     rather than making the document scroll sideways. Clip, not hidden: nothing becomes scrollable. */
+  overflow-x: clip;
 }
 .hf-tabs {
   position: absolute; z-index: 3; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px;
@@ -4396,7 +4424,7 @@ async function close() {
   .toolbar .split .arrow { min-width: 24px !important; }
   .toolbar select { height: 40px; }
 }
-.tracking-status { border: 0; background: none; color: #6f2dbd; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
+.tracking-status { border: 0; background: none; color: var(--own-change); font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
 .author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
 .link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }
 .link-dialog .error { margin: 0; color: #b3261e; font-size: 12px; }
@@ -4508,7 +4536,7 @@ async function close() {
 .docx-sheet .raw-inline.note-ref[data-note-ref]:hover, .docx-sheet .raw-inline.note-mark:hover { text-decoration: underline; }
 /* Footnotes and endnotes, below the text (as in Word's draft view): each note is edited in place. */
 /* Headers and footers: in the page, in its margins, dimmed until you work in them, as in Word. */
-.docx-sheet .docx-hf-band { cursor: default; }
+.docx-sheet .docx-hf-band { cursor: default; overflow-x: clip; } /* cut off at the page's edges, as the page is */
 .docx-sheet .docx-hf-band.header { padding-top: var(--hf-header); min-height: var(--hf-top); margin-bottom: 6px; }
 .docx-sheet .docx-hf-band.footer {
   position: absolute; left: var(--hf-left); right: var(--hf-right); bottom: 0;

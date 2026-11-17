@@ -310,7 +310,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   screen readers. Its controls stay in place: Accept, Reject and the count of tracked changes are always
   there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens.
   On a phone it is one row that scrolls sideways, faded at the edge where more controls are, with
-  touch-sized buttons, and the status bar is one line
+  touch-sized buttons, and the status bar is one line. Nothing makes the document scroll sideways
+  there: a picture wider than the screen is shown smaller (its size in the file unchanged), and what
+  lies past the page's edge is cut off at it, as on paper
 - Help (Ctrl+/, or the toolbar's Help button) lists the keyboard shortcuts and opens the review's
   checks without downloading: Review your changes, Before you release and Check accessibility, each
   opening the review at its part

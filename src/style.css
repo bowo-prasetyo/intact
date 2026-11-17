@@ -12,6 +12,8 @@
   --muted: #5f6672;
   --danger: #b3261e;
   --text: #1f2328;
+  /* Your own tracked changes, in the interface (the page's marks are #6f2dbd, always on white). */
+  --own-change: #6f2dbd;
   /* The page is always white, so marks on it keep the light values in dark mode too. */
   --sheet-accent: #0e6467;
   --sheet-tint: #e3f1f0;
@@ -33,6 +35,7 @@
     --muted: #9aa3ae;
     --danger: #ff8a80;
     --text: #e6e8eb;
+    --own-change: #c4a3ff;
   }
 }
 * { box-sizing: border-box; }
