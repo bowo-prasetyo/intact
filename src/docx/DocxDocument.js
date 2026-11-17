@@ -68,6 +68,16 @@ const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
 const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
 /** A new paragraph id, as Word writes them (eight hex digits, below 0x80000000). */
 const newParaId = () => (Math.floor(Math.random() * 0x7ffffffe) + 1).toString(16).toUpperCase().padStart(8, '0');
+const FOOTER_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer';
+const FOOTER_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml';
+const FOOTNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes';
+const FOOTNOTES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml';
+// The order of a section's properties (CT_SectPr), for adding page size and margins.
+const SECTPR_ORDER = [
+  'headerReference', 'footerReference', 'footnotePr', 'endnotePr', 'type', 'pgSz', 'pgMar', 'paperSrc',
+  'pgBorders', 'lnNumType', 'pgNumType', 'cols', 'formProt', 'vAlign', 'noEndnote', 'titlePg',
+  'textDirection', 'bidi', 'rtlGutter', 'docGrid', 'printerSettings', 'sectPrChange',
+];
 const SETTINGS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings';
 const SETTINGS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml';
 // The settings that come before <w:trackRevisions> in CT_Settings.
@@ -242,6 +252,12 @@ export class DocxDocument {
     };
     this.headers = await loadVariants('headerReference');
     this.footers = await loadVariants('footerReference');
+    this.newNotes = new Map(); // 'footnote:7' -> the <w:footnote> of a note added this session
+    // Paper size, orientation and margins set here for the whole document (see setPageSetup), and
+    // the final section's own, to apply them to afresh at each save.
+    this.pageSetup = null;
+    const finalSect = wChild(this.body, 'sectPr');
+    this.originalPage = { pgSz: wChild(finalSect, 'pgSz')?.cloneNode(true) || null, pgMar: wChild(finalSect, 'pgMar')?.cloneNode(true) || null };
     this.numberingPath = numPath || null;
     this.numberingChanged = false;
     this.listDefs = {}; // list definitions added this session: kind -> abstractNumId, plus the bullet numId
@@ -420,20 +436,242 @@ export class DocxDocument {
 
   /** Page geometry in CSS px from the final section properties. */
   get page() {
+    // As opened (a save writes the page setup into the section), with what is set here.
     const sectPr = wChild(this.body, 'sectPr');
-    const pgSz = wChild(sectPr, 'pgSz');
-    const pgMar = wChild(sectPr, 'pgMar');
+    const pgSz = this.originalPage ? this.originalPage.pgSz : wChild(sectPr, 'pgSz');
+    const pgMar = this.originalPage ? this.originalPage.pgMar : wChild(sectPr, 'pgMar');
     const px = (twips, dflt) => (twips != null ? Number(twips) / 15 : dflt);
+    const set = this.pageSetup || {};
     return {
-      width: px(wAttr(pgSz, 'w'), 816),
-      minHeight: px(wAttr(pgSz, 'h'), 1056),
-      top: px(wAttr(pgMar, 'top'), 96),
-      bottom: px(wAttr(pgMar, 'bottom'), 96),
-      left: px(wAttr(pgMar, 'left'), 96),
-      right: px(wAttr(pgMar, 'right'), 96),
+      width: px(set.w ?? wAttr(pgSz, 'w'), 816),
+      minHeight: px(set.h ?? wAttr(pgSz, 'h'), 1056),
+      top: px(set.top ?? wAttr(pgMar, 'top'), 96),
+      bottom: px(set.bottom ?? wAttr(pgMar, 'bottom'), 96),
+      left: px(set.left ?? wAttr(pgMar, 'left'), 96),
+      right: px(set.right ?? wAttr(pgMar, 'right'), 96),
       header: px(wAttr(pgMar, 'header'), 48),
       footer: px(wAttr(pgMar, 'footer'), 48),
     };
+  }
+
+  /**
+   * The paper size, orientation and margins as they are now (the final section's, with any set
+   * here), in twips: { w, h, orient ('portrait' or 'landscape'), top, right, bottom, left }.
+   */
+  pageSetupNow() {
+    const { pgSz, pgMar } = this.originalPage; // as opened: a save writes the setup into the section
+    const num = (el, attr, d) => Number(wAttr(el === 'pgSz' ? pgSz : pgMar, attr) ?? d);
+    const now = {
+      w: num('pgSz', 'w', 12240), h: num('pgSz', 'h', 15840), orient: wAttr(pgSz, 'orient') || 'portrait',
+      top: num('pgMar', 'top', 1440), right: num('pgMar', 'right', 1440), bottom: num('pgMar', 'bottom', 1440), left: num('pgMar', 'left', 1440),
+    };
+    return { ...now, ...this.pageSetup };
+  }
+
+  /**
+   * Sets the paper size, orientation and margins of every section, as Word's Page Setup does for
+   * the whole document: `setup` has any of w, h, orient, top, right, bottom, left (twips); null sets
+   * them back as they were. What it doesn't name is kept as each section has it (see applyPageSetup).
+   */
+  setPageSetup(setup) {
+    this.pageSetup = setup && Object.keys(setup).length ? { ...setup } : null;
+  }
+
+  /** Writes the page setup into each section of the body as it will be saved. */
+  applyPageSetup() {
+    const finalSect = wChild(this.body, 'sectPr');
+    // The final section's properties persist between saves: start again from them as opened.
+    if (finalSect) {
+      // Replaced where they are, so a section's own order is kept.
+      for (const local of ['pgSz', 'pgMar']) {
+        const orig = this.originalPage[local];
+        const now = wChild(finalSect, local);
+        if (orig) (now || ensureOrdered(finalSect, local, SECTPR_ORDER)).replaceWith(orig.cloneNode(true));
+        else if (now) finalSect.removeChild(now);
+      }
+    }
+    const set = this.pageSetup;
+    if (!set) return;
+    const put = (el, attr, v) => { if (v !== undefined) el.setAttributeNS(W, `w:${attr}`, String(Math.round(v))); };
+    for (const sect of this.body.getElementsByTagNameNS(W, 'sectPr')) {
+      if (['w', 'h', 'orient'].some((k) => set[k] !== undefined)) {
+        const sz = ensureOrdered(sect, 'pgSz', SECTPR_ORDER);
+        put(sz, 'w', set.w);
+        put(sz, 'h', set.h);
+        if (set.orient === 'landscape') sz.setAttributeNS(W, 'w:orient', 'landscape');
+        else if (set.orient === 'portrait') sz.removeAttributeNS(W, 'orient');
+      }
+      if (['top', 'right', 'bottom', 'left'].some((k) => set[k] !== undefined)) {
+        let mar = wChild(sect, 'pgMar');
+        if (!mar) {
+          // Word requires all of them: its defaults for what isn't set.
+          mar = ensureOrdered(sect, 'pgMar', SECTPR_ORDER);
+          for (const [a, v] of [['top', 1440], ['right', 1440], ['bottom', 1440], ['left', 1440], ['header', 708], ['footer', 708], ['gutter', 0]]) put(mar, a, v);
+        }
+        for (const k of ['top', 'right', 'bottom', 'left']) put(mar, k, set[k]);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- inserting page numbers and footnotes
+
+  /** Word's page number field (PAGE), as page nodes rendered as a field in a file is: its result is "1" until Word numbers the pages. */
+  newPageField() {
+    const p = parseXml(`<w:p xmlns:w="${W}"><w:r><w:fldChar w:fldCharType="begin"/></w:r>`
+      + '<w:r><w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+      + '<w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>').documentElement;
+    const holder = document.createElement('span');
+    this.renderInlines(this.xml.importNode(p, true), holder);
+    return [...holder.childNodes];
+  }
+
+  /**
+   * A footer for all pages, for a document without one: a new part, saved (with its relationship,
+   * content type and the first section's reference to it) only while its band is in the page.
+   * Returns the band to put in the page: one empty centred paragraph in Word's Footer style.
+   */
+  newFooter() {
+    const dir = this.mainDir ? `${this.mainDir}/` : '';
+    let n = 1;
+    while (this.zip.file(`${dir}footer${n}.xml`) || this.footers.some((f) => f.path === `${dir}footer${n}.xml`)) n++;
+    let rid = 'rIdFooter1';
+    for (let i = 1; this.rels.has(rid) || this.footers.some((f) => f.rid === rid); i++) rid = `rIdFooter${i}`;
+    const style = this.styles.ensureBuiltin('footer');
+    const text = `${XML_HEADER}<w:ftr xmlns:w="${W}" xmlns:r="${NS.r}"><w:p><w:pPr><w:pStyle w:val="${style}"/><w:jc w:val="center"/></w:pPr></w:p></w:ftr>`;
+    this.footers.push({ rid, type: 'default', label: 'All pages', section: 1, path: `${dir}footer${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true });
+    return this.renderBand('footer');
+  }
+
+  /**
+   * A new footnote: { ref (its reference, for the caret), note (the note, for the notes section) }.
+   * The note starts with its number and a space, in Word's Footnote Text style, as Word starts one.
+   * A document without footnotes gets the part for them when saved. The note is saved only while
+   * its reference is in the text (see serializeNotes).
+   */
+  newFootnote() {
+    const kind = 'footnote';
+    if (!this.noteParts[kind]) {
+      const dir = this.mainDir ? `${this.mainDir}/` : '';
+      let n = '';
+      while (this.zip.file(`${dir}footnotes${n}.xml`)) n = Number(n) + 1;
+      const sep = (local) => `<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:${local}/></w:r></w:p>`;
+      const text = `${XML_HEADER}<w:footnotes xmlns:w="${W}" xmlns:r="${NS.r}">`
+        + `<w:footnote w:type="separator" w:id="-1">${sep('separator')}</w:footnote>`
+        + `<w:footnote w:type="continuationSeparator" w:id="0">${sep('continuationSeparator')}</w:footnote></w:footnotes>`;
+      let rid = 'rIdFootnotes1';
+      for (let i = 1; this.rels.has(rid); i++) rid = `rIdFootnotes${i}`;
+      this.noteParts[kind] = { path: `${dir}footnotes${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true, rid };
+    }
+    const part = this.noteParts[kind];
+    const ids = [...wChildren(part.xml.documentElement, kind).map((el) => Number(wAttr(el, 'id'))), ...[...this.newNotes.keys()].map((k) => Number(k.split(':')[1]))];
+    const id = String(Math.max(0, ...ids.filter(Number.isFinite)) + 1);
+    const refStyle = this.styles.ensureBuiltin('footnoteReference');
+    const textStyle = this.styles.ensureBuiltin('footnoteText');
+    const parse = (xml) => this.xml.importNode(parseXml(`<root xmlns:w="${W}">${xml}</root>`).documentElement.firstElementChild, true);
+    const mark = `<w:r><w:rPr><w:rStyle w:val="${refStyle}"/></w:rPr>`;
+    const ref = this.rawInline(parse(`${mark}<w:footnoteReference w:id="${id}"/></w:r>`));
+    const node = parse(`<w:footnote w:id="${id}"><w:p><w:pPr><w:pStyle w:val="${textStyle}"/></w:pPr>${mark}<w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p></w:footnote>`);
+    this.newNotes.set(`${kind}:${id}`, node);
+    const note = this.renderNote(kind, node, id, '');
+    note.dataset.added = '';
+    return { ref, note };
+  }
+
+  /** The section holding the notes of `kind` below the text (empty). */
+  notesSection(kind) {
+    const section = document.createElement('section');
+    section.className = 'docx-notes';
+    section.dataset.notes = kind;
+    section.dataset.label = `${NOTE_NAMES[kind]}s`; // drawn by CSS, so it is never text in the page
+    section.contentEditable = 'false';
+    section.dataset.protected = `the ${kind}s`;
+    section.title = `${NOTE_NAMES[kind]}s – click a note’s text to edit it`;
+    return section;
+  }
+
+  /** One note (`node`, its <w:footnote> or <w:endnote>) as an editing host, numbered `n`. */
+  renderNote(kind, node, id, n) {
+    const part = this.noteParts[kind];
+    const rels = this.rels;
+    const inNote = this.inNote;
+    this.rels = part.rels;
+    this.inNote = true;
+    try {
+      const el = document.createElement('div');
+      el.className = 'docx-note';
+      el.contentEditable = 'true';
+      el.dataset.note = kind;
+      el.dataset.noteId = id;
+      el.dataset.n = n;
+      el.dataset.protected = `${kind} ${n}`;
+      this.noteMarkN = n;
+      this.renderBlocks(node, el);
+      if (!el.firstChild) el.append(this.emptyParagraph());
+      return el;
+    } finally {
+      this.rels = rels;
+      this.inNote = inNote;
+    }
+  }
+
+  /**
+   * Adds (on) or takes out (off) a part made this session at `path`: its relationship from the main
+   * document (id `rid`) and its content type; the part's file itself is written or removed too.
+   */
+  async registerPart(path, rid, relType, contentType, on, xml = null) {
+    if (on) this.zip.file(path, xml);
+    else if (this.zip.file(path)) this.zip.remove(path);
+    const rels = parseXml((await this.text(this.relsPath)) || `<Relationships xmlns="${NS.pr}"/>`);
+    const ct = parseXml(await this.text('[Content_Types].xml'));
+    const rel = [...rels.documentElement.children].find((r) => r.getAttribute('Id') === rid);
+    const ov = [...ct.documentElement.children].find((o) => o.localName === 'Override' && o.getAttribute('PartName') === `/${path}`);
+    if (on === !!rel && on === !!ov) return;
+    if (on && !rel) {
+      const el = rels.createElementNS(NS.pr, 'Relationship');
+      el.setAttribute('Id', rid);
+      el.setAttribute('Type', relType);
+      el.setAttribute('Target', this.mainDir ? path.slice(this.mainDir.length + 1) : path);
+      rels.documentElement.appendChild(el);
+    } else if (!on && rel) rel.remove();
+    if (on && !ov) {
+      const el = ct.createElementNS(NS.ct, 'Override');
+      el.setAttribute('PartName', `/${path}`);
+      el.setAttribute('ContentType', contentType);
+      ct.documentElement.appendChild(el);
+    } else if (!on && ov) ov.remove();
+    this.zip.file(this.relsPath, serializeXml(rels));
+    this.zip.file('[Content_Types].xml', serializeXml(ct));
+  }
+
+  /**
+   * A footer made here is referred to by the first section (and so by the sections after it that
+   * have none of their own) while its band is in the page, else by none. Run on the body as saved.
+   */
+  placeNewFooters(root) {
+    const sects = [...this.body.getElementsByTagNameNS(W, 'sectPr')];
+    for (const v of this.footers.filter((f) => f.added)) {
+      for (const s of sects) for (const ref of wChildren(s, 'footerReference')) if (ref.getAttributeNS(NS.r, 'id') === v.rid) s.removeChild(ref);
+      v.present = !!root.querySelector(`.docx-hf-part[data-part="${CSS.escape(v.path)}"]`);
+      if (!v.present || !sects[0]) continue;
+      const ref = createW(this.xml, 'footerReference');
+      ref.setAttributeNS(W, 'w:type', 'default');
+      ref.setAttributeNS(NS.r, 'r:id', v.rid);
+      const refs = elementChildren(sects[0]).filter((c) => c.localName === 'headerReference' || c.localName === 'footerReference');
+      sects[0].insertBefore(ref, refs.length ? refs[refs.length - 1].nextSibling : sects[0].firstChild);
+    }
+  }
+
+  /** Writes or takes out the footers and footnotes part made this session (see placeNewFooters, serializeNotes). */
+  async writeNewParts() {
+    for (const v of this.footers.filter((f) => f.added)) {
+      const xml = this.partsOut?.[v.path];
+      await this.registerPart(v.path, v.rid, FOOTER_REL, FOOTER_CT, !!(v.present && xml), xml && serializeXml(xml));
+    }
+    const notes = this.noteParts.footnote;
+    if (notes?.added) {
+      const xml = this.notesOut?.footnote;
+      await this.registerPart(notes.path, notes.rid, FOOTNOTES_REL, FOOTNOTES_CT, !!xml, xml && serializeXml(xml));
+    }
   }
 
   css(scope) {
@@ -618,6 +856,7 @@ export class DocxDocument {
   /** Writes the headers and footers that changed; one changed by an earlier save and no longer gets its original back. */
   writeParts() {
     for (const v of [...this.headers, ...this.footers]) {
+      if (v.added) continue; // see writeNewParts
       const xml = this.partsOut?.[v.path];
       if (xml) this.zip.file(v.path, serializeXml(xml));
       else if (v.written) this.zip.file(v.path, v.text);
@@ -714,36 +953,10 @@ export class DocxDocument {
     const ids = [...new Set(this.noteOrder[kind])];
     if (!part || !ids.length) return null;
     const byId = new Map(wChildren(part.xml.documentElement, kind).map((n) => [wAttr(n, 'id'), n]));
-    const section = document.createElement('section');
-    section.className = 'docx-notes';
-    section.dataset.notes = kind;
-    section.dataset.label = `${NOTE_NAMES[kind]}s`; // drawn by CSS, so it is never text in the page
-    section.contentEditable = 'false';
-    section.dataset.protected = `the ${kind}s`;
-    section.title = `${NOTE_NAMES[kind]}s – click a note’s text to edit it`;
-    const rels = this.rels;
-    this.rels = part.rels;
-    this.inNote = true;
-    try {
-      for (const id of ids) {
-        const node = byId.get(id);
-        if (!node) continue;
-        const n = this.noteNumber(kind, this.noteOrder[kind].indexOf(id) + 1);
-        const el = document.createElement('div');
-        el.className = 'docx-note';
-        el.contentEditable = 'true';
-        el.dataset.note = kind;
-        el.dataset.noteId = id;
-        el.dataset.n = n;
-        el.dataset.protected = `${kind} ${n}`;
-        this.noteMarkN = n;
-        this.renderBlocks(node, el);
-        if (!el.firstChild) el.append(this.emptyParagraph());
-        section.append(el);
-      }
-    } finally {
-      this.rels = rels;
-      this.inNote = false;
+    const section = this.notesSection(kind);
+    for (const id of ids) {
+      const node = byId.get(id);
+      if (node) section.append(this.renderNote(kind, node, id, this.noteNumber(kind, this.noteOrder[kind].indexOf(id) + 1)));
     }
     return section.firstChild ? section : null;
   }
@@ -801,11 +1014,17 @@ export class DocxDocument {
       const mainRels = this.serialRels;
       this.serialRels = { path: relsPathOf(part.path), rels: part.rels };
       for (const el of root.querySelectorAll(`.docx-note[data-note="${kind}"]`)) {
+        const added = el.dataset.added != null;
+        if (added && el.hidden) continue; // a note added here whose reference went: not kept
         const nodes = this.serializeBlocks(el);
         const s = new XMLSerializer();
-        if (nodes.map((n) => s.serializeToString(n)).join('') === this.noteBaseline.get(noteKey(el))) continue;
+        if (!added && nodes.map((n) => s.serializeToString(n)).join('') === this.noteBaseline.get(noteKey(el))) continue;
         xml ||= parseXml(part.text);
-        const note = wChildren(xml.documentElement, kind).find((n) => wAttr(n, 'id') === el.dataset.noteId);
+        let note = wChildren(xml.documentElement, kind).find((n) => wAttr(n, 'id') === el.dataset.noteId);
+        if (!note && added) {
+          note = xml.documentElement.appendChild(createW(xml, kind));
+          note.setAttributeNS(W, 'w:id', el.dataset.noteId);
+        }
         if (!note) continue;
         while (note.firstChild) note.removeChild(note.firstChild);
         for (const n of nodes) note.appendChild(n); // adopted, so revision ids set later reach them
@@ -823,6 +1042,7 @@ export class DocxDocument {
       const part = this.noteParts[kind];
       if (!part) continue;
       const xml = this.notesOut?.[kind];
+      if (part.added) continue; // see writeNewParts
       if (xml) this.zip.file(part.path, serializeXml(xml));
       else if (part.written) this.zip.file(part.path, part.text);
       part.written = !!xml;
@@ -2852,6 +3072,8 @@ export class DocxDocument {
     for (const n of nodes) this.body.appendChild(n);
     if (!nodes.some((n) => n.localName === 'p')) this.body.appendChild(createW(this.xml, 'p'));
     if (sectPr) this.body.appendChild(sectPr);
+    this.applyPageSetup();
+    this.placeNewFooters(root);
     this.commentsRemoved = removedComments(this.comments, {
       wasInBody: this.commentsInBody, present: commentIdsIn(this.body), elsewhere: this.commentsElsewhere,
     });
@@ -3119,6 +3341,7 @@ export class DocxDocument {
     await this.writeComments();
     this.writeNotes();
     this.writeParts();
+    await this.writeNewParts();
     this.writeStories();
     await this.writeSettings();
     await this.restorePersonal();

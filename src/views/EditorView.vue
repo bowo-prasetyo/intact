@@ -130,6 +130,15 @@
       <button ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
       </button>
+      <button type="button" title="Insert footnote (Ctrl+Alt+F)" aria-label="Insert footnote" @click="insertFootnote">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
+      </button>
+      <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg>
+      </button>
+      <button ref="pageSetupButton" type="button" title="Page setup: paper size, orientation and margins" aria-label="Page setup" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg>
+      </button>
       </fieldset>
       </div>
       <div class="tb-group">
@@ -456,6 +465,42 @@
       <hr />
       <button type="button" role="menuitem" @click="openParagraphDialog">Paragraph…</button>
     </div>
+
+    <form v-if="pageDialog.open" ref="pageDialogEl" class="chooser author-dialog para-dialog page-dialog" role="dialog" aria-label="Page setup" :style="{ left: `${pageDialog.x}px`, top: `${pageDialog.y}px` }" novalidate @submit.prevent="applyPageSetup" @keydown.esc="closePageSetup">
+      <fieldset>
+        <legend>Paper</legend>
+        <label>Size
+          <select v-model="pageDialog.paper">
+            <option v-for="p in PAPERS" :key="p.name" :value="p.name">{{ p.name }} ({{ p.label }})</option>
+            <option v-if="pageDialog.paper === 'custom'" value="custom">As set in the document</option>
+          </select>
+        </label>
+        <label>Orientation
+          <select v-model="pageDialog.orient">
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Margins</legend>
+        <label>Preset
+          <select :value="marginPreset" @change="pickMargins($event.target.value)">
+            <option v-for="m in MARGIN_PRESETS" :key="m.name" :value="m.name">{{ m.name }}</option>
+            <option v-if="marginPreset === 'custom'" value="custom">Custom</option>
+          </select>
+        </label>
+        <label>Top (cm) <input v-model.number="pageDialog.top" type="number" min="0" step="0.1" /></label>
+        <label>Bottom (cm) <input v-model.number="pageDialog.bottom" type="number" min="0" step="0.1" /></label>
+        <label>Left (cm) <input v-model.number="pageDialog.left" type="number" min="0" step="0.1" /></label>
+        <label>Right (cm) <input v-model.number="pageDialog.right" type="number" min="0" step="0.1" /></label>
+      </fieldset>
+      <p class="note">For the whole document, every section</p>
+      <div class="actions">
+        <button type="submit" class="confirm">OK</button>
+        <button type="button" @click="closePageSetup">Cancel</button>
+      </div>
+    </form>
 
     <form v-if="paraDialog.open" ref="paraDialogEl" class="chooser author-dialog para-dialog" role="dialog" aria-label="Paragraph" :style="{ left: `${paraDialog.x}px`, top: `${paraDialog.y}px` }" novalidate @submit.prevent="applyParagraphDialog" @keydown.esc="closeParagraphDialog">
       <fieldset>
@@ -890,8 +935,10 @@ const aligns = [
 // Word, the body starts at the top margin or below the header, whichever is lower. Headers and
 // footers are in the page itself (see doc.renderBand), placed by CSS from these sizes.
 const footerSpace = ref(0); // the footer's height, kept free below the text
-const sheetStyle = computed(() => ({ width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px`, zoom: zoomLevel.value === 100 ? null : String(sheetZoom.value) }));
+const pageTick = ref(0); // the page's geometry (Page setup) or its bands (a footer added) changed
+const sheetStyle = computed(() => (pageTick.value, { width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px`, zoom: zoomLevel.value === 100 ? null : String(sheetZoom.value) }));
 const pageStyle = computed(() => {
+  void pageTick.value;
   const p = doc.page;
   return {
     padding: `${doc.headers.length ? 0 : p.top}px ${p.right}px ${doc.footers.length ? Math.max(p.bottom, footerSpace.value) : p.bottom}px ${p.left}px`,
@@ -916,6 +963,10 @@ function measureFooter() {
 const hf = reactive({ header: 0, footer: 0 });
 let variantStyle = null;
 let printStyle = null;
+function refreshPrintPage() {
+  const pg = doc.page;
+  if (printStyle) printStyle.textContent = `@page { size: ${pg.width}px ${pg.minHeight}px; margin: ${pg.top}px ${pg.right}px ${pg.bottom}px ${pg.left}px; }`;
+}
 function refreshVariants() {
   if (!variantStyle) return;
   variantStyle.textContent = ['header', 'footer']
@@ -956,10 +1007,9 @@ onMounted(() => {
   variantStyle = document.createElement('style');
   document.head.append(variantStyle);
   // Printing: the document's own paper size and margins (see the print styles below).
-  const pg = doc.page;
   printStyle = document.createElement('style');
-  printStyle.textContent = `@page { size: ${pg.width}px ${pg.minHeight}px; margin: ${pg.top}px ${pg.right}px ${pg.bottom}px ${pg.left}px; }`;
   document.head.append(printStyle);
+  refreshPrintPage();
   refreshVariants();
   measureFooter();
   requestAnimationFrame(() => { if (page.value) fontsMissing.value = missingFonts(page.value); });
@@ -980,7 +1030,17 @@ onMounted(() => {
   applyLock();
   if (lockMode.value === 'trackedChanges') tracking.value = true; // as Word does under this restriction
   // Comments in headers, footers and notes aren't in the page: their changes are undone with it.
-  undoStack = createHistory(page.value, { state: { get: () => doc.storyState(), set: (v) => doc.setStoryState(v) } });
+  // Undo also covers what isn't in the page: comments in headers, footers and notes, and Page setup.
+  undoStack = createHistory(page.value, {
+    state: {
+      get: () => JSON.stringify([doc.storyState(), doc.pageSetup]),
+      set: (v) => {
+        const [story, setup] = JSON.parse(v);
+        doc.setStoryState(story);
+        doc.setPageSetup(setup);
+      },
+    },
+  });
   undoStack.commit();
 });
 
@@ -1459,6 +1519,7 @@ function alignBlocks(value) {
 function afterHistory(changed) {
   if (!changed) return;
   savedRange = null;
+  pageChanged();
   refreshChanges();
   refreshComments(); // undo/redo replaced the DOM the comment ranges pointed into
   onSelectionChange();
@@ -3165,6 +3226,7 @@ function runShortcut(name) {
   if (name === 'comment') return startComment();
   if (name === 'nonBreakingSpace') return typeText('\u00a0');
   if (name === 'pageBreak') return insertPageBreak();
+  if (name === 'footnote') return insertFootnote();
 }
 
 /**
@@ -3408,6 +3470,202 @@ function continuedList(block, { kind, first }) {
   while (prev?.classList.contains('raw-hidden')) prev = prev.previousElementSibling;
   const follows = first.start > 0 && prev?.dataset.marker === first.text.replace('%1', formatNumber(first.start - 1, first.fmt));
   return level.fmt === first.fmt && level.text === first.text && follows ? above : null;
+}
+
+// ------------------------------------------------------------------ page numbers, footnotes, page setup
+
+/** Puts `nodes` at the caret as typing would: tracked while tracking (as one insertion). */
+function insertNodes(nodes, range) {
+  const opts = trackedBy(range.startContainer);
+  if (opts) insertTracked(nodes, opts);
+  else insertAtCaret(nodes);
+}
+
+/**
+ * Page number, as Word's Insert Page Number: Word's PAGE field at the caret in a header or footer.
+ * With the caret in the text: into the footer if it is empty, else the caret goes to the footer to
+ * say where (a footer's design is the document's); a document without a footer gets one, for all
+ * pages, with the number centred. Word numbers the pages: here the field shows 1.
+ */
+function insertPageNumber() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  let range = selectionInPage();
+  const inPart = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('.docx-hf-part');
+  undoStack.flush();
+  if (!inPart) {
+    let host = page.value.querySelector(`:scope > .docx-hf-band.footer .docx-hf-part[data-variant="${hf.footer}"]`);
+    if (host && host.textContent.trim()) {
+      placeCaret(host.lastElementChild || host);
+      host.scrollIntoView({ block: 'nearest' });
+      message.value = 'Click where the number goes in the footer (or header), then Page number again';
+      return;
+    }
+    if (!host) {
+      const band = doc.newFooter();
+      refreshCss();
+      page.value.append(band);
+      host = band.querySelector('.docx-hf-part');
+      pageChanged();
+    } else {
+      const p = host.querySelector(BLOCK_SELECTOR);
+      if (p) withTrackedParagraphs([p], () => { p.style.textAlign = 'center'; });
+    }
+    const target = host.querySelector(BLOCK_SELECTOR) || host;
+    if (!target.textContent) for (const br of target.querySelectorAll('br')) br.remove(); // an empty line's placeholder
+    placeCaret(target);
+    range = selectionInPage();
+  } else {
+    if (inField(range.startContainer)) {
+      message.value = 'A page number can’t go inside a field';
+      return;
+    }
+    const locked = readOnlySelection();
+    if (locked) return explainReadOnly(locked, true);
+    if (!range.collapsed && refuseRemoving([range])) return;
+    if (!range.collapsed) {
+      const opts = trackedBy(range.startContainer);
+      if (opts) deleteTracked(range, false, opts);
+      else deleteSelection();
+      range = selectionInPage();
+    }
+  }
+  if (!range) return;
+  insertNodes(doc.newPageField(), range);
+  onInput();
+  undoStack.commit();
+  measureFooter();
+  message.value = inPart ? 'Page number added: Word numbers the pages' : 'Page number added to the footer: Word numbers the pages';
+}
+
+/**
+ * Insert Footnote (Ctrl+Alt+F), as in Word: a reference at the caret (after the selection), and
+ * its note below the text, in number order, with the caret in it to type the note.
+ */
+function insertFootnote() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  let range = selectionInPage();
+  if (!range) return;
+  if (inField(range.startContainer)) {
+    message.value = 'A footnote can’t go inside a field';
+    return;
+  }
+  if (refuseInNote(range, 'A footnote')) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (!range.collapsed) {
+    range.collapse(false);
+    selectRange(range);
+  }
+  undoStack.flush();
+  const { ref, note } = doc.newFootnote();
+  refreshCss();
+  insertNodes([ref], range);
+  let section = page.value.querySelector(':scope > .docx-notes[data-notes="footnote"]');
+  if (!section) {
+    section = doc.notesSection('footnote');
+    page.value.insertBefore(section, page.value.querySelector(':scope > .docx-notes[data-notes="endnote"], :scope > .docx-hf-band.footer'));
+  }
+  doc.renumberNotes(page.value);
+  const n = Number(ref.dataset.n);
+  const after = [...section.querySelectorAll(':scope > .docx-note')].find((el) => Number(el.dataset.n) > n);
+  section.insertBefore(note, after || null);
+  doc.renumberNotes(page.value);
+  const text = note.querySelector(BLOCK_SELECTOR) || note;
+  placeCaret(text);
+  note.scrollIntoView({ block: 'nearest' });
+  onInput();
+  undoStack.commit();
+  message.value = `Footnote ${ref.dataset.n} added: type it below the text`;
+}
+
+// Page setup, for the whole document: paper size, orientation and margins (cm), as Word's.
+const PAPERS = [
+  { name: 'A4', label: '21 × 29.7 cm', w: 11906, h: 16838 },
+  { name: 'Letter', label: '8.5 × 11 in', w: 12240, h: 15840 },
+  { name: 'Legal', label: '8.5 × 14 in', w: 12240, h: 20160 },
+  { name: 'A5', label: '14.8 × 21 cm', w: 8391, h: 11906 },
+  { name: 'A3', label: '29.7 × 42 cm', w: 16838, h: 23811 },
+  { name: 'Executive', label: '7.25 × 10.5 in', w: 10440, h: 15120 },
+];
+const MARGIN_PRESETS = [
+  { name: 'Normal', top: 2.54, bottom: 2.54, left: 2.54, right: 2.54 },
+  { name: 'Narrow', top: 1.27, bottom: 1.27, left: 1.27, right: 1.27 },
+  { name: 'Moderate', top: 2.54, bottom: 2.54, left: 1.91, right: 1.91 },
+  { name: 'Wide', top: 2.54, bottom: 2.54, left: 5.08, right: 5.08 },
+];
+const pageDialog = reactive({ open: false, x: 0, y: 0, paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0 });
+const pageDialogEl = ref(null);
+const pageSetupButton = ref(null);
+let pageInitial = null;
+const marginPreset = computed(() => MARGIN_PRESETS.find((m) => ['top', 'bottom', 'left', 'right'].every((k) => Math.abs(Number(pageDialog[k]) - m[k]) < 0.01))?.name || 'custom');
+
+/** Shows a change to the page's size, margins or bands: the sheet, the print page, what is drawn over it. */
+function pageChanged() {
+  pageTick.value++;
+  refreshPrintPage();
+  nextTick(() => {
+    measureFooter();
+    scheduleMarks();
+    if (hasLineNumbers) scheduleLineNumbers();
+  });
+}
+
+function openPageSetup() {
+  if (pageDialog.open) return closePageSetup();
+  const now = doc.pageSetupNow();
+  const [short, long] = [Math.min(now.w, now.h), Math.max(now.w, now.h)];
+  const paper = PAPERS.find((p) => Math.abs(p.w - short) <= 20 && Math.abs(p.h - long) <= 20);
+  const cm = (twips) => Math.round((twips / TWIPS_PER_CM) * 100) / 100;
+  pageInitial = {
+    paper: paper ? paper.name : 'custom', orient: now.orient === 'landscape' || now.w > now.h ? 'landscape' : 'portrait',
+    top: cm(now.top), bottom: cm(now.bottom), left: cm(now.left), right: cm(now.right), w: now.w, h: now.h,
+  };
+  const rect = pageSetupButton.value.getBoundingClientRect();
+  Object.assign(pageDialog, pageInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  nextTick(() => pageDialogEl.value?.querySelector('select')?.focus());
+}
+
+function closePageSetup() {
+  pageDialog.open = false;
+  refocus();
+}
+
+function pickMargins(name) {
+  const m = MARGIN_PRESETS.find((x) => x.name === name);
+  if (m) Object.assign(pageDialog, { top: m.top, bottom: m.bottom, left: m.left, right: m.right });
+}
+
+/** Applies what was changed in the Page setup dialog to every section, as one undoable step. */
+function applyPageSetup() {
+  const d = { ...pageDialog };
+  const i = pageInitial;
+  pageDialog.open = false;
+  const num = (v) => (Number.isFinite(Number(v)) && v !== '' ? Math.max(0, Number(v)) : 0);
+  const change = {};
+  if (d.paper !== i.paper || d.orient !== i.orient) {
+    const paper = PAPERS.find((p) => p.name === d.paper);
+    const [short, long] = paper ? [paper.w, paper.h] : [Math.min(i.w, i.h), Math.max(i.w, i.h)];
+    const landscape = d.orient === 'landscape';
+    Object.assign(change, { w: landscape ? long : short, h: landscape ? short : long, orient: d.orient });
+  }
+  for (const k of ['top', 'bottom', 'left', 'right']) if (num(d[k]) !== i[k]) change[k] = Math.round(num(d[k]) * TWIPS_PER_CM);
+  refocus();
+  if (!Object.keys(change).length) return;
+  const width = change.w ?? i.w;
+  const left = change.left ?? Math.round(i.left * TWIPS_PER_CM);
+  const right = change.right ?? Math.round(i.right * TWIPS_PER_CM);
+  if (width - left - right < 1440) {
+    message.value = 'The margins leave less than 2.5 cm for the text: nothing was changed';
+    return;
+  }
+  undoStack.flush();
+  doc.setPageSetup({ ...doc.pageSetup, ...change });
+  pageChanged();
+  undoStack.commit();
+  markDirty();
+  message.value = 'Page setup changed for the whole document';
 }
 
 /** Ctrl+Enter: a page break at the caret (tracked while tracking). Not inside form fields. */
@@ -4243,6 +4501,7 @@ function onDocumentMousedown(e) {
   if (picturePanel.open && !picturePanelEl.value?.contains(e.target) && !layoutOptionsButton.value?.contains(e.target)) picturePanel.open = false;
   if (splitDialog.open && !splitDialogEl.value?.contains(e.target)) splitDialog.open = false;
   if (paraDialog.open && !paraDialogEl.value?.contains(e.target)) paraDialog.open = false;
+  if (pageDialog.open && !pageDialogEl.value?.contains(e.target) && !pageSetupButton.value?.contains(e.target)) pageDialog.open = false;
   if (spacingMenu.open && !spacingMenuEl.value?.contains(e.target) && !spacingButton.value?.contains(e.target)) spacingMenu.open = false;
   if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
@@ -4729,6 +4988,7 @@ async function close() {
 .chooser.para-dialog { width: 300px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
 .para-dialog fieldset { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 10px 10px; border: 1px solid var(--border); border-radius: 4px; }
 .para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
+.page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
 .para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .para-dialog input, .para-dialog select { width: 120px; font: inherit; }
 .para-dialog select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }

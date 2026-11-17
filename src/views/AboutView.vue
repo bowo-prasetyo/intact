@@ -10,7 +10,8 @@
       <h2>What you can edit</h2>
       <ul>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
-        <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it</li>
+        <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F)</li>
+        <li>Page numbers in a header or footer, or a new footer with the page number; page setup (paper size, orientation, margins) for the whole document</li>
         <li>Headers and footers, in the page's margins: the first page's, other pages', even pages' and each section's, chosen with the tabs above and below the page</li>
         <li>The text in text boxes and shapes, shown where Word puts them with their fill and outline</li>
         <li>Insert tables and pictures (from the toolbar, or paste or drop a picture)</li>
@@ -84,7 +85,7 @@
         <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
         <li>Edits inside form fields, text moved by dragging and changes to a picture's layout aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
-        <li>New footnotes can't be added; pictures, tables, page breaks and new comments can't go in a note, a header, a footer or a text box.</li>
+        <li>New endnotes can't be added; pictures, tables, page breaks and new comments can't go in a note, a header, a footer or a text box. A page number shows 1 until Word numbers the pages.</li>
         <li>A text box's size, position and look are kept, not changed here; a text box grows to show all its text where Word would cut it off. Groups of shapes, and shapes without text, can't be edited.</li>
         <li>The page isn't split into pages: columns are balanced, and each header and footer is shown once.</li>
         <li>Equations need a math font to look as in Word (Windows and macOS have one).</li>

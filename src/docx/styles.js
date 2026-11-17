@@ -17,6 +17,16 @@ export const BUILTIN_STYLES = {
     <w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="${before}" w:after="80"/><w:outlineLvl w:val="${n - 1}"/></w:pPr>
     <w:rPr><w:rFonts w:asciiTheme="majorHAnsi" w:hAnsiTheme="majorHAnsi" w:eastAsiaTheme="majorEastAsia" w:cstheme="majorBidi"/>${n >= 4 ? '<w:i/>' : ''}<w:color w:val="2F5496"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr></w:style>` }];
   })),
+  // Added with what uses them: a footer made here, and new footnotes, as Word defines them.
+  footer: { name: 'footer', id: 'Footer', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/>${basedOn}<w:uiPriority w:val="99"/><w:unhideWhenUsed/>
+    <w:pPr><w:tabs><w:tab w:val="center" w:pos="4513"/><w:tab w:val="right" w:pos="9026"/></w:tabs><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:style>` },
+  footnoteText: { name: 'footnote text', id: 'FootnoteText', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/>${basedOn}<w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/>
+    <w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>` },
+  footnoteReference: { name: 'footnote reference', id: 'FootnoteReference', type: 'character', xml: () => `
+    <w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/>
+    <w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>` },
 };
 
 export class StyleSheet {
@@ -66,7 +76,7 @@ export class StyleSheet {
   findBuiltin(key) {
     const def = BUILTIN_STYLES[key];
     for (const s of this.byId.values()) {
-      if (s.type === 'paragraph' && s.name.toLowerCase() === def.name) return s.id;
+      if (s.type === (def.type || 'paragraph') && s.name.toLowerCase() === def.name) return s.id;
     }
     return null;
   }
