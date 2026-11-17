@@ -109,7 +109,10 @@ test('Accept all accepts every change, those in locked content too, and the revi
   await page.getByTitle('More ways to accept').click();
   await page.getByRole('menuitem', { name: 'Accept all changes' }).click();
   await expect(status(page)).toHaveText('Accepted all 6 changes');
-  await expect(group(page)).toHaveCount(0); // nothing left to accept or reject
+  // Nothing left to accept or reject: the controls stay in place, turned off, with a count of 0.
+  await expect(group(page).locator('.badge')).toHaveText('0');
+  await expect(group(page).getByRole('button', { name: 'Accept', exact: true })).toBeDisabled();
+  await expect(group(page).getByRole('button', { name: 'Reject', exact: true })).toBeDisabled();
   await page.locator('.app-header').getByRole('button', { name: 'Download' }).click();
   const review = page.getByRole('dialog', { name: 'Review your changes' });
   await expect(review.locator('.notes')).toContainText('You accepted 6 tracked changes. As in Word, accepting and rejecting aren’t themselves tracked.');

@@ -304,6 +304,19 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
   (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+K (link), Ctrl+F/H,
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
+- The toolbar works from the keyboard, as WAI-ARIA's toolbar pattern and Word have it: Alt+F10 goes to
+  it, it is one Tab stop, the arrow keys (and Home and End) move along it and Esc goes back to the text
+  where the caret was. Its buttons are named and say whether they are on (bold, alignment, lists…) for
+  screen readers. Its controls stay in place: Accept, Reject and the count of tracked changes are always
+  there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens
+- Unsaved changes survive a reload, a crash or a closed tab: while a document has changes not
+  downloaded, a copy is kept in this browser (IndexedDB), on this device only, a moment after each
+  edit ("Changes kept on this device" in the status bar), and the start page offers to restore or
+  discard it. The copy holds the edits only, so the download made from it records the edit in the
+  document's properties once; a signed document's copy has no signatures, as its changed download
+  wouldn't. It goes when the document is downloaded or closed, when it is discarded, and after 7
+  days; the five most recent are kept. Where the browser refuses storage (some private windows), editing works
+  as before, without it
 - Faithful round-trip: everything the editor doesn't understand is written back untouched —
   fonts, colours, sizes, spacing, numbering, images, table layout, headers/footers, footnotes,
   fields, equations, bookmarks, section settings and tracked changes (shown with their author until
@@ -485,6 +498,9 @@ The About page shows the version.
 
 ## Limitations
 
+- After restoring a draft, the text you had changed while tracking shows as tracked changes kept from
+  the file (accept or reject them; they can't be edited inside), and "Review your changes" lists only
+  what changed since restoring. A draft is kept per browser: another browser or device doesn't see it
 - Tracked changes inside locked content are accepted or rejected together, not one by one; edits
   inside form fields and text moved by dragging aren't tracked (cut and paste is), nor is ending a list
   with Enter on an empty item, or a picture's layout
