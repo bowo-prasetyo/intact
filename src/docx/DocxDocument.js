@@ -41,6 +41,7 @@ import { drawPicture } from './pictureView.js';
 import { ommlToMathml, isEquation } from './omml.js';
 import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
+import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -101,8 +102,13 @@ const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', g
 export class DocxDocument {
   /** @param {ArrayBuffer|Blob} data */
   static async open(data, name = 'document.docx') {
-    const zip = await JSZip.loadAsync(data);
+    const bytes = new Uint8Array(data instanceof Blob ? await data.arrayBuffer() : data);
+    // Encrypted, rights-managed and legacy files aren't ZIP packages: say what they are instead.
+    const unreadable = sniffFile(bytes);
+    if (unreadable) throw unreadable;
+    const zip = await JSZip.loadAsync(bytes);
     const doc = new DocxDocument(zip, name);
+    doc.sourceBytes = bytes; // what was opened: downloaded as it is when a signed file is unchanged
     await doc.init();
     return doc;
   }
@@ -179,6 +185,13 @@ export class DocxDocument {
     this.settingsPath = settings?.path || null;
     this.settingsText = settings ? await this.text(settings.path) : null;
     this.trackRevisions = onOff(wChild(settings?.xml.documentElement, 'trackRevisions')) === true;
+    // Restrictions on editing that Word enforces, and digital signatures (see package.js). They are
+    // never changed here: the editor opens such a document locked, as Word does.
+    this.protection = readProtection(settings?.xml.documentElement);
+    this.writeProtection = readWriteProtection(settings?.xml.documentElement);
+    this.signatures = await readSignatures(this.zip);
+    // The package's parts as opened, to tell whether a save changes anything (see packageChanged).
+    this.openedEntries = new Map(Object.entries(this.zip.files));
     this.tracking = this.trackRevisions;
     // Word updates fields (tables of contents, cross-references…) on opening if the file asks it to.
     this.updateFieldsSet = onOff(wChild(settings?.xml.documentElement, 'updateFields')) === true;
@@ -2886,6 +2899,69 @@ export class DocxDocument {
 
   /** Produces a .docx Blob from the current editor content. */
   async save(root) {
+    await this.write(root);
+    if (this.signatures) {
+      // Unchanged, the file goes back exactly as it was opened, so its signatures stay valid.
+      this.signaturesRemoved = await this.packageChanged();
+      if (!this.signaturesRemoved) return new Blob([this.sourceBytes], { type: DOCX_MIME });
+      // Changed, they no longer match the document: Word removes them when a signed document is
+      // edited, and so does Intact, rather than send a file that Word shows as invalidly signed.
+      await removeSignatures(this.zip, this.signatures);
+    }
+    return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
+  }
+
+  /**
+   * For the review of a signed document: how many signatures it has, and whether saving now would
+   * change it (and so remove them).
+   */
+  async signatureStatus(root) {
+    if (!this.signatures) return null;
+    await this.write(root);
+    return { count: this.signatures.count, removed: await this.packageChanged() };
+  }
+
+  /**
+   * Whether the package written so far differs in meaning from the one opened. XML parts are
+   * compared as serialized (rewriting an untouched part only reorders its markup); other parts byte
+   * by byte. The package relationships, content types and signatures don't count: they change only
+   * when signatures are removed, which follows from a change elsewhere.
+   */
+  async packageChanged() {
+    const skip = new Set(['_rels/.rels', '[Content_Types].xml', ...(this.signatures?.parts || [])]);
+    const now = Object.entries(this.zip.files).filter(([path, f]) => !f.dir && !skip.has(path));
+    const before = [...this.openedEntries].filter(([path, f]) => !f.dir && !skip.has(path));
+    if (now.length !== before.length) return true;
+    for (const [path, f] of now) {
+      const old = this.openedEntries.get(path);
+      if (!old) return true;
+      if (old === f) continue; // never rewritten
+      if (path === this.mainPath && this.pristineMain != null) {
+        if ((await f.async('string')) !== this.pristineMain) return true;
+      } else if (/\.(xml|rels)$/i.test(path)) {
+        const [a, b] = await Promise.all([old.async('string'), f.async('string')]);
+        if (a !== b && serializeXml(parseXml(a)) !== serializeXml(parseXml(b))) return true;
+      } else {
+        const [a, b] = await Promise.all([old.async('uint8array'), f.async('uint8array')]);
+        if (a.length !== b.length || a.some((x, i) => x !== b[i])) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Notes what the main part saves as before anything is edited (`root` as rendered), so that
+   * packageChanged tells an edit from the tidying any save does (xml:space, runs merged), as notes,
+   * headers and footers are compared with how they saved when rendered. Only signed documents need it.
+   */
+  markPristine(root) {
+    if (!this.signatures) return;
+    this.update(root);
+    this.pristineMain = serializeXml(this.xml);
+  }
+
+  /** Writes the current editor content into the package: every part a save changes. */
+  async write(root) {
     this.update(root);
     this.zip.file(this.mainPath, serializeXml(this.xml));
     await this.writeMedia();
@@ -2897,7 +2973,6 @@ export class DocxDocument {
     this.writeParts();
     this.writeStories();
     await this.writeSettings();
-    return this.zip.generateAsync({ type: 'blob', mimeType: DOCX_MIME, compression: 'DEFLATE' });
   }
 
   async writeStyles() {

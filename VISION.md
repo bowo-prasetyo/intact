@@ -109,6 +109,9 @@ Saying no to these keeps the product small enough to keep its promises:
   colours, embedded fonts) and name fonts shown with a substitute ✔
 - Font, size, colour and character style from the document's own ✔; clear formatting ✔; track
   formatting changes ✔; smart quotes and dashes ✔; count characters ✔
+- Respect Word's restrictions: Restrict Editing (read only, comments, forms, tracked changes),
+  read-only recommended, digital signatures (kept valid when unchanged, removed when edited, as in
+  Word), with an explicit "Edit anyway" ✔; say what encrypted, rights-managed and `.doc` files are ✔
 - Installable offline app (PWA)
 
 ## How we'll know it's working

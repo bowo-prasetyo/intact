@@ -64,7 +64,8 @@ async function run(task) {
     router.push({ name: 'edit' });
   } catch (e) {
     console.error(e);
-    error.value = `Could not open the document: ${e.message}`;
+    // A file Intact recognises but can't open (encrypted, rights-managed, .doc) says so as it is.
+    error.value = e.name === 'UnreadableFileError' ? e.message : `Could not open the document: ${e.message}`;
   } finally {
     busy.value = false;
   }

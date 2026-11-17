@@ -239,6 +239,22 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   a bibliography lists them, it says the bibliography needs refreshing (`src/docx/fields.js`). The
   review can be skipped, and opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S)
+- Respect the restrictions Word puts on a document, as Word does: with Restrict Editing on
+  (`w:documentProtection`, enforced) it opens read-only, comments only (comments can be added and
+  answered), filling in forms only (its fields can be filled in) or with every edit tracked (Track
+  Changes stays on, and tracked changes can't be accepted or rejected); a document marked "read-only
+  recommended" or with a password to modify (`w:writeProtection`) opens read-only. A bar above the
+  toolbar says what applies, and typing or clicking in locked text says why nothing changes. "Edit
+  anyway" lifts it for the session after saying what it means (going around Restrict Editing, which
+  only someone allowed to should do); the restriction stays in the file, so Word still applies it,
+  and the review says so. Protection set up but not enforced restricts nothing, as in Word
+- Digitally signed documents (`_xmlsignatures`) open read-only too, as Word opens them. Downloaded
+  unchanged, the file is the one opened, byte for byte, so its signatures stay valid; edited (after
+  "Edit anyway"), the signatures are removed from the download, as Word removes them when a signed
+  document is edited, rather than sent along invalid; the review says which will happen
+- Files that aren't `.docx` packages say what they are, instead of failing to unzip: encrypted with a
+  password, protected by rights management (a sensitivity label that encrypts, or IRM), a Word
+  97–2003 `.doc` with a `.docx` name, or something else. Intact doesn't decrypt files
 - Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Shift+= / Ctrl+= (superscript / subscript),
   Ctrl+Alt+H (highlight), Ctrl+Space (clear character formatting; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
@@ -420,4 +436,12 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   (their text is kept)
 - The tests cover Chromium and Firefox; Safari is untested (find and comment highlighting need
   Safari 17.2 or later)
-- Legacy binary `.doc` files are not supported
+- Legacy binary `.doc` files are not supported, nor files encrypted with a password or by rights
+  management (sensitivity labels that encrypt, IRM): they say so when opened
+- Restrict Editing applies to the whole document: the parts Word lets everyone (or named people)
+  edit in a read-only document (`w:permStart`), and sections left unprotected in a form
+  (`w:formProt`), are locked here too; "Edit anyway" opens everything. Formatting restrictions
+  (allowed styles only) aren't enforced. Under "tracked changes only", the edits Intact doesn't track
+  (in form fields, a picture's layout) aren't prevented in fields, and pictures can't be laid out
+- Signatures are recognised, not verified: Intact doesn't check that a signature is valid or who
+  signed

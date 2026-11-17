@@ -16,7 +16,7 @@ export function readOnlyAt(node, root) {
   let found = null;
   for (; el && el !== root; el = el.parentElement) {
     const ce = el.getAttribute('contenteditable');
-    if (ce === 'true') break;
+    if (ce === 'true' || el.hasAttribute('data-locked-host')) break; // locked by a restriction, not read-only content
     if (ce === 'false' && !STRUCTURE.has(el.tagName)) found = el;
   }
   if (!found || found.classList.contains('raw-hidden')) return null;

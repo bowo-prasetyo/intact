@@ -12,7 +12,17 @@
       <button class="ghost" type="button" @click="close">Close</button>
     </AppHeader>
 
+    <div v-if="restrictions.length" class="restriction-bar" :class="{ unlocked }" role="region" aria-label="Restrictions on this document">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path v-if="unlocked" d="M5.5 7V5a2.5 2.5 0 0 1 5-.6" stroke="currentColor" stroke-width="1.4" fill="none" /><path v-else d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
+      <p>
+        <template v-for="(r, i) in restrictions" :key="i"><strong>{{ r.title }}</strong>{{ ` ${r.text} ` }}</template>
+        <span>{{ unlocked ? unlockedText : lockText }}</span>
+      </p>
+      <button v-if="lockMode" type="button" @click="editAnyway">Edit anyway</button>
+    </div>
+
     <div class="toolbar" :class="{ 'has-changes': changes.total }" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
+      <fieldset class="group" :disabled="textLocked" :title="textLocked ? lockMessage : null">
       <button type="button" title="Undo (Ctrl+Z)" @click="undo">↶</button>
       <button type="button" title="Redo (Ctrl+Y)" @click="redo">↷</button>
       <span class="sep" />
@@ -103,11 +113,12 @@
       <button ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
       </button>
+      </fieldset>
       <span class="sep" />
       <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
       </button>
-      <button ref="trackButton" type="button" class="track-toggle" title="Track Changes (Ctrl+Shift+E)" :class="{ on: tracking }" :aria-pressed="tracking" @click="toggleTracking">
+      <button ref="trackButton" type="button" class="track-toggle" :title="lockMode ? `Track Changes: ${lockMode === 'trackedChanges' ? 'always on' : tracking ? 'on' : 'off'} – ${lockMessage}` : 'Track Changes (Ctrl+Shift+E)'" :class="{ on: tracking }" :aria-pressed="tracking" :disabled="!!lockMode" @click="toggleTracking">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Track changes</span>
       </button>
@@ -119,6 +130,7 @@
         <button type="button" title="Next change" :disabled="!changes.total" @click="gotoChange(1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
         </button>
+        <fieldset class="group" :disabled="!!lockMode" :title="lockMode ? 'Tracked changes can’t be accepted or rejected: ' + lockMessage : null">
         <span class="split">
           <button type="button" class="labelled" title="Accept the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(true)">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" stroke="#2e7d32" stroke-width="1.8" fill="none" /></svg><span class="label">Accept</span>
@@ -131,6 +143,7 @@
           </button>
           <button ref="rejectMenuButton" type="button" class="arrow" title="More ways to reject" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'reject'" :disabled="!changes.total" @click="openChangeMenu('reject')">▾</button>
         </span>
+        </fieldset>
         <span class="badge" :title="changesTitle">{{ changes.total }}</span>
       </span>
       <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
@@ -138,7 +151,7 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
       </button>
-      <button type="button" class="new-comment" title="New comment (Ctrl+Alt+M)" @click="startComment">
+      <button type="button" class="new-comment" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
       </button>
       <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
@@ -190,6 +203,7 @@
         :active="activeComment"
         :composing="composer.open"
         :ask-name="!named"
+        :read-only="!canComment"
         @select="selectComment"
         @close="commentsOpen = false; cancelComment()"
         @post="postComment"
@@ -511,6 +525,7 @@ import {
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
+import { PROTECTION_LABELS } from '../docx/package.js';
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
@@ -563,6 +578,114 @@ const trackButton = ref(null);
 const authorEl = ref(null);
 const authorInput = ref(null);
 watch(tracking, (on) => { doc.tracking = on; });
+
+// ------------------------------------------------------------------ restrictions
+
+// Word's Restrict Editing, digital signatures and "read-only recommended" (see docx/package.js).
+// The document opens as Word would let you edit it: read-only, comments only, filling in its fields
+// only, or with every edit tracked. "Edit anyway" lifts that for this session, after saying what it
+// means; the restriction itself stays in the file, and a signature goes when the file changes.
+const unlocked = ref(false);
+const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** How the document may be edited here: readOnly, comments, forms, trackedChanges or null (freely). */
+const lockMode = computed(() => {
+  if (unlocked.value) return null;
+  const mode = doc.protection?.mode;
+  if (mode === 'readOnly' || doc.signatures || doc.writeProtection) return 'readOnly';
+  return mode || null;
+});
+/** The text can't be changed (only comments, or only fields, at most). */
+const textLocked = computed(() => ['readOnly', 'comments', 'forms'].includes(lockMode.value));
+const canComment = computed(() => !textLocked.value || lockMode.value === 'comments');
+const restrictions = computed(() => {
+  const out = [];
+  const p = doc.protection;
+  if (p) {
+    out.push({
+      title: 'Restrict Editing is on.',
+      text: `Word allows ${{ readOnly: 'no changes (read only)', comments: 'comments only', forms: 'filling in forms only', trackedChanges: 'tracked changes only' }[p.mode]}${p.password ? ', and asks for a password to stop the protection' : ''}.`,
+    });
+  }
+  if (doc.signatures) {
+    out.push({ title: 'Digitally signed.', text: `The document has ${count(doc.signatures.count, 'digital signature')}; changing it removes ${doc.signatures.count === 1 ? 'it' : 'them'}, as in Word.` });
+  }
+  const w = doc.writeProtection;
+  if (w) {
+    out.push({
+      title: w.recommended ? 'Read-only recommended.' : 'Password to modify.',
+      text: w.recommended ? 'The author recommends opening it read-only unless you need to change it.' : 'Word asks for a password to save changes to this file; edits can be saved as a copy.',
+    });
+  }
+  return out;
+});
+const lockText = computed(() => ({
+  readOnly: 'Opened read-only.',
+  comments: 'You can add and answer comments; the text is read-only.',
+  forms: 'You can fill in its fields; the rest is read-only.',
+  trackedChanges: 'Your edits are tracked, and tracked changes can’t be accepted or rejected.',
+}[lockMode.value] || ''));
+const unlockedText = computed(() => [
+  'Editing anyway.',
+  doc.protection && 'The restriction stays in the file you download, so Word still applies it.',
+  doc.signatures && 'If you change anything, the downloaded file has no signature.',
+].filter(Boolean).join(' '));
+/** Why the document can't be changed here, for the status bar and tooltips. */
+const lockMessage = computed(() => {
+  const why = doc.protection && doc.protection.mode === lockMode.value
+    ? `Restrict Editing in Word allows ${{ readOnly: 'no changes', comments: 'comments only', forms: 'filling in forms only', trackedChanges: 'tracked changes only' }[lockMode.value]}`
+    : doc.signatures ? 'the document is digitally signed' : 'the author recommends opening it read-only';
+  return lockMode.value === 'trackedChanges' ? `${why}` : `${why} – choose Edit anyway above to change it`;
+});
+
+function explainLock() {
+  message.value = `${{ readOnly: 'Read-only', comments: 'Only comments can be added', forms: 'Only the fields can be filled in', trackedChanges: 'Only tracked changes' }[lockMode.value]}: ${lockMessage.value}`;
+}
+
+const LOCK_HOSTS = '[contenteditable="true"], [data-locked-host]';
+/** Fields that stay editable while only filling in forms is allowed. */
+const OPEN_FIELD = '.sdt:not(.sdt-locked), .sdt-row:not(.sdt-locked), .sdt-cell:not(.sdt-locked)';
+
+/**
+ * Makes the page's editing hosts (the text, cells, notes, headers, footers, text boxes) read-only
+ * while the text is locked, so neither the browser nor the editor can change them; in "filling in
+ * forms" the fields stay editable. Locked hosts are marked, to be put back exactly.
+ */
+function applyLock(on = textLocked.value) {
+  const root = page.value;
+  if (!root) return;
+  for (const el of [root, ...root.querySelectorAll(LOCK_HOSTS)]) {
+    const lock = on && !(lockMode.value === 'forms' && el !== root && el.closest(OPEN_FIELD));
+    if (lock && el.contentEditable === 'true') {
+      el.contentEditable = 'false';
+      el.dataset.lockedHost = '';
+    } else if (!lock && 'lockedHost' in el.dataset) {
+      el.contentEditable = 'true';
+      delete el.dataset.lockedHost;
+    }
+  }
+}
+
+/**
+ * Runs `read`, which reads the page into the document, with the page's hosts as they really are:
+ * saving tells read-only content by contenteditable="false". `read` reads synchronously.
+ */
+function withHostsUnlocked(read) {
+  if (!textLocked.value) return read();
+  applyLock(false);
+  try { return read(); } finally { applyLock(true); }
+}
+
+function editAnyway() {
+  const what = [
+    doc.protection && `Word restricts editing of this document (${PROTECTION_LABELS[doc.protection.mode]}). Editing it here goes around that restriction: do so only if you are allowed to. The restriction stays in the file, so Word still applies it.`,
+    doc.signatures && `Changing the document removes its ${doc.signatures.count === 1 ? 'digital signature' : `${doc.signatures.count} digital signatures`} from the file you download, as editing a signed document in Word does: ${doc.signatures.count === 1 ? 'it' : 'they'} would no longer match it.`,
+  ].filter(Boolean);
+  if (what.length && !window.confirm(`${what.join('\n\n')}\n\nEdit anyway?`)) return;
+  unlocked.value = true;
+  applyLock(false);
+  message.value = 'Editing anyway';
+  page.value.focus();
+}
 const findBar = ref(null);
 const dateInput = ref(null);
 let chooserTarget = null;
@@ -662,6 +785,9 @@ onMounted(() => {
   refreshChanges();
   page.value.focus();
   placeCaret(bodyBlocks()[0] || page.value, true);
+  doc.markPristine(page.value); // before locking: saving reads the page as it really is
+  applyLock();
+  if (lockMode.value === 'trackedChanges') tracking.value = true; // as Word does under this restriction
   // Comments in headers, footers and notes aren't in the page: their changes are undone with it.
   undoStack = createHistory(page.value, { state: { get: () => doc.storyState(), set: (v) => doc.setStoryState(v) } });
   undoStack.commit();
@@ -1340,6 +1466,11 @@ function selectPicture(span) {
 }
 
 function showPicture(span) {
+  if (span && lockMode.value) {
+    // Resizing or moving a picture isn't tracked: under "tracked changes only" it can't be done either.
+    picture.el = null;
+    return;
+  }
   if (picture.el !== span) {
     picturePanel.open = false;
     picture.cropping = false;
@@ -2099,6 +2230,7 @@ function wordAround(range) {
 
 /** New comment (Ctrl+Alt+M): opens a box for it in the comments panel, on the selected text. */
 function startComment() {
+  if (!canComment.value) return explainLock();
   restoreSelection();
   const range = selectionInPage();
   if (!range) {
@@ -2731,6 +2863,7 @@ function noteUntrackedFormatting() {
 }
 
 function toggleTracking() {
+  if (lockMode.value) return explainLock();
   if (tracking.value) {
     tracking.value = false;
     message.value = 'Track Changes is off: your edits change the text directly';
@@ -2834,7 +2967,7 @@ function explainReadOnly(el, refused = false) {
 function onPageMousedown(e) {
   selectedChange = null;
   const pic = e.target.closest?.('.picture');
-  if (pic && page.value.contains(pic)) {
+  if (pic && page.value.contains(pic) && !lockMode.value) {
     onPictureMousedown(e, pic);
     return;
   }
@@ -3069,6 +3202,11 @@ function pasteBlocks(blocks, tracked = null) {
 
 /** Picture files dropped on the page are inserted where they are dropped; other files aren't. */
 function onDrop(e) {
+  if (textLocked.value) {
+    e.preventDefault();
+    explainLock();
+    return;
+  }
   const files = [...(e.dataTransfer?.files || [])];
   if (!files.length) return;
   e.preventDefault();
@@ -3095,6 +3233,16 @@ function onClick(e) {
   if (marker) {
     commentsOpen.value = true;
     selectComment(marker.dataset.commentId, false);
+    return;
+  }
+  if (textLocked.value && !(lockMode.value === 'forms' && e.target.closest(OPEN_FIELD))) {
+    const a = e.target.closest('a[href]');
+    if (a && (e.ctrlKey || e.metaKey) && /^(https?:|mailto:)/i.test(a.getAttribute('href'))) {
+      e.preventDefault();
+      window.open(a.href, '_blank', 'noopener');
+      return;
+    }
+    if (window.getSelection().isCollapsed) explainLock(); // not after selecting text, to copy it
     return;
   }
   const placeholderCell = e.target.closest('td.sdt-cell.showing-placeholder');
@@ -3569,6 +3717,12 @@ function revealRect(rect) {
 
 /** Ctrl+F / Ctrl+H anywhere in the editor open Find (and Replace) instead of the browser's own. */
 function onWindowKeydown(e) {
+  // Typing into a locked document: nothing changes (nothing is editable), so say why.
+  if (textLocked.value && isEditingKey(e) && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')
+    && (selectionInPage() || document.activeElement === document.body)) {
+    explainLock();
+    return;
+  }
   if (explainKeyOutsideText(e)) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
@@ -3653,10 +3807,13 @@ function requestDownload() {
   else openReview();
 }
 
-function openReview() {
+async function openReview() {
   closeChooser();
   undoStack.flush();
-  reviewData.value = doc.review(page.value);
+  const review = withHostsUnlocked(() => doc.review(page.value));
+  // What happens to the restrictions and signatures in the file (see "restrictions" above).
+  const signature = await withHostsUnlocked(() => doc.signatureStatus(page.value));
+  reviewData.value = { ...review, signature, protection: doc.protection, overridden: unlocked.value };
 }
 
 function closeReview() {
@@ -3682,7 +3839,7 @@ async function save() {
   saving.value = true;
   try {
     const name = `${baseName.value.trim() || 'document'}.docx`;
-    const blob = await doc.save(page.value);
+    const blob = await withHostsUnlocked(() => doc.save(page.value));
     doc.name = name;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3694,7 +3851,8 @@ async function save() {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     dirty.value = false;
     const n = doc.commentsRemoved.size;
-    message.value = `Saved ${name}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`;
+    message.value = `Saved ${name}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`
+      + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '');
   } catch (e) {
     console.error(e);
     message.value = `Save failed: ${e.message}`;
@@ -3733,6 +3891,22 @@ async function close() {
   border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font-size: 15px; cursor: pointer;
 }
 .toolbar button:hover:not(:disabled) { background: var(--hover); }
+/* Groups of tools turned off together by a restriction; they don't change the layout. */
+.toolbar fieldset.group { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
+.toolbar select:disabled { opacity: .4; }
+
+/* Word's message bar for restricted and signed documents. */
+.restriction-bar {
+  --bar: #fff4ce; --bar-line: #e8d48a;
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 13px; line-height: 1.4;
+  background: var(--bar); border-bottom: 1px solid var(--bar-line); color: var(--text);
+}
+.restriction-bar.unlocked { --bar: var(--hover); --bar-line: var(--border); }
+.restriction-bar svg { flex: none; }
+.restriction-bar p { margin: 0; flex: 1; }
+.restriction-bar button { flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
+.restriction-bar button:hover { background: var(--hover); }
+@media (prefers-color-scheme: dark) { .restriction-bar:not(.unlocked) { --bar: #3a3216; --bar-line: #5c4f20; } }
 .toolbar button:disabled { opacity: .4; cursor: default; }
 .toolbar button.on { background: var(--active); border-color: var(--border); }
 .toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }

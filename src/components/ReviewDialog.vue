@@ -52,7 +52,8 @@
 import { computed, onMounted, ref } from 'vue';
 
 const props = defineProps({
-  // From DocxDocument.review(): { paragraphs, commentsRemoved, insertions, deletions, tracking, trackingSwitched, stylesAdded, listsAdded }
+  // From DocxDocument.review(): { paragraphs, commentsRemoved, insertions, deletions, tracking, trackingSwitched, stylesAdded, listsAdded },
+  // with signature ({ count, removed }), protection ({ mode, password }) and overridden from the editor.
   review: { type: Object, required: true },
   author: { type: String, default: '' },
   skip: { type: Boolean, default: false },
@@ -97,6 +98,20 @@ const summary = computed(() => {
 const notes = computed(() => {
   const r = props.review;
   const out = [];
+  // Restrictions and signatures first: they say what the recipient gets back.
+  const sig = r.signature;
+  if (sig?.removed) {
+    out.push({ kind: 'warn', text: `The ${sig.count === 1 ? 'digital signature is' : `${sig.count} digital signatures are`} removed from the downloaded file: ${sig.count === 1 ? 'it' : 'they'} would no longer match the changed document, and Word removes ${sig.count === 1 ? 'it' : 'them'} too when a signed document is edited. If the document must be signed, ask for it to be signed again.` });
+  } else if (sig) {
+    out.push({ kind: 'good', text: `Nothing has changed, so the file downloads exactly as it was opened and its ${sig.count === 1 ? 'digital signature stays' : 'digital signatures stay'} valid.` });
+  }
+  const p = r.protection;
+  if (p) {
+    const label = { readOnly: 'no changes (read only)', comments: 'comments only', forms: 'filling in forms only', trackedChanges: 'tracked changes only' }[p.mode];
+    out.push(r.overridden
+      ? { kind: 'warn', text: `Restrict Editing in Word allows ${label}, and you chose to edit anyway. The restriction stays in the downloaded file${p.password ? ', with its password' : ''}, so Word still applies it.` }
+      : { kind: 'info', text: `Restrict Editing (${label}) stays in the downloaded file, so Word still applies it.` });
+  }
   // Fields Word works out (tables of contents, cross-references, caption numbers) show what they
   // showed when the file was last saved in Word: after editing the text they may be out of date.
   const f = r.fields;
