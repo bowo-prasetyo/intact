@@ -213,6 +213,7 @@ export class DocxDocument {
     this.modifiedBy = '';
     this.newTitle = null;
     this.changed = false; // whether the last write changed the document (see write)
+    this.restored = false; // opened from a draft (see drafts.js): it differs from the file first opened
     // The package's parts as opened, to tell whether a save changes anything (see packageChanged).
     this.openedEntries = new Map(Object.entries(this.zip.files));
     this.tracking = this.trackRevisions;
@@ -3010,6 +3011,30 @@ export class DocxDocument {
   }
 
   /**
+   * A copy of the document as edited, to keep as a draft (see drafts.js): the edits only, without
+   * what saving adds for the recipient (the properties' record of the edit, personal information
+   * removed), so the download made later from the draft records them once, as it would have. A
+   * signed document's signatures go from the copy, as from any changed download; the document
+   * itself keeps them until it is saved. Null when there is nothing to keep: no change at all.
+   */
+  async draft(root) {
+    const keep = { updateProperties: this.updateProperties, removePersonal: this.removePersonal };
+    Object.assign(this, { updateProperties: false, removePersonal: false });
+    try {
+      await this.write(root);
+    } finally {
+      Object.assign(this, keep);
+    }
+    if (!this.changed) return null;
+    let zip = this.zip;
+    if (this.signatures) {
+      zip = await JSZip.loadAsync(await this.zip.generateAsync({ type: 'uint8array' }));
+      await removeSignatures(zip, this.signatures);
+    }
+    return zip.generateAsync({ type: 'blob', mimeType: this.format.mime, compression: 'DEFLATE' });
+  }
+
+  /**
    * For the review of a signed document: how many signatures it has, and whether saving now would
    * change it (and so remove them).
    */
@@ -3074,7 +3099,8 @@ export class DocxDocument {
     await this.writeSettings();
     await this.restorePersonal();
     // Whether the document now differs from the one opened: only then are its properties updated.
-    this.changed = this.removePersonal || this.newTitle != null || await this.packageChanged();
+    // A restored draft already holds edits to the file first opened, so it counts as changed too.
+    this.changed = this.restored || this.removePersonal || this.newTitle != null || await this.packageChanged();
     this.writeCore();
     await this.writePersonal();
   }

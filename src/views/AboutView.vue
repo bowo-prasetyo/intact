@@ -24,6 +24,7 @@
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3 and the document's own styles, such as Heading 4, Quote and Caption) and alignment</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
+        <li>The toolbar from the keyboard: Alt+F10 goes to it, the arrow keys along it, Esc back to the text</li>
         <li>Track Changes for your own edits, formatting included, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
         <li>Accept and reject tracked changes, one at a time or all at once</li>
@@ -101,9 +102,12 @@
       <p>
         The browser enforces the privacy promise: a security policy lets the page load only Intact's own
         files and connect nowhere, so a document opened here can't be sent off. Once opened online, Intact
-        also works offline, and can be installed as an app from the browser's menu; it keeps only its own
-        files, never documents. Organisations can host it themselves: each release is a zip of static
-        files, with checksums, a software bill of materials and a build attestation.
+        also works offline, and can be installed as an app from the browser's menu; for that it keeps only
+        its own files. While a document has changes you haven't downloaded, a copy of it is kept in this
+        browser, on this device only, so a reload or a crash doesn't lose them: the start page offers it
+        back. The copy goes when you download or close the document, when you discard it, and after 7 days.
+        Organisations can host it themselves: each release is a zip of static files, with checksums, a
+        software bill of materials and a build attestation.
       </p>
       <p class="version">Version {{ version }}</p>
       <p><RouterLink to="/">← Back to start</RouterLink></p>

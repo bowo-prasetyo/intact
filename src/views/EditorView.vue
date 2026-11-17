@@ -25,10 +25,14 @@
       <button v-if="lockMode" type="button" @click="editAnyway">Edit anyway</button>
     </div>
 
-    <div class="toolbar" :class="{ 'has-changes': changes.total }" role="toolbar" aria-label="Formatting" @mousedown="keepFocus">
+    <!-- One toolbar, one Tab stop: arrow keys move along it, Esc goes back to the text, Alt+F10 comes
+         back to it (see editor/toolbar.js). Its controls stay where they are: none appears, goes or
+         loses its label when the document gets its first tracked change. -->
+    <div ref="toolbarEl" class="toolbar" role="toolbar" aria-label="Editing and review" @mousedown="keepFocus">
+      <div class="tb-group">
       <fieldset class="group" :disabled="textLocked" :title="textLocked ? lockMessage : null">
-      <button type="button" title="Undo (Ctrl+Z)" @click="undo">↶</button>
-      <button type="button" title="Redo (Ctrl+Y)" @click="redo">↷</button>
+      <button type="button" title="Undo (Ctrl+Z)" aria-label="Undo" @click="undo">↶</button>
+      <button type="button" title="Redo (Ctrl+Y)" aria-label="Redo" @click="redo">↷</button>
       <span class="sep" />
       <select :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="applyBlockStyle($event.target.value)">
         <option value="normal">Normal</option>
@@ -65,29 +69,29 @@
         <option v-if="state.charStyle && !characterStyles.some((c) => c.id === state.charStyle)" :value="state.charStyle" disabled>{{ doc.styleLabel(state.charStyle) }}</option>
       </select>
       <span class="sep" />
-      <button type="button" title="Bold (Ctrl+B)" :class="{ on: state.bold }" @click="exec('bold')"><b>B</b></button>
-      <button type="button" title="Italic (Ctrl+I)" :class="{ on: state.italic }" @click="exec('italic')"><i>I</i></button>
-      <button type="button" title="Underline (Ctrl+U)" :class="{ on: state.underline }" @click="exec('underline')"><u>U</u></button>
-      <button type="button" title="Strikethrough" :class="{ on: state.strike }" @click="exec('strikeThrough')"><s>S</s></button>
-      <button type="button" title="Superscript (Ctrl+Shift+=)" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
-      <button type="button" title="Subscript (Ctrl+=)" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <button type="button" title="Bold (Ctrl+B)" aria-label="Bold" :class="{ on: state.bold }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
+      <button type="button" title="Italic (Ctrl+I)" aria-label="Italic" :class="{ on: state.italic }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
+      <button type="button" title="Underline (Ctrl+U)" aria-label="Underline" :class="{ on: state.underline }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
+      <button type="button" title="Strikethrough" aria-label="Strikethrough" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
+      <button type="button" title="Superscript (Ctrl+Shift+=)" aria-label="Superscript" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
+      <button type="button" title="Subscript (Ctrl+=)" aria-label="Subscript" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
       <span class="split">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
-        <button ref="paletteButton" type="button" class="arrow" title="Highlight colour" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
+        <button ref="paletteButton" type="button" class="arrow" title="Highlight colour" aria-label="Highlight colour options" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
       </span>
       <span class="split">
         <button type="button" :title="`Font colour: ${fontColor ? fontColor.label : 'Automatic'}`" @click="applyFontColor(fontColor)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 11.5l3.5-9 3.5 9M5.7 8.5h4.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="fontColor ? `#${fontColor.hex}` : '#000'" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
-        <button ref="colorButton" type="button" class="arrow" title="Font colour: the document’s theme and its own colours" aria-haspopup="dialog" :aria-expanded="colorPalette.open" @click="toggleColorPalette">▾</button>
+        <button ref="colorButton" type="button" class="arrow" title="Font colour: the document’s theme and its own colours" aria-label="Font colour options" aria-haspopup="dialog" :aria-expanded="colorPalette.open" @click="toggleColorPalette">▾</button>
       </span>
       <button type="button" title="Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays" @click="clearCharacterFormatting">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3h8M7 3l-2.5 9M9.5 9.5l4 4M13.5 9.5l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
       </button>
       <span class="sep" />
-      <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="alignBlocks(a.value)">
+      <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :aria-label="a.label" :class="{ on: state.align === a.value }" :aria-pressed="state.align === a.value" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
@@ -118,16 +122,19 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
       </button>
       </fieldset>
+      </div>
+      <div class="tb-group">
       <span class="sep" />
       <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
       </button>
+      <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" aria-label="Show formatting marks" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
+      <span class="sep" />
       <button ref="trackButton" type="button" class="track-toggle" :title="lockMode ? `Track Changes: ${lockMode === 'trackedChanges' ? 'always on' : tracking ? 'on' : 'off'} – ${lockMessage}` : 'Track Changes (Ctrl+Shift+E)'" :class="{ on: tracking }" :aria-pressed="tracking" :disabled="!!lockMode" @click="toggleTracking">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Track changes</span>
       </button>
-      <span v-if="changes.total" class="changes-group" role="group" aria-label="Tracked changes">
-        <span class="sep" />
+      <span class="changes-group" role="group" aria-label="Tracked changes">
         <button type="button" title="Previous change" :disabled="!changes.total" @click="gotoChange(-1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
         </button>
@@ -139,18 +146,18 @@
           <button type="button" class="labelled" title="Accept the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(true)">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" stroke="#2e7d32" stroke-width="1.8" fill="none" /></svg><span class="label">Accept</span>
           </button>
-          <button ref="acceptMenuButton" type="button" class="arrow" title="More ways to accept" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'accept'" :disabled="!changes.total" @click="openChangeMenu('accept')">▾</button>
+          <button ref="acceptMenuButton" type="button" class="arrow" title="More ways to accept" aria-label="More ways to accept" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'accept'" :disabled="!changes.total" @click="openChangeMenu('accept')">▾</button>
         </span>
         <span class="split">
           <button type="button" class="labelled" title="Reject the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(false)">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="#b3261e" stroke-width="1.8" fill="none" /></svg><span class="label">Reject</span>
           </button>
-          <button ref="rejectMenuButton" type="button" class="arrow" title="More ways to reject" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'reject'" :disabled="!changes.total" @click="openChangeMenu('reject')">▾</button>
+          <button ref="rejectMenuButton" type="button" class="arrow" title="More ways to reject" aria-label="More ways to reject" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'reject'" :disabled="!changes.total" @click="openChangeMenu('reject')">▾</button>
         </span>
         </fieldset>
-        <span class="badge" :title="changesTitle">{{ changes.total }}</span>
+        <span class="badge" :class="{ zero: !changes.total }" :title="changesTitle">{{ changes.total }}</span>
       </span>
-      <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
+      <span class="sep" />
       <button type="button" class="review-toggle" title="Review your changes" @click="openReview">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
@@ -158,10 +165,11 @@
       <button type="button" class="new-comment" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
       </button>
-      <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
+      <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :aria-label="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="badge">{{ threads.length }}</span>
       </button>
+      </div>
     </div>
 
     <FindBar v-if="findOpen" ref="findBar" :root="page" :roots="searchRoots" :edit="applyEdit" :tracked="trackedBy" @close="onFindClosed" @reveal="revealRange" />
@@ -507,6 +515,7 @@
       <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'Typing &quot; and \' gives curly quotes, -- a dash and ... an ellipsis, as in Word – click to type them as they are' : 'Quotes, dashes and ellipses are typed as they are – click to make them curly quotes, dashes and an ellipsis, as in Word'" @click="toggleAutoFormat">Smart quotes and dashes: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
+      <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
       <span role="status" aria-live="polite">{{ message }}</span>
     </footer>
   </div>
@@ -520,6 +529,7 @@ import FindBar from '../components/FindBar.vue';
 import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
 import { currentDoc, setDocument } from '../store.js';
+import { saveDraft, deleteDraft, newDraftId, MAX_AGE } from '../drafts.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 import { controlAt, controlBox, setControlText, clearPlaceholder, fieldAtSelection } from '../editor/controls.js';
@@ -536,6 +546,7 @@ import { drawLineNumbers } from '../editor/lineNumbers.js';
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
+import { rovingToolbar } from '../editor/toolbar.js';
 import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
 import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC, MATERIALS, LIGHTS } from '../docx/pictures.js';
@@ -553,7 +564,7 @@ import {
 const router = useRouter();
 const doc = currentDoc.value;
 const page = ref(null);
-const dirty = ref(false);
+const dirty = ref(!!doc.restored); // a restored draft holds changes not yet downloaded
 const saving = ref(false);
 const message = ref('');
 const words = ref(0);
@@ -594,7 +605,7 @@ watch(tracking, (on) => { doc.tracking = on; });
 // The document opens as Word would let you edit it: read-only, comments only, filling in its fields
 // only, or with every edit tracked. "Edit anyway" lifts that for this session, after saying what it
 // means; the restriction itself stays in the file, and a signature goes when the file changes.
-const unlocked = ref(false);
+const unlocked = ref(!!doc.restoredFrom?.unlocked); // as it was when the draft was kept
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** How the document may be edited here: readOnly, comments, forms, trackedChanges or null (freely). */
 const lockMode = computed(() => {
@@ -801,10 +812,10 @@ let undoStack = null;
 
 const BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li';
 const aligns = [
-  { value: 'left', title: 'Align left (Ctrl+L)', icon: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8' },
-  { value: 'center', title: 'Center (Ctrl+E)', icon: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8' },
-  { value: 'right', title: 'Align right (Ctrl+R)', icon: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' },
-  { value: 'justify', title: 'Justify (Ctrl+J)', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
+  { value: 'left', label: 'Align left', title: 'Align left (Ctrl+L)', icon: 'M2 3h12M2 6.5h8M2 10h12M2 13.5h8' },
+  { value: 'center', label: 'Center', title: 'Center (Ctrl+E)', icon: 'M2 3h12M4 6.5h8M2 10h12M4 13.5h8' },
+  { value: 'right', label: 'Align right', title: 'Align right (Ctrl+R)', icon: 'M2 3h12M6 6.5h8M2 10h12M6 13.5h8' },
+  { value: 'justify', label: 'Justify', title: 'Justify (Ctrl+J)', icon: 'M2 3h12M2 6.5h12M2 10h12M2 13.5h12' },
 ];
 
 // The sheet is the page: header (in the top margin), the editable body, footer (bottom margin). As in
@@ -995,8 +1006,96 @@ onBeforeUnmount(() => {
 });
 
 onBeforeRouteLeave(() => {
-  if (dirty.value && !window.confirm('You have unsaved changes. Leave without downloading?')) return false;
+  if (dirty.value && !window.confirm('You have unsaved changes. Leave without downloading? They will be discarded.')) return false;
+  discardDraft(); // leaving on purpose: nothing to bring back
   return true;
+});
+
+// ------------------------------------------------------------------ toolbar keyboard
+
+const toolbarEl = ref(null);
+let toolbarNav = null;
+onMounted(() => { toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus }); });
+onBeforeUnmount(() => toolbarNav?.dispose());
+
+// ------------------------------------------------------------------ draft
+
+// While there are changes not downloaded, a copy of the document is kept in this browser (see
+// drafts.js), a moment after each edit, so that a reload, a crash or a closed tab doesn't lose them;
+// the start page offers it back. It goes when the document is downloaded or closed.
+const DRAFT_DELAY = 1500;
+const draftId = (doc.draftId ||= newDraftId());
+const draftKept = ref(false);
+const draftTitle = `Your unsaved changes are kept in this browser, on this device only, so a reload, a crash or a closed tab doesn’t lose them. The copy goes when you download or close the document, and after ${Math.round(MAX_AGE / 86400000)} days.`;
+let draftTimer = 0;
+let drafting = null; // the draft being written
+let composing = false; // IME input: the page is left alone until it ends
+let leaving = false;
+
+function scheduleDraft(delay = DRAFT_DELAY) {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(keepDraft, delay);
+}
+
+async function keepDraft() {
+  draftTimer = 0;
+  if (!dirty.value || leaving || !page.value) return;
+  if (saving.value || reviewData.value || composing || drafting) { scheduleDraft(); return; }
+  drafting = (async () => {
+    const blob = await withHostsUnlocked(() => doc.draft(page.value));
+    if (!dirty.value || leaving) return; // downloaded or closed meanwhile
+    if (!blob) { // every change undone: nothing to keep
+      draftKept.value = false;
+      await deleteDraft(draftId);
+      return;
+    }
+    draftKept.value = await saveDraft({
+      id: draftId, name: `${baseName.value.trim() || 'document'}.${doc.format.ext}`, blob,
+      firstNewId: doc.firstNewId, unlocked: unlocked.value,
+    });
+  })();
+  try {
+    await drafting;
+  } catch (e) {
+    console.warn('Draft not kept:', e);
+  } finally {
+    drafting = null;
+  }
+}
+
+/** Waits for a draft being written, so that saving and the review never write at the same time. */
+async function draftSettled() {
+  while (drafting) await drafting.catch(() => {});
+}
+
+/** The draft is no longer needed: the document was downloaded, or is being left on purpose. */
+function discardDraft({ closing = true } = {}) {
+  clearTimeout(draftTimer);
+  draftTimer = 0;
+  if (closing) leaving = true;
+  draftKept.value = false;
+  draftSettled().then(() => deleteDraft(draftId));
+}
+
+/** Keeps the draft now rather than later when the tab is hidden: it may not come back. */
+function onHidden() {
+  if (document.visibilityState === 'hidden' && draftTimer) keepDraft();
+}
+onMounted(() => {
+  document.addEventListener('visibilitychange', onHidden);
+  window.addEventListener('pagehide', onHidden);
+  page.value.addEventListener('compositionstart', () => { composing = true; });
+  page.value.addEventListener('compositionend', () => { composing = false; });
+  if (doc.restoredFrom) {
+    const when = new Date(doc.restoredFrom.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    message.value = `Restored your unsaved changes from ${when}`;
+    draftKept.value = true;
+  }
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onHidden);
+  window.removeEventListener('pagehide', onHidden);
+  clearTimeout(draftTimer);
 });
 
 function onBeforeUnload(e) {
@@ -1401,6 +1500,7 @@ function countSelectedWords(range) {
 function markDirty() {
   measureFooter();
   dirty.value = true;
+  scheduleDraft();
   message.value = '';
   clearTimeout(wordTimer);
   wordTimer = setTimeout(() => {
@@ -2478,6 +2578,7 @@ const changeMenuEl = ref(null);
 const acceptMenuButton = ref(null);
 const rejectMenuButton = ref(null);
 const changesTitle = computed(() => {
+  if (!changes.total) return 'No tracked changes';
   const parts = [`${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'} to accept or reject here`];
   return parts.join('; ');
 });
@@ -3860,6 +3961,11 @@ function revealRect(rect) {
 
 /** Ctrl+F / Ctrl+H anywhere in the editor open Find (and Replace) instead of the browser's own. */
 function onWindowKeydown(e) {
+  if (e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    e.preventDefault(); // to the toolbar, as in Word and WAI-ARIA's toolbar pattern; Esc comes back
+    toolbarNav?.focus();
+    return;
+  }
   // Typing into a locked document: nothing changes (nothing is editable), so say why.
   if (textLocked.value && isEditingKey(e) && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')
     && (selectionInPage() || document.activeElement === document.body)) {
@@ -3952,6 +4058,7 @@ function requestDownload() {
 
 async function openReview() {
   closeChooser();
+  await draftSettled();
   undoStack.flush();
   const review = withHostsUnlocked(() => doc.review(page.value));
   // What happens to the restrictions and signatures in the file (see "restrictions" above).
@@ -3961,7 +4068,7 @@ async function openReview() {
   // The page's elements stay here, out of Vue's reach; the dialog gets what to say about them.
   issues = checkAccessibility(page.value, doc);
   reviewData.value = {
-    ...review, signature, protection: doc.protection, overridden: unlocked.value,
+    ...review, signature, protection: doc.protection, overridden: unlocked.value, restored: doc.restored,
     label: doc.properties.label, marking: doc.properties.marking, inspection: inspection(),
     properties: doc.propertiesUpdate(),
     accessibility: issues.map(({ targets, ...issue }) => ({ ...issue, count: targets.length })),
@@ -4051,6 +4158,7 @@ async function save() {
   if (saving.value) return;
   saving.value = true;
   try {
+    await draftSettled();
     const name = `${baseName.value.trim() || 'document'}.${doc.format.ext}`;
     const blob = await withHostsUnlocked(() => doc.save(page.value));
     doc.name = name;
@@ -4063,6 +4171,7 @@ async function save() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     dirty.value = false;
+    discardDraft({ closing: false }); // downloaded: the file is the copy now
     const n = doc.commentsRemoved.size;
     message.value = `Saved ${name}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`
       + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '');
@@ -4132,6 +4241,8 @@ async function close() {
 .toolbar button.on { background: var(--active); border-color: var(--border); }
 .toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }
 .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+/* Editing tools, then finding and reviewing: one row of controls, wrapping where it must. */
+.tb-group { display: contents; }
 
 .workspace { flex: 1; min-height: 0; display: flex; }
 .canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
@@ -4157,12 +4268,12 @@ async function close() {
 .comments-toggle { gap: 3px; padding: 0 6px; }
 .script { font-size: 14px; line-height: 1; }
 .fonts-missing { cursor: help; text-decoration: underline dotted; }
+.draft-status { cursor: help; }
 .script sup, .script sub { font-size: 9px; }
 .split { display: inline-flex; }
 .split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
 .changes-group { display: inline-flex; align-items: center; gap: 2px; }
 .labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
-@media (max-width: 1600px) { .labelled .label, .has-changes .review-toggle .label, .has-changes .track-toggle .label { display: none; } }
 .change-menu {
   position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
@@ -4241,7 +4352,7 @@ async function close() {
 .no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
 .marks-toggle { font-size: 16px !important; }
 .track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
-@media (max-width: 720px) { .track-toggle .label, .review-toggle .label { display: none; } }
+@media (max-width: 720px) { .track-toggle .label, .review-toggle .label, .labelled .label { display: none; } }
 .tracking-status { border: 0; background: none; color: #6f2dbd; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
 .author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
 .link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }
@@ -4252,6 +4363,8 @@ async function close() {
 .author-dialog .actions button, .link-dialog .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; text-align: center; }
 .author-dialog .actions .confirm, .link-dialog .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
 .badge { font-size: 11px; color: var(--muted); }
+.badge.zero { opacity: .6; }
+.changes-group .badge { min-width: 3ch; margin-left: 4px; padding: 1px 5px; border-radius: 9px; background: var(--hover); text-align: center; font-variant-numeric: tabular-nums; } /* the count changing moves nothing */
 .chooser {
   position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;
   display: flex; flex-direction: column; padding: 4px; background: var(--surface); color: inherit;

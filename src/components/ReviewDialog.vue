@@ -133,7 +133,7 @@ const summary = computed(() => {
   const layoutChanged = l && Object.keys(l.before).some((k) => l.before[k] !== l.after[k]);
   if (!parts.length) return layoutChanged || r.trackingSwitched || r.commentsRemoved.length || r.commentsAdded?.length || r.commentsEdited?.length || r.commentsResolved?.length || r.commentsReopened?.length
     ? 'The text is unchanged.'
-    : 'No changes: the file is the same as the one you opened.';
+    : r.restored ? 'No changes since the restored copy.' : 'No changes: the file is the same as the one you opened.';
   return `${parts.join(', ')}.`;
 });
 
@@ -141,6 +141,7 @@ const notes = computed(() => {
   const r = props.review;
   const out = [];
   const label = r.label?.name || (r.label ? 'set in Office' : r.marking?.value);
+  if (r.restored) out.push({ kind: 'info', text: 'Restored from the copy kept on this device: the changes made before it was kept are in the document, but only those made since are listed here.' });
   if (label) out.push({ kind: 'info', text: `${r.label ? 'Sensitivity label' : 'Classification'} “${label}” stays on the file, unchanged.` });
   // Restrictions and signatures first: they say what the recipient gets back.
   const sig = r.signature;

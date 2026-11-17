@@ -19,6 +19,19 @@
         </li>
       </ul>
 
+      <section v-if="drafts.length" class="drafts" aria-labelledby="drafts-title">
+        <h2 id="drafts-title">Unsaved changes on this device</h2>
+        <p class="drafts-note">Kept in this browser only, until you download or close the document, or for {{ maxDays }} days.</p>
+        <ul>
+          <li v-for="d in drafts" :key="d.id">
+            <span class="draft-name">{{ d.name }}</span>
+            <span class="draft-when">{{ ago(d.savedAt) }}</span>
+            <button type="button" class="restore" :disabled="busy" :aria-label="`Restore ${d.name}`" @click="restore(d)">Restore</button>
+            <button type="button" class="discard" :disabled="busy" :aria-label="`Discard the changes to ${d.name}`" @click="discard(d)">Discard</button>
+          </li>
+        </ul>
+      </section>
+
       <div class="actions">
         <button class="tile" type="button" :disabled="busy" @click="createNew">
           <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M6.5 3h7l5 5v11.5A1.5 1.5 0 0 1 17 21H6.5A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z" /><path d="M13.5 3v5h5M12 11v6M9 14h6" /></svg>
@@ -50,16 +63,35 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
-import { openFile, newDocument } from '../store.js';
+import { openFile, newDocument, openDraft } from '../store.js';
+import { listDrafts, deleteDraft, MAX_AGE } from '../drafts.js';
 
 const router = useRouter();
 const busy = ref(false);
 const error = ref('');
 const dragOver = ref(false);
 const fileInput = ref(null);
+
+// Drafts of documents left with unsaved changes (a reload, a crash, a closed tab): see drafts.js.
+const drafts = ref([]);
+const maxDays = Math.round(MAX_AGE / 86400000);
+onMounted(async () => { drafts.value = await listDrafts(); });
+const restore = (d) => run(() => openDraft(d));
+async function discard(d) {
+  await deleteDraft(d.id);
+  drafts.value = drafts.value.filter((x) => x.id !== d.id);
+}
+const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+function ago(t) {
+  const minutes = Math.round((t - Date.now()) / 60000);
+  if (minutes > -1) return 'just now';
+  if (minutes > -60) return relative.format(minutes, 'minute');
+  if (minutes > -60 * 24) return relative.format(Math.round(minutes / 60), 'hour');
+  return relative.format(Math.round(minutes / 1440), 'day');
+}
 
 const ACCEPT = [
   '.docx', '.dotx', '.docm', '.dotm',
@@ -157,6 +189,21 @@ h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: 
 .tile-icon { flex: none; fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tile-title { font-weight: 600; font-size: 1.1rem; }
 .tile-sub { color: var(--muted); font-size: .9rem; }
+.drafts {
+  margin: 0 0 24px; padding: 14px 16px; text-align: left;
+  border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; background: var(--surface);
+}
+.drafts h2 { font-size: 1rem; margin: 0 0 2px; }
+.drafts-note { margin: 0 0 8px; color: var(--muted); font-size: .9rem; }
+.drafts ul { list-style: none; margin: 0; padding: 0; }
+.drafts li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--border); }
+.drafts li:first-child { border-top: 0; }
+.draft-name { font-weight: 600; overflow-wrap: anywhere; }
+.draft-when { color: var(--muted); font-size: .9rem; margin-right: auto; }
+.drafts button { font: inherit; border-radius: 6px; padding: 5px 14px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: inherit; }
+.drafts button.restore { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.drafts button:hover:not(:disabled) { filter: brightness(1.08); }
+.drafts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .status { margin-top: 24px; color: var(--muted); }
 .error { margin-top: 24px; color: var(--danger); }
 </style>
