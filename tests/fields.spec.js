@@ -46,7 +46,7 @@ test('after editing, the review says which fields Word must update, and how', as
   await review(page).getByRole('button', { name: 'Keep editing' }).click();
   await edit(page);
   await openReview(page);
-  await expect(notes(page).locator('li.warn').first()).toHaveText(/^This document has a table of contents, cross-references and figure and table numbers, which Word updates, not Intact: .* select all \(Ctrl\+A\) and press F9/);
+  await expect(notes(page).locator('li.warn').first()).toHaveText(/^This document has a table of contents, cross-references and figure and table numbers: they may be out of date after your changes. Update them here with Update fields \(F9\) .* select all \(Ctrl\+A\) and press F9/);
   // Citations weren't added or removed: the bibliography is still right.
   await expect(notes(page)).not.toContainText('bibliography');
   // Not asked for: settings.xml stays as it was.

@@ -124,7 +124,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Print just the document ✔; lists started by typing ("1. ", "* ") ✔; line and paragraph spacing
   and indents, with Word's Paragraph dialog ✔; Grow and Shrink Font ✔; AutoCorrect symbols ✔;
   zoom ✔
-- Page numbers (and a footer for them) ✔; insert footnotes ✔; page setup for the whole document ✔
+- Page numbers (and a footer for them) ✔; insert footnotes ✔ and endnotes ✔; page setup for the
+  whole document ✔
+- Update tables of contents, cross-references and caption numbers (F9) ✔; page numbers stay Word's
 
 ## How we'll know it's working
 

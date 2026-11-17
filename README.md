@@ -159,13 +159,25 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   around it (nor its number); deleting its reference in the text hides it and renumbers the others,
   as in Word. Only notes that changed are rewritten in `footnotes.xml` / `endnotes.xml`; untouched,
   the parts come back byte for byte. Comments in notes stay with the comments panel
-- Insert footnotes (the toolbar, or Ctrl+Alt+F, as in Word): a reference at the caret (after the
-  selection) and its note below the text with the caret in it, numbered in the text's order among
-  the document's own notes, in Word's Footnote Text and Footnote Reference styles (added to
-  `styles.xml` if the file lacks them). A document without footnotes gets `footnotes.xml` (with
-  Word's separators), its relationship and content type. A note is saved only while its reference
-  is in the text: Undo, or deleting the reference, takes a new one away. The reference is tracked
-  while tracking, and so is the note's text
+- Insert footnotes and endnotes (the toolbar, or Ctrl+Alt+F and Ctrl+Alt+D, as in Word): a
+  reference at the caret (after the selection) and its note below the text with the caret in it,
+  numbered in the text's order among the document's own notes (endnotes i, ii, iii), in Word's
+  Footnote (Endnote) Text and Reference styles (added to `styles.xml` if the file lacks them). A
+  document without such notes gets `footnotes.xml` or `endnotes.xml` (with Word's separators), its
+  relationship and content type. A note is saved only while its reference is in the text: Undo, or
+  deleting the reference, takes a new one away. The reference is tracked while tracking, and so is
+  the note's text
+- Update fields (the toolbar, or F9, as Word's for the whole text): caption numbers (`SEQ`, with
+  Word's number formats, \c repeat, \r reset and \s per chapter) are renumbered in the text's
+  order; cross-references (`REF`) show the bookmarked text again, or its paragraph's number
+  (\r, \n, \w) and "above"/"below" (\p); note numbers in cross-references (`NOTEREF`) follow the
+  notes; and tables of contents (`TOC`, in Word's content control or in the text) are rebuilt from
+  the headings (\o outline levels, \u paragraphs' own levels, \t styles), as Word builds one:
+  each entry in the table's own formatting for its level (Word's TOC 1–9 styles where it has none),
+  linked to its heading with \h, through Word's `_Toc` bookmark (added to a heading without one).
+  Page numbers are Word's: an entry keeps the page number it had (a new one takes the number above
+  it), and the file asks Word to update fields when it opens it (`w:updateFields`). One undoable
+  step; the status bar says what was updated, and the review says the fields were updated here
 - Page numbers, as Word's Insert Page Number: Word's page number field (`PAGE`) at the caret in a
   header or footer. From the text: into the footer if it is empty (centred), else the caret goes to
   the footer to say where, so a footer's design stays the document's; a document without a footer
@@ -588,8 +600,7 @@ The About page shows the version.
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it), but
-  for a footnote added here; new endnotes can't be added, and pictures, tables, page breaks, new
-  comments and footnotes can't go in a note (comments already in notes can be replied to, edited,
+  for a note added here; pictures, tables, page breaks, new comments and notes can't go in a note (comments already in notes can be replied to, edited,
   resolved and deleted in the panel)
 - A page number shows 1 here, and prints as 1: Word numbers the pages when it opens the file. A
   footer made here is for all pages of the first section and those after it without their own; a
@@ -599,8 +610,11 @@ The About page shows the version.
 - Equations are shown, not edited; they need a math font to look as in Word (Windows and macOS have
   one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation
   arrays are not aligned at their `&` points
-- Fields are preserved but can't be edited (their results can, until Word updates them); editing a
-  comment's text replaces any formatting within it
+- Fields are preserved; their instructions can't be edited (their results can, until they are
+  updated). Update fields doesn't work out page numbers (`PAGE`, `PAGEREF`, `NUMPAGES`: Word does
+  when it opens the file), nor dates, document properties, mail-merge fields or citations, nor
+  fields in notes, headers and footers or written as simple fields (`w:fldSimple`); it isn't
+  tracked. Editing a comment's text replaces any formatting within it
 - Pictures, tables, page breaks and new comments can't go in a header, footer or text box (the
   status bar says so); a note reference in a header stays as it is
 - A text box's size, position and look are kept, not changed here, and it grows to show all its text
