@@ -153,6 +153,7 @@ Word's hyperlink blue and highlight colours.
 | `--active` | `#e0efee` | `#1d3b3c` | Selected item backgrounds |
 | `--hover` | `#eef3f3` | `#263033` | Hover backgrounds |
 | `--sheet-accent` / `--sheet-tint` / `--sheet-line` | `#0e6467` / `#e3f1f0` / `#9ccfcb` | same | Marks on the always-white page |
+| `--own-change` | `#6f2dbd` | `#c4a3ff` | Your tracked changes in the interface (the status bar); 7.5:1 on the surface in both |
 
 Every text pairing meets WCAG AA (white on `--brand` is 6.9:1 in light and 11.6:1 in dark).
 

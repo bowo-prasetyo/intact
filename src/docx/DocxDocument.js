@@ -2108,17 +2108,29 @@ export class DocxDocument {
     const page = this.page;
     const content = page.width - page.left - page.right;
     const px = (emu) => (emu || 0) / EMU_PER_PX;
-    // Horizontal place within the text column: from the left margin.
-    let left = 0;
+    // Horizontal place, measured from the left margin, where the picture's paragraph (its containing
+    // block: see .docx-sheet p in the editor's styles) begins. Word measures it from what relativeFrom
+    // names: the margins or column (the text's width), the page, or the left or right margin itself.
     const { h: hp, v: vp } = info;
-    if (hp.align === 'center') left = (content - w) / 2;
-    else if (hp.align === 'right' || hp.align === 'outside') left = content - w;
-    else if (hp.align == null) left = px(hp.offset) - (hp.relativeFrom === 'page' ? page.left : 0);
+    const [start, width] = {
+      page: [-page.left, page.width],
+      leftMargin: [-page.left, page.left],
+      insideMargin: [-page.left, page.left],
+      rightMargin: [content, page.right],
+      outsideMargin: [content, page.right],
+    }[hp.relativeFrom] || [0, content]; // margin, column, character
+    let left = start;
+    if (hp.align === 'center') left = start + (width - w) / 2;
+    else if (hp.align === 'right' || hp.align === 'outside') left = start + width - w;
+    else if (hp.align == null) left = start + px(hp.offset);
     const fromParagraph = !vp.relativeFrom || ['paragraph', 'line'].includes(vp.relativeFrom);
     const top = vp.align == null ? px(vp.offset) : 0;
     if (info.wrap === 'behind' || info.wrap === 'front') {
       st.position = 'absolute';
-      st.left = `${page.left + left}px`;
+      // From the paragraph, which starts at the margin; never starting past the page's right edge
+      // (--hf-right: the right margin as shown), which only matters where the page is narrower than
+      // the paper, on a phone: there the picture comes in to the edge rather than off the page.
+      st.left = `min(${left}px, calc(100% + var(--hf-right, ${page.right}px) - ${w}px))`;
       st.zIndex = info.wrap === 'behind' ? '-1' : '2';
       if (fromParagraph) st.marginTop = `${top}px`;
       else {
