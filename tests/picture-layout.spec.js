@@ -150,6 +150,6 @@ test('the review says a picture\'s layout changed, applied directly', async ({ p
   await page.locator('.app-header').getByRole('button', { name: 'Download' }).click();
   const review = page.getByRole('dialog', { name: 'Review your changes' });
   await expect(review.locator('.change')).toContainText('Layout of a picture changed (size, wrapping, position or alt text)');
-  await expect(review.locator('.notes')).toContainText('Formatting changes are applied directly, never tracked.');
+  await expect(review.locator('.notes')).toContainText('Formatting changed while Track changes was off is applied directly, not tracked.');
   await expect(review.locator('.notes')).not.toContainText('aren’t tracked');
 });

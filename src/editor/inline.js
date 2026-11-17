@@ -14,7 +14,7 @@ export const HIGHLIGHT_COLORS = [
 const hostOf = (node) => (node.nodeType === 1 ? node : node.parentElement)?.closest('[contenteditable]');
 
 /** The editable text of a range, as [{ node, s, e }] (text in deletions and read-only parts left out). */
-function portions(range) {
+export function portions(range) {
   const root = range.commonAncestorContainer;
   const out = [];
   const add = (node) => {
@@ -32,7 +32,7 @@ function portions(range) {
 }
 
 /** Splits a text node so that exactly [s, e) is one node, and returns it. */
-function isolateText({ node, s, e }) {
+export function isolateText({ node, s, e }) {
   let part = node;
   if (s > 0) part = part.splitText(s);
   if (part.length > e - s) part.splitText(e - s);
@@ -40,7 +40,7 @@ function isolateText({ node, s, e }) {
 }
 
 /** Splits `ancestor` around `node`, so that one copy of it holds only `node`; returns that copy. */
-function isolate(node, ancestor) {
+export function isolate(node, ancestor) {
   const before = document.createRange();
   before.setStart(ancestor, 0);
   before.setEndBefore(node);

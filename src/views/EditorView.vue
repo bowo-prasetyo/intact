@@ -27,6 +27,29 @@
         </optgroup>
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
       </select>
+      <select class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts" @change="applyFont($event.target.value)">
+        <option v-if="!fontValue" value="" disabled hidden>{{ state.font }}</option>
+        <optgroup label="Theme fonts">
+          <option v-for="f in fontChoices.slice(0, 2)" :key="f.value" :value="f.value">{{ f.label }}</option>
+        </optgroup>
+        <optgroup v-if="fontChoices.length > 2" label="In this document">
+          <option v-for="f in fontChoices.slice(2)" :key="f.value" :value="f.value">{{ f.label }}</option>
+        </optgroup>
+      </select>
+      <select class="size-choice" :value="sizeValue" aria-label="Font size" title="Font size" @change="applyFontSize(Number($event.target.value))">
+        <option v-if="!sizeValue" value="" disabled hidden>{{ state.size }}</option>
+        <optgroup v-if="sizeChoices.used.length" label="In this document">
+          <option v-for="z in sizeChoices.used" :key="`u${z}`" :value="String(z)">{{ z }}</option>
+        </optgroup>
+        <optgroup label="Other sizes">
+          <option v-for="z in sizeChoices.others" :key="`o${z}`" :value="String(z)">{{ z }}</option>
+        </optgroup>
+      </select>
+      <select v-if="characterStyles.length" class="char-style" :value="state.charStyle" aria-label="Character style" title="Character style: the document’s own" @change="applyCharacterStyle($event.target.value)">
+        <option value="">No character style</option>
+        <option v-for="c in characterStyles" :key="c.id" :value="c.id">{{ c.label }}</option>
+        <option v-if="state.charStyle && !characterStyles.some((c) => c.id === state.charStyle)" :value="state.charStyle" disabled>{{ doc.styleLabel(state.charStyle) }}</option>
+      </select>
       <span class="sep" />
       <button type="button" title="Bold (Ctrl+B)" :class="{ on: state.bold }" @click="exec('bold')"><b>B</b></button>
       <button type="button" title="Italic (Ctrl+I)" :class="{ on: state.italic }" @click="exec('italic')"><i>I</i></button>
@@ -40,6 +63,15 @@
         </button>
         <button ref="paletteButton" type="button" class="arrow" title="Highlight colour" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
       </span>
+      <span class="split">
+        <button type="button" :title="`Font colour: ${fontColor ? fontColor.label : 'Automatic'}`" @click="applyFontColor(fontColor)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 11.5l3.5-9 3.5 9M5.7 8.5h4.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="fontColor ? `#${fontColor.hex}` : '#000'" stroke="currentColor" stroke-width=".4" /></svg>
+        </button>
+        <button ref="colorButton" type="button" class="arrow" title="Font colour: the document’s theme and its own colours" aria-haspopup="dialog" :aria-expanded="colorPalette.open" @click="toggleColorPalette">▾</button>
+      </span>
+      <button type="button" title="Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays" @click="clearCharacterFormatting">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3h8M7 3l-2.5 9M9.5 9.5l4 4M13.5 9.5l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
+      </button>
       <span class="sep" />
       <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :class="{ on: state.align === a.value }" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
@@ -409,6 +441,20 @@
       <button type="button" class="no-color" @click="pickHighlight(null)">No colour</button>
     </div>
 
+    <div v-if="colorPalette.open" ref="colorPaletteEl" class="palette color-palette" role="dialog" aria-label="Font colour" :style="{ left: `${colorPalette.x}px`, top: `${colorPalette.y}px` }" @mousedown.prevent @keydown.esc="closeColorPalette">
+      <button type="button" class="no-color" @click="pickFontColor(null)">Automatic</button>
+      <p class="palette-label">Theme colours</p>
+      <div class="swatches">
+        <button v-for="c in colorChoices.theme" :key="c.theme" type="button" class="swatch" :class="{ current: fontColor?.hex === c.hex && fontColor?.theme === c.theme }" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="pickFontColor(c)" />
+      </div>
+      <template v-if="colorChoices.used.length">
+        <p class="palette-label">In this document</p>
+        <div class="swatches">
+          <button v-for="c in colorChoices.used" :key="c.hex" type="button" class="swatch" :class="{ current: fontColor?.hex === c.hex && !fontColor?.theme }" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="pickFontColor(c)" />
+        </div>
+      </template>
+    </div>
+
     <ReviewDialog v-if="reviewData" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
@@ -438,7 +484,8 @@
     </form>
 
     <footer class="statusbar">
-      <span>{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words</span>
+      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
+      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'Typing &quot; and \' gives curly quotes, -- a dash and ... an ellipsis, as in Word – click to type them as they are' : 'Quotes, dashes and ellipses are typed as they are – click to make them curly quotes, dashes and an ellipsis, as in Word'" @click="toggleAutoFormat">Smart quotes and dashes: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span role="status" aria-live="polite">{{ message }}</span>
@@ -474,6 +521,8 @@ import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
+import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect } from '../editor/runs.js';
+import { smartQuote, smartReplacement } from '../editor/smartTyping.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -487,12 +536,14 @@ const saving = ref(false);
 const message = ref('');
 const words = ref(0);
 const selectedWords = ref(null); // words in the selection, as Word's status bar counts them; null if none
+const chars = reactive({ withSpaces: 0, withoutSpaces: 0 }); // characters in the text, as Word counts them
+const selectedChars = ref(null);
 const baseName = ref(doc.name.replace(/\.docx$/i, ''));
 // The document's own paragraph styles, offered in the style menu after the built-in ones.
 const styleChoices = ref([]);
 const knownBlock = computed(() => ['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)
   || styleChoices.value.some((c) => `style:${c.id}` === state.block));
-const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null, table: false });
+const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null, table: false, font: '', size: 0, charStyle: '' });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
 const threads = ref([]);
@@ -592,6 +643,7 @@ onMounted(() => {
   const lang = doc.styles.language();
   if (lang && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i.test(lang)) page.value.closest('.docx-sheet').lang = lang;
   styleChoices.value = doc.styleChoices();
+  loadChoices();
   variantStyle = document.createElement('style');
   document.head.append(variantStyle);
   refreshVariants();
@@ -744,6 +796,12 @@ function onSelectionChange() {
   state.align = { start: 'left', end: 'right' }[align] || align;
   state.list = block ? doc.listKind(doc.listOf(block)) : null;
   state.table = !!tableSelection();
+  const at = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  const cs = getComputedStyle(at);
+  state.font = cs.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
+  state.size = Math.round(parseFloat(cs.fontSize) * 0.75 * 2) / 2;
+  const styled = at.closest('[data-rstyle]');
+  state.charStyle = styled && block?.contains(styled) ? styled.dataset.rstyle : '';
 }
 
 /** Back to the page with the selection it had (after a menu, a dialog or the file picker). */
@@ -823,11 +881,54 @@ function exec(cmd, value = null) {
   restoreSelection();
   if (CHAR_FORMATS.has(cmd) && inPlainField()) return;
   undoStack.flush();
-  document.execCommand(cmd, false, value);
+  const after = withTrackedRuns(selectionInPage(), () => document.execCommand(cmd, false, value));
+  if (after instanceof Range) selectRange(after);
   undoStack.commit();
   onSelectionChange();
   markDirty();
-  noteUntrackedFormatting();
+}
+
+let ownFormatting = false; // a formatting command of Intact's is running (its input events are ours)
+
+/**
+ * Runs `command`, a change to the formatting of the text in `range`. While tracking, the text whose
+ * formatting it changed records its old formatting as a tracked change (see editor/runs.js), and
+ * the range over that text is returned; otherwise what `command` returns.
+ */
+function withTrackedRuns(range, command) {
+  const opts = range && !range.collapsed ? trackedBy(range.startContainer) : null;
+  const noted = opts ? noteRuns(doc, range) : null;
+  ownFormatting = true;
+  let result;
+  try {
+    result = command();
+  } finally {
+    ownFormatting = false;
+  }
+  return noted ? trackRuns(doc, noted, opts) || result : result;
+}
+
+function selectRange(range) {
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/**
+ * Runs `change`, a change to the style, alignment or list of `blocks`. While tracking, each records
+ * its old paragraph formatting as a tracked change. `after(block)`: the element a block became.
+ */
+function withTrackedParagraphs(blocks, change, after = (b) => b) {
+  const opts = blocks.length ? trackedBy(blocks[0]) : null;
+  const olds = opts ? blocks.map((b) => doc.blockPPr(b)) : null;
+  const result = change();
+  if (opts && result !== false) {
+    blocks.forEach((b, i) => {
+      const el = after(b);
+      if (el?.isConnected && !inField(el)) doc.trackParagraph(el, olds[i], opts);
+    });
+  }
+  return result;
 }
 
 /**
@@ -839,14 +940,16 @@ function alignBlocks(value) {
   const range = selectionInPage();
   if (!range) return;
   undoStack.flush();
-  for (const block of selectedBlocks(range)) {
-    block.style.textAlign = value;
-    block.removeAttribute('align');
-  }
+  const blocks = selectedBlocks(range);
+  withTrackedParagraphs(blocks, () => {
+    for (const block of blocks) {
+      block.style.textAlign = value;
+      block.removeAttribute('align');
+    }
+  });
   undoStack.commit();
   onSelectionChange();
   markDirty();
-  noteUntrackedFormatting();
 }
 
 function afterHistory(changed) {
@@ -883,18 +986,21 @@ function applyBlockStyle(kind) {
   const tag = own ? doc.tagFor(own) : kind === 'normal' ? 'p' : kind === 'title' ? 'h1' : kind;
   const { startContainer, startOffset, endContainer, endOffset } = range;
   const replaced = new Map();
-  for (const block of selectedBlocks(range)) {
-    let el = block;
-    if (block.tagName.toLowerCase() !== tag) {
-      el = document.createElement(tag);
-      for (const attr of block.attributes) el.setAttribute(attr.name, attr.value);
-      while (block.firstChild) el.append(block.firstChild);
-      block.replaceWith(el);
-      replaced.set(block, el);
+  const blocks = selectedBlocks(range);
+  withTrackedParagraphs(blocks, () => {
+    for (const block of blocks) {
+      let el = block;
+      if (block.tagName.toLowerCase() !== tag) {
+        el = document.createElement(tag);
+        for (const attr of block.attributes) el.setAttribute(attr.name, attr.value);
+        while (block.firstChild) el.append(block.firstChild);
+        block.replaceWith(el);
+        replaced.set(block, el);
+      }
+      if (styleId) el.dataset.style = styleId;
+      else delete el.dataset.style;
     }
-    if (styleId) el.dataset.style = styleId;
-    else delete el.dataset.style;
-  }
+  }, (b) => replaced.get(b) || b);
   const r = document.createRange();
   r.setStart(replaced.get(startContainer) || startContainer, startOffset);
   r.setEnd(replaced.get(endContainer) || endContainer, endOffset);
@@ -905,7 +1011,6 @@ function applyBlockStyle(kind) {
   undoStack.commit();
   onSelectionChange();
   markDirty();
-  noteUntrackedFormatting();
 }
 
 // ------------------------------------------------------------------ lists
@@ -916,12 +1021,12 @@ function changeLists(change) {
   const range = selectionInPage();
   if (!range) return;
   undoStack.flush();
-  if (change(selectedBlocks(range)) === false) return;
+  const blocks = selectedBlocks(range);
+  if (withTrackedParagraphs(blocks, () => change(blocks)) === false) return;
   doc.renumber(page.value);
   undoStack.commit();
   onSelectionChange();
   markDirty();
-  noteUntrackedFormatting();
 }
 
 /** The list next to `block` (before or after it), if it is of `kind`. */
@@ -1009,13 +1114,24 @@ const wordCount = (text) => (text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/
 /** Counts the words in the text, its notes and text boxes, as Word does: not in headers and footers. */
 function countWords() {
   if (!page.value) return;
-  const bands = [...page.value.querySelectorAll(':scope > .docx-hf-band')].reduce((n, b) => n + wordCount(b.innerText || ''), 0);
-  words.value = wordCount(page.value.innerText || '') - bands;
+  const bands = [...page.value.querySelectorAll(':scope > .docx-hf-band')].map((b) => b.innerText || '');
+  words.value = wordCount(page.value.innerText || '') - bands.reduce((n, t) => n + wordCount(t), 0);
+  const count = (text) => [charCount(text, true), charCount(text, false)];
+  const [all, allBare] = count(page.value.innerText || '');
+  const [hf, hfBare] = bands.map((t) => count(t)).reduce((a, b) => [a[0] + b[0], a[1] + b[1]], [0, 0]);
+  chars.withSpaces = all - hf;
+  chars.withoutSpaces = allBare - hfBare;
+}
+
+/** Characters, as Word counts them: line and paragraph breaks aren't; spaces are, unless `spaces` is false. */
+function charCount(text, spaces) {
+  return [...text.replace(spaces ? /[\n\r]/g : /\s/g, '')].length;
 }
 
 /** The words in the selection (null when nothing is selected), shown as "12 of 340 words". */
 function countSelectedWords(range) {
   selectedWords.value = range && !range.collapsed ? wordCount(range.toString()) : null;
+  selectedChars.value = range && !range.collapsed ? charCount(range.toString(), true) : null;
 }
 
 function markDirty() {
@@ -1063,7 +1179,7 @@ function onInput(e) {
   undoStack.schedule();
   markDirty();
   refreshComments();
-  if (e?.inputType?.startsWith('format')) noteUntrackedFormatting();
+  if (e?.inputType?.startsWith('format') && !ownFormatting) noteUntrackedFormatting();
   // Typing in a citation or bibliography from Zotero, EndNote or Mendeley: say it will be rewritten.
   const ref = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('.field[data-ref-manager]');
   if (ref) message.value = `${ref.dataset.refManager}: ${ref.dataset.refManager.split(' ')[0]} replaces this text when it refreshes in Word – change it there instead`;
@@ -1106,6 +1222,7 @@ function onBeforeInput(e) {
     explainReadOnly(locked, true);
     return;
   }
+  if (smartTyping(e)) return;
   if (trackedBeforeInput(e)) return;
   const ranges = rangesRemovedBy(e);
   // Backspace or Delete next to hidden markers (comment ranges, bookmarks, field codes) would remove
@@ -2258,16 +2375,11 @@ function formatSelection(change) {
     return false;
   }
   undoStack.flush();
-  const after = change(range);
-  if (after) {
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(after);
-  }
+  const after = withTrackedRuns(range, () => change(range));
+  if (after) selectRange(after);
   undoStack.commit();
   onSelectionChange();
   markDirty();
-  noteUntrackedFormatting();
   return true;
 }
 
@@ -2361,23 +2473,131 @@ function runShortcut(name) {
 }
 
 /**
- * Ctrl+Space: takes bold, italic, underline, strikethrough, superscript and subscript off the
- * selection. Highlight stays, as in Word.
+ * Ctrl+Space (and Clear formatting): takes the selected text's direct formatting and character style
+ * off, as Word does: bold, italic, underline, font, size, colour… Highlight stays. At the caret, it
+ * turns bold, italic, underline, strikethrough, superscript and subscript off for what is typed next.
  */
 function clearCharacterFormatting() {
   formatSelection((range) => {
-    const after = range.collapsed ? null : setVertAlign(range, null);
-    if (after) {
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(after);
-    }
-    for (const cmd of CHAR_FORMATS) {
+    if (!range.collapsed) return restyle(doc, range, clearDirect((id) => doc.styles.byId.get(id)?.name.toLowerCase() === 'hyperlink'));
+    for (const cmd of [...CHAR_FORMATS, 'superscript', 'subscript']) {
       // A mixed selection may first turn fully on; the second toggle then turns it off.
       for (let i = 0; i < 2 && document.queryCommandState(cmd); i++) document.execCommand(cmd);
     }
     return null;
   });
+}
+
+// ------------------------------------------------------------------ fonts, sizes, colours, character styles
+
+// Only what the document already uses is offered: its theme and fonts, its sizes (and Word's
+// usual ones), its theme and text colours and its own character styles. See doc.fontChoices etc.
+const fontChoices = ref([]);
+const sizeChoices = ref({ used: [], others: [] });
+const colorChoices = ref({ theme: [], used: [] });
+const characterStyles = ref([]);
+const fontValue = computed(() => fontChoices.value.find((f) => f.name === state.font)?.value || '');
+const sizeValue = computed(() => ([...sizeChoices.value.used, ...sizeChoices.value.others].includes(state.size) ? String(state.size) : ''));
+
+function loadChoices() {
+  fontChoices.value = doc.fontChoices();
+  sizeChoices.value = doc.sizeChoices();
+  colorChoices.value = doc.colorChoices();
+  characterStyles.value = doc.characterStyles();
+  fontColor.value ||= colorChoices.value.used[0] || colorChoices.value.theme.find((c) => c.theme === 'accent1') || null;
+}
+
+/** Changes the selected text's run properties with `mutate` (see editor/runs.js), tracked while tracking. */
+function restyleSelection(mutate) {
+  const range = selectionInPage() || savedRange;
+  if (!range || range.collapsed) {
+    message.value = 'Select the text first';
+    page.value.focus();
+    return;
+  }
+  formatSelection((r) => restyle(doc, r, mutate));
+}
+
+const applyFont = (value) => restyleSelection(setFont(value));
+const applyFontSize = (pt) => restyleSelection(setSize(pt));
+const applyCharacterStyle = (id) => restyleSelection(setCharacterStyle(id || null));
+
+// The font colour last chosen (this document only): the button applies it.
+const fontColor = ref(null);
+const colorPalette = reactive({ open: false, x: 0, y: 0 });
+const colorPaletteEl = ref(null);
+const colorButton = ref(null);
+
+function applyFontColor(color) {
+  restyleSelection(setColor(color ? { hex: color.hex, theme: color.theme } : null));
+}
+
+function toggleColorPalette() {
+  if (colorPalette.open) return closeColorPalette();
+  const rect = colorButton.value.getBoundingClientRect();
+  Object.assign(colorPalette, { open: true, x: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 220)), y: rect.bottom + 4 });
+  nextTick(() => colorPaletteEl.value?.querySelector('.swatch.current, .swatch')?.focus());
+}
+
+function closeColorPalette() {
+  colorPalette.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+function pickFontColor(color) {
+  colorPalette.open = false;
+  fontColor.value = color;
+  page.value.focus();
+  restoreSelection();
+  applyFontColor(color);
+}
+
+// ------------------------------------------------------------------ smart quotes and dashes
+
+// On unless turned off, remembered in this browser, as Word's AutoFormat As You Type.
+const AUTOFORMAT_KEY = 'intact.smartTyping';
+const autoFormat = ref((() => { try { return localStorage.getItem(AUTOFORMAT_KEY) !== '0'; } catch { return true; } })());
+
+function toggleAutoFormat() {
+  autoFormat.value = !autoFormat.value;
+  try { localStorage.setItem(AUTOFORMAT_KEY, autoFormat.value ? '1' : '0'); } catch { /* this session only */ }
+  message.value = autoFormat.value ? 'Quotes and dashes are made typographic as you type' : 'Quotes and dashes are typed as they are';
+  page.value.focus();
+}
+
+/**
+ * Typing " or ' gives a curly quote (in the text's language), "--" between words an em dash,
+ * " - " an en dash and "..." an ellipsis, as Word's AutoFormat does. Typed through typeText, so it
+ * is tracked while tracking. True if the key press was dealt with here.
+ */
+function smartTyping(e) {
+  if (!autoFormat.value || e.inputType !== 'insertText' || !e.data || [...e.data].length !== 1) return false;
+  const range = selectionInPage();
+  if (!range || inPlainField() || range.startContainer.parentElement?.closest('.raw-inline, [data-raw]')) return false;
+  const block = closestBlock(range.startContainer);
+  if (!block) return false;
+  const lead = document.createRange();
+  lead.setStart(block, 0);
+  lead.setEnd(range.startContainer, range.startOffset);
+  const before = lead.toString();
+  const lang = range.startContainer.parentElement?.closest('[lang]')?.lang || doc.styles.language() || 'en';
+  if (range.collapsed) {
+    const swap = smartReplacement(before, e.data);
+    const node = range.startContainer;
+    if (swap && node.nodeType === 3 && range.startOffset >= swap.remove) {
+      e.preventDefault();
+      const sel = window.getSelection();
+      sel.setBaseAndExtent(node, range.startOffset - swap.remove, node, range.startOffset);
+      typeText(swap.text);
+      return true;
+    }
+  }
+  const quote = smartQuote(before, e.data, lang);
+  if (!quote) return false;
+  e.preventDefault();
+  typeText(quote);
+  return true;
 }
 
 /** Types `text` at the selection, as a key press would: tracked while tracking, never into read-only content. */
@@ -3617,6 +3837,12 @@ async function close() {
 .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .swatch { height: 24px; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; cursor: pointer; padding: 0; }
 .swatch.current, .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.palette-label { margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
+.color-palette { width: 210px; }
+.toolbar select.font-choice { min-width: 0; width: 132px; }
+.toolbar select.size-choice { min-width: 0; width: 58px; }
+.toolbar select.char-style { min-width: 0; width: 124px; }
+.smart-typing { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
 .no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
 .marks-toggle { font-size: 16px !important; }
 .track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
