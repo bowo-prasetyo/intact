@@ -59,6 +59,13 @@
         author's name, other properties, custom XML data and embedded files. Comments, tracked changes,
         hidden text and personal information can be removed there, as with Word's Document Inspector.
       </p>
+      <h2>Accessibility and properties</h2>
+      <p>
+        The review checks accessibility as Word's checker does: pictures without alt text, tables without a
+        header row, skipped heading levels, a missing language or title, faint text, unclear links and blank
+        paragraphs used for spacing. Show goes to each one. Saving an edit records it in the document's
+        properties (modified, by whom, revision), as Word does; the review can switch that off.
+      </p>
       <h2>What is preserved</h2>
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,

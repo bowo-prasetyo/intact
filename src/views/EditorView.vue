@@ -473,7 +473,7 @@
       </template>
     </div>
 
-    <ReviewDialog v-if="reviewData" @release="releaseAction" @personal="setRemovePersonal" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <ReviewDialog v-if="reviewData" @release="releaseAction" @personal="setRemovePersonal" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -530,6 +530,7 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { PROTECTION_LABELS } from '../docx/package.js';
+import { checkAccessibility } from '../editor/accessibility.js';
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
@@ -3910,11 +3911,78 @@ async function openReview() {
   undoStack.flush();
   const review = withHostsUnlocked(() => doc.review(page.value));
   // What happens to the restrictions and signatures in the file (see "restrictions" above).
-  const signature = await withHostsUnlocked(() => doc.signatureStatus(page.value));
+  // Written as Download would, to know whether anything changed (signatures, properties).
+  await withHostsUnlocked(() => doc.write(page.value));
+  const signature = doc.signatures ? { count: doc.signatures.count, removed: doc.changed } : null;
+  // The page's elements stay here, out of Vue's reach; the dialog gets what to say about them.
+  issues = checkAccessibility(page.value, doc);
   reviewData.value = {
     ...review, signature, protection: doc.protection, overridden: unlocked.value,
     label: doc.properties.label, marking: doc.properties.marking, inspection: inspection(),
+    properties: doc.propertiesUpdate(),
+    accessibility: issues.map(({ targets, ...issue }) => ({ ...issue, count: targets.length })),
   };
+}
+
+// ------------------------------------------------------------------ accessibility and properties
+
+let issues = []; // the last accessibility check (see editor/accessibility.js)
+const shown = new Map(); // issue id -> the target shown last, to show the next one each time
+
+/** Shows the next place an accessibility issue was found, closing the review; pictures open their alt text. */
+async function showIssue(id) {
+  const issue = issues.find((i) => i.id === id);
+  const live = issue?.targets.filter((el) => el.isConnected) || [];
+  if (!live.length) return;
+  const i = ((shown.get(id) ?? -1) + 1) % live.length;
+  shown.set(id, i);
+  const el = live[i];
+  closeReview();
+  if (el.matches('.docx-hf-part *')) {
+    const part = el.closest('.docx-hf-part');
+    hf[part.dataset.which] = Number(part.dataset.variant);
+    await nextTick();
+  }
+  el.scrollIntoView({ block: 'center' });
+  const where = live.length > 1 ? ` (${i + 1} of ${live.length})` : '';
+  if (el.matches('.picture') && !lockMode.value) {
+    showPicture(el);
+    await nextTick();
+    if (issue.id === 'alt') {
+      if (!picturePanel.open) togglePicturePanel();
+      await nextTick();
+      picturePanelEl.value?.querySelector('.alt textarea')?.focus();
+    }
+  } else if (el.matches('table')) {
+    const cell = el.querySelector('td');
+    if (cell) placeCaret(cell.querySelector(BLOCK_SELECTOR) || cell, true);
+  } else if (!el.matches('.picture')) {
+    placeCaret(el, true);
+  }
+  message.value = `${issue.title}${where}`;
+}
+
+/** The title written into the document's properties on saving (Before you release › No title). */
+async function setTitle(title) {
+  if (textLocked.value) return explainLock();
+  doc.newTitle = title.trim() || null;
+  const core = doc.properties.core.filter((p) => p.label !== 'Title');
+  if (doc.newTitle) core.unshift({ label: 'Title', value: doc.newTitle });
+  doc.properties.core = core;
+  markDirty();
+  await openReview();
+}
+
+// Recording an edit in the document's properties, as Word does: on unless switched off, which this
+// browser remembers. Who edited is the name given for comments and tracked changes.
+const PROPERTIES_KEY = 'intact.updateProperties';
+doc.updateProperties = (() => { try { return localStorage.getItem(PROPERTIES_KEY) !== '0'; } catch { return true; } })();
+watch([author, named], () => { doc.modifiedBy = named.value ? author.value : ''; }, { immediate: true });
+
+async function setUpdateProperties(on) {
+  doc.updateProperties = on;
+  try { localStorage.setItem(PROPERTIES_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+  await openReview();
 }
 
 function closeReview() {

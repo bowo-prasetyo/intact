@@ -6,9 +6,14 @@
         <p class="summary">{{ summary }}</p>
       </header>
 
+      <div class="body">
       <ul v-if="notes.length" class="notes">
         <li v-for="(n, i) in notes" :key="i" :class="n.kind">
           {{ n.text }}
+          <label v-if="n.properties" class="update-fields">
+            <input type="checkbox" :checked="review.properties.on" @change="$emit('update-properties', $event.target.checked)" />
+            Record this edit in the document’s properties
+          </label>
           <label v-if="n.fields" class="update-fields">
             <input type="checkbox" :checked="updateOnOpen" @change="setUpdateOnOpen($event.target.checked)" />
             Ask Word to update them when the file is opened
@@ -32,6 +37,21 @@
         <p v-if="!review.inspection.canChange && release.some((i) => i.action || i.personal)" class="locked">The document is restricted: choose Edit anyway to remove these here.</p>
       </section>
 
+      <section v-if="review.accessibility" class="release accessibility" aria-labelledby="a11y-title">
+        <h3 id="a11y-title">Accessibility</h3>
+        <p v-if="!review.accessibility.length" class="clean">No accessibility issues found: pictures have alt text, tables have header rows, headings are in order.</p>
+        <ul v-else>
+          <li v-for="a in review.accessibility" :key="a.id" :class="a.severity === 'tip' ? 'info' : 'warn'">
+            <span><strong>{{ SEVERITY[a.severity] }}: {{ a.title }}.</strong> {{ a.text }}</span>
+            <button v-if="a.count" type="button" @click="$emit('show-issue', a.id)">{{ a.count > 1 ? `Show (${a.count})` : 'Show' }}</button>
+            <form v-if="a.form" class="title-form" @submit.prevent="title.trim() && $emit('title', title)">
+              <input v-model="title" type="text" aria-label="Document title" placeholder="Title" :disabled="!canChangeTitle" />
+              <button type="submit" :disabled="!title.trim() || !canChangeTitle">Add title</button>
+            </form>
+          </li>
+        </ul>
+      </section>
+
       <ol v-if="shown.length" class="changes">
         <li v-for="(c, i) in shown" :key="i" class="change" :class="c.kind">
           <div class="where">
@@ -50,6 +70,7 @@
         </li>
       </ol>
       <p v-if="review.paragraphs.length > shown.length" class="more">…and {{ review.paragraphs.length - shown.length }} more</p>
+      </div>
 
       <footer>
         <label class="skip"><input type="checkbox" :checked="skip" @change="$emit('skip', $event.target.checked)" /> Download without this review next time</label>
@@ -75,7 +96,11 @@ const props = defineProps({
   author: { type: String, default: '' },
   skip: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal']);
+const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'show-issue', 'title', 'update-properties']);
+
+const SEVERITY = { error: 'Error', warning: 'Warning', tip: 'Tip' };
+const title = ref('');
+const canChangeTitle = computed(() => props.review.inspection?.canChange !== false);
 
 // Word's "update fields on open" (w:updateFields), set from the fields note.
 const updateOnOpen = ref(!!props.review.fields?.updateOnOpen);
@@ -130,6 +155,13 @@ const notes = computed(() => {
     out.push(r.overridden
       ? { kind: 'warn', text: `Restrict Editing in Word allows ${label}, and you chose to edit anyway. The restriction stays in the downloaded file${p.password ? ', with its password' : ''}, so Word still applies it.` }
       : { kind: 'info', text: `Restrict Editing (${label}) stays in the downloaded file, so Word still applies it.` });
+  }
+  // Saving records the edit in the properties, as Word does (unless switched off).
+  const pr = r.properties;
+  if (pr?.available && pr.changed) {
+    const by = pr.by ? `last saved by ${pr.by}` : `last saved by kept as “${pr.lastBy || 'nobody'}” (give your name with a comment or Track changes to record it)`;
+    const what = [`modified now`, r.inspection?.removePersonal ? null : by, pr.revision && `revision ${pr.revision}`].filter(Boolean).join(', ');
+    out.push({ kind: 'info', properties: true, text: pr.on ? `The document’s properties record this edit: ${what}.` : 'The document’s properties stay as they were: they don’t record this edit.' });
   }
   // Fields Word works out (tables of contents, cross-references, caption numbers) show what they
   // showed when the file was last saved in Word: after editing the text they may be out of date.
@@ -274,6 +306,8 @@ function excerpt(words) {
   background: var(--surface); color: var(--text); border-radius: 8px; box-shadow: 0 12px 40px rgb(0 0 0 / 30%);
 }
 header { padding: 18px 20px 6px; }
+/* Everything between the title and the buttons scrolls, so Download stays in view. */
+.body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 12px; }
 h2 { margin: 0; font-size: 18px; }
 .summary { margin: 6px 0 0; color: var(--muted); }
 .notes { margin: 8px 20px 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
@@ -286,6 +320,8 @@ h2 { margin: 0; font-size: 18px; }
 .release ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .release li { padding: 6px 10px; border-radius: 4px; background: var(--hover); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .release li > span { flex: 1 1 280px; }
+.release .title-form { flex: 1 1 100%; display: flex; gap: 6px; }
+.release .title-form input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; font: inherit; background: var(--surface); color: inherit; }
 .release .good { border-left: 3px solid #2e7d32; }
 .release .warn { border-left: 3px solid #c77700; }
 .release .info { border-left: 3px solid var(--border); }
@@ -295,7 +331,7 @@ h2 { margin: 0; font-size: 18px; }
 .release .personal { flex: 1 1 100%; display: flex; gap: 6px; align-items: flex-start; color: var(--muted); }
 .release .clean, .release .locked { margin: 0; color: var(--muted); }
 .update-fields { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-weight: 600; }
-.changes { flex: 1; overflow: auto; margin: 12px 0 0; padding: 0 20px; list-style: none; }
+.changes { margin: 12px 0 0; padding: 0 20px; list-style: none; }
 .change { padding: 10px 0; border-top: 1px solid var(--border); }
 .where { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
 .kind { font-weight: 600; }

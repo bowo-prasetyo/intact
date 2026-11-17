@@ -162,3 +162,36 @@ export function anonymize(xml) {
   }
   return changed ? serializeXml(doc) : null;
 }
+
+// ------------------------------------------------------------------ recording an edit
+
+const DCTERMS = 'http://purl.org/dc/terms/';
+const XSI = 'http://www.w3.org/2001/XMLSchema-instance';
+
+/**
+ * core.xml (`xml`) with an edit recorded, as Word records one on saving: `modified` (a Date) as
+ * dcterms:modified, `by` as cp:lastModifiedBy (left as it is when empty), the cp:revision number one
+ * up when `revision`; and `title`, when given, as dc:title.
+ */
+export function updateCore(xml, { modified, by, revision } = {}, title = null) {
+  const doc = parseXml(xml);
+  const root = doc.documentElement;
+  const set = (ns, qname, value, attrs = []) => {
+    let el = root.getElementsByTagNameNS(ns, qname.split(':')[1])[0];
+    if (!el) {
+      el = doc.createElementNS(ns, qname);
+      for (const [ans, aname, avalue] of attrs) el.setAttributeNS(ans, aname, avalue);
+      root.append(el);
+    }
+    el.textContent = value;
+  };
+  if (title != null) set(DC, 'dc:title', title);
+  if (by) set(CP, 'cp:lastModifiedBy', by);
+  if (revision) {
+    const n = Number(root.getElementsByTagNameNS(CP, 'revision')[0]?.textContent);
+    if (Number.isInteger(n) && n > 0) set(CP, 'cp:revision', String(n + 1));
+  }
+  // W3CDTF to the second, in UTC, as Word writes it.
+  if (modified) set(DCTERMS, 'dcterms:modified', modified.toISOString().replace(/\.\d+Z$/, 'Z'), [[XSI, 'xsi:type', 'dcterms:W3CDTF']]);
+  return serializeXml(doc);
+}

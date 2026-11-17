@@ -114,6 +114,7 @@ Saying no to these keeps the product small enough to keep its promises:
   Word), with an explicit "Edit anyway" ✔; say what encrypted, rights-managed and `.doc` files are ✔
 - Show the sensitivity label or classification ✔; check for hidden information before release
   (comments, tracked changes, hidden text, personal information) and remove it ✔
+- Record edits in the document's properties ✔; check accessibility before publishing ✔
 - Installable offline app (PWA)
 
 ## How we'll know it's working

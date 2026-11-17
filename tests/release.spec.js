@@ -163,7 +163,9 @@ test('personal information is removed from the download, and comes back when unt
   await openReview(page);
   await releaseSection(page).getByRole('checkbox', { name: /Remove it from the downloaded file/ }).uncheck();
   zip = await downloadFromReview(page);
-  expect(await zip.file('docProps/core.xml').async('string')).toBe(CORE);
+  const restored = await zip.file('docProps/core.xml').async('string');
+  expect(restored).toContain('<dc:creator>Officer Alpha</dc:creator>'); // back, with the edit recorded (see properties.spec.js)
+  expect(restored).toContain('<cp:revision>5</cp:revision>');
   expect(await zip.file('docProps/app.xml').async('string')).toBe(APP);
   expect(await zip.file('word/comments.xml').async('string')).toBe(COMMENTS);
   expect(await zip.file('word/document.xml').async('string')).toContain('Bob Budget');
