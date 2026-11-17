@@ -308,7 +308,16 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   it, it is one Tab stop, the arrow keys (and Home and End) move along it and Esc goes back to the text
   where the caret was. Its buttons are named and say whether they are on (bold, alignment, lists…) for
   screen readers. Its controls stay in place: Accept, Reject and the count of tracked changes are always
-  there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens
+  there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens.
+  On a phone it is one row that scrolls sideways, faded at the edge where more controls are, with
+  touch-sized buttons, and the status bar is one line
+- Help (Ctrl+/, or the toolbar's Help button) lists the keyboard shortcuts and opens the review's
+  checks without downloading: Review your changes, Before you release and Check accessibility, each
+  opening the review at its part
+- The review starts with what needs a look: a line saying how many things there are to check, then
+  warnings and choices (such as recording the edit in the properties). Before you release,
+  Accessibility, the changed paragraphs (more than five) and other notes are folded behind their
+  counts, and open by themselves when they hold something to check
 - Unsaved changes survive a reload, a crash or a closed tab: while a document has changes not
   downloaded, a copy is kept in this browser (IndexedDB), on this device only, a moment after each
   edit ("Changes kept on this device" in the status bar), and the start page offers to restore or

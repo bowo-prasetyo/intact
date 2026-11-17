@@ -104,6 +104,9 @@ test('Show goes to each place in turn', async ({ page }) => {
 test('a title can be added from the review, and is saved in the properties', async ({ page }) => {
   await openInEditor(page, await document('<w:p><w:r><w:t>Text.</w:t></w:r></w:p>', { lang: 'en-GB', title: '' }));
   await openReview(page);
+  // With tips only, the section is folded behind its count: open it, as a reader would.
+  await expect(section(page).locator('summary')).toContainText('1 tip');
+  await section(page).locator('summary').click();
   await item(page, 'No title').getByRole('textbox', { name: 'Document title' }).fill('Annual report 2026');
   await item(page, 'No title').getByRole('button', { name: 'Add title' }).click();
   await expect(section(page)).toContainText('No accessibility issues found');

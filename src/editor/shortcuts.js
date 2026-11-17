@@ -48,4 +48,6 @@ export const SHORTCUTS = [
   ['Ctrl+F, Ctrl+H', 'Find, replace'],
   ['Ctrl+Z, Ctrl+Y', 'Undo, redo'],
   ['Ctrl+S', 'Review changes and download'],
+  ['Alt+F10, then Esc', 'Go to the toolbar (arrow keys move along it), and back to the text'],
+  ['Ctrl+/', 'Help: these shortcuts, and checks before you send the file'],
 ];

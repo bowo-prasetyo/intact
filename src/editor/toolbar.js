@@ -2,6 +2,8 @@
 // single Tab stop (the control last used in it), ← and → move along its controls (wrapping around),
 // Home and End go to the first and last; Esc goes back to the text. Controls that are disabled or
 // not shown are skipped. A <select> keeps ↑ and ↓ (and Alt+↓) to choose its value.
+// On a phone the toolbar is one row that scrolls sideways: data-more ("start", "end" or "both")
+// says at which edge there are more controls than fit, for the page to fade that edge.
 
 const CONTROLS = 'button, select, input';
 
@@ -70,6 +72,19 @@ export function rovingToolbar(toolbar, { onEscape } = {}) {
   toolbar.addEventListener('focusin', onFocusin);
   sync();
 
+  function edges() {
+    const { scrollLeft: at, scrollWidth, clientWidth } = toolbar;
+    const start = at > 1;
+    const end = at + clientWidth < scrollWidth - 1;
+    const more = start && end ? 'both' : start ? 'start' : end ? 'end' : null;
+    if (more) toolbar.dataset.more = more;
+    else delete toolbar.dataset.more;
+  }
+  const resized = new ResizeObserver(edges);
+  resized.observe(toolbar);
+  toolbar.addEventListener('scroll', edges, { passive: true });
+  edges();
+
   return {
     focus() {
       sync();
@@ -77,6 +92,8 @@ export function rovingToolbar(toolbar, { onEscape } = {}) {
     },
     dispose() {
       observer.disconnect();
+      resized.disconnect();
+      toolbar.removeEventListener('scroll', edges);
       cancelAnimationFrame(frame);
       toolbar.removeEventListener('keydown', onKeydown);
       toolbar.removeEventListener('focusin', onFocusin);

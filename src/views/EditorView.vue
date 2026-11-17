@@ -158,7 +158,7 @@
         <span class="badge" :class="{ zero: !changes.total }" :title="changesTitle">{{ changes.total }}</span>
       </span>
       <span class="sep" />
-      <button type="button" class="review-toggle" title="Review your changes" @click="openReview">
+      <button type="button" class="review-toggle" title="Review your changes, what the file carries and its accessibility – any time, not only when you download" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
       </button>
@@ -168,6 +168,9 @@
       <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :aria-label="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="badge">{{ threads.length }}</span>
+      </button>
+      <button type="button" class="help-toggle" title="Help: keyboard shortcuts and checks (Ctrl+/)" aria-label="Help" aria-haspopup="dialog" @click="helpOpen = true">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.7c-.5.2-.8.6-.8 1.1v.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /><circle cx="8" cy="11.6" r=".85" fill="currentColor" /></svg>
       </button>
       </div>
     </div>
@@ -482,7 +485,9 @@
       </template>
     </div>
 
-    <ReviewDialog v-if="reviewData" @release="releaseAction" @personal="setRemovePersonal" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
+
+    <ReviewDialog v-if="reviewData" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -528,6 +533,7 @@ import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
 import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
+import HelpDialog from '../components/HelpDialog.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { saveDraft, deleteDraft, newDraftId, MAX_AGE } from '../drafts.js';
 import { createHistory } from '../editor/history.js';
@@ -3961,6 +3967,11 @@ function revealRect(rect) {
 
 /** Ctrl+F / Ctrl+H anywhere in the editor open Find (and Replace) instead of the browser's own. */
 function onWindowKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'Slash' || e.key === '/')) {
+    e.preventDefault(); // Help, as in Google Docs and many editors
+    if (!reviewData.value) helpOpen.value = !helpOpen.value;
+    return;
+  }
   if (e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault(); // to the toolbar, as in Word and WAI-ARIA's toolbar pattern; Esc comes back
     toolbarNav?.focus();
@@ -4049,6 +4060,7 @@ function applyEdit(change) {
 // choice is remembered in this browser only, and the toolbar's Review button still shows it.
 const SKIP_REVIEW_KEY = 'intact.skipReview';
 const reviewData = ref(null);
+const reviewFocus = ref('');
 const skipReview = ref((() => { try { return localStorage.getItem(SKIP_REVIEW_KEY) === '1'; } catch { return false; } })());
 
 function requestDownload() {
@@ -4056,7 +4068,20 @@ function requestDownload() {
   else openReview();
 }
 
-async function openReview() {
+// Help (Ctrl+/): the shortcuts, and the review's checks without downloading (see HelpDialog).
+const helpOpen = ref(false);
+function closeHelp() {
+  helpOpen.value = false;
+  refocus();
+}
+function checkFromHelp(part) {
+  helpOpen.value = false;
+  openReview(part);
+}
+
+/** Opens "Review your changes"; `part` ('release' or 'accessibility'): opened at that part. */
+async function openReview(part = '') {
+  reviewFocus.value = typeof part === 'string' ? part : '';
   closeChooser();
   await draftSettled();
   undoStack.flush();
@@ -4353,6 +4378,24 @@ async function close() {
 .marks-toggle { font-size: 16px !important; }
 .track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
 @media (max-width: 720px) { .track-toggle .label, .review-toggle .label, .labelled .label { display: none; } }
+/* Phones: the toolbar is one row that scrolls sideways rather than four rows over the text, faded at
+   the edge where more controls are (see editor/toolbar.js); the status bar is one line too. */
+@media (max-width: 720px) {
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding: 4px 8px; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar > *, .toolbar .tb-group > *, .toolbar .group > * { flex: none; }
+  .toolbar[data-more="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+  .toolbar[data-more="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+  .toolbar[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+  .statusbar { gap: 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .statusbar > * { flex: none; }
+}
+/* Touch: targets a finger can hit. */
+@media (pointer: coarse) {
+  .toolbar button { min-width: 40px; height: 40px; }
+  .toolbar .split .arrow { min-width: 24px !important; }
+  .toolbar select { height: 40px; }
+}
 .tracking-status { border: 0; background: none; color: #6f2dbd; font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
 .author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
 .link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }
