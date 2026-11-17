@@ -24,7 +24,7 @@ test('the page is in the document’s language, and a run in another language in
 test('the status bar counts the words selected', async ({ page }) => {
   await openInEditor(page, await withLanguage('en-GB'));
   const words = page.locator('.statusbar > span').first();
-  await expect(words).toHaveText('9 words');
+  await expect(words).toHaveText(/^9 words · \d+ characters$/);
   await page.evaluate(() => {
     const t = document.querySelector('.docx-page p').firstChild;
     const r = document.createRange();
@@ -33,7 +33,7 @@ test('the status bar counts the words selected', async ({ page }) => {
     getSelection().removeAllRanges();
     getSelection().addRange(r);
   });
-  await expect(words).toHaveText('4 of 9 words');
+  await expect(words).toHaveText(/^4 of 9 words · 17 of \d+ characters$/);
   await page.evaluate(() => getSelection().collapseToEnd());
-  await expect(words).toHaveText('9 words');
+  await expect(words).toHaveText(/^9 words · \d+ characters$/);
 });

@@ -111,8 +111,8 @@ const notes = computed(() => {
   if (f?.citationsChanged) {
     out.push({ kind: 'warn', text: 'Citations were added or removed, but the bibliography doesn’t change until it is refreshed in Word, with your reference manager (Zotero, EndNote, Mendeley) or References › Update Citations and Bibliography.' });
   }
-  if (r.insertions || r.deletions || r.rowsTracked || r.cellsTracked) {
-    const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion'), r.rowsTracked && plural(r.rowsTracked, 'table row'), r.cellsTracked && plural(r.cellsTracked, 'table cell')]
+  if (r.insertions || r.deletions || r.rowsTracked || r.cellsTracked || r.formatChanges) {
+    const what = [r.insertions && plural(r.insertions, 'insertion'), r.deletions && plural(r.deletions, 'deletion'), r.formatChanges && plural(r.formatChanges, 'formatting change'), r.rowsTracked && plural(r.rowsTracked, 'table row'), r.cellsTracked && plural(r.cellsTracked, 'table cell')]
       .filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
     out.push({ kind: 'good', text: `Recorded as tracked changes (${what}), so the recipient can accept or reject them in Word.` });
   }
@@ -123,8 +123,8 @@ const notes = computed(() => {
   if (r.paragraphs.some((p) => !p.tracked && !p.resolved && (!p.formatting || /^Picture/.test(p.formatting[0])))) {
     out.push({ kind: 'warn', text: 'Some text changes aren’t tracked: the recipient won’t see them marked. Undo them and turn on Track changes to mark them.' });
   }
-  if (r.paragraphs.some((p) => p.formatting && !/^(Paragraph break|Comment|Tracked change|Picture)/.test(p.formatting[0]))) {
-    out.push({ kind: 'info', text: 'Formatting changes are applied directly, never tracked.' });
+  if (r.paragraphs.some((p) => p.formatting && !p.tracked && !/^(Paragraph break|Comment|Tracked change|Picture)/.test(p.formatting[0]))) {
+    out.push({ kind: 'info', text: 'Formatting changed while Track changes was off is applied directly, not tracked.' });
   }
   out.push(...layoutNotes(r.layout));
   if (r.trackingSwitched) {

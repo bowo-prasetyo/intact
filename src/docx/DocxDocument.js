@@ -442,6 +442,7 @@ export class DocxDocument {
   /** Renders the document body into a DocumentFragment of editable HTML. */
   render() {
     this.raw = [];
+    this.rPrKeys = new Map();
     this.numbering = new Numbering(this.numberingXml);
     this.commentOrder = new Map(); // comment id -> marker number, in document order
     this.noteCount = { footnote: 0, endnote: 0 };
@@ -2799,6 +2800,20 @@ export class DocxDocument {
         if (n.namespaceURI === W && n.localName === 'p') { trackedParagraphs.add(n); break; }
       }
     }
+    // Formatting changed with tracking this session: the paragraphs are tracked too.
+    let formatChanges = 0;
+    const outs = [this.xml, ...NOTE_KINDS.map((k) => this.notesOut[k]).filter(Boolean), ...Object.values(this.partsOut)];
+    for (const xml of outs) {
+      for (const local of ['rPrChange', 'pPrChange']) {
+        for (const change of xml.getElementsByTagNameNS(W, local)) {
+          if (Number(wAttr(change, 'id')) < this.firstNewId) continue;
+          formatChanges++;
+          for (let n = change.parentNode; n?.nodeType === 1; n = n.parentNode) {
+            if (n.namespaceURI === W && n.localName === 'p') { trackedParagraphs.add(n); break; }
+          }
+        }
+      }
+    }
     // Rows inserted or deleted with tracking this session: their paragraphs are tracked too.
     for (const tr of this.body.getElementsByTagNameNS(W, 'tr')) {
       const trPr = wChild(tr, 'trPr');
@@ -2835,6 +2850,7 @@ export class DocxDocument {
         };
       })(),
       insertions: this.revisions.filter((r) => r.localName === 'ins').length,
+      formatChanges,
       deletions: this.revisions.filter((r) => r.localName === 'del').length,
       tracking: this.tracking,
       trackingSwitched: this.tracking !== this.trackRevisions,
@@ -3175,6 +3191,12 @@ export class DocxDocument {
       return;
     }
     if (el.tagName === 'IMG' || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') return;
+    const next = this.inlineCtx(el, ctx);
+    for (const c of el.childNodes) this.serializeInline(c, out, next, block, state);
+  }
+
+  /** The formatting context inside element `el` (a run's span or a formatting tag), from `ctx` outside it. */
+  inlineCtx(el, ctx) {
     const next = { ...ctx };
     if (el.dataset.rpr != null) {
       next.rpr = el.dataset.rpr;
@@ -3198,7 +3220,199 @@ export class DocxDocument {
       if (deco.includes('underline')) next.u = true;
       if (deco.includes('line-through')) next.s = true;
     }
-    for (const c of el.childNodes) this.serializeInline(c, out, next, block, state);
+    return next;
+  }
+
+  // ---------------------------------------------------------------- run formatting
+
+  /** The formatting elements around text node `node` in its run, outermost first (up to a paragraph, link, field…). */
+  formattingAround(node) {
+    const chain = [];
+    for (let el = node.parentElement; el && isFormatting(el); el = el.parentElement) chain.unshift(el);
+    return chain;
+  }
+
+  /** The <w:rPr> text node `node` would be saved with now (a new element), or null for none. */
+  rPrOf(node) {
+    let ctx = {};
+    for (const el of this.formattingAround(node)) ctx = this.inlineCtx(el, ctx);
+    return this.buildRPr(ctx);
+  }
+
+  /** A copy of run properties `rPr` (or empty ones) changed by `mutate`, or null if left empty. */
+  mutatedRPr(rPr, mutate) {
+    const next = rPr ? rPr.cloneNode(true) : createW(this.xml, 'rPr');
+    mutate(next);
+    return isEmptyElement(next) ? null : next;
+  }
+
+  /**
+   * Makes text node `node` a run of its own with properties `rPr` (null: none): it is taken out of
+   * the formatting around it and put in a run span rendered from `rPr`, so what shows is what is
+   * saved. A tracked formatting change in it is labelled as rendering labels one.
+   */
+  flattenRun(node, rPr) {
+    const top = this.formattingAround(node)[0] || null;
+    if (top) isolateIn(node, top); // the run's formatting elements now hold only this text
+    let made = node;
+    let target = null;
+    if (rPr) {
+      ({ span: made, target } = this.runSpan(rPr));
+      const change = formattingChange(rPr);
+      if (change) {
+        made.dataset.fmt = 'run';
+        made.title = `Formatting changed${byWhom(change)} – tracked change: Accept or Reject on the toolbar`;
+      }
+    }
+    (top || node).before(made);
+    if (target) target.append(node);
+    top?.remove();
+  }
+
+  /** Run (or paragraph) properties without a tracked change's record, for comparing: a copy, or null. */
+  withoutChange(props) {
+    if (!props) return null;
+    const c = props.cloneNode(true);
+    removeW(c, 'rPrChange', 'pPrChange');
+    return isEmptyElement(c) ? null : c;
+  }
+
+  /** True if two <w:rPr> / <w:pPr> say the same (null for none), whatever the order of their attributes. */
+  sameProps(a, b) {
+    const canon = (el) => {
+      const attrs = [...el.attributes].filter((x) => !x.name.startsWith('xmlns')).map((x) => `${x.localName}=${x.value}`).sort().join(' ');
+      return `<${el.localName} ${attrs}>${elementChildren(el).map(canon).join('')}</>`;
+    };
+    // No properties and empty properties say the same; within them, <w:i/> says something.
+    const top = (el) => (!el || isEmptyElement(el) ? '' : elementChildren(el).map(canon).join(''));
+    return top(a) === top(b);
+  }
+
+  /**
+   * Run properties `now` recording `old` as a tracked formatting change by { author, date }
+   * (<w:rPrChange>, last in <w:rPr>). A change already recorded is kept, as Word keeps the first
+   * formatting; formatting changed back to it records nothing.
+   */
+  trackedRPr(old, now, { author, date }) {
+    const prior = old && wChild(old, 'rPrChange');
+    const base = now ? now.cloneNode(true) : createW(this.xml, 'rPr');
+    removeW(base, 'rPrChange');
+    const original = prior ? wChild(prior, 'rPr') : this.withoutChange(old);
+    if (this.sameProps(original, base)) return isEmptyElement(base) ? null : base;
+    base.appendChild(prior ? prior.cloneNode(true) : this.formatChange('rPrChange', original, author, date));
+    return base;
+  }
+
+  /** A new <w:rPrChange> / <w:pPrChange> holding the old properties (`props`, or none). */
+  formatChange(kind, props, author, date) {
+    const change = createW(this.xml, kind);
+    change.setAttributeNS(W, 'w:id', String(this.nextId++));
+    change.setAttributeNS(W, 'w:author', author || 'Author');
+    if (date) change.setAttributeNS(W, 'w:date', date);
+    const inner = props ? props.cloneNode(true) : createW(this.xml, kind === 'rPrChange' ? 'rPr' : 'pPr');
+    if (kind === 'pPrChange') removeW(inner, 'rPr', 'sectPr', 'pPrChange'); // the old paragraph properties only
+    change.appendChild(inner);
+    return change;
+  }
+
+  /** The <w:pPr> paragraph `el` would be saved with now (a new element), or null; its break's tracking left out. */
+  blockPPr(el) {
+    const c = el.cloneNode(false);
+    delete c.dataset.tcMark;
+    return wChild(this.serializeParagraph(c, []), 'pPr');
+  }
+
+  /**
+   * After a change to paragraph `el`'s style, alignment or list while tracking: its properties record
+   * `old` (from blockPPr before the change) as a tracked change by { author, date } (<w:pPrChange>).
+   */
+  trackParagraph(el, old, { author, date }) {
+    const now = this.blockPPr(el) || createW(this.xml, 'pPr');
+    const prior = old && wChild(old, 'pPrChange');
+    removeW(now, 'pPrChange');
+    const strip = (p) => {
+      if (!p) return null;
+      const c = p.cloneNode(true);
+      removeW(c, 'rPr', 'sectPr', 'pPrChange');
+      return c;
+    };
+    const original = prior ? wChild(prior, 'pPr') : strip(old);
+    if (!this.sameProps(strip(original), strip(now))) now.appendChild(prior ? prior.cloneNode(true) : this.formatChange('pPrChange', original, author, date));
+    el.dataset.ppr = this.keep(now);
+    if (formattingChange(now)) el.dataset.fmtPara = '1';
+    else delete el.dataset.fmtPara;
+  }
+
+  /** The XML parts with text: the body, the notes, headers and footers (as loaded), and the styles. */
+  textParts() {
+    return [this.xml, this.styles.doc, ...Object.values(this.noteParts).map((p) => p.xml), ...this.headers.map((h) => h.xml), ...this.footers.map((f) => f.xml)];
+  }
+
+  /**
+   * The fonts to offer: the theme's heading and body fonts (as Word lists them), then the fonts the
+   * document's text and styles use: [{ value ('theme:major', 'theme:minor' or a name), label, name }].
+   */
+  fontChoices() {
+    const { major, minor } = this.styles.fonts;
+    const out = [
+      { value: 'theme:major', label: `${major} (Headings)`, name: major },
+      { value: 'theme:minor', label: `${minor} (Body)`, name: minor },
+    ];
+    const names = new Set();
+    for (const xml of this.textParts()) {
+      for (const f of xml.getElementsByTagNameNS(W, 'rFonts')) {
+        const name = wAttr(f, 'ascii') || wAttr(f, 'hAnsi');
+        if (name && !SYMBOL_FONTS.test(name)) names.add(name);
+      }
+    }
+    for (const name of [...names].filter((n) => n !== major && n !== minor).sort((a, b) => a.localeCompare(b))) out.push({ value: name, label: name, name });
+    return out;
+  }
+
+  /** Font sizes in points: { used } in the document's text and styles, and Word's usual { others }. */
+  sizeChoices() {
+    const used = new Set();
+    for (const xml of this.textParts()) {
+      for (const sz of xml.getElementsByTagNameNS(W, 'sz')) {
+        const v = Number(wAttr(sz, 'val'));
+        if (v > 0 && sz.parentNode?.localName === 'rPr') used.add(v / 2);
+      }
+    }
+    const sorted = [...used].sort((a, b) => a - b);
+    return { used: sorted, others: WORD_SIZES.filter((x) => !used.has(x)) };
+  }
+
+  /**
+   * The colours to offer for text: the theme's ten (as Word's palette shows them, with the name
+   * w:themeColor takes) and the other colours the document's text uses:
+   * { theme: [{ hex, theme, label }], used: [{ hex, label }] }.
+   */
+  colorChoices() {
+    const t = { ...DEFAULT_THEME_COLORS, ...this.styles.themeColors };
+    const theme = THEME_SLOTS.map(([slot, name, label]) => ({ hex: t[slot], theme: name, label }));
+    const themeHex = new Set(theme.map((c) => c.hex));
+    const used = new Set();
+    for (const xml of this.textParts()) {
+      for (const c of xml.getElementsByTagNameNS(W, 'color')) {
+        const v = wAttr(c, 'val');
+        if (c.parentNode?.localName === 'rPr' && !wAttr(c, 'themeColor') && v && /^[0-9a-f]{6}$/i.test(v) && !themeHex.has(v.toUpperCase())) used.add(v.toUpperCase());
+      }
+    }
+    return { theme, used: [...used].sort().map((hex) => ({ hex, label: `#${hex}` })) };
+  }
+
+  /** The document's character styles to offer: those in Word's gallery or used, not hidden: [{ id, label }]. */
+  characterStyles() {
+    const used = new Set();
+    for (const xml of this.textParts()) for (const el of xml.getElementsByTagNameNS(W, 'rStyle')) used.add(wAttr(el, 'val'));
+    const out = [];
+    for (const st of this.styles.byId.values()) {
+      if (st.type !== 'character' || st.isDefault || !st.id) continue;
+      if (/^(placeholder text|footnote reference|endnote reference|annotation reference|comment reference|line number|page number)$/i.test(st.name)) continue;
+      if (used.has(st.id) || (st.quick && (!st.hidden || st.unhideWhenUsed))) out.push({ id: st.id, label: this.styles.label(st.id), priority: st.priority });
+    }
+    out.sort((a, b) => a.priority - b.priority || a.label.localeCompare(b.label));
+    return out.map(({ id, label }) => ({ id, label }));
   }
 
   /**
@@ -3289,6 +3503,12 @@ export class DocxDocument {
   serializeRevision(el, out, ctx, block, state) {
     const kind = el.dataset.tc;
     const author = el.dataset.tcAuthor || 'Author';
+    // A change of the same kind inside one (text typed into the session's own insertion, as when
+    // typing over part of it): its text is part of the outer change; Word doesn't nest them.
+    if (out.namespaceURI === W && out.localName === kind) {
+      for (const c of el.childNodes) this.serializeInline(c, out, ctx, block, state);
+      return;
+    }
     const prev = state.revision;
     const wrap = prev && prev.kind === kind && prev.author === author && out.lastChild === prev.el
       ? prev.el : this.newRevision(kind, author, el.dataset.tcDate);
@@ -3372,9 +3592,13 @@ export class DocxDocument {
 
   /** Appends a run child, merging into the previous run when formatting is identical. */
   emitRunChild(child, out, ctx, state) {
-    const key = `${ctx.rpr ?? ''}|${ctx.b}|${ctx.i}|${ctx.u}|${ctx.s}|${ctx.va}|${ctx.hl}`;
+    // Runs whose properties say the same are joined, wherever their properties are kept.
+    const key = `${this.rPrKey(ctx.rpr)}|${ctx.b}|${ctx.i}|${ctx.u}|${ctx.s}|${ctx.va}|${ctx.hl}|${!!ctx.link}`;
     if (state.last && state.last.key === key && state.last.run.parentNode === out && out.lastChild === state.last.run) {
-      state.last.run.appendChild(child);
+      const prev = state.last.run.lastChild;
+      // Text after text in the same run is one <w:t>, as Word writes it.
+      if (child.localName === 't' && prev?.localName === 't' && prev.namespaceURI === W) prev.textContent += child.textContent;
+      else state.last.run.appendChild(child);
       return;
     }
     const run = createW(this.xml, 'r');
@@ -3383,6 +3607,15 @@ export class DocxDocument {
     run.appendChild(child);
     out.appendChild(run);
     state.last = { key, run };
+  }
+
+  /** What the run properties kept at raw index `index` say, as a string (cached): equal for equal properties. */
+  rPrKey(index) {
+    if (index == null) return '';
+    this.rPrKeys ||= new Map();
+    const rPr = this.raw[Number(index)];
+    if (!this.rPrKeys.has(index)) this.rPrKeys.set(index, isEmptyElement(rPr) ? '' : new XMLSerializer().serializeToString(rPr).replace(/ xmlns(:\w+)?="[^"]*"/g, ''));
+    return this.rPrKeys.get(index);
   }
 
   buildRPr(ctx) {
@@ -3431,6 +3664,46 @@ function columnsOf(sectPr) {
   const space = wAttr(cols, 'space');
   return { count: Math.min(count, 45), gap: (space != null ? Number(space) || 0 : 720) / 15, rule: ['1', 'true', 'on'].includes(wAttr(cols, 'sep') || '') };
 }
+
+const FORMAT_TAGS = new Set(['SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'INS', 'S', 'STRIKE', 'DEL', 'SUP', 'SUB', 'MARK', 'FONT']);
+
+/** True for an element that only formats text: a run's span or a formatting tag (not a field, tracked change, link…). */
+function isFormatting(el) {
+  if (!FORMAT_TAGS.has(el.tagName) || el.hasAttribute('contenteditable')) return false;
+  const d = el.dataset;
+  if (d.tc != null || d.raw != null || d.sdt != null || d.textbox != null || d.hl != null || d.link != null) return false;
+  return !el.classList.contains('field') && !el.classList.contains('raw-inline');
+}
+
+/**
+ * Splits `ancestor` around `node` so that it holds only `node` (and what wraps it). A piece split off
+ * with nothing in it (only the empty formatting elements a split leaves) is dropped.
+ */
+function isolateIn(node, ancestor) {
+  const split = (setRange, place) => {
+    const r = document.createRange();
+    setRange(r);
+    if (r.collapsed) return;
+    const copy = ancestor.cloneNode(false);
+    copy.append(r.extractContents());
+    if (copy.textContent || copy.querySelector('br, img, [data-raw], [data-sdt], [data-textbox]')) place(copy);
+  };
+  split((r) => { r.setStart(ancestor, 0); r.setEndBefore(node); }, (c) => ancestor.before(c));
+  split((r) => { r.setStartAfter(node); r.setEnd(ancestor, ancestor.childNodes.length); }, (c) => ancestor.after(c));
+}
+
+const SYMBOL_FONTS = /^(Symbol|Wingdings( \d)?|Webdings|MS Gothic|MS Mincho|Marlett)$/i;
+const WORD_SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+/** Word's theme colour slots in the order of its palette: [slot, w:themeColor, label]. */
+const THEME_SLOTS = [
+  ['lt1', 'background1', 'White, Background 1'], ['dk1', 'text1', 'Black, Text 1'], ['lt2', 'background2', 'Background 2'],
+  ['dk2', 'text2', 'Text 2'], ['accent1', 'accent1', 'Accent 1'], ['accent2', 'accent2', 'Accent 2'], ['accent3', 'accent3', 'Accent 3'],
+  ['accent4', 'accent4', 'Accent 4'], ['accent5', 'accent5', 'Accent 5'], ['accent6', 'accent6', 'Accent 6'],
+];
+const DEFAULT_THEME_COLORS = {
+  dk1: '000000', lt1: 'FFFFFF', dk2: '44546A', lt2: 'E7E6E6', accent1: '4472C4', accent2: 'ED7D31',
+  accent3: 'A5A5A5', accent4: 'FFC000', accent5: '5B9BD5', accent6: '70AD47',
+};
 
 function tableParts(parent, local, wrappers = []) {
   const out = [];

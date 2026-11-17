@@ -29,7 +29,7 @@ export function shortcutFor(e) {
 /** The shortcuts, as shown on the About page. */
 export const SHORTCUTS = [
   ['Ctrl+B, Ctrl+I, Ctrl+U', 'Bold, italic, underline'],
-  ['Ctrl+Space', 'Remove bold, italic, underline, strikethrough, superscript and subscript'],
+  ['Ctrl+Space', 'Clear character formatting (bold, italic, font, size, colour…); highlight stays'],
   ['Ctrl+Shift+=, Ctrl+=', 'Superscript, subscript'],
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],

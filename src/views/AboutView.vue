@@ -19,15 +19,17 @@
         <li>Tables whose rows or cells are fields, including repeating sections</li>
         <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
+        <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too); Clear formatting (Ctrl+Space)</li>
+        <li>Smart quotes and dashes as you type, in the text's language (turn them off in the status bar)</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3 and the document's own styles, such as Heading 4, Quote and Caption) and alignment</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
-        <li>Track Changes for your own edits, with your name, as Word records them</li>
+        <li>Track Changes for your own edits, formatting included, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
         <li>Accept and reject tracked changes, one at a time or all at once</li>
         <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links</li>
         <li>Links (Ctrl+K) to web pages, e-mail addresses and DOIs: insert, change or remove them</li>
-        <li>Word count of the document and of the selection; spelling checked in the document's language where the browser can</li>
+        <li>Word and character count of the document and of the selection; spelling checked in the document's language where the browser can</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>
         <li>Bulleted and numbered lists: start and end them, and change an item's level with Tab and Shift+Tab</li>
       </ul>
@@ -52,7 +54,7 @@
       <ul>
         <li>3-D lighting is worked out for a bevel, not for a picture's depth; artistic effects are Intact's own versions of Word's, drawn into the picture (in Word they can't be taken off).</li>
         <li>Tracked changes inside locked content are accepted or rejected together, not one by one; text holding someone's tracked change can't be deleted together with it.</li>
-        <li>Formatting changes, edits inside form fields and text moved by dragging aren't tracked.</li>
+        <li>Edits inside form fields, text moved by dragging and changes to a picture's layout aren't tracked.</li>
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>New footnotes can't be added; pictures, tables, page breaks and new comments can't go in a note, a header, a footer or a text box.</li>
         <li>A text box's size, position and look are kept, not changed here; a text box grows to show all its text where Word would cut it off. Groups of shapes, and shapes without text, can't be edited.</li>

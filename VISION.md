@@ -107,6 +107,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - Edit headers and footers ✔; edit the text in text boxes and shapes ✔; show designed documents as
   Word lays them out (columns, paragraph borders and shading, drop caps, character spacing, theme
   colours, embedded fonts) and name fonts shown with a substitute ✔
+- Font, size, colour and character style from the document's own ✔; clear formatting ✔; track
+  formatting changes ✔; smart quotes and dashes ✔; count characters ✔
 - Installable offline app (PWA)
 
 ## How we'll know it's working

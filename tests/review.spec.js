@@ -124,7 +124,7 @@ test('formatting, added and removed paragraphs and removed comments are all list
   await expect(entry('Commented paragraph.').locator('del')).toHaveText('Commented paragraph.');
   const notes = dialog(page).locator('.notes');
   await expect(notes).toContainText('Comment by Ann Lee removed, with the text it was attached to.');
-  await expect(notes).toContainText('Formatting changes are applied directly, never tracked.');
+  await expect(notes).toContainText('Formatting changed while Track changes was off is applied directly, not tracked.');
   await expect(notes).toContainText('Styles you used are added to the file’s style list.');
 });
 

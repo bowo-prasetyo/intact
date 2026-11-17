@@ -182,7 +182,29 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   are written as Word writes them (`w:hyperlink` with an external relationship in the part the link
   is in, so links in notes work too, and Word's Hyperlink style, added if missing); a link inserted
   while tracking is a tracked insertion. Relationships of links that are deleted again are taken out
-- The status bar counts the words in the document, and those selected ("12 of 340 words"); the
+- Fonts, sizes, colours and character styles from the document itself, as a brand template needs:
+  the Font menu offers the theme's heading and body fonts (written as Word writes theme fonts,
+  `w:asciiTheme`) and the fonts the document uses; Font size the sizes it uses, then Word's usual
+  ones; Font colour (a split button that applies the last colour) Automatic, the theme's ten colours
+  (`w:themeColor`) and the colours its text uses; Character style its own character styles (such as
+  Strong or Emphasis). Nothing else is offered, so text stays on brand. The selected text's run
+  properties are changed and the text is rebuilt as runs with them, so the page shows what is saved.
+  Clear formatting (button or Ctrl+Space) takes direct character formatting and the character style
+  off, as Word does; highlight, language and a link's style stay
+- Formatting changed while tracking is tracked, as Word records it: bold, italic, underline,
+  strikethrough, superscript, subscript, highlight, font, size, colour, character style and clear
+  formatting record the text's old run properties (`w:rPrChange`); paragraph style, alignment and
+  lists the paragraph's old properties (`w:pPrChange`). They show as tracked formatting changes and
+  are accepted or rejected here or in Word; formatting changed twice keeps the first, and formatting
+  changed back records nothing. The review lists them as tracked
+- Smart quotes and dashes as you type, as Word's AutoFormat: " and ' become curly quotes in the
+  text's language (“ ” ‘ ’ in English, „ “ in German, « » with no-break spaces in French, and others),
+  "--" between words an em dash, " - " an en dash and "..." an ellipsis. Typed as a key press would
+  be, so they are tracked while tracking. A button in the status bar turns this off (remembered in
+  this browser)
+- The status bar counts the words and characters in the document, and those selected ("12 of 340
+  words · 64 of 2104 characters"; with and without spaces in its tooltip); headers and footers aren't
+  counted, as in Word; the
   page takes the document's language (and a run in another language its own), so browsers that
   choose a spelling dictionary by language (Firefox) check the text in it
 - Track Changes for your own edits (toolbar button or Ctrl+Shift+E), as in Word: typing, deleting,
@@ -218,8 +240,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   review can be skipped, and opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S)
 - Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Shift+= / Ctrl+= (superscript / subscript),
-  Ctrl+Alt+H (highlight), Ctrl+Space (remove bold, italic, underline, strikethrough, superscript and
-  subscript; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
+  Ctrl+Alt+H (highlight), Ctrl+Space (clear character formatting; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
   (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+K (link), Ctrl+F/H,
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
@@ -355,9 +376,12 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
 
 ## Limitations
 
-- Tracked changes inside locked content are accepted or rejected together, not one by one; your own
-  formatting changes (bold, styles, alignment, lists) are applied directly, not tracked; edits inside form fields and text
-  moved by dragging aren't tracked (cut and paste is)
+- Tracked changes inside locked content are accepted or rejected together, not one by one; edits
+  inside form fields and text moved by dragging aren't tracked (cut and paste is), nor is ending a list
+  with Enter on an empty item, or a picture's layout
+- Fonts, sizes and colours are chosen from those the document uses (and Word's usual sizes), not
+  from every font installed or any colour; a theme colour's tints and shades aren't offered. A
+  font, size or colour applies to selected text, not to the word at the caret
 
 - 3-D lighting is worked out for a bevel's surface, not for a picture's depth (extrusion) or contour;
   Word's preset 3-D rotations are shown with angles as near as their look (a rotation set by angles
