@@ -118,3 +118,21 @@ test('Undo takes a tracked formatting change back', async ({ page }) => {
   const { xml } = await download(page);
   expect(xml).not.toContain('rPrChange');
 });
+
+test('text you typed while tracking can be underlined: Underline isn’t shown as on in it, and Ctrl+U underlines it', async ({ page }) => {
+  // The insertion's mark looks underlined, as in Word; it used to read as underlined text, so the
+  // button showed as on and Ctrl+U did nothing.
+  await openInEditor(page, await buildDocx(BODY));
+  await startTracking(page);
+  await select(page, 0, 'bold');
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Fresh words');
+  const underline = page.locator('.toolbar').getByRole('button', { name: 'U', exact: true });
+  await expect(underline).not.toHaveClass(/\bon\b/);
+  await select(page, 0, 'words');
+  await page.keyboard.press('ControlOrMeta+u');
+  await expect(page.locator('.docx-page .tc-ins u')).toHaveText('words');
+  await expect(underline).toHaveClass(/\bon\b/);
+  const { xml } = await download(page);
+  expect(paragraphXml(xml, 0)).toMatch(/<w:ins [^>]*w:author="Rita"[^>]*>(?:(?!<\/w:ins>).)*<w:u w:val="single"\/>(?:(?!<\/w:ins>).)*<w:t[^>]*>words<\/w:t>/);
+});

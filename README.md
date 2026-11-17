@@ -18,7 +18,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 
 ## Features
 
-- Open `.docx` (file picker or drag & drop) or start a blank document; Word templates (`.dotx`) and
+- Open `.docx` (file picker, by mouse or keyboard, or by dropping it anywhere on the start page; a file dropped where the editor can't take it is refused, never opened by the browser in the app's place) or start a blank document; Word templates (`.dotx`) and
   files with macros (`.docm`, `.dotm`) open too and are saved as what they are (the header shows the
   extension). Macros are never run: a bar says the file contains them and that they are kept, as
   they are, and "Before you release" lists them

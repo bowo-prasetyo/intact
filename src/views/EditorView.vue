@@ -3349,7 +3349,12 @@ function onDrop(e) {
   if (!files.length) return;
   e.preventDefault();
   const pictures = files.filter((f) => f.type.startsWith('image/'));
-  if (!pictures.length) return;
+  if (!pictures.length) {
+    message.value = /\.(docx|dotx|docm|dotm)$/i.test(files[0].name)
+      ? 'To open another document, download or close this one first'
+      : 'Only pictures can be dropped into the document';
+    return;
+  }
   let at = null;
   if (document.caretPositionFromPoint) {
     const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
@@ -4312,7 +4317,13 @@ async function close() {
 .docx-sheet mark[data-color="lightGray"] { background: #c0c0c0; } .docx-sheet mark[data-color="black"] { background: #000000; }
 .docx-sheet mark[data-color="white"] { background: #ffffff; }
 /* This session's tracked changes. */
-.docx-sheet .tc-ins { color: #6f2dbd; text-decoration: underline; }
+/* The insertion's underline is drawn, not a text-decoration: the browser reads a text-decoration as
+   the text being underlined, so the Underline button showed as on and Ctrl+U did nothing in it. */
+.docx-sheet .tc-ins {
+  color: #6f2dbd;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 1px;
+}
 .docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }
 .docx-sheet [data-tc-mark]::after { content: '¶'; color: #6f2dbd; margin-left: 1px; }
 .docx-sheet [data-tc-mark="del"]::after { text-decoration: line-through; }
