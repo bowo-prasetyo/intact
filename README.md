@@ -159,6 +159,24 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   around it (nor its number); deleting its reference in the text hides it and renumbers the others,
   as in Word. Only notes that changed are rewritten in `footnotes.xml` / `endnotes.xml`; untouched,
   the parts come back byte for byte. Comments in notes stay with the comments panel
+- Insert footnotes (the toolbar, or Ctrl+Alt+F, as in Word): a reference at the caret (after the
+  selection) and its note below the text with the caret in it, numbered in the text's order among
+  the document's own notes, in Word's Footnote Text and Footnote Reference styles (added to
+  `styles.xml` if the file lacks them). A document without footnotes gets `footnotes.xml` (with
+  Word's separators), its relationship and content type. A note is saved only while its reference
+  is in the text: Undo, or deleting the reference, takes a new one away. The reference is tracked
+  while tracking, and so is the note's text
+- Page numbers, as Word's Insert Page Number: Word's page number field (`PAGE`) at the caret in a
+  header or footer. From the text: into the footer if it is empty (centred), else the caret goes to
+  the footer to say where, so a footer's design stays the document's; a document without a footer
+  gets one for all pages with the number centred, in Word's Footer style: `footer1.xml`, its
+  relationship, content type and the first section's reference, written only while it is in the
+  page (Undo takes it away). Tracked while tracking
+- Page setup for the whole document, as Word's: paper size (A4, Letter, Legal, A5, A3, Executive),
+  orientation and margins (in centimetres, with Word's Normal, Narrow, Moderate and Wide), set in
+  every section's `w:pgSz` and `w:pgMar`. Only what is changed in the dialog is written; the rest of
+  each section (headers and footers, columns, gutters) is kept. The page and the printout follow,
+  and Ctrl+Z puts it back
 - Edit headers and footers in place, in the page's margins, as in Word: the first page's, other
   pages', even pages' and each section's, chosen with tabs above and below the page (a click in one
   edits it; it is dimmed until then). Typing, formatting, Undo, Find and Replace and Track Changes
@@ -569,9 +587,15 @@ The About page shows the version.
   language
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
   change first, or select around it
-- Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it);
-  new footnotes can't be added, and pictures, tables, page breaks and new comments can't go in a
-  note (comments already in notes can be replied to, edited, resolved and deleted in the panel)
+- Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it), but
+  for a footnote added here; new endnotes can't be added, and pictures, tables, page breaks, new
+  comments and footnotes can't go in a note (comments already in notes can be replied to, edited,
+  resolved and deleted in the panel)
+- A page number shows 1 here, and prints as 1: Word numbers the pages when it opens the file. A
+  footer made here is for all pages of the first section and those after it without their own; a
+  first page set to have a different footer, and even pages where they differ, don't show it, as in
+  Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns
+  and gutters stay as they are
 - Equations are shown, not edited; they need a math font to look as in Word (Windows and macOS have
   one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation
   arrays are not aligned at their `&` points

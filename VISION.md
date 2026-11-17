@@ -50,7 +50,10 @@ These are product requirements, not aspirations. A release that breaks one is a 
 Saying no to these keeps the product small enough to keep its promises:
 
 - **Writing documents from scratch.** A blank document exists for quick notes, but this is not a
-  word processor. Page layout, styles management and advanced typesetting are out of scope.
+  word processor. Page layout, styles management and advanced typesetting are out of scope. The
+  few slices of them that fixing a document needs are in: page numbers in a footer (or a new
+  footer for them), new footnotes, and paper size, orientation and margins for the whole document.
+  Changing a style's definition, designing headers and footers, and per-section layout stay out.
 - **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
   a server, and they conflict with "private".
 - **Other formats.** No spreadsheets, slides, PDF or legacy `.doc`. Do one format well.
@@ -121,6 +124,7 @@ Saying no to these keeps the product small enough to keep its promises:
 - Print just the document ✔; lists started by typing ("1. ", "* ") ✔; line and paragraph spacing
   and indents, with Word's Paragraph dialog ✔; Grow and Shrink Font ✔; AutoCorrect symbols ✔;
   zoom ✔
+- Page numbers (and a footer for them) ✔; insert footnotes ✔; page setup for the whole document ✔
 
 ## How we'll know it's working
 
