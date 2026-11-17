@@ -42,7 +42,7 @@ import { ommlToMathml, isEquation } from './omml.js';
 import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
 import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
-import { propertyPaths, readProperties, personalParts, anonymize } from './properties.js';
+import { propertyPaths, readProperties, personalParts, anonymize, updateCore } from './properties.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -198,6 +198,13 @@ export class DocxDocument {
     this.removePersonal = false;
     this.removePersonalSet = !!wChild(settings?.xml.documentElement, 'removePersonalInformation');
     this.anonymized = new Map(); // part -> { written, original }: what writePersonal changed
+    // Saving an edit records it in the core properties, as Word does (see writeCore): when, by whom
+    // (modifiedBy, set by the editor), the revision number; and a title, if one is given here.
+    this.coreOriginal = this.propertyPaths.core ? await this.text(this.propertyPaths.core) : null;
+    this.updateProperties = true;
+    this.modifiedBy = '';
+    this.newTitle = null;
+    this.changed = false; // whether the last write changed the document (see write)
     // The package's parts as opened, to tell whether a save changes anything (see packageChanged).
     this.openedEntries = new Map(Object.entries(this.zip.files));
     this.tracking = this.trackRevisions;
@@ -2912,7 +2919,7 @@ export class DocxDocument {
     await this.write(root);
     if (this.signatures) {
       // Unchanged, the file goes back exactly as it was opened, so its signatures stay valid.
-      this.signaturesRemoved = await this.packageChanged();
+      this.signaturesRemoved = this.changed;
       if (!this.signaturesRemoved) return new Blob([this.sourceBytes], { type: DOCX_MIME });
       // Changed, they no longer match the document: Word removes them when a signed document is
       // edited, and so does Intact, rather than send a file that Word shows as invalidly signed.
@@ -2928,7 +2935,7 @@ export class DocxDocument {
   async signatureStatus(root) {
     if (!this.signatures) return null;
     await this.write(root);
-    return { count: this.signatures.count, removed: await this.packageChanged() };
+    return { count: this.signatures.count, removed: this.changed };
   }
 
   /**
@@ -2938,7 +2945,9 @@ export class DocxDocument {
    * when signatures are removed, which follows from a change elsewhere.
    */
   async packageChanged() {
-    const skip = new Set(['_rels/.rels', '[Content_Types].xml', ...(this.signatures?.parts || [])]);
+    // The core and app properties change because something else did (see writeCore, writePersonal).
+    const skip = new Set(['_rels/.rels', '[Content_Types].xml', ...(this.signatures?.parts || []),
+      this.propertyPaths?.core, this.propertyPaths?.app].filter(Boolean));
     const now = Object.entries(this.zip.files).filter(([path, f]) => !f.dir && !skip.has(path));
     const before = [...this.openedEntries].filter(([path, f]) => !f.dir && !skip.has(path));
     if (now.length !== before.length) return true;
@@ -2962,10 +2971,9 @@ export class DocxDocument {
   /**
    * Notes what the main part saves as before anything is edited (`root` as rendered), so that
    * packageChanged tells an edit from the tidying any save does (xml:space, runs merged), as notes,
-   * headers and footers are compared with how they saved when rendered. Only signed documents need it.
+   * headers and footers are compared with how they saved when rendered.
    */
   markPristine(root) {
-    if (!this.signatures) return;
     this.update(root);
     this.pristineMain = serializeXml(this.xml);
   }
@@ -2983,7 +2991,46 @@ export class DocxDocument {
     this.writeParts();
     this.writeStories();
     await this.writeSettings();
+    await this.restorePersonal();
+    // Whether the document now differs from the one opened: only then are its properties updated.
+    this.changed = this.removePersonal || this.newTitle != null || await this.packageChanged();
+    this.writeCore();
     await this.writePersonal();
+  }
+
+  /**
+   * Records the edit in docProps/core.xml, as Word does on saving: modified now, last modified by
+   * whoever edited (if they gave their name), the revision number one up; and the title given here.
+   * Always worked out from the properties as opened, so saving twice counts one revision; with
+   * nothing changed (or updating switched off), the part as opened goes back.
+   */
+  writeCore() {
+    const path = this.propertyPaths?.core;
+    if (!path || this.coreOriginal == null) return;
+    const update = this.changed && this.updateProperties;
+    if (!update && this.newTitle == null) {
+      if (this.coreWritten && this.zip.files[path] === this.coreWritten) this.zip.file(path, this.coreOriginal);
+      this.coreWritten = null;
+      return;
+    }
+    const xml = updateCore(this.coreOriginal, update ? { modified: new Date(), by: this.modifiedBy, revision: true } : {}, this.newTitle);
+    this.zip.file(path, xml);
+    this.coreWritten = this.zip.files[path];
+  }
+
+  /** What saving records in the properties, for the review: { available, on, by, revision, lastBy }. */
+  propertiesUpdate() {
+    const core = this.coreOriginal ? parseXml(this.coreOriginal).documentElement : null;
+    const value = (local) => core?.getElementsByTagNameNS('*', local)[0]?.textContent.trim() || '';
+    const revision = Number(value('revision'));
+    return {
+      available: !!core,
+      changed: this.changed,
+      on: this.updateProperties,
+      by: this.modifiedBy,
+      lastBy: value('lastModifiedBy'),
+      revision: Number.isInteger(revision) && revision > 0 ? revision + 1 : null,
+    };
   }
 
   /**
@@ -2992,11 +3039,15 @@ export class DocxDocument {
    * and manager properties. A part changed by an earlier save and not rewritten since goes back to
    * how it was first, so switching the option off restores everything.
    */
-  async writePersonal() {
+  async restorePersonal() {
     for (const [path, { written, original }] of this.anonymized) {
       if (this.zip.files[path] === written) this.zip.file(path, await original.async('uint8array'));
     }
     this.anonymized.clear();
+  }
+
+  async writePersonal() {
+    await this.restorePersonal();
     if (!this.removePersonal) return;
     for (const path of personalParts(this.zip, this.mainDir, this.propertyPaths)) {
       const original = this.zip.files[path];

@@ -268,6 +268,19 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Other document and custom properties, custom XML data, embedded files and macros are listed, for
   you to check in Word. Removing is one undoable step each, and not offered while the document is
   restricted
+- Saving an edit records it in the document's properties, as Word does: modified now, last modified
+  by you (the name given for comments and Track Changes; without one, the last name is kept and the
+  review says so) and the revision number one up, worked out from the file as opened so saving twice
+  counts once. Nothing changed, nothing is recorded: the properties come back byte for byte. The
+  review shows what is recorded and can switch it off (remembered in this browser); with personal
+  information removed, no name is recorded
+- Check accessibility before publishing, as Word's Accessibility Checker does (Section 508,
+  EN 301 549, WCAG): the review lists errors (pictures without alt text, unless marked decorative;
+  tables without a header row), warnings (skipped heading levels, no document language, text whose
+  colour is below WCAG's contrast minimum) and tips (unclear link text such as "click here", blank
+  paragraphs used for spacing, pictures not in line with text, no title). "Show" goes to each place
+  in turn; for a picture it opens its alt text, and a missing title can be added there and is saved
+  in the document's properties
 - Files that aren't `.docx` packages say what they are, instead of failing to unzip: encrypted with a
   password, protected by rights management (a sensitivity label that encrypts, or IRM), a Word
   97–2003 `.doc` with a `.docx` name, or something else. Intact doesn't decrypt files
@@ -463,5 +476,9 @@ The build uses relative asset paths (`base: './'`), so it works under any reposi
   other than personal ones, custom XML data, embedded files or macros (it lists them), nor hidden
   text set by a character style or inside content Intact keeps as it is (it says so). A sensitivity
   label can't be applied or changed here
+- The accessibility check reads the page as shown: it doesn't check reading order, colour alone
+  conveying meaning, or charts, equations and objects kept as they are; a table's header row, the
+  document's language and a picture's "decorative" mark are set in Word. Without a core properties
+  part, a title can't be added here
 - Signatures are recognised, not verified: Intact doesn't check that a signature is valid or who
   signed
