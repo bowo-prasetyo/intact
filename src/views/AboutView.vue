@@ -42,6 +42,15 @@
         isn't on your device is named in the status bar.
         Click anything read-only, or try to type in it, and the status bar says what it is and where to edit it.
       </p>
+      <h2>Protected, signed and encrypted documents</h2>
+      <p>
+        A document with Word's Restrict Editing on opens as Word allows: read-only, comments only, filling in
+        its fields only, or with every edit tracked. A digitally signed document, or one marked read-only
+        recommended, opens read-only. The bar above the toolbar says what applies; Edit anyway lifts it for
+        the session, after saying what that means. The restriction stays in the file. A signed document
+        downloaded unchanged keeps its signature; edited, its signature is removed, as in Word. Files
+        encrypted with a password or by a sensitivity label can't be opened here, and say so.
+      </p>
       <h2>What is preserved</h2>
       <p>
         Everything the editor does not understand is kept as-is when you save: fonts, colours, sizes,

@@ -45,7 +45,7 @@
             <template v-else>
               <p v-for="(text, i) in c.paragraphs" :key="i" class="text">{{ text }}</p>
               <p v-if="!c.paragraphs.length" class="text empty">(no text)</p>
-              <div v-if="t.anchored" class="comment-actions" @click.stop>
+              <div v-if="t.anchored && !readOnly" class="comment-actions" @click.stop>
                 <button type="button" class="link" :title="`Edit this comment by ${c.author}`" @click="startEdit(c)">Edit</button>
                 <button v-if="c !== t" type="button" class="link" title="Delete this reply (Undo brings it back)" @click="$emit('delete', c.id)">Delete</button>
               </div>
@@ -68,7 +68,7 @@
             <span v-if="t.done" class="tag resolved">Resolved</span>
             <span v-if="t.isNew" class="tag new">New</span>
           </div>
-          <div v-if="t.anchored" class="thread-actions" @click.stop>
+          <div v-if="t.anchored && !readOnly" class="thread-actions" @click.stop>
             <button type="button" @click="startReply(t)">Reply</button>
             <button type="button" @click="$emit('resolve', { id: t.id, done: !t.done })">{{ t.done ? 'Reopen' : 'Resolve' }}</button>
             <button type="button" title="Delete this comment and its replies (Undo brings them back)" @click="$emit('delete', t.id)">Delete</button>
@@ -88,6 +88,7 @@ const props = defineProps({
   active: { type: String, default: null },
   composing: { type: Boolean, default: false }, // show the box for a new comment
   askName: { type: Boolean, default: false }, // the author's name isn't known yet
+  readOnly: { type: Boolean, default: false }, // comments can't be changed (the document is restricted)
 });
 const emit = defineEmits(['select', 'close', 'post', 'cancel', 'delete', 'reply', 'edit', 'resolve']);
 
