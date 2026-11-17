@@ -54,7 +54,7 @@ test('the toolbar is one Tab stop: arrows move along it, Esc goes back to the te
   await page.keyboard.press('Home');
   await expect(undo).toBeFocused();
   await page.keyboard.press('ArrowLeft'); // wraps around to the last control
-  await expect(toolbar(page).getByRole('button', { name: /^New comment/ })).toBeFocused();
+  await expect(toolbar(page).getByRole('button', { name: 'Help', exact: true })).toBeFocused();
   await page.keyboard.press('Home');
   // Tab leaves the toolbar at once (for the text, where Tab types a tab, as in Word); Alt+F10 comes
   // back to the control last used.

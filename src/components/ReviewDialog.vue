@@ -4,72 +4,90 @@
       <header>
         <h2 id="review-title">Review your changes</h2>
         <p class="summary">{{ summary }}</p>
+        <p class="overview" :class="{ warn: toCheck }">{{ toCheck ? `${plural(toCheck, 'thing')} to check below.` : 'Nothing to check: ready to download.' }}</p>
       </header>
 
       <div class="body">
-      <ul v-if="notes.length" class="notes">
-        <li v-for="(n, i) in notes" :key="i" :class="n.kind">
-          {{ n.text }}
-          <label v-if="n.properties" class="update-fields">
-            <input type="checkbox" :checked="review.properties.on" @change="$emit('update-properties', $event.target.checked)" />
-            Record this edit in the document’s properties
-          </label>
-          <label v-if="n.fields" class="update-fields">
-            <input type="checkbox" :checked="updateOnOpen" @change="setUpdateOnOpen($event.target.checked)" />
-            Ask Word to update them when the file is opened
-          </label>
-        </li>
-      </ul>
-
-      <section v-if="review.inspection" class="release" aria-labelledby="release-title">
-        <h3 id="release-title">Before you release</h3>
-        <p v-if="!release.length" class="clean">Nothing hidden: no comments, tracked changes, hidden text or personal information.</p>
-        <ul v-else>
-          <li v-for="item in release" :key="item.id" :class="item.kind">
-            <span>{{ item.text }}</span>
-            <button v-if="item.action" type="button" :disabled="!review.inspection.canChange" @click="$emit('release', item.action)">{{ item.button }}</button>
-            <label v-if="item.personal" class="personal">
-              <input type="checkbox" :checked="review.inspection.removePersonal" :disabled="!review.inspection.canChange" @change="$emit('personal', $event.target.checked)" />
-              Remove it from the downloaded file: names on comments and tracked changes become “Author”, and the author, last saved by, company and manager go, as with Word’s Document Inspector
+      <!-- What needs a look stays open: warnings, and notes with a choice to make. The rest folds
+           into sections with a count, opened when there is something to check in them. -->
+      <div v-if="notes.length" class="notes">
+        <ul v-if="attention.length" class="note-list">
+          <li v-for="(n, i) in attention" :key="i" :class="n.kind">
+            {{ n.text }}
+            <label v-if="n.properties" class="update-fields">
+              <input type="checkbox" :checked="review.properties.on" @change="$emit('update-properties', $event.target.checked)" />
+              Record this edit in the document’s properties
+            </label>
+            <label v-if="n.fields" class="update-fields">
+              <input type="checkbox" :checked="updateOnOpen" @change="setUpdateOnOpen($event.target.checked)" />
+              Ask Word to update them when the file is opened
             </label>
           </li>
         </ul>
-        <p v-if="!review.inspection.canChange && release.some((i) => i.action || i.personal)" class="locked">The document is restricted: choose Edit anyway to remove these here.</p>
+        <details v-if="details.length" class="section">
+          <summary><span class="section-title">More about this download</span> <span class="count">{{ details.length }}</span></summary>
+          <ul class="note-list">
+            <li v-for="(n, i) in details" :key="i" :class="n.kind">{{ n.text }}</li>
+          </ul>
+        </details>
+      </div>
+
+      <section v-if="review.inspection" class="release" aria-labelledby="release-title">
+        <details ref="releaseEl" class="section" :open="releaseOpen">
+          <summary><h3 id="release-title" class="section-title">Before you release</h3> <span class="count" :class="{ warn: releaseWarnings }">{{ releaseCount }}</span></summary>
+          <p v-if="!release.length" class="clean">Nothing hidden: no comments, tracked changes, hidden text or personal information.</p>
+          <ul v-else>
+            <li v-for="item in release" :key="item.id" :class="item.kind">
+              <span>{{ item.text }}</span>
+              <button v-if="item.action" type="button" :disabled="!review.inspection.canChange" @click="$emit('release', item.action)">{{ item.button }}</button>
+              <label v-if="item.personal" class="personal">
+                <input type="checkbox" :checked="review.inspection.removePersonal" :disabled="!review.inspection.canChange" @change="$emit('personal', $event.target.checked)" />
+                Remove it from the downloaded file: names on comments and tracked changes become “Author”, and the author, last saved by, company and manager go, as with Word’s Document Inspector
+              </label>
+            </li>
+          </ul>
+          <p v-if="!review.inspection.canChange && release.some((i) => i.action || i.personal)" class="locked">The document is restricted: choose Edit anyway to remove these here.</p>
+        </details>
       </section>
 
       <section v-if="review.accessibility" class="release accessibility" aria-labelledby="a11y-title">
-        <h3 id="a11y-title">Accessibility</h3>
-        <p v-if="!review.accessibility.length" class="clean">No accessibility issues found: pictures have alt text, tables have header rows, headings are in order.</p>
-        <ul v-else>
-          <li v-for="a in review.accessibility" :key="a.id" :class="a.severity === 'tip' ? 'info' : 'warn'">
-            <span><strong>{{ SEVERITY[a.severity] }}: {{ a.title }}.</strong> {{ a.text }}</span>
-            <button v-if="a.count" type="button" @click="$emit('show-issue', a.id)">{{ a.count > 1 ? `Show (${a.count})` : 'Show' }}</button>
-            <form v-if="a.form" class="title-form" @submit.prevent="title.trim() && $emit('title', title)">
-              <input v-model="title" type="text" aria-label="Document title" placeholder="Title" :disabled="!canChangeTitle" />
-              <button type="submit" :disabled="!title.trim() || !canChangeTitle">Add title</button>
-            </form>
-          </li>
-        </ul>
+        <details ref="a11yEl" class="section" :open="a11yOpen">
+          <summary><h3 id="a11y-title" class="section-title">Accessibility</h3> <span class="count" :class="{ warn: a11yProblems }">{{ a11yCount }}</span></summary>
+          <p v-if="!review.accessibility.length" class="clean">No accessibility issues found: pictures have alt text, tables have header rows, headings are in order.</p>
+          <ul v-else>
+            <li v-for="a in review.accessibility" :key="a.id" :class="a.severity === 'tip' ? 'info' : 'warn'">
+              <span><strong>{{ SEVERITY[a.severity] }}: {{ a.title }}.</strong> {{ a.text }}</span>
+              <button v-if="a.count" type="button" @click="$emit('show-issue', a.id)">{{ a.count > 1 ? `Show (${a.count})` : 'Show' }}</button>
+              <form v-if="a.form" class="title-form" @submit.prevent="title.trim() && $emit('title', title)">
+                <input v-model="title" type="text" aria-label="Document title" placeholder="Title" :disabled="!canChangeTitle" />
+                <button type="submit" :disabled="!title.trim() || !canChangeTitle">Add title</button>
+              </form>
+            </li>
+          </ul>
+        </details>
       </section>
 
-      <ol v-if="shown.length" class="changes">
-        <li v-for="(c, i) in shown" :key="i" class="change" :class="c.kind">
-          <div class="where">
-            <span>{{ c.where ? `${c.where}, paragraph ${c.number}` : `Paragraph ${c.number}` }}{{ c.inTable ? ' (in a table)' : '' }}</span>
-            <span class="kind">{{ KIND[c.kind] }}</span>
-            <span v-if="c.tracked" class="tag">Tracked</span>
-            <span v-else-if="c.resolved" class="tag resolved">Change accepted or rejected</span>
-          </div>
-          <p class="words">
-            <template v-for="(w, k) in excerpt(c.words)" :key="k"><del v-if="w.type === 'del'">{{ w.text }}</del><ins v-else-if="w.type === 'ins'">{{ w.text }}</ins><span v-else-if="w.type === 'gap'" class="gap">…</span><span v-else>{{ w.text }}</span></template>
-            <span v-if="isEmpty(c.words)" class="empty">(empty paragraph)</span>
-          </p>
-          <ul v-if="c.formatting" class="formatting">
-            <li v-for="f in c.formatting" :key="f">{{ f }}</li>
-          </ul>
-        </li>
-      </ol>
-      <p v-if="review.paragraphs.length > shown.length" class="more">…and {{ review.paragraphs.length - shown.length }} more</p>
+      <details v-if="shown.length" class="section changes-section" :open="review.paragraphs.length <= OPEN_CHANGES">
+        <summary><span class="section-title">Changed paragraphs</span> <span class="count">{{ review.paragraphs.length }}</span></summary>
+        <ol class="changes">
+          <li v-for="(c, i) in shown" :key="i" class="change" :class="c.kind">
+            <div class="where">
+              <span>{{ c.where ? `${c.where}, paragraph ${c.number}` : `Paragraph ${c.number}` }}{{ c.inTable ? ' (in a table)' : '' }}</span>
+              <span class="kind">{{ KIND[c.kind] }}</span>
+              <span v-if="c.tracked" class="tag">Tracked</span>
+              <span v-else-if="c.resolved" class="tag resolved">Change accepted or rejected</span>
+            </div>
+            <p class="words">
+              <template v-for="(w, k) in excerpt(c.words)" :key="k"><del v-if="w.type === 'del'">{{ w.text }}</del><ins v-else-if="w.type === 'ins'">{{ w.text }}</ins><span v-else-if="w.type === 'gap'" class="gap">…</span><span v-else>{{ w.text }}</span></template>
+              <span v-if="isEmpty(c.words)" class="empty">(empty paragraph)</span>
+            </p>
+            <ul v-if="c.formatting" class="formatting">
+              <li v-for="f in c.formatting" :key="f">{{ f }}</li>
+            </ul>
+          </li>
+        </ol>
+        <p v-if="review.paragraphs.length > shown.length" class="more">…and {{ review.paragraphs.length - shown.length }} more</p>
+      </details>
       </div>
 
       <footer>
@@ -86,7 +104,7 @@
 <script setup>
 // "Review my changes": shown before Download (or from the toolbar), so what will go back to the
 // recipient is clear: every paragraph that changed, with its words, and anything else that changes.
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { PERSONAL } from '../docx/properties.js';
 
 const props = defineProps({
@@ -95,6 +113,8 @@ const props = defineProps({
   review: { type: Object, required: true },
   author: { type: String, default: '' },
   skip: { type: Boolean, default: false },
+  // Opened to look at one part ('release' or 'accessibility', from Help): that part opens, in view.
+  focus: { type: String, default: '' },
 });
 const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'show-issue', 'title', 'update-properties']);
 
@@ -115,7 +135,19 @@ const CONTEXT = 8; // words of unchanged text kept around a change
 
 const dialog = ref(null);
 const downloadButton = ref(null);
-onMounted(() => downloadButton.value?.focus());
+const releaseEl = ref(null);
+const a11yEl = ref(null);
+onMounted(async () => {
+  const part = { release: releaseEl.value, accessibility: a11yEl.value }[props.focus];
+  if (!part) {
+    downloadButton.value?.focus();
+    return;
+  }
+  part.open = true;
+  await nextTick();
+  part.scrollIntoView({ block: 'start' });
+  part.querySelector('summary')?.focus();
+});
 
 const shown = computed(() => props.review.paragraphs.slice(0, LIMIT));
 
@@ -211,6 +243,28 @@ const notes = computed(() => {
   if (r.listsAdded) out.push({ kind: 'info', text: 'Bulleted or numbered lists you started are added to the file’s list definitions.' });
   return out;
 });
+
+// Notes that need a look (a warning, or a choice to make) are shown; the others are folded away.
+const attention = computed(() => notes.value.filter((n) => n.kind === 'warn' || n.properties || n.fields));
+const details = computed(() => notes.value.filter((n) => !attention.value.includes(n)));
+const OPEN_CHANGES = 5; // more changed paragraphs than this are folded away, behind their count
+
+const releaseWarnings = computed(() => release.value.filter((i) => i.kind === 'warn').length);
+const releaseOpen = computed(() => releaseWarnings.value > 0 || props.focus === 'release');
+const releaseCount = computed(() => (releaseWarnings.value ? `${releaseWarnings.value} to check`
+  : release.value.length ? plural(release.value.length, 'note') : 'Nothing hidden'));
+
+const a11yProblems = computed(() => (props.review.accessibility || []).filter((a) => a.severity !== 'tip').length);
+const a11yOpen = computed(() => a11yProblems.value > 0 || props.focus === 'accessibility');
+const a11yCount = computed(() => {
+  const all = props.review.accessibility || [];
+  if (!all.length) return 'No issues';
+  const tips = all.length - a11yProblems.value;
+  return [a11yProblems.value && plural(a11yProblems.value, 'issue'), tips && plural(tips, 'tip')].filter(Boolean).join(', ');
+});
+
+/** What needs a look before downloading: warnings, release items and accessibility issues. */
+const toCheck = computed(() => notes.value.filter((n) => n.kind === 'warn').length + releaseWarnings.value + a11yProblems.value);
 
 const list = (names) => names.map((n) => `“${n}”`).join(', ').replace(/, ([^,]*)$/, ' and $1');
 const quoteValue = (v) => `“${v.length > 60 ? `${v.slice(0, 60)}…` : v}”`;
@@ -311,13 +365,32 @@ header { padding: 18px 20px 6px; }
 .body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 12px; }
 h2 { margin: 0; font-size: 18px; }
 .summary { margin: 6px 0 0; color: var(--muted); }
-.notes { margin: 8px 20px 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.overview { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: #1e6b34; }
+.overview.warn { color: #8a5300; }
+@media (prefers-color-scheme: dark) { .overview { color: #8fd19e; } .overview.warn { color: #ffcf80; } }
+.notes { margin: 8px 20px 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.note-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.notes details .note-list { margin-top: 6px; }
 .notes li { padding: 6px 10px; border-radius: 4px; background: var(--hover); }
 .notes .good { border-left: 3px solid #2e7d32; }
 .notes .warn { border-left: 3px solid #c77700; }
 .notes .info { border-left: 3px solid var(--border); }
 .release { margin: 14px 20px 0; font-size: 13px; }
-.release h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+/* Folded sections: a summary line with the section's name and a count; opened where there is
+   something to check. */
+.section > summary {
+  display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; list-style: none;
+  font-size: 13px; border-radius: 4px;
+}
+.section > summary::-webkit-details-marker { display: none; }
+.section > summary::before { content: '▸'; color: var(--muted); font-size: 11px; transition: transform .15s; }
+.section[open] > summary::before { transform: rotate(90deg); }
+.section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-title { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.count { padding: 0 7px; border-radius: 9px; background: var(--hover); color: var(--muted); font-size: 12px; }
+.count.warn { background: #fdf0d9; color: #7a4a00; }
+.section[open] > summary { margin-bottom: 6px; }
+.changes-section { margin: 14px 20px 0; }
 .release ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .release li { padding: 6px 10px; border-radius: 4px; background: var(--hover); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .release li > span { flex: 1 1 280px; }
@@ -332,7 +405,7 @@ h2 { margin: 0; font-size: 18px; }
 .release .personal { flex: 1 1 100%; display: flex; gap: 6px; align-items: flex-start; color: var(--muted); }
 .release .clean, .release .locked { margin: 0; color: var(--muted); }
 .update-fields { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-weight: 600; }
-.changes { margin: 12px 0 0; padding: 0 20px; list-style: none; }
+.changes { margin: 0; padding: 0; list-style: none; }
 .change { padding: 10px 0; border-top: 1px solid var(--border); }
 .where { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
 .kind { font-weight: 600; }
@@ -343,7 +416,7 @@ del { color: #b3261e; background: rgb(179 38 30 / 8%); }
 ins { color: #1e6b34; background: rgb(30 107 52 / 10%); text-decoration: underline; }
 .gap, .empty { color: var(--muted); }
 .formatting { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
-.more { margin: 8px 20px 0; color: var(--muted); font-size: 13px; }
+.more { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 footer {
   display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
   padding: 14px 20px; border-top: 1px solid var(--border); margin-top: 12px;
@@ -356,5 +429,6 @@ footer {
   .tag { background: #3a2a52; color: #d1b3ff; }
   del { color: #ff8a80; }
   ins { color: #8fd19e; }
+  .count.warn { background: #4a3812; color: #ffd28a; }
 }
 </style>
