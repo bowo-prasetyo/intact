@@ -118,6 +118,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - Installable offline app (PWA) ✔; the privacy promise enforced by a Content Security Policy ✔;
   versioned releases for self-hosting, with checksums, SBOM and build attestation ✔
 - Right-to-left text ✔; templates and files with macros ✔; line numbers ✔
+- Print just the document ✔; lists started by typing ("1. ", "* ") ✔; line and paragraph spacing
+  and indents, with Word's Paragraph dialog ✔
 
 ## How we'll know it's working
 

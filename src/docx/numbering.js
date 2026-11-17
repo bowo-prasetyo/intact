@@ -3,6 +3,7 @@
 import { NS, wChild, wChildren, wAttr, parseXml } from './xml.js';
 
 const BULLETS = ['•', '◦', '▪'];
+const DASHES = new Set(['-', '–', '—']);
 export const MAX_LEVEL = 8;
 
 function roman(n) {
@@ -16,7 +17,8 @@ function letter(n) {
   while (n > 0) { n--; s = String.fromCharCode(97 + (n % 26)) + s; n = Math.floor(n / 26); }
   return s;
 }
-function format(n, fmt) {
+/** Number `n` as list format `fmt` writes it ('decimal' 3, 'lowerLetter' c, 'upperRoman' III…). */
+export function formatNumber(n, fmt) {
   switch (fmt) {
     case 'lowerLetter': return letter(n);
     case 'upperLetter': return letter(n).toUpperCase();
@@ -89,10 +91,11 @@ export class Numbering {
     }
     counts[ilvl]++;
     counts.length = ilvl + 1;
-    if (lvl.fmt === 'bullet') return { marker: BULLETS[ilvl % 3], pPr: lvl.pPr };
+    // A dash bullet (as AutoFormat makes from "- ") shows as typed; symbol-font bullets as •, ◦, ▪.
+    if (lvl.fmt === 'bullet') return { marker: DASHES.has(lvl.text) ? lvl.text : BULLETS[ilvl % 3], pPr: lvl.pPr };
     const marker = lvl.text.replace(/%(\d)/g, (_, d) => {
       const i = Number(d) - 1;
-      return format(counts[i] ?? this.start(numId, i), levels.get(i)?.fmt);
+      return formatNumber(counts[i] ?? this.start(numId, i), levels.get(i)?.fmt);
     });
     return { marker, pPr: lvl.pPr };
   }
@@ -105,18 +108,30 @@ const BULLET_LEVELS = [
 ];
 const NUMBER_LEVELS = [['decimal', 'left'], ['lowerLetter', 'left'], ['lowerRoman', 'right']];
 
-/** The nine levels Word uses for its default bullet or numbered list (0.5" steps, 0.25" hanging). */
-function abstractNumXml(id, kind) {
+/**
+ * The nine levels Word uses for its default bullet or numbered list (0.5" steps, 0.25" hanging).
+ * `first` changes the first level, as Word's AutoFormat does for a list started by typing:
+ * { fmt ('decimal', 'lowerLetter'…), text ('%1.', '(%1)'…) } for numbers, { char } for bullets.
+ */
+function abstractNumXml(id, kind, first = null) {
   let lvls = '';
   for (let i = 0; i <= MAX_LEVEL; i++) {
     const ind = `<w:pPr><w:ind w:left="${720 * (i + 1)}" w:hanging="${kind === 'number' && i % 3 === 2 ? 180 : 360}"/></w:pPr>`;
     if (kind === 'bullet') {
       const [char, font] = BULLET_LEVELS[i % 3];
-      lvls += `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="${char}"/><w:lvlJc w:val="left"/>${ind}`
-        + `<w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:hint="default"/></w:rPr></w:lvl>`;
+      // A typed bullet (a dash) is in the text's own font, as Word writes it.
+      const rPr = i === 0 && first?.char ? '' : `<w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:hint="default"/></w:rPr>`;
+      lvls += `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="${i === 0 && first?.char ? first.char : char}"/><w:lvlJc w:val="left"/>${ind}`
+        + `${rPr}</w:lvl>`;
     } else {
-      const [fmt, jc] = NUMBER_LEVELS[i % 3];
-      lvls += `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${fmt}"/><w:lvlText w:val="%${i + 1}."/><w:lvlJc w:val="${jc}"/>${ind}</w:lvl>`;
+      let [fmt, jc] = NUMBER_LEVELS[i % 3];
+      let text = `%${i + 1}.`;
+      if (i === 0 && first?.fmt) {
+        fmt = first.fmt;
+        text = first.text || text;
+        jc = /Roman$/.test(fmt) ? 'right' : 'left';
+      }
+      lvls += `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${fmt}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="${jc}"/>${ind}</w:lvl>`;
     }
   }
   return `<w:abstractNum w:abstractNumId="${id}"><w:multiLevelType w:val="hybridMultilevel"/>${lvls}</w:abstractNum>`;
@@ -131,20 +146,23 @@ const nextId = (els, attr) => Math.max(-1, ...els.map((e) => Number(wAttr(e, att
 
 /**
  * Adds a list to numbering.xml and returns its numId. Each call starts a new list (numbered lists
- * restart at 1), sharing one abstract definition per kind per editing session.
+ * restart at 1, or at `first.start`), sharing one abstract definition per kind (and first level) per
+ * editing session. `first`: see abstractNumXml.
  */
-export function addList(doc, kind, cache) {
+export function addList(doc, kind, cache, first = null) {
   const root = doc.documentElement;
-  let abstractId = cache[kind];
+  const key = first ? `${kind}:${first.fmt || ''}:${first.text || ''}:${first.char || ''}` : kind;
+  let abstractId = cache[key];
   if (abstractId == null) {
     abstractId = String(nextId(wChildren(root, 'abstractNum'), 'abstractNumId'));
     // Schema order: numPicBullet*, abstractNum*, num*, numIdMacAtCleanup?
     const before = wChild(root, 'num') || wChild(root, 'numIdMacAtCleanup');
-    root.insertBefore(importW(doc, abstractNumXml(abstractId, kind)), before);
-    cache[kind] = abstractId;
+    root.insertBefore(importW(doc, abstractNumXml(abstractId, kind, first)), before);
+    cache[key] = abstractId;
   }
   const numId = String(Math.max(1, nextId(wChildren(root, 'num'), 'numId')));
-  const restart = kind === 'number' ? '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>' : '';
+  const start = Math.max(0, Math.floor(Number(first?.start ?? 1)));
+  const restart = kind === 'number' ? `<w:lvlOverride w:ilvl="0"><w:startOverride w:val="${start}"/></w:lvlOverride>` : '';
   root.insertBefore(
     importW(doc, `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractId}"/>${restart}</w:num>`),
     wChild(root, 'numIdMacAtCleanup'),

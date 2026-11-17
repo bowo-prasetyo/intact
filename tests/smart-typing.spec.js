@@ -43,14 +43,14 @@ test('French quotes come with no-break spaces inside', async ({ page }) => {
 
 test('turned off, quotes and dashes are typed as they are; the choice is remembered', async ({ page }) => {
   await openInEditor(page, await buildDocx(lang('en-GB')));
-  const toggle = page.getByRole('button', { name: /^Smart quotes and dashes: on$/ });
+  const toggle = page.getByRole('button', { name: /^AutoFormat: on$/ });
   await toggle.click();
-  await expect(page.getByRole('button', { name: /^Smart quotes and dashes: off$/ })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: /^AutoFormat: off$/ })).toHaveAttribute('aria-pressed', 'false');
   await typeAtEnd(page, ' "plain" -- text');
   await expect(para(page)).toHaveText('Start "plain" -- text');
   await page.reload();
   await openInEditor(page, await buildDocx(lang('en-GB')));
-  await expect(page.getByRole('button', { name: /^Smart quotes and dashes: off$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^AutoFormat: off$/ })).toBeVisible();
 });
 
 test('while tracking, a curly quote and a dash are tracked insertions', async ({ page }) => {

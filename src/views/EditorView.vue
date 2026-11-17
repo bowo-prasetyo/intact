@@ -94,6 +94,9 @@
       <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :aria-label="a.label" :class="{ on: state.align === a.value }" :aria-pressed="state.align === a.value" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
+      <button ref="spacingButton" type="button" title="Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2)" aria-label="Line and paragraph spacing" aria-haspopup="menu" :aria-expanded="spacingMenu.open" @click="toggleSpacingMenu">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7.5 3.5h6.5M7.5 8h6.5M7.5 12.5h6.5M3.5 2.5v11M1.8 4.2l1.7-1.7 1.7 1.7M1.8 11.8l1.7 1.7 1.7-1.7" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
+      </button>
       <span class="sep" />
       <button type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet' }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
@@ -101,10 +104,10 @@
       <button type="button" title="Numbering" :class="{ on: state.list === 'number' }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
-      <button type="button" title="Decrease list level (Shift+Tab, Ctrl+Shift+M)" :disabled="!state.list" @click="changeLevel(-1)">
+      <button type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" aria-label="Decrease indent" @click="indentBlocks(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <button type="button" title="Increase list level (Tab, Ctrl+M)" :disabled="!state.list" @click="changeLevel(1)">
+      <button type="button" :title="state.list ? 'Increase list level (Tab, Ctrl+M)' : 'Increase indent (Ctrl+M)'" aria-label="Increase indent" @click="indentBlocks(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" />
@@ -438,6 +441,52 @@
       </div>
     </form>
 
+    <!-- Word's Line and Paragraph Spacing menu, and its Paragraph dialog (indents and spacing). -->
+    <div v-if="spacingMenu.open" ref="spacingMenuEl" class="change-menu spacing-menu" role="menu" aria-label="Line and paragraph spacing" :style="{ left: `${spacingMenu.x}px`, top: `${spacingMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSpacingMenu" @keydown="onMenuArrows">
+      <button v-for="[v, label] in LINE_SPACINGS" :key="label" type="button" role="menuitemradio" :aria-checked="spacingMenu.line === Math.round(v * 240)" @click="setLineSpacing(v)">{{ label }}</button>
+      <hr />
+      <button type="button" role="menuitem" @click="toggleSpace('before')">{{ spacingMenu.before ? 'Remove space before paragraph' : 'Add space before paragraph' }}</button>
+      <button type="button" role="menuitem" @click="toggleSpace('after')">{{ spacingMenu.after ? 'Remove space after paragraph' : 'Add space after paragraph' }}</button>
+      <hr />
+      <button type="button" role="menuitem" @click="openParagraphDialog">Paragraph…</button>
+    </div>
+
+    <form v-if="paraDialog.open" ref="paraDialogEl" class="chooser author-dialog para-dialog" role="dialog" aria-label="Paragraph" :style="{ left: `${paraDialog.x}px`, top: `${paraDialog.y}px` }" novalidate @submit.prevent="applyParagraphDialog" @keydown.esc="closeParagraphDialog">
+      <fieldset>
+        <legend>Indentation</legend>
+        <label>Left (cm) <input v-model.number="paraDialog.left" type="number" step="0.1" /></label>
+        <label>Right (cm) <input v-model.number="paraDialog.right" type="number" step="0.1" /></label>
+        <label>Special
+          <select v-model="paraDialog.special">
+            <option value="none">(none)</option>
+            <option value="firstLine">First line</option>
+            <option value="hanging">Hanging</option>
+          </select>
+        </label>
+        <label>By (cm) <input v-model.number="paraDialog.by" type="number" min="0" step="0.1" :disabled="paraDialog.special === 'none'" /></label>
+      </fieldset>
+      <fieldset>
+        <legend>Spacing</legend>
+        <label>Before (pt) <input v-model.number="paraDialog.before" type="number" min="0" step="6" /></label>
+        <label>After (pt) <input v-model.number="paraDialog.after" type="number" min="0" step="6" /></label>
+        <label>Line spacing
+          <select v-model="paraDialog.rule" @change="onLineRuleChange">
+            <option value="single">Single</option>
+            <option value="1.5">1.5 lines</option>
+            <option value="double">Double</option>
+            <option value="atLeast">At least</option>
+            <option value="exact">Exactly</option>
+            <option value="multiple">Multiple</option>
+          </select>
+        </label>
+        <label v-if="!LINE_PRESETS[paraDialog.rule]">At ({{ paraDialog.rule === 'multiple' ? 'lines' : 'pt' }}) <input v-model.number="paraDialog.at" type="number" min="0" :step="paraDialog.rule === 'multiple' ? 0.05 : 1" /></label>
+      </fieldset>
+      <div class="actions">
+        <button type="submit" class="confirm">OK</button>
+        <button type="button" @click="closeParagraphDialog">Cancel</button>
+      </div>
+    </form>
+
     <div v-if="tablePicker.open" ref="tablePickerEl" class="table-picker" role="dialog" aria-label="Insert table" :style="{ left: `${tablePicker.x}px`, top: `${tablePicker.y}px` }" @keydown.esc="closeTablePicker">
       <p class="size" aria-hidden="true">{{ tablePicker.cols }} × {{ tablePicker.rows }} table</p>
       <div class="grid" @mouseleave="tablePicker.cols = tablePicker.rows = 1">
@@ -517,7 +566,7 @@
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
-      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'Typing &quot; and \' gives curly quotes, -- a dash and ... an ellipsis, as in Word – click to type them as they are' : 'Quotes, dashes and ellipses are typed as they are – click to make them curly quotes, dashes and an ellipsis, as in Word'" @click="toggleAutoFormat">Smart quotes and dashes: {{ autoFormat ? 'on' : 'off' }}</button>
+      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, and 1. or * then a space at the start of a paragraph a list – click to type them as they are' : 'Quotes, dashes, ellipses and list numbers are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
@@ -562,7 +611,8 @@ import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect } from '../editor/runs.js';
-import { smartQuote, smartReplacement } from '../editor/smartTyping.js';
+import { smartQuote, smartReplacement, listTrigger } from '../editor/smartTyping.js';
+import { formatNumber } from '../docx/numbering.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -854,6 +904,7 @@ function measureFooter() {
 // a stylesheet hides the others, so the choice survives Undo replacing the page's content.
 const hf = reactive({ header: 0, footer: 0 });
 let variantStyle = null;
+let printStyle = null;
 function refreshVariants() {
   if (!variantStyle) return;
   variantStyle.textContent = ['header', 'footer']
@@ -893,6 +944,11 @@ onMounted(() => {
   loadChoices();
   variantStyle = document.createElement('style');
   document.head.append(variantStyle);
+  // Printing: the document's own paper size and margins (see the print styles below).
+  const pg = doc.page;
+  printStyle = document.createElement('style');
+  printStyle.textContent = `@page { size: ${pg.width}px ${pg.minHeight}px; margin: ${pg.top}px ${pg.right}px ${pg.bottom}px ${pg.left}px; }`;
+  document.head.append(printStyle);
   refreshVariants();
   measureFooter();
   requestAnimationFrame(() => { if (page.value) fontsMissing.value = missingFonts(page.value); });
@@ -995,6 +1051,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   variantStyle?.remove();
+  printStyle?.remove();
   marksObserver?.disconnect();
   cancelAnimationFrame(marksFrame);
   window.removeEventListener('resize', scheduleMarks);
@@ -2323,6 +2380,183 @@ function splitCells() {
   tableAction('split');
 }
 
+// ------------------------------------------------------------------ line and paragraph spacing
+
+const LINE_SPACINGS = [[1, '1.0'], [1.15, '1.15'], [1.5, '1.5'], [2, '2.0'], [2.5, '2.5'], [3, '3.0']];
+const LINE_PRESETS = { single: 240, '1.5': 360, double: 480 }; // the Paragraph dialog's, in 240ths of a line
+const TWIPS_PER_CM = 1440 / 2.54;
+const INDENT_STEP = 720; // Word's Increase Indent: to the next half inch
+const SPACE_ADDED = 240; // Word's "Add space before/after paragraph": 12 pt
+const spacingMenu = reactive({ open: false, x: 0, y: 0, line: null, before: 0, after: 0 });
+const spacingMenuEl = ref(null);
+const spacingButton = ref(null);
+
+/** The paragraphs selected (or the one with the caret). */
+function selectedParagraphs() {
+  const range = selectionInPage() || savedRange;
+  return range && page.value.contains(range.commonAncestorContainer) ? selectedBlocks(range) : [];
+}
+
+function toggleSpacingMenu() {
+  if (spacingMenu.open) return closeSpacingMenu();
+  const [block] = selectedParagraphs();
+  if (!block) {
+    message.value = 'Click in a paragraph first';
+    return;
+  }
+  const f = doc.paragraphFormat(block);
+  const rect = spacingButton.value.getBoundingClientRect();
+  Object.assign(spacingMenu, {
+    open: true,
+    x: Math.max(8, Math.min(rect.left, window.innerWidth - 240)),
+    y: rect.bottom + 4,
+    line: f.lineRule === 'auto' ? f.line : null,
+    before: f.before,
+    after: f.after,
+  });
+  nextTick(() => spacingMenuEl.value?.querySelector('button')?.focus());
+}
+
+function closeSpacingMenu() {
+  spacingMenu.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+/**
+ * Changes the selected paragraphs' spacing or indentation, as one undoable step (tracked while
+ * tracking): `change(format)` gives what to set for a paragraph with that format (see
+ * doc.paragraphFormat), or null to leave it as it is.
+ */
+function formatParagraphs(change) {
+  spacingMenu.open = false;
+  if (textLocked.value) return explainLock(); // "filling in forms": fields only, not paragraphs
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  const blocks = selectedBlocks(range);
+  if (!blocks.length) return;
+  undoStack.flush();
+  const changed = withTrackedParagraphs(blocks, () => {
+    let any = false;
+    for (const b of blocks) {
+      const c = change(doc.paragraphFormat(b));
+      if (!c || !Object.keys(c).length) continue;
+      doc.setParagraphFormat(b, c);
+      any = true;
+    }
+    return any;
+  });
+  if (!changed) return;
+  doc.renumber(page.value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+}
+
+/** Line spacing in lines (1, 1.15, 1.5…), as Word's menu and Ctrl+1, Ctrl+5, Ctrl+2 set it. */
+function setLineSpacing(lines) {
+  const line = Math.round(lines * 240);
+  formatParagraphs((f) => (f.lineRule === 'auto' && f.line === line ? null : { line, lineRule: 'auto' }));
+}
+
+/** Word's "Add / Remove space before (after) paragraph": 12 pt, or none (Ctrl+0 for before). */
+function toggleSpace(which) {
+  const [first] = selectedParagraphs();
+  if (!first) return;
+  const add = !(doc.paragraphFormat(first)[which] > 0);
+  formatParagraphs((f) => (add === !(f[which] > 0) ? { [which]: add ? SPACE_ADDED : 0 } : null));
+}
+
+/**
+ * Increase / Decrease Indent (Ctrl+M, Ctrl+Shift+M), as in Word: a list item changes its level;
+ * another paragraph's left indent moves to the next (or previous) half inch, within the margins.
+ */
+function indentBlocks(delta) {
+  restoreSelection();
+  const range = selectionInPage();
+  if (range && selectedBlocks(range).some((b) => doc.listOf(b))) return changeLevel(delta);
+  const widest = Math.max(0, (doc.page.width - doc.page.left - doc.page.right) * 15 - INDENT_STEP); // px to twips
+  formatParagraphs((f) => {
+    const steps = delta > 0 ? Math.floor(f.left / INDENT_STEP) + 1 : Math.ceil(f.left / INDENT_STEP) - 1;
+    const left = Math.min(widest, Math.max(0, steps * INDENT_STEP));
+    return left === f.left ? null : { left };
+  });
+}
+
+// The Paragraph dialog: values as shown (cm, pt, lines), and as they were when it opened, so only
+// what is changed in it is written (fields left alone keep coming from the paragraph's style).
+const paraDialog = reactive({ open: false, x: 0, y: 0, left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1 });
+const paraDialogEl = ref(null);
+let paraInitial = null;
+const toCm = (twips) => Math.round((twips / TWIPS_PER_CM) * 100) / 100;
+const toPt = (twips) => Math.round(twips / 2) / 10;
+
+function dialogValues(f) {
+  let rule = 'multiple';
+  let at = Math.round((f.line / 240) * 100) / 100;
+  if (f.lineRule === 'exact' || f.lineRule === 'atLeast') {
+    rule = f.lineRule;
+    at = toPt(f.line);
+  } else {
+    rule = Object.keys(LINE_PRESETS).find((k) => LINE_PRESETS[k] === f.line) || 'multiple';
+  }
+  return {
+    left: toCm(f.left), right: toCm(f.right),
+    special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: toCm(f.hanging || f.firstLine),
+    before: toPt(f.before), after: toPt(f.after), rule, at,
+  };
+}
+
+function openParagraphDialog() {
+  spacingMenu.open = false;
+  const [block] = selectedParagraphs();
+  if (!block) return;
+  paraInitial = dialogValues(doc.paragraphFormat(block));
+  const rect = spacingButton.value.getBoundingClientRect();
+  Object.assign(paraDialog, paraInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  nextTick(() => paraDialogEl.value?.querySelector('input')?.select());
+}
+
+function closeParagraphDialog() {
+  paraDialog.open = false;
+  refocus();
+}
+
+/** Choosing "Multiple", "At least" or "Exactly" offers a value in its unit (lines or points). */
+function onLineRuleChange() {
+  const { rule } = paraDialog;
+  const points = (r) => r === 'atLeast' || r === 'exact';
+  if (rule === 'multiple') paraDialog.at = paraInitial.rule === 'multiple' ? paraInitial.at : 1.15;
+  else if (points(rule)) paraDialog.at = points(paraInitial.rule) ? paraInitial.at : 12;
+}
+
+function applyParagraphDialog() {
+  const d = { ...paraDialog };
+  const i = paraInitial;
+  paraDialog.open = false;
+  const num = (v) => (Number.isFinite(Number(v)) && v !== '' ? Number(v) : 0);
+  const change = {};
+  if (num(d.left) !== i.left) change.left = Math.round(num(d.left) * TWIPS_PER_CM);
+  if (num(d.right) !== i.right) change.right = Math.round(num(d.right) * TWIPS_PER_CM);
+  if (d.special !== i.special || (d.special !== 'none' && num(d.by) !== i.by)) {
+    const by = Math.max(0, Math.round(num(d.by) * TWIPS_PER_CM));
+    if (d.special === 'hanging') change.hanging = by;
+    else change.firstLine = d.special === 'firstLine' ? by : 0;
+  }
+  if (num(d.before) !== i.before) change.before = Math.max(0, Math.round(num(d.before) * 20));
+  if (num(d.after) !== i.after) change.after = Math.max(0, Math.round(num(d.after) * 20));
+  if (d.rule !== i.rule || (!LINE_PRESETS[d.rule] && num(d.at) !== i.at)) {
+    if (LINE_PRESETS[d.rule]) Object.assign(change, { line: LINE_PRESETS[d.rule], lineRule: 'auto' });
+    else if (d.rule === 'multiple') Object.assign(change, { line: Math.max(1, Math.round(num(d.at) * 240)), lineRule: 'auto' });
+    else Object.assign(change, { line: Math.max(20, Math.round(num(d.at) * 20)), lineRule: d.rule });
+  }
+  refocus();
+  if (Object.keys(change).length) formatParagraphs(() => change);
+}
+
 // ------------------------------------------------------------------ inserting tables
 
 const PICKER_ROWS = 8;
@@ -2856,14 +3090,11 @@ function runShortcut(name) {
   if (name === 'normal') return applyBlockStyle('normal');
   if (name.startsWith('heading')) return applyBlockStyle(`h${name.slice(-1)}`);
   if (name === 'bullets') return toggleList('bullet');
-  if (name === 'indent' || name === 'outdent') {
-    const range = selectionInPage();
-    if (range && !selectedBlocks(range).some((b) => doc.listOf(b))) {
-      message.value = 'Indenting works on list items here';
-      return;
-    }
-    return changeLevel(name === 'indent' ? 1 : -1);
-  }
+  if (name === 'indent' || name === 'outdent') return indentBlocks(name === 'indent' ? 1 : -1);
+  if (name === 'lineSingle') return setLineSpacing(1);
+  if (name === 'lineOneHalf') return setLineSpacing(1.5);
+  if (name === 'lineDouble') return setLineSpacing(2);
+  if (name === 'spaceBefore') return toggleSpace('before');
   if (name === 'clearFormatting') return clearCharacterFormatting();
   if (name === 'superscript' || name === 'subscript') return toggleVertAlign(name);
   if (name === 'highlight') return applyHighlight(highlightColor.value, true);
@@ -2963,7 +3194,7 @@ const autoFormat = ref((() => { try { return localStorage.getItem(AUTOFORMAT_KEY
 function toggleAutoFormat() {
   autoFormat.value = !autoFormat.value;
   try { localStorage.setItem(AUTOFORMAT_KEY, autoFormat.value ? '1' : '0'); } catch { /* this session only */ }
-  message.value = autoFormat.value ? 'Quotes and dashes are made typographic as you type' : 'Quotes and dashes are typed as they are';
+  message.value = autoFormat.value ? 'Quotes, dashes and lists are formatted as you type' : 'Quotes, dashes and list numbers are typed as they are';
   page.value.focus();
 }
 
@@ -2983,6 +3214,7 @@ function smartTyping(e) {
   lead.setEnd(range.startContainer, range.startOffset);
   const before = lead.toString();
   const lang = range.startContainer.parentElement?.closest('[lang]')?.lang || doc.styles.language() || 'en';
+  if (e.data === ' ' && range.collapsed && autoList(e, block, range, before)) return true;
   if (range.collapsed) {
     const swap = smartReplacement(before, e.data);
     const node = range.startContainer;
@@ -3019,6 +3251,63 @@ function typeText(text) {
     if (typeUntracked(text)) onInput();
     else document.execCommand('insertText', false, text);
   }
+}
+
+/**
+ * AutoFormat's automatic lists: "1. ", "a) ", "(i) ", "* " or "- " typed at the start of a paragraph
+ * makes it a list item of that kind (see listTrigger). The space is typed first, as an undo step of
+ * its own, so Ctrl+Z gives the text back as typed, as in Word. A number that follows on from a
+ * numbered list just above ("2. ") continues it; a bullet under a bulleted list joins it. True if
+ * the key press was dealt with here.
+ */
+function autoList(e, block, range, before) {
+  const trigger = listTrigger(before);
+  if (!trigger || block.tagName !== 'P' || doc.listOf(block) || block.closest('.docx-hf-band, .textbox') || controlAt(block, page.value)) return false;
+  const node = range.startContainer;
+  if (node.nodeType !== 3 || node.data.slice(Math.max(0, range.startOffset - before.length), range.startOffset) !== before) return false;
+  e.preventDefault();
+  typeText(' ');
+  undoStack.commit();
+  // The typed text, with its space, just before the caret: taken out, as Word does.
+  const now = selectionInPage();
+  const at = now?.startContainer;
+  const typed = `${before} `;
+  if (!now?.collapsed || at?.nodeType !== 3 || at.data.slice(Math.max(0, now.startOffset - typed.length), now.startOffset) !== typed) return true;
+  const text = document.createRange();
+  text.setStart(at, now.startOffset - typed.length);
+  text.setEnd(at, now.startOffset);
+  const opts = trackedBy(at);
+  selectRange(text);
+  if (opts) deleteTracked(text, false, opts);
+  else deleteSelection();
+  const { kind, first } = trigger;
+  withTrackedParagraphs([block], () => {
+    const above = continuedList(block, trigger);
+    doc.setList(block, above ? above.numId : doc.newList(kind, first), above ? above.ilvl : 0);
+  });
+  if (!block.textContent && !block.querySelector('br')) block.append(document.createElement('br'));
+  if (!selectionInPage()) placeCaret(block, true);
+  doc.renumber(page.value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  return true;
+}
+
+/**
+ * The list right above `block` that a list typed as `trigger` continues, as in Word, or null: the
+ * same bullet, or numbers in the same style whose next one is the number typed ("3." after "2.").
+ */
+function continuedList(block, { kind, first }) {
+  const above = adjacentList(block, true, kind);
+  const level = above && doc.listLevel(above.numId, above.ilvl);
+  if (!level) return null;
+  const dash = (t) => (['-', '–', '—'].includes(t) ? t : null);
+  if (kind === 'bullet') return dash(level.text) === (first?.char ?? null) ? above : null;
+  let prev = block.previousElementSibling;
+  while (prev?.classList.contains('raw-hidden')) prev = prev.previousElementSibling;
+  const follows = first.start > 0 && prev?.dataset.marker === first.text.replace('%1', formatNumber(first.start - 1, first.fmt));
+  return level.fmt === first.fmt && level.text === first.text && follows ? above : null;
 }
 
 /** Ctrl+Enter: a page break at the caret (tracked while tracking). Not inside form fields. */
@@ -3853,6 +4142,8 @@ function onDocumentMousedown(e) {
   if (palette.open && !paletteEl.value?.contains(e.target) && !paletteButton.value?.contains(e.target)) palette.open = false;
   if (picturePanel.open && !picturePanelEl.value?.contains(e.target) && !layoutOptionsButton.value?.contains(e.target)) picturePanel.open = false;
   if (splitDialog.open && !splitDialogEl.value?.contains(e.target)) splitDialog.open = false;
+  if (paraDialog.open && !paraDialogEl.value?.contains(e.target)) paraDialog.open = false;
+  if (spacingMenu.open && !spacingMenuEl.value?.contains(e.target) && !spacingButton.value?.contains(e.target)) spacingMenu.open = false;
   if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
@@ -4333,6 +4624,14 @@ async function close() {
 }
 .change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
+.spacing-menu button { padding-left: 28px; position: relative; }
+.spacing-menu button[aria-checked="true"]::before { content: '✓'; position: absolute; left: 10px; }
+.chooser.para-dialog { width: 300px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+.para-dialog fieldset { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 10px 10px; border: 1px solid var(--border); border-radius: 4px; }
+.para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
+.para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.para-dialog input, .para-dialog select { width: 120px; font: inherit; }
+.para-dialog select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
 .picture-frame { position: absolute; z-index: 6; border: 1px solid var(--accent); pointer-events: none; box-sizing: border-box; }
 .picture-frame .handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; background: #fff; border: 1px solid var(--accent); border-radius: 50%; pointer-events: auto; touch-action: none; }
 .picture-frame .nw { left: 0; top: 0; cursor: nwse-resize; }
@@ -4463,6 +4762,25 @@ async function close() {
 
 <style>
 /* Unscoped: applies to the generated document HTML. */
+/* Printing (Ctrl+P) prints the document, not the editor around it: on the document's paper size, in
+   its margins (the @page rule is set from the document when it opens), with its page breaks. Headers
+   and footers are printed once, at the start and the end, as the page shows them. */
+@media print {
+  html, body { background: #fff !important; }
+  .editor-shell { display: block !important; height: auto !important; }
+  .editor-shell > :not(.workspace), .workspace > :not(.canvas), .docx-sheet > :not(.docx-page) { display: none !important; }
+  .workspace { display: block !important; }
+  .canvas { overflow: visible !important; padding: 0 !important; background: none !important; }
+  .docx-sheet { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; box-shadow: none !important; }
+  .docx-page { padding: 0 !important; overflow: visible !important; }
+  .docx-sheet .docx-hf-band.header { padding-top: 0; min-height: 0; }
+  .docx-sheet .docx-hf-band.footer { position: static; padding: 12pt 0 0; min-height: 0; }
+  .docx-sheet .docx-hf-part { opacity: 1; box-shadow: none !important; }
+  .docx-sheet .docx-hf-part::after { display: none !important; }
+  .docx-sheet .raw-inline.page-break { border: 0 !important; margin: 0 !important; break-after: page; }
+  .docx-sheet [data-page-break-before] { break-before: page; }
+  .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
+}
 .docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
 .docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
 .docx-sheet .cs-before { margin-top: 0 !important; }

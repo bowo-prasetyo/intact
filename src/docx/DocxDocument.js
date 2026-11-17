@@ -1390,7 +1390,8 @@ export class DocxDocument {
       const v = onOff(wChild(pPr, local));
       return v ?? this.styles.chain(styleId || this.styles.defaultParagraph).some((s) => onOff(wChild(s.pPr, local)) === true);
     };
-    if (wChild(pPr, 'sectPr')) el.dataset.sectionEnd = '';
+    // Its value is the kind of break (nextPage unless the section says otherwise), for printing.
+    if (wChild(pPr, 'sectPr')) el.dataset.sectionEnd = wAttr(wChild(wChild(pPr, 'sectPr'), 'type'), 'val') || 'nextPage';
     if (chainHas('pageBreakBefore')) el.dataset.pageBreakBefore = '';
     if (chainHas('suppressLineNumbers')) el.dataset.noLineNumbers = '';
     if (pPr) {
@@ -2687,7 +2688,7 @@ export class DocxDocument {
         el.classList.add('list');
         if (el.dataset.marker !== num.marker) el.dataset.marker = num.marker;
         const pPr = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
-        if (edited || !wChild(pPr, 'ind')) this.indentForList(el, num, list.ilvl);
+        if ((edited && el.dataset.indSet == null) || !wChild(pPr, 'ind')) this.indentForList(el, num, list.ilvl);
         else el.style.paddingLeft = this.styles.pPrCss(pPr)['padding-left'] || '36pt';
       } else if (el.classList.contains('list')) {
         // Out of the list: back to the paragraph's own indentation (none once its list was edited).
@@ -2774,6 +2775,12 @@ export class DocxDocument {
   }
 
   /** True if list `numId` defines level `ilvl` (Word's "List Bullet" style, for one, has only one). */
+  /** A list level's { fmt ('decimal', 'bullet'…), text ('%1.', '•'…) }, or null. */
+  listLevel(numId, ilvl) {
+    this.kinds ||= new Numbering(this.numberingXml);
+    return this.kinds.levels(numId)?.get(ilvl) || null;
+  }
+
   hasListLevel(numId, ilvl) {
     this.kinds ||= new Numbering(this.numberingXml);
     return ilvl >= 0 && ilvl <= MAX_LEVEL && this.kinds.hasLevel(numId, ilvl);
@@ -2781,6 +2788,7 @@ export class DocxDocument {
 
   /** Puts a block in list `numId` at level `ilvl`. */
   setList(el, numId, ilvl = 0) {
+    delete el.dataset.indSet; // the list level's indentation replaces one set in the Paragraph dialog
     el.dataset.numId = numId;
     el.dataset.ilvl = String(Math.max(0, Math.min(MAX_LEVEL, ilvl)));
   }
@@ -2790,6 +2798,7 @@ export class DocxDocument {
    * whose list came from a list style ("List Bullet", "List Paragraph") goes back to Normal.
    */
   removeList(el) {
+    delete el.dataset.indSet;
     const styleId = el.dataset.style;
     const isHeading = !!this.styles.kindOf(styleId);
     if (styleId && !isHeading && (this.styleList(styleId) || this.styles.isListParagraph(styleId))) delete el.dataset.style;
@@ -2802,12 +2811,15 @@ export class DocxDocument {
     }
   }
 
-  /** A numId for a new list of `kind` ('bullet' or 'number'); bullets share one list. */
-  newList(kind) {
-    if (kind === 'bullet' && this.listDefs.bulletNumId) return this.listDefs.bulletNumId;
+  /**
+   * A numId for a new list of `kind` ('bullet' or 'number'); bullets share one list. `first`, for a
+   * list started by typing ("a) ", "- "): its first level's look and start (see numbering.addList).
+   */
+  newList(kind, first = null) {
+    if (kind === 'bullet' && !first && this.listDefs.bulletNumId) return this.listDefs.bulletNumId;
     if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);
-    const numId = addList(this.numberingXml, kind, this.listDefs);
-    if (kind === 'bullet') this.listDefs.bulletNumId = numId;
+    const numId = addList(this.numberingXml, kind, this.listDefs, first);
+    if (kind === 'bullet' && !first) this.listDefs.bulletNumId = numId;
     this.numberingChanged = true;
     this.kinds = null;
     return numId;
@@ -3442,8 +3454,9 @@ export class DocxDocument {
       ensureOrdered(pPr, 'jc', PPR_ORDER).setAttributeNS(W, 'w:val', val);
     }
     if (el && this.listEdited(el)) {
-      // Write the new list membership; the list level's indentation replaces direct indentation.
-      removeW(pPr, 'ind');
+      // Write the new list membership; the list level's indentation replaces direct indentation,
+      // unless indentation was set since (in the Paragraph dialog).
+      if (el.dataset.indSet == null) removeW(pPr, 'ind');
       if (el.dataset.numId == null) {
         removeW(pPr, 'numPr');
       } else {
@@ -3666,6 +3679,87 @@ export class DocxDocument {
     el.dataset.ppr = this.keep(now);
     if (formattingChange(now)) el.dataset.fmtPara = '1';
     else delete el.dataset.fmtPara;
+  }
+
+  // ---------------------------------------------------------------- spacing and indentation
+
+  /**
+   * The spacing and indentation paragraph `el` has, as Word works it out: its own properties, then
+   * its list level's, its style's (and those it is based on), then the document's defaults. In
+   * twips: { before, after, line, lineRule ('auto': line in 240ths of a line; 'exact', 'atLeast'),
+   * left, right, firstLine, hanging }.
+   */
+  paragraphFormat(el) {
+    const own = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
+    const list = this.listOf(el);
+    this.kinds ||= new Numbering(this.numberingXml);
+    const level = list ? this.kinds.levels(list.numId)?.get(list.ilvl)?.pPr : null;
+    // A paragraph whose list changed here is saved with its list level's indentation (see serializeParagraph).
+    const ownInd = this.listEdited(el) && el.dataset.indSet == null ? null : own;
+    const styles = this.styles.chain(el.dataset.style || this.styles.defaultParagraph).map((st) => st.pPr).reverse();
+    const sources = [own, level, ...styles, this.styles.defaultPPr];
+    const find = (local, attrs, from = sources) => {
+      for (const pPr of from) {
+        const e = wChild(pPr, local);
+        if (e && attrs.some((a) => wAttr(e, a) != null)) return attrs.map((a) => wAttr(e, a));
+      }
+      return attrs.map(() => null);
+    };
+    const num = (v, d = 0) => (v == null || Number.isNaN(Number(v)) ? d : Number(v));
+    const indFrom = [ownInd, level, ...styles, this.styles.defaultPPr];
+    const [before] = find('spacing', ['before']);
+    const [after] = find('spacing', ['after']);
+    const [line, lineRule] = find('spacing', ['line', 'lineRule']);
+    const [left, start] = find('ind', ['left', 'start'], indFrom);
+    const [right, end] = find('ind', ['right', 'end'], indFrom);
+    const [firstLine, hanging] = find('ind', ['firstLine', 'hanging'], indFrom);
+    return {
+      before: num(before), after: num(after), line: num(line, 240), lineRule: line == null ? 'auto' : lineRule || 'auto',
+      left: num(left ?? start), right: num(right ?? end), firstLine: hanging != null ? 0 : num(firstLine), hanging: num(hanging),
+    };
+  }
+
+  /**
+   * Sets paragraph `el`'s own spacing and indentation, as Word's Paragraph dialog does: `change` has
+   * any of before, after, line, lineRule, left, right, firstLine, hanging (twips; null removes the
+   * paragraph's own value, so its style's applies). Only what `change` names is written; everything
+   * else in the paragraph's properties is kept as it is.
+   */
+  setParagraphFormat(el, change) {
+    const pPr = el.dataset.ppr != null ? this.rawClone(el.dataset.ppr) : createW(this.xml, 'pPr');
+    const has = (k) => change[k] !== undefined;
+    const write = (local, values, drop) => {
+      if (!Object.keys(values).some(has)) return;
+      let e = wChild(pPr, local) || ensureOrdered(pPr, local, PPR_ORDER);
+      // Values that would win over the ones written (Word reads "lines" and auto spacing first).
+      for (const a of drop) e.removeAttributeNS(W, a);
+      for (const [k, attr] of Object.entries(values)) {
+        if (!has(k)) continue;
+        const v = change[k];
+        if (v == null) e.removeAttributeNS(W, attr);
+        else e.setAttributeNS(W, `w:${attr}`, k === 'lineRule' ? v : String(Math.round(v)));
+      }
+      if (!e.attributes.length) {
+        pPr.removeChild(e);
+        e = null;
+      }
+    };
+    const dropSpacing = [];
+    if (has('before')) dropSpacing.push('beforeLines', 'beforeAutospacing');
+    if (has('after')) dropSpacing.push('afterLines', 'afterAutospacing');
+    write('spacing', { before: 'before', after: 'after', line: 'line', lineRule: 'lineRule' }, dropSpacing);
+    const dropInd = [];
+    if (has('left')) dropInd.push('start', 'leftChars', 'startChars');
+    if (has('right')) dropInd.push('end', 'rightChars', 'endChars');
+    if (has('firstLine') || has('hanging')) dropInd.push('firstLineChars', 'hangingChars', has('firstLine') ? 'hanging' : 'firstLine');
+    write('ind', { left: 'left', right: 'right', firstLine: 'firstLine', hanging: 'hanging' }, dropInd);
+    el.dataset.ppr = this.keep(pPr);
+    if (['left', 'right', 'firstLine', 'hanging'].some(has) && this.listOf(el)) el.dataset.indSet = '';
+    // Show it: the properties these set, from the paragraph's own (its style's come from the stylesheet).
+    const css = this.styles.pPrCss(pPr, el.dir === 'rtl');
+    for (const prop of ['margin-top', 'margin-bottom', 'line-height', 'padding-left', 'padding-right', 'text-indent']) {
+      el.style.setProperty(prop, css[prop] || '');
+    }
   }
 
   /** The XML parts with text: the body, the notes, headers and footers (as loaded), and the styles. */

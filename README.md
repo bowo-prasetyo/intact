@@ -43,6 +43,24 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
+- Lists started by typing, as Word's AutoFormat: "1. ", "1) " or "(1) ", "a. ", "A) ", "(i) " and the
+  like, "* " or "- " typed at the start of a paragraph make it a numbered list in that style (starting
+  from the number typed: "3. " starts at 3) or a bulleted list (Word's bullet, or a dash), written as
+  Word writes such a list. A number that follows on from a numbered list just above, in its style,
+  continues it. Ctrl+Z straight after gives back the text as typed; the AutoFormat button in the
+  status bar turns this off, with smart quotes. Tracked while tracking
+- Line and paragraph spacing and indents, as Word's Line and Paragraph Spacing menu and Paragraph
+  dialog: line spacing (1.0, 1.15, 1.5, 2.0, 2.5, 3.0; Ctrl+1, Ctrl+5, Ctrl+2), add or remove space
+  before (Ctrl+0) and after the paragraph, and in the Paragraph dialog left and right indents, a
+  first-line or hanging indent, space before and after, and line spacing single, 1.5 lines, double,
+  at least, exactly or multiple. The dialog shows what the paragraph has (from its style when not its
+  own) and writes only what is changed in it, into the paragraph's own `w:spacing` and `w:ind`, with
+  everything else in its properties kept (and Word's "lines" values, which would win, taken off what
+  is changed). Increase and Decrease Indent (Ctrl+M, Ctrl+Shift+M) move a paragraph's left indent to
+  the next half inch, or a list item's level. Tracked while tracking (`w:pPrChange`)
+- Print the document (Ctrl+P, or the browser's Print): only the page is printed, not the editor
+  around it, on the document's paper size and in its margins, with a new page at each page break,
+  "page break before" and section break; tracked changes and highlights print as they show
 - Tab and Shift+Tab move between table cells; Tab in the last cell adds a row, as in Word (a copy of
   the last row's cells, empty: widths, merged columns, shading and paragraph formatting, but not a
   header row's repeat or vertical merges), tracked while tracking changes
@@ -212,11 +230,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   lists the paragraph's old properties (`w:pPrChange`). They show as tracked formatting changes and
   are accepted or rejected here or in Word; formatting changed twice keeps the first, and formatting
   changed back records nothing. The review lists them as tracked
-- Smart quotes and dashes as you type, as Word's AutoFormat: " and ' become curly quotes in the
-  text's language (“ ” ‘ ’ in English, „ “ in German, « » with no-break spaces in French, and others),
-  "--" between words an em dash, " - " an en dash and "..." an ellipsis. Typed as a key press would
-  be, so they are tracked while tracking. A button in the status bar turns this off (remembered in
-  this browser)
+- Smart quotes and dashes as you type, as Word's AutoFormat (lists too: see above): " and ' become
+  curly quotes in the text's language (“ ” ‘ ’ in English, „ “ in German, « » with no-break spaces
+  in French, and others), "--" between words an em dash, " - " an en dash and "..." an ellipsis. Typed as a key press would
+  be, so they are tracked while tracking. The AutoFormat button in the status bar turns this off
+  (remembered in this browser)
 - The status bar counts the words and characters in the document, and those selected ("12 of 340
   words · 64 of 2104 characters"; with and without spaces in its tooltip); headers and footers aren't
   counted, as in Word; the
@@ -390,8 +408,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 9. **Lists** – while editing, a paragraph's list and level are `data-num-id` / `data-ilvl`
    attributes (set from its own `<w:numPr>`; otherwise its style's numbering applies). A paragraph's
    `<w:numPr>` is only rewritten when the user changed its list or level; its direct indentation is
-   then dropped so the list level's applies, as in Word. New lists get Word's default nine-level
-   bullet or numbering definitions.
+   then dropped so the list level's applies, as in Word, unless it was set since in the Paragraph
+   dialog (`data-ind-set`). Spacing and indents set here are written into the paragraph's stored
+   `<w:pPr>` straight away, so undo, tracking (`w:pPrChange`) and saving see them as they are. New
+   lists get Word's default nine-level bullet or numbering definitions.
 10. **Headers and footers** – rendered into the page, before the text and after the notes, as
    `section.docx-hf-band` bands (not editable themselves, like the notes' section) holding one
    editing host per header or footer part (`.docx-hf-part`), each rendered with its part's
@@ -525,6 +545,12 @@ The About page shows the version.
   alike rather than identical, and in Word they are part of the picture; a wrap outline isn't
   turned with its picture. Field cells that are locked, linked to data or not text
   fields can't be merged
+- Printing prints headers and footers once, at the start and the end of the document, as the page
+  shows them (not on every page), and fields such as page numbers as their last result; line numbers
+  and comments in the margin aren't printed. Browsers that switch tabs with Ctrl+1 to Ctrl+9 may
+  keep Ctrl+1, Ctrl+2 and Ctrl+5 for themselves (the installed app, in its own window, gets them):
+  the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
+  the browser's: use the Paragraph dialog. Indents are set in centimetres and spacing in points
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs,
   lists and links to web and e-mail addresses (not highlight); pictures within copied text and other
