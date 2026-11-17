@@ -1,5 +1,13 @@
 <template>
-  <div class="home">
+  <!-- A file dropped anywhere on the page opens, not just on the Open tile (see onDrop). -->
+  <div
+    class="home"
+    data-file-drop
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <AppHeader />
     <main class="home-main">
       <h1>Change what you need.<br /> Keep the rest <span class="brand-word">intact</span>.</h1>
@@ -13,26 +21,29 @@
 
       <div class="actions">
         <button class="tile" type="button" :disabled="busy" @click="createNew">
-          <span class="tile-icon" aria-hidden="true">＋</span>
+          <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M6.5 3h7l5 5v11.5A1.5 1.5 0 0 1 17 21H6.5A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z" /><path d="M13.5 3v5h5M12 11v6M9 14h6" /></svg>
           <span class="tile-title">Blank document</span>
           <span class="tile-sub">Start from scratch</span>
         </button>
 
-        <label
+        <!-- A real button, so the file picker can be reached with the keyboard; the input stays hidden. -->
+        <button
           class="tile drop"
           :class="{ over: dragOver }"
-          @dragover.prevent="dragOver = true"
-          @dragleave="dragOver = false"
-          @drop.prevent="onDrop"
+          type="button"
+          :disabled="busy"
+          aria-labelledby="open-title"
+          aria-describedby="open-hint"
+          @click="fileInput.click()"
         >
-          <span class="tile-icon" aria-hidden="true">📂</span>
-          <span class="tile-title">Open a .docx file</span>
-          <span class="tile-sub">Click to browse or drop a file here</span>
-          <input type="file" accept=".docx,.dotx,.docm,.dotm,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template,application/vnd.ms-word.document.macroEnabled.12,application/vnd.ms-word.template.macroEnabled.12" hidden :disabled="busy" @change="onPick" />
-        </label>
+          <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.5 5h-6A1.5 1.5 0 0 0 3 6.5z" /><path d="M12 16.5v-6M9.5 13 12 10.5l2.5 2.5" /></svg>
+          <span id="open-title" class="tile-title">{{ dragOver ? 'Drop to open' : 'Open a .docx file' }}</span>
+          <span id="open-hint" class="tile-sub">Click to browse, or drop a file anywhere here</span>
+        </button>
+        <input ref="fileInput" type="file" :accept="ACCEPT" hidden :disabled="busy" @change="onPick" />
       </div>
 
-      <p v-if="busy" class="status">Opening…</p>
+      <p v-if="busy" class="status" role="status">Opening…</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </main>
   </div>
@@ -48,6 +59,15 @@ const router = useRouter();
 const busy = ref(false);
 const error = ref('');
 const dragOver = ref(false);
+const fileInput = ref(null);
+
+const ACCEPT = [
+  '.docx', '.dotx', '.docm', '.dotm',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+  'application/vnd.ms-word.document.macroEnabled.12',
+  'application/vnd.ms-word.template.macroEnabled.12',
+].join(',');
 
 // The promises from VISION.md. Keep them true: a claim here that a release breaks is a bug.
 const promises = [
@@ -81,7 +101,33 @@ function load(file) {
 }
 
 const onPick = (e) => { load(e.target.files[0]); e.target.value = ''; };
-const onDrop = (e) => { dragOver.value = false; load(e.dataTransfer.files[0]); };
+
+// Dragging files over the page shows where they go: the Open tile lights up. dragenter and dragleave
+// fire for every child crossed, so count them rather than trust the last one.
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+let dragDepth = 0;
+function onDragEnter(e) {
+  if (!hasFiles(e)) return;
+  dragDepth += 1;
+  dragOver.value = true;
+}
+function onDragOver(e) {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); // allows the drop here
+  e.dataTransfer.dropEffect = busy.value ? 'none' : 'copy';
+}
+function onDragLeave(e) {
+  if (!hasFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) dragOver.value = false;
+}
+function onDrop(e) {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); // the browser would otherwise open or download the file itself
+  dragDepth = 0;
+  dragOver.value = false;
+  if (!busy.value) load(e.dataTransfer.files[0]);
+}
 const createNew = () => run(newDocument);
 </script>
 
@@ -106,7 +152,9 @@ h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: 
 }
 .tile:hover, .drop.over { border-color: var(--accent); box-shadow: 0 4px 16px rgb(0 0 0 / 8%); }
 .drop { border-style: dashed; }
-.tile-icon { font-size: 2rem; line-height: 1; }
+.tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tile:disabled { cursor: progress; opacity: .7; }
+.tile-icon { flex: none; fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tile-title { font-weight: 600; font-size: 1.1rem; }
 .tile-sub { color: var(--muted); font-size: .9rem; }
 .status { margin-top: 24px; color: var(--muted); }
