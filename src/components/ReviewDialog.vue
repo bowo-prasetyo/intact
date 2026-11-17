@@ -203,9 +203,13 @@ const notes = computed(() => {
   const edited = r.paragraphs.length > 0 || (l && Object.keys(l.before).some((k) => l.before[k] !== l.after[k]));
   if (f?.updatable.length && edited) {
     const what = f.updatable.join(', ').replace(/, ([^,]*)$/, ' and $1');
-    out.push(f.alreadyUpdating
-      ? { kind: 'info', text: `This document has ${what}. The file asks Word to update them when it is opened.` }
-      : { kind: 'warn', fields: true, text: `This document has ${what}, which Word updates, not Intact: they may be out of date after your changes. In Word, select all (Ctrl+A) and press F9 to update them before you send the file.` });
+    if (f.updatedHere) {
+      out.push({ kind: 'info', fields: !f.alreadyUpdating, text: `This document’s ${what.replace(/^a /, '')} ${f.updatable.length > 1 || /s$/.test(f.updatable[0]) ? 'were' : 'was'} updated here (Update fields, F9). Page numbers are Word’s: ${f.alreadyUpdating || f.updateOnOpen ? 'the file asks Word to update them when it is opened.' : 'tick below so Word updates them when the file is opened.'}` });
+    } else {
+      out.push(f.alreadyUpdating
+        ? { kind: 'info', text: `This document has ${what}. The file asks Word to update them when it is opened.` }
+        : { kind: 'warn', fields: true, text: `This document has ${what}: they may be out of date after your changes. Update them here with Update fields (F9) on the toolbar; page numbers in a table of contents are Word’s, so also tick below, or in Word select all (Ctrl+A) and press F9 before you send the file.` });
+    }
   }
   if (f?.citationsChanged) {
     out.push({ kind: 'warn', text: 'Citations were added or removed, but the bibliography doesn’t change until it is refreshed in Word, with your reference manager (Zotero, EndNote, Mendeley) or References › Update Citations and Bibliography.' });

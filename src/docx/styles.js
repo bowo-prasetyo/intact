@@ -27,6 +27,16 @@ export const BUILTIN_STYLES = {
   footnoteReference: { name: 'footnote reference', id: 'FootnoteReference', type: 'character', xml: () => `
     <w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/>
     <w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>` },
+  endnoteText: { name: 'endnote text', id: 'EndnoteText', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="EndnoteText"><w:name w:val="endnote text"/>${basedOn}<w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/>
+    <w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>` },
+  endnoteReference: { name: 'endnote reference', id: 'EndnoteReference', type: 'character', xml: () => `
+    <w:style w:type="character" w:styleId="EndnoteReference"><w:name w:val="endnote reference"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/>
+    <w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>` },
+  // A table of contents' entries, by level, as Word defines them (added for a level its TOC lacks).
+  ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`toc${n}`, { name: `toc ${n}`, id: `TOC${n}`, xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="TOC${n}"><w:name w:val="toc ${n}"/>${basedOn}<w:next w:val="__NORMAL__"/><w:autoRedefine/><w:uiPriority w:val="39"/><w:unhideWhenUsed/>
+    <w:pPr><w:spacing w:after="100"/>${n > 1 ? `<w:ind w:left="${220 * (n - 1)}"/>` : ''}</w:pPr></w:style>` }])),
 };
 
 export class StyleSheet {

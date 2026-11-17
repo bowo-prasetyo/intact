@@ -72,6 +72,8 @@ const FOOTER_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relati
 const FOOTER_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml';
 const FOOTNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes';
 const FOOTNOTES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml';
+const ENDNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes';
+const ENDNOTES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml';
 // The order of a section's properties (CT_SectPr), for adding page size and margins.
 const SECTPR_ORDER = [
   'headerReference', 'footerReference', 'footnotePr', 'endnotePr', 'type', 'pgSz', 'pgMar', 'paperSrc',
@@ -543,38 +545,79 @@ export class DocxDocument {
   }
 
   /**
-   * A new footnote: { ref (its reference, for the caret), note (the note, for the notes section) }.
-   * The note starts with its number and a space, in Word's Footnote Text style, as Word starts one.
-   * A document without footnotes gets the part for them when saved. The note is saved only while
-   * its reference is in the text (see serializeNotes).
+   * A new footnote or endnote (`kind`): { ref (its reference, for the caret), note (the note, for
+   * the notes section) }. The note starts with its number and a space, in Word's Footnote (Endnote)
+   * Text style, as Word starts one. A document without such notes gets the part for them when
+   * saved. The note is saved only while its reference is in the text (see serializeNotes).
    */
-  newFootnote() {
-    const kind = 'footnote';
+  newNote(kind = 'footnote') {
     if (!this.noteParts[kind]) {
       const dir = this.mainDir ? `${this.mainDir}/` : '';
+      const file = `${kind}s`;
       let n = '';
-      while (this.zip.file(`${dir}footnotes${n}.xml`)) n = Number(n) + 1;
+      while (this.zip.file(`${dir}${file}${n}.xml`)) n = Number(n) + 1;
       const sep = (local) => `<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:${local}/></w:r></w:p>`;
-      const text = `${XML_HEADER}<w:footnotes xmlns:w="${W}" xmlns:r="${NS.r}">`
-        + `<w:footnote w:type="separator" w:id="-1">${sep('separator')}</w:footnote>`
-        + `<w:footnote w:type="continuationSeparator" w:id="0">${sep('continuationSeparator')}</w:footnote></w:footnotes>`;
-      let rid = 'rIdFootnotes1';
-      for (let i = 1; this.rels.has(rid); i++) rid = `rIdFootnotes${i}`;
-      this.noteParts[kind] = { path: `${dir}footnotes${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true, rid };
+      const text = `${XML_HEADER}<w:${file} xmlns:w="${W}" xmlns:r="${NS.r}">`
+        + `<w:${kind} w:type="separator" w:id="-1">${sep('separator')}</w:${kind}>`
+        + `<w:${kind} w:type="continuationSeparator" w:id="0">${sep('continuationSeparator')}</w:${kind}></w:${file}>`;
+      const prefix = `rId${NOTE_NAMES[kind]}s`;
+      let rid = `${prefix}1`;
+      for (let i = 1; this.rels.has(rid); i++) rid = `${prefix}${i}`;
+      this.noteParts[kind] = { path: `${dir}${file}${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true, rid };
     }
     const part = this.noteParts[kind];
-    const ids = [...wChildren(part.xml.documentElement, kind).map((el) => Number(wAttr(el, 'id'))), ...[...this.newNotes.keys()].map((k) => Number(k.split(':')[1]))];
+    const ids = [...wChildren(part.xml.documentElement, kind).map((el) => Number(wAttr(el, 'id'))),
+      ...[...this.newNotes.keys()].filter((k) => k.startsWith(`${kind}:`)).map((k) => Number(k.split(':')[1]))];
     const id = String(Math.max(0, ...ids.filter(Number.isFinite)) + 1);
-    const refStyle = this.styles.ensureBuiltin('footnoteReference');
-    const textStyle = this.styles.ensureBuiltin('footnoteText');
+    const refStyle = this.styles.ensureBuiltin(`${kind}Reference`);
+    const textStyle = this.styles.ensureBuiltin(`${kind}Text`);
     const parse = (xml) => this.xml.importNode(parseXml(`<root xmlns:w="${W}">${xml}</root>`).documentElement.firstElementChild, true);
     const mark = `<w:r><w:rPr><w:rStyle w:val="${refStyle}"/></w:rPr>`;
-    const ref = this.rawInline(parse(`${mark}<w:footnoteReference w:id="${id}"/></w:r>`));
-    const node = parse(`<w:footnote w:id="${id}"><w:p><w:pPr><w:pStyle w:val="${textStyle}"/></w:pPr>${mark}<w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p></w:footnote>`);
+    const ref = this.rawInline(parse(`${mark}<w:${kind}Reference w:id="${id}"/></w:r>`));
+    const node = parse(`<w:${kind} w:id="${id}"><w:p><w:pPr><w:pStyle w:val="${textStyle}"/></w:pPr>${mark}<w:${kind}Ref/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p></w:${kind}>`);
     this.newNotes.set(`${kind}:${id}`, node);
     const note = this.renderNote(kind, node, id, '');
     note.dataset.added = '';
     return { ref, note };
+  }
+
+  /**
+   * A paragraph's outline level (0 for Heading 1 … 8; 9 or null for body text): its style's, or with
+   * `direct` its own first (Word's \u in a table of contents).
+   */
+  outlineLevel(el, direct = false) {
+    const own = direct && el.dataset.ppr != null ? wChild(this.raw[Number(el.dataset.ppr)], 'outlineLvl') : null;
+    if (own) return Number(wAttr(own, 'val'));
+    const chain = this.styles.chain(el.dataset.style || this.styles.defaultParagraph);
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const lvl = wChild(chain[i].pPr, 'outlineLvl');
+      if (lvl) return Number(wAttr(lvl, 'val'));
+      // Word's heading styles are outline levels even where the file doesn't say so.
+      const heading = /^heading ([1-9])$/.exec(chain[i].name?.toLowerCase() || '');
+      if (heading) return Number(heading[1]) - 1;
+    }
+    return null;
+  }
+
+  /** A new bookmark called `name`: its start and end markers, hidden in the page as a file's are. */
+  newBookmark(name) {
+    const id = String(this.nextId++);
+    const start = createW(this.xml, 'bookmarkStart');
+    start.setAttributeNS(W, 'w:id', id);
+    start.setAttributeNS(W, 'w:name', name);
+    const end = createW(this.xml, 'bookmarkEnd');
+    end.setAttributeNS(W, 'w:id', id);
+    return [this.hiddenRaw(start), this.hiddenRaw(end)];
+  }
+
+  /** Paragraph `el` of the page as XML now, outside a save (as tableWithEdits does for a table). */
+  paragraphXml(el) {
+    this.revisions = [];
+    this.linksUsed ||= new Map();
+    this.serialRels ||= { path: this.relsPath, rels: this.rels };
+    const p = this.serializeParagraph(el, [...el.childNodes]);
+    this.revisions = [];
+    return p;
   }
 
   /** The section holding the notes of `kind` below the text (empty). */
@@ -667,10 +710,11 @@ export class DocxDocument {
       const xml = this.partsOut?.[v.path];
       await this.registerPart(v.path, v.rid, FOOTER_REL, FOOTER_CT, !!(v.present && xml), xml && serializeXml(xml));
     }
-    const notes = this.noteParts.footnote;
-    if (notes?.added) {
-      const xml = this.notesOut?.footnote;
-      await this.registerPart(notes.path, notes.rid, FOOTNOTES_REL, FOOTNOTES_CT, !!xml, xml && serializeXml(xml));
+    for (const [kind, rel, ct] of [['footnote', FOOTNOTES_REL, FOOTNOTES_CT], ['endnote', ENDNOTES_REL, ENDNOTES_CT]]) {
+      const notes = this.noteParts[kind];
+      if (!notes?.added) continue;
+      const xml = this.notesOut?.[kind];
+      await this.registerPart(notes.path, notes.rid, rel, ct, !!xml, xml && serializeXml(xml));
     }
   }
 
@@ -1671,6 +1715,7 @@ export class DocxDocument {
           wrap.className = 'field';
           const instr = fields[fields.length - 1].instr;
           wrap.title = fieldTitle(instr);
+          wrap.dataset.instr = instr.trim(); // for updating it here (see fieldUpdates.js)
           const ref = referenceManager(instr);
           if (ref && ref.source !== 'Word') wrap.dataset.refManager = `${ref.source} ${ref.kind}`;
           parent.append(wrap);

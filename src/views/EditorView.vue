@@ -133,6 +133,12 @@
       <button type="button" title="Insert footnote (Ctrl+Alt+F)" aria-label="Insert footnote" @click="insertFootnote">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
       </button>
+      <button type="button" title="Insert endnote (Ctrl+Alt+D)" aria-label="Insert endnote" @click="insertEndnote">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 4h7M1.5 7.5h5M1.5 13.5h13M11.5 2.5v4.5M13.5 2.5v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
+      </button>
+      <button type="button" title="Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s" aria-label="Update fields" @click="updateAllFields">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
+      </button>
       <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg>
       </button>
@@ -669,6 +675,7 @@ import { missingFonts } from '../docx/fonts.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
+import { updateFields } from '../docx/fieldUpdates.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField,
@@ -3227,6 +3234,7 @@ function runShortcut(name) {
   if (name === 'nonBreakingSpace') return typeText('\u00a0');
   if (name === 'pageBreak') return insertPageBreak();
   if (name === 'footnote') return insertFootnote();
+  if (name === 'endnote') return insertEndnote();
 }
 
 /**
@@ -3538,20 +3546,60 @@ function insertPageNumber() {
   message.value = inPart ? 'Page number added: Word numbers the pages' : 'Page number added to the footer: Word numbers the pages';
 }
 
+// The page as it was right after fields were updated here (for the review: "updated here").
+let fieldsUpdatedAt = null;
+
 /**
- * Insert Footnote (Ctrl+Alt+F), as in Word: a reference at the caret (after the selection), and
- * its note below the text, in number order, with the caret in it to type the note.
+ * Update fields (F9), as Word's for the whole text: caption numbers, note numbers, cross-references
+ * and tables of contents (see docx/fieldUpdates.js), as one undoable step. Page numbers are Word's:
+ * when a table of contents was updated, the file asks Word to update fields when it opens it.
  */
-function insertFootnote() {
+function updateAllFields() {
+  if (textLocked.value) return explainLock();
+  undoStack.flush();
+  const before = page.value.innerHTML;
+  const t = updateFields(doc, page.value);
+  refreshCss(); // a TOC level's style may have been added
+  const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const done = [
+    t.toc && (t.toc === 1 ? `the table of contents (${count(t.entries, 'entry', 'entries')})` : `${t.toc} tables of contents`),
+    t.ref && count(t.ref, 'cross-reference'),
+    t.seq && count(t.seq, 'caption number'),
+    t.noteref && count(t.noteref, 'note number'),
+  ].filter(Boolean);
+  const notes = [];
+  if (t.missing) notes.push(`${count(t.missing, 'cross-reference')} to text no longer in the document ${t.missing === 1 ? 'was' : 'were'} left as ${t.missing === 1 ? 'it was' : 'they were'}`);
+  if (t.skipped) notes.push(`${t.skipped} was left as it was`);
+  if (t.toc) {
+    doc.updateFields = true;
+    notes.push('page numbers are Word’s: the file asks Word to update them when it opens it');
+  }
+  if (page.value.innerHTML !== before) {
+    doc.renumber(page.value);
+    onInput();
+    undoStack.commit();
+  }
+  fieldsUpdatedAt = page.value.innerHTML;
+  const what = done.length ? `Updated ${done.join(', ').replace(/, ([^,]*)$/, ' and $1')}` : 'The fields are up to date';
+  message.value = [what, ...notes].join('; ');
+}
+
+/**
+ * Insert Footnote (Ctrl+Alt+F) and Insert Endnote (Ctrl+Alt+D), as in Word: a reference at the
+ * caret (after the selection), and its note below the text, among the others in the order the text
+ * refers to them, with the caret in it to type the note.
+ */
+function insertNote(kind = 'footnote') {
+  const name = kind === 'footnote' ? 'A footnote' : 'An endnote';
   if (textLocked.value) return explainLock();
   restoreSelection();
   let range = selectionInPage();
   if (!range) return;
   if (inField(range.startContainer)) {
-    message.value = 'A footnote can’t go inside a field';
+    message.value = `${name} can’t go inside a field`;
     return;
   }
-  if (refuseInNote(range, 'A footnote')) return;
+  if (refuseInNote(range, name)) return;
   const locked = readOnlySelection();
   if (locked) return explainReadOnly(locked, true);
   if (!range.collapsed) {
@@ -3559,26 +3607,29 @@ function insertFootnote() {
     selectRange(range);
   }
   undoStack.flush();
-  const { ref, note } = doc.newFootnote();
+  const { ref, note } = doc.newNote(kind);
   refreshCss();
   insertNodes([ref], range);
-  let section = page.value.querySelector(':scope > .docx-notes[data-notes="footnote"]');
+  let section = page.value.querySelector(`:scope > .docx-notes[data-notes="${kind}"]`);
   if (!section) {
-    section = doc.notesSection('footnote');
-    page.value.insertBefore(section, page.value.querySelector(':scope > .docx-notes[data-notes="endnote"], :scope > .docx-hf-band.footer'));
+    section = doc.notesSection(kind);
+    const before = kind === 'footnote' ? ':scope > .docx-notes[data-notes="endnote"], :scope > .docx-hf-band.footer' : ':scope > .docx-hf-band.footer';
+    page.value.insertBefore(section, page.value.querySelector(before));
   }
+  // Before the note of the next reference in the text that has one.
+  const refs = [...page.value.querySelectorAll(`.note-ref[data-note-ref="${kind}"]`)].filter((r) => !r.closest('.docx-notes'));
+  const notes = new Map([...section.querySelectorAll(':scope > .docx-note')].map((el) => [el.dataset.noteId, el]));
+  const next = refs.slice(refs.indexOf(ref) + 1).map((r) => notes.get(r.dataset.noteId)).find(Boolean);
+  section.insertBefore(note, next || null);
   doc.renumberNotes(page.value);
-  const n = Number(ref.dataset.n);
-  const after = [...section.querySelectorAll(':scope > .docx-note')].find((el) => Number(el.dataset.n) > n);
-  section.insertBefore(note, after || null);
-  doc.renumberNotes(page.value);
-  const text = note.querySelector(BLOCK_SELECTOR) || note;
-  placeCaret(text);
+  placeCaret(note.querySelector(BLOCK_SELECTOR) || note);
   note.scrollIntoView({ block: 'nearest' });
   onInput();
   undoStack.commit();
-  message.value = `Footnote ${ref.dataset.n} added: type it below the text`;
+  message.value = `${kind === 'footnote' ? 'Footnote' : 'Endnote'} ${ref.dataset.n} added: type it below the text`;
 }
+const insertFootnote = () => insertNote('footnote');
+const insertEndnote = () => insertNote('endnote');
 
 // Page setup, for the whole document: paper size, orientation and margins (cm), as Word's.
 const PAPERS = [
@@ -3987,6 +4038,11 @@ function onKeydown(e) {
   }
   if (mod && !e.altKey && ['b', 'i', 'u'].includes(key) && inPlainField()) {
     e.preventDefault();
+    return;
+  }
+  if (e.key === 'F9' && !mod && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    updateAllFields();
     return;
   }
   const shortcut = shortcutFor(e);
@@ -4772,6 +4828,7 @@ async function openReview(part = '') {
     properties: doc.propertiesUpdate(),
     accessibility: issues.map(({ targets, ...issue }) => ({ ...issue, count: targets.length })),
   };
+  if (reviewData.value.fields) reviewData.value.fields.updatedHere = fieldsUpdatedAt === page.value.innerHTML;
 }
 
 // ------------------------------------------------------------------ accessibility and properties

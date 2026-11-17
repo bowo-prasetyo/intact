@@ -26,6 +26,7 @@ export function shortcutFor(e) {
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyM') return 'comment';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyF') return 'footnote';
+  if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyD') return 'endnote';
   if (!e.shiftKey && !e.altKey) {
     // Bold, italic and underline too: not every browser does them in editable text by itself.
     return {
@@ -62,7 +63,8 @@ export const SHORTCUTS = [
   ['Ctrl+1, Ctrl+5, Ctrl+2', 'Single, 1.5 and double line spacing (where the browser leaves these keys to the page)'],
   ['Ctrl+0', 'Space before the paragraph on or off'],
   ['Ctrl+Enter', 'Page break'],
-  ['Ctrl+Alt+F', 'Insert a footnote'],
+  ['Ctrl+Alt+F, Ctrl+Alt+D', 'Insert a footnote, an endnote'],
+  ['F9', 'Update fields: the table of contents, cross-references, caption and note numbers'],
   ['Shift+Enter', 'Line break'],
   ['Ctrl+Shift+Space', 'Non-breaking space'],
   ['Ctrl+Shift+E', 'Track Changes on or off'],
