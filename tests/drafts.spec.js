@@ -106,8 +106,12 @@ test('after restoring, Track Changes is still on, and the changes tracked before
   await drafts(page).getByRole('button', { name: 'Restore fees.docx' }).click();
   await expect(page.getByRole('button', { name: 'Track changes' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.changes-group .badge')).toHaveText('1');
-  await typeAtEnd(page, ' Thanks.');
-  await expect(page.locator('.docx-page .tc-ins')).toHaveText(' Thanks.');
+  // Typed away from the earlier change, which reopens as a tracked change kept from the file (in
+  // Firefox, End puts the caret at the edge of that read-only text, where typing is refused).
+  await page.locator('.docx-page p').first().click();
+  await page.keyboard.press('Home');
+  await page.keyboard.type('Note: ');
+  await expect(page.locator('.docx-page .tc-ins')).toHaveText('Note: ');
   const { xml } = await download(page);
   expect(xml.match(/<w:ins [^>]*w:author="Rita"/g)).toHaveLength(2);
 });
