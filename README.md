@@ -80,7 +80,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   controls change too: a row added in a repeating section is a new item of it (with its own ids,
   as Word's + adds one), a row added in a plain field stays in it, a field left empty goes, and new
   cells next to a field cell are ordinary cells; locked fields and fields linked to data stay as
-  they are
+  they are. Only the rows and cells a change touches count, so a locked row (a form's total, say)
+  or a cell linked to data doesn't stop changes elsewhere: rows are still inserted and deleted
+  around it, and columns beside a locked cell. A change that would alter such a field (a column
+  adding a cell to a locked row, deleting the column of a linked cell) is refused, and the status
+  bar names the field
 - Merge and split cells from the same menu, as Word does: Merge cells joins the selected cells
   (grown to whole cells where a merged cell sticks out) into one spanning them across (`gridSpan`)
   and down (`vMerge`), their content one after another in it; Split cells… divides a cell into
