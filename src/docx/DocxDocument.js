@@ -104,6 +104,23 @@ const FORMAT_MIME = {
   dotm: 'application/vnd.ms-word.template.macroEnabled.12',
 };
 
+// What a run holds that is drawn on its own: pictures, shapes and text boxes, legacy VML, objects.
+const RUN_OBJECTS = new Set(['drawing', 'AlternateContent', 'pict', 'object']);
+/**
+ * A run's content (rPr aside) split so each object in it stands alone, the rest grouped as it comes:
+ * one piece (no split) unless the run holds an object beside other content.
+ */
+function runPieces(kids, isSimple) {
+  const content = kids.filter((k) => !(k.namespaceURI === W && k.localName === 'rPr'));
+  if (!content.some((k) => RUN_OBJECTS.has(k.localName))) return [content];
+  const pieces = [];
+  for (const k of content) {
+    const last = pieces[pieces.length - 1];
+    if (RUN_OBJECTS.has(k.localName) || !last || RUN_OBJECTS.has(last[0].localName) || isSimple(k) !== isSimple(last[0])) pieces.push([k]);
+    else last.push(k);
+  }
+  return pieces;
+}
 const SIMPLE_RUN_CHILDREN = new Set(['rPr', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen', 'lastRenderedPageBreak']);
 const HIDDEN_INLINE = new Set(['bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd', 'permStart', 'permEnd', 'moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd']);
 const FLATTEN_INLINE = new Set(['smartTag', 'customXml', 'dir', 'bdo']);
@@ -1916,8 +1933,23 @@ export class DocxDocument {
 
   renderRun(r, parent) {
     const kids = elementChildren(r);
-    const simple = kids.every((k) => k.namespaceURI === W && SIMPLE_RUN_CHILDREN.has(k.localName)
-      && !(k.localName === 'br' && wAttr(k, 'type') && wAttr(k, 'type') !== 'textWrapping'));
+    const isSimple = (k) => k.namespaceURI === W && SIMPLE_RUN_CHILDREN.has(k.localName)
+      && !(k.localName === 'br' && wAttr(k, 'type') && wAttr(k, 'type') !== 'textWrapping');
+    const simple = kids.every(isSimple);
+    const pieces = simple ? [] : runPieces(kids, isSimple);
+    if (pieces.length > 1) {
+      // Pictures, text boxes or objects with other content in one run (as LibreOffice writes them;
+      // Word gives each its own): shown as a run each, with the run's properties, which means the
+      // same. So each is drawn, and the text beside them stays text.
+      const rPr = wChild(r, 'rPr');
+      for (const piece of pieces) {
+        const run = r.cloneNode(false);
+        if (rPr) run.append(rPr.cloneNode(true));
+        for (const k of piece) run.append(k.cloneNode(true));
+        this.renderRun(run, parent);
+      }
+      return;
+    }
     if (!simple) {
       parent.append(this.rawInline(r));
       return;
@@ -3361,6 +3393,7 @@ export class DocxDocument {
       const old = this.openedEntries.get(path);
       if (!old) return true;
       if (old === f) continue; // never rewritten
+      if (path === this.mainPath && this.mainUnchanged) continue;
       if (path === this.mainPath && this.pristineMain != null) {
         if ((await f.async('string')) !== this.pristineMain) return true;
       } else if (/\.(xml|rels)$/i.test(path)) {
@@ -3387,7 +3420,12 @@ export class DocxDocument {
   /** Writes the current editor content into the package: every part a save changes. */
   async write(root) {
     this.update(root);
-    this.zip.file(this.mainPath, serializeXml(this.xml));
+    // The text untouched (it saves as it did when rendered), the part goes back byte for byte, as
+    // unedited headers, footers and notes do: an edit elsewhere doesn't rewrite it.
+    const main = serializeXml(this.xml);
+    const opened = this.openedEntries.get(this.mainPath);
+    this.mainUnchanged = main === this.pristineMain && !this.restored && !!opened;
+    this.zip.file(this.mainPath, this.mainUnchanged ? await opened.async('uint8array') : main);
     await this.writeMedia();
     await this.writeLinks();
     await this.writeStyles();

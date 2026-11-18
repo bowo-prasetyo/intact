@@ -46,7 +46,7 @@ test('a header is edited in place and saved to its own part; the text and footer
   expect(await partOf(zip, 'header1')).toContain('<w:t xml:space="preserve">DRAFT v3 – Northwind</w:t>');
   expect(await partOf(zip, 'header1')).toContain('<w:jc w:val="right"/>'); // its paragraph keeps its formatting
   expect(await partOf(zip, 'footer1')).toBe(PARTS['word/footer1.xml']);
-  expect(await canonicalize(page, xml)).toEqual(await canonicalize(page, await documentXmlOf(docx)));
+  expect(xml).toBe(await documentXmlOf(docx)); // the text's part isn't rewritten: byte for byte
 });
 
 test('a footer is edited too, its field kept; Undo takes back header and footer edits', async ({ page }) => {

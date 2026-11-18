@@ -53,7 +53,7 @@ test('the menu sets line spacing on the selected paragraphs, checks the current 
   await page.keyboard.press('Escape');
   await page.keyboard.press('ControlOrMeta+z');
   ({ xml } = await download(page));
-  expect(savedParagraph(xml, 'Alpha')).toBe(`<w:p>${run('Alpha')}</w:p>`);
+  expect(savedParagraph(xml, 'Alpha')).toBe('<w:p><w:r><w:t>Alpha</w:t></w:r></w:p>'); // the text undone: as it came
 });
 
 test('Ctrl+2, Ctrl+5 and Ctrl+1 set double, 1.5 and single spacing; Ctrl+0 adds and removes space before', async ({ page }) => {

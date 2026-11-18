@@ -54,3 +54,18 @@ test('tracked changes keep their author and date, and are shown read-only', asyn
   expect(xml).toMatch(/<w:ins [^>]*><w:r><w:t>world<\/w:t><\/w:r><\/w:ins>/);
   expect(xml).toContain('Oh, Hello ');
 });
+
+test('an edit elsewhere, or one undone, leaves the text\'s part byte for byte', async ({ page }) => {
+  // Saving rewrites only the parts that changed: with the text untouched, document.xml goes back
+  // exactly as it came, as headers, footers and notes do.
+  const docx = await buildDocx(KITCHEN_SINK);
+  await openInEditor(page, docx);
+  const last = page.locator('.docx-page > p').last();
+  await last.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' edited');
+  for (let i = 0; i < 7; i++) await page.keyboard.press('ControlOrMeta+z');
+  await expect(last).not.toContainText('edited');
+  const { xml } = await download(page);
+  expect(xml).toBe(await documentXmlOf(docx));
+});
