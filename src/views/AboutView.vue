@@ -25,7 +25,9 @@
         <li>Zoom from 50% to 200% in the status bar, or with Ctrl+mouse wheel on the page</li>
         <li>AutoFormat as you type: smart quotes and dashes in the text's language, symbols such as (c) ©, (tm) ™ and --&gt; →, and lists started by typing "1. " or "* " (turn it off in the status bar)</li>
         <li>Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2), space before and after, and indents (Ctrl+M, Ctrl+Shift+M), with Word's Paragraph dialog</li>
-        <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break</li>
+        <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page</li>
+        <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
+        <li>About how many pages, in the status bar, with a dashed line where each page begins</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
         <li>Paragraph style (Normal, Title, Heading 1–3 and the document's own styles, such as Heading 4, Quote and Caption) and alignment</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
@@ -63,7 +65,14 @@
         Before downloading, the review lists what the file carries beyond the page: comments, tracked
         changes (their deleted text can still be read), hidden text, personal information such as the
         author's name, other properties, custom XML data and embedded files. Comments, tracked changes,
-        hidden text and personal information can be removed there, as with Word's Document Inspector.
+        hidden text and personal information can be removed there, as with Word's Document Inspector, and
+        removing personal information can be made the default for files without comments or tracked changes.
+      </p>
+      <h2>Sending a CV</h2>
+      <p>
+        Many employers' screening software reads a CV's text before anyone does. For a document that reads
+        as a CV, the review says what such software is known to miss: contact details only in a header or
+        footer, text boxes, columns, charts and pictures, and text laid out side by side in tables.
       </p>
       <h2>Accessibility and properties</h2>
       <p>
@@ -89,7 +98,8 @@
         <li>Deleting the text a comment is attached to deletes the comment, as in Word (Undo brings it back).</li>
         <li>Pictures, tables, page breaks and new comments can't go in a note, a header, a footer or a text box. A page number shows 1 until Word numbers the pages, and Update fields leaves page numbers to Word.</li>
         <li>A text box's size, position and look are kept, not changed here; a text box grows to show all its text where Word would cut it off. Groups of shapes, and shapes without text, can't be edited.</li>
-        <li>The page isn't split into pages: columns are balanced, and each header and footer is shown once.</li>
+        <li>The page isn't split into pages: columns are balanced, and each header and footer is shown once. The page count is worked out from the paper and margins, so Word may break a line or two differently.</li>
+        <li>Headers and footers print once, at the start and the end, where they can't go on the right pages: sections with their own, or a page number beside a picture or table, or in a browser without page-margin boxes (Firefox, Safari).</li>
         <li>Equations need a math font to look as in Word (Windows and macOS have one).</li>
         <li>Legacy <code>.doc</code> files are not supported.</li>
       </ul>

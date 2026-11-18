@@ -19,6 +19,9 @@
             <button type="button" @click="$emit('check', 'accessibility')">
               <strong>Check accessibility</strong><span>Alt text, headings, tables and more, for people using screen readers</span>
             </button>
+            <button type="button" @click="$emit('check', 'screening')">
+              <strong>Check a CV for screening software</strong><span>Contact details, text boxes, columns and pictures that employers’ software may miss</span>
+            </button>
           </div>
         </section>
         <section aria-labelledby="help-keys">

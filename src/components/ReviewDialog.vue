@@ -44,6 +44,10 @@
                 <input type="checkbox" :checked="review.inspection.removePersonal" :disabled="!review.inspection.canChange" @change="$emit('personal', $event.target.checked)" />
                 Remove it from the downloaded file: names on comments and tracked changes become “Author”, and the author, last saved by, company and manager go, as with Word’s Document Inspector
               </label>
+              <label v-if="item.personal && (review.inspection.personalDefaultOffered || review.inspection.personalDefault)" class="personal">
+                <input type="checkbox" :checked="review.inspection.personalDefault" @change="$emit('personal-default', $event.target.checked)" />
+                Do this for every file I change that has no comments or tracked changes (remembered in this browser)
+              </label>
             </li>
           </ul>
           <p v-if="!review.inspection.canChange && release.some((i) => i.action || i.personal)" class="locked">The document is restricted: choose Edit anyway to remove these here.</p>
@@ -62,6 +66,20 @@
                 <input v-model="title" type="text" aria-label="Document title" placeholder="Title" :disabled="!canChangeTitle" />
                 <button type="submit" :disabled="!title.trim() || !canChangeTitle">Add title</button>
               </form>
+            </li>
+          </ul>
+        </details>
+      </section>
+
+      <section v-if="review.screening" class="release screening" aria-labelledby="ats-title">
+        <details ref="atsEl" class="section" :open="atsOpen">
+          <summary><h3 id="ats-title" class="section-title">CV screening software</h3> <span class="count" :class="{ warn: atsProblems }">{{ atsCount }}</span></summary>
+          <p class="intro">Many employers put applications through software that reads a CV’s text before anyone does. It reads plain paragraphs well and can miss or mix up the rest.</p>
+          <p v-if="!review.screening.issues.length" class="clean">Nothing found that such software is known to miss: contact details are in the text, and there are no text boxes, columns or pictures to lose.</p>
+          <ul v-else>
+            <li v-for="a in review.screening.issues" :key="a.id" :class="a.severity === 'tip' ? 'info' : 'warn'">
+              <span><strong>{{ SEVERITY[a.severity] }}: {{ a.title }}.</strong> {{ a.text }}</span>
+              <button v-if="a.count" type="button" @click="$emit('show-issue', a.id)">{{ a.count > 1 ? `Show (${a.count})` : 'Show' }}</button>
             </li>
           </ul>
         </details>
@@ -113,10 +131,10 @@ const props = defineProps({
   review: { type: Object, required: true },
   author: { type: String, default: '' },
   skip: { type: Boolean, default: false },
-  // Opened to look at one part ('release' or 'accessibility', from Help): that part opens, in view.
+  // Opened to look at one part ('release', 'accessibility' or 'screening', from Help): that part opens, in view.
   focus: { type: String, default: '' },
 });
-const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'show-issue', 'title', 'update-properties']);
+const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'personal-default', 'show-issue', 'title', 'update-properties']);
 
 const SEVERITY = { error: 'Error', warning: 'Warning', tip: 'Tip' };
 const title = ref('');
@@ -137,8 +155,9 @@ const dialog = ref(null);
 const downloadButton = ref(null);
 const releaseEl = ref(null);
 const a11yEl = ref(null);
+const atsEl = ref(null);
 onMounted(async () => {
-  const part = { release: releaseEl.value, accessibility: a11yEl.value }[props.focus];
+  const part = { release: releaseEl.value, accessibility: a11yEl.value, screening: atsEl.value }[props.focus];
   if (!part) {
     downloadButton.value?.focus();
     return;
@@ -254,7 +273,8 @@ const details = computed(() => notes.value.filter((n) => !attention.value.includ
 const OPEN_CHANGES = 5; // more changed paragraphs than this are folded away, behind their count
 
 const releaseWarnings = computed(() => release.value.filter((i) => i.kind === 'warn').length);
-const releaseOpen = computed(() => releaseWarnings.value > 0 || props.focus === 'release');
+// Open where something needs a look, or where a choice was made for you (personal information).
+const releaseOpen = computed(() => releaseWarnings.value > 0 || props.focus === 'release' || !!props.review.inspection?.removePersonalAuto);
 const releaseCount = computed(() => (releaseWarnings.value ? `${releaseWarnings.value} to check`
   : release.value.length ? plural(release.value.length, 'note') : 'Nothing hidden'));
 
@@ -267,8 +287,19 @@ const a11yCount = computed(() => {
   return [a11yProblems.value && plural(a11yProblems.value, 'issue'), tips && plural(tips, 'tip')].filter(Boolean).join(', ');
 });
 
-/** What needs a look before downloading: warnings, release items and accessibility issues. */
-const toCheck = computed(() => notes.value.filter((n) => n.kind === 'warn').length + releaseWarnings.value + a11yProblems.value);
+// Screening software: open, and counted among the things to check, for a document that reads as a
+// CV; for any other it is there, closed, should it be one.
+const atsProblems = computed(() => (props.review.screening?.issues || []).filter((a) => a.severity !== 'tip').length);
+const atsOpen = computed(() => (props.review.screening?.cv && props.review.screening.issues.length > 0) || props.focus === 'screening');
+const atsCount = computed(() => {
+  const all = props.review.screening?.issues || [];
+  if (!all.length) return props.review.screening?.cv ? 'none found' : '';
+  const tips = all.length - atsProblems.value;
+  return [atsProblems.value && `${atsProblems.value} to check`, tips && plural(tips, 'tip')].filter(Boolean).join(', ');
+});
+
+/** What needs a look before downloading: warnings, release items, accessibility issues, and a CV's screening issues. */
+const toCheck = computed(() => notes.value.filter((n) => n.kind === 'warn').length + releaseWarnings.value + a11yProblems.value + (props.review.screening?.cv ? atsProblems.value : 0));
 
 const list = (names) => names.map((n) => `“${n}”`).join(', ').replace(/, ([^,]*)$/, ' and $1');
 const quoteValue = (v) => `“${v.length > 60 ? `${v.slice(0, 60)}…` : v}”`;
@@ -298,10 +329,17 @@ const release = computed(() => {
   const personal = props_.filter((x) => PERSONAL.has(x.label));
   const names = [...new Set([...i.comments.authors, ...i.revisionAuthors])].filter((n) => n !== 'Author');
   if (i.removePersonal) {
-    out.push({ id: 'personal', kind: 'good', personal: true, text: 'Personal information is removed from the downloaded file.' });
+    // Chosen by the default you set: say what goes, and that it can be kept in this file.
+    const what = personal.length ? ` (${personal.map((x) => `${x.label} ${quoteValue(x.value)}`).join(', ')})` : '';
+    out.push({ id: 'personal', kind: 'good', personal: true, text: i.removePersonalAuto
+      ? `Personal information is removed from the downloaded file${what}, as you chose for files you change that have no comments or tracked changes. Untick to keep it in this one.`
+      : 'Personal information is removed from the downloaded file.' });
   } else if (personal.length || names.length) {
     const parts = [personal.length && personal.map((x) => `${x.label} ${quoteValue(x.value)}`).join(', '), names.length && `names on comments and tracked changes (${list(names)})`].filter(Boolean);
-    out.push({ id: 'personal', kind: 'warn', personal: true, text: `Personal information: ${parts.join('; ')}.` });
+    // Someone else's name, where yours is known: a file made from someone else's carries theirs.
+    const others = i.you ? personal.filter((x) => x.value.trim().toLowerCase() !== i.you.trim().toLowerCase()) : [];
+    const notYou = others.length ? ` ${others.length === personal.length ? 'That isn’t you' : `${others.map((x) => x.label).join(' and ')} isn’t you`} (${i.you}): a file made from someone else’s often carries their name.` : '';
+    out.push({ id: 'personal', kind: 'warn', personal: true, text: `Personal information: ${parts.join('; ')}.${notYou}` });
   }
   const other = props_.filter((x) => !PERSONAL.has(x.label));
   const custom = p.custom.filter((x) => !/^MSIP_Label_/.test(x.name) && x.value);
@@ -407,7 +445,8 @@ h2 { margin: 0; font-size: 18px; }
 .release button:hover:not(:disabled) { background: var(--hover); }
 .release button:disabled, .release input:disabled + * { opacity: .5; cursor: default; }
 .release .personal { flex: 1 1 100%; display: flex; gap: 6px; align-items: flex-start; color: var(--muted); }
-.release .clean, .release .locked { margin: 0; color: var(--muted); }
+.release .clean, .release .locked, .release .intro { margin: 0; color: var(--muted); }
+.release .intro { margin-bottom: 6px; }
 .update-fields { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-weight: 600; }
 .changes { margin: 0; padding: 0; list-style: none; }
 .change { padding: 10px 0; border-top: 1px solid var(--border); }

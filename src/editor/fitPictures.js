@@ -4,7 +4,7 @@
 // Only how it shows changes: its size in the document stays as it is, and a picture resized here is
 // resized in the document's terms (see pictureZoom).
 
-const NARROW = '(max-width: 860px)';
+const NARROW = 'screen and (max-width: 860px)';
 const PICTURES = '.raw-inline.picture[data-wrap="inline"]';
 
 /** How much a picture is shown smaller than its size (1: not at all). */

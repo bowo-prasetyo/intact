@@ -60,7 +60,27 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   the next half inch, or a list item's level. Tracked while tracking (`w:pPrChange`)
 - Print the document (Ctrl+P, or the browser's Print): only the page is printed, not the editor
   around it, on the document's paper size and in its margins, with a new page at each page break,
-  "page break before" and section break; tracked changes and highlights print as they show
+  "page break before" and section break; tracked changes and highlights print as they show.
+  Headers and footers print on every page, in the margins as Word places them (the text starts
+  below a header taller than its margin): one that is the same on every page repeats as it shows,
+  pictures and tables too; page numbers (`PAGE`, `NUMPAGES`, also as simple fields) are numbered on
+  each page, "Page 2 of 3", and a different first page or different even pages get their own, in
+  CSS page-margin boxes (Chrome, Edge), which hold a header's or footer's text, laid out by its
+  alignment and Word's centre and right tab stops, in its font and colour
+- Save as PDF from Download's menu (▾): a short dialog says that the browser makes the PDF from
+  its print window, on this device (Save as PDF, or Microsoft Print to PDF, as the destination), what
+  it will be called (the file's name: the page's title is the file's name while printing), about
+  how many pages it has, and what it will show that you may not want sent: tracked changes and
+  highlights, which print as they show (accept or reject the changes first for a clean copy).
+  Comments and the marks drawn over the page don't print
+- About how many pages, as Word would print it: the status bar says "≈ 2 pages", and a dashed line
+  across the page, numbered in the margin, shows about where each page begins. Worked out from the
+  paper size and margins (and a header or footer taller than its margin), line by line as Word fills
+  a page, with Word's widow and orphan control, headings kept with the text after them, table rows
+  kept whole, and a new page at each page break, "page break before" and section break that starts
+  one; kept up to date as you type. Drawn over the page, never in it; clicking the count shows or
+  hides the lines (remembered in this browser). The count matches the printout; Word may break a
+  line or two differently with its own fonts
 - Tab and Shift+Tab move between table cells; Tab in the last cell adds a row, as in Word (a copy of
   the last row's cells, empty: widths, merged columns, shading and paragraph formatting, but not a
   header row's repeat or vertical merges), tracked while tracking changes
@@ -317,7 +337,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   citations from Word or a reference manager (Zotero, EndNote, Mendeley) were added or removed and
   a bibliography lists them, it says the bibliography needs refreshing (`src/docx/fields.js`). The
   review can be skipped, and opened any time from the toolbar
-- Download the result as `.docx` (Ctrl/Cmd+S)
+- Download the result as `.docx` (Ctrl/Cmd+S), or save a PDF (see above)
 - Respect the restrictions Word puts on a document, as Word does: with Restrict Editing on
   (`w:documentProtection`, enforced) it opens read-only, comments only (comments can be added and
   answered), filling in forms only (its fields can be filled in) or with every edit tracked (Track
@@ -344,6 +364,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   comments and tracked changes. "Remove it from the downloaded file" takes those out (names become
   "Author", initials "A", `people.xml` loses the accounts behind them) and sets Word's
   `w:removePersonalInformation`, so Word keeps doing so; unticked, the parts go back as they were.
+  A CV or letter made from someone else's file or template carries their name as its author: where
+  your name is known (given for comments or Track Changes), the review says when the author isn't
+  you. "Do this for every file I change that has no comments or tracked changes" makes removing it
+  the default, remembered in this browser: then it is chosen for each file you have changed whose
+  properties name someone (not a placeholder such as "Author"), with no comments or tracked changes
+  (whose names it would change), no restriction, and the edit recorded in its properties. The
+  review opens there and says what goes and why; unticked, the file keeps it. Without that choice,
+  nothing is removed for you, so the properties of a file you didn't ask to change stay as they were
   Other document and custom properties, custom XML data, embedded files and macros are listed, for
   you to check in Word. Removing is one undoable step each, and not offered while the document is
   restricted
@@ -360,6 +388,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   paragraphs used for spacing, pictures not in line with text, no title). "Show" goes to each place
   in turn; for a picture it opens its alt text, and a missing title can be added there and is saved
   in the document's properties
+- Check a CV for employers' screening software (applicant tracking systems), which read a CV's text
+  before anyone does and miss or mix up what isn't in plain paragraphs: the review warns of contact
+  details only in a header or footer, no e-mail address, text in text boxes or columns, and charts
+  or diagrams, and gives tips on text laid out side by side in tables, pictures (no text is read in
+  them) and a file called just "CV". "Show" goes to each place. A document reads as a CV by its name
+  (CV, résumé, curriculum vitae, Lebenslauf) or two section headings such as Experience, Education
+  and Skills, in English, Indonesian, German, French, Spanish or Portuguese; for any other the check
+  is there, folded and not counted
 - Files that aren't `.docx` packages say what they are, instead of failing to unzip: encrypted with a
   password, protected by rights management (a sensitivity label that encrypts, or IRM), a Word
   97–2003 `.doc` with a `.docx` name, or something else. Intact doesn't decrypt files
@@ -378,8 +414,8 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   there: a picture wider than the screen is shown smaller (its size in the file unchanged), and what
   lies past the page's edge is cut off at it, as on paper
 - Help (Ctrl+/, or the toolbar's Help button) lists the keyboard shortcuts and opens the review's
-  checks without downloading: Review your changes, Before you release and Check accessibility, each
-  opening the review at its part
+  checks without downloading: Review your changes, Before you release, Check accessibility and
+  Check a CV for screening software, each opening the review at its part
 - The review starts with what needs a look: a line saying how many things there are to check, then
   warnings and choices (such as recording the edit in the properties). Before you release,
   Accessibility, the changed paragraphs (more than five) and other notes are folded behind their
@@ -598,9 +634,11 @@ The About page shows the version.
   alike rather than identical, and in Word they are part of the picture; a wrap outline isn't
   turned with its picture. Field cells that are locked, linked to data or not text
   fields can't be merged
-- Printing prints headers and footers once, at the start and the end of the document, as the page
-  shows them (not on every page), and fields such as page numbers as their last result; line numbers
-  and comments in the margin aren't printed. Browsers that switch tabs with Ctrl+1 to Ctrl+9 may
+- Printing prints headers and footers once, at the start and the end, as the page shows them, where
+  they can't be put on the right pages: a document whose sections have headers or footers of their
+  own, and a page number beside a picture or table, or in a browser without CSS page-margin boxes
+  (Firefox, Safari), where a page number would otherwise print the same on every page. Page numbers
+  print in Arabic numerals, from 1; line numbers and comments in the margin aren't printed. Browsers that switch tabs with Ctrl+1 to Ctrl+9 may
   keep Ctrl+1, Ctrl+2 and Ctrl+5 for themselves (the installed app, in its own window, gets them):
   the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
   the browser's: use the Paragraph dialog. Indents are set in centimetres and spacing in points
@@ -615,7 +653,8 @@ The About page shows the version.
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it), but
   for a note added here; pictures, tables, page breaks, new comments and notes can't go in a note (comments already in notes can be replied to, edited,
   resolved and deleted in the panel)
-- A page number shows 1 here, and prints as 1: Word numbers the pages when it opens the file. A
+- A page number shows 1 here (it prints numbered: see Print): Word numbers the pages when it opens
+  the file. A
   footer made here is for all pages of the first section and those after it without their own; a
   first page set to have a different footer, and even pages where they differ, don't show it, as in
   Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns
@@ -661,3 +700,13 @@ The About page shows the version.
   part, a title can't be added here
 - Signatures are recognised, not verified: Intact doesn't check that a signature is valid or who
   signed
+- The page count is worked out, not Word's: the browser's fonts and line breaking, the last
+  section's paper and margins for every section, footnotes not taking room at the bottom of a page,
+  and rows kept whole where Word may split them. A paragraph's "keep with next" and "keep lines
+  together" other than headings' aren't followed. Zoomed in or out, the browser lays the text out at
+  that size, which can move a break by a line or two (100% is as printed). On a phone, where the
+  page takes the screen's width, pages aren't counted
+- The PDF is the browser's: its fonts (a font the device lacks is substituted, as on screen), and
+  links and a document outline as the browser makes them. Saving the PDF is the print window's
+- The screening check knows what such software commonly misses, not what a given employer's does;
+  it doesn't rate how well a CV matches a job
