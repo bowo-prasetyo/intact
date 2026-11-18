@@ -66,20 +66,28 @@ function detach(el) {
 
 /**
  * Why a table's rows or cells can't be changed here, or null: content controls around them that
- * are locked, or linked to the document's data (Word would overwrite them).
+ * are locked, or linked to the document's data (Word would overwrite them). Only what a change
+ * touches counts, so a locked row (a form's total, say) doesn't stop changes elsewhere in the
+ * table: `rows` ([first, last] row index; null for every row) are the rows whose own field is
+ * checked, and `cells(cell, rowIndex)` says which cells' fields are (by default, every cell of
+ * those rows). With no scope, the whole table.
  */
-export function lockedParts(tbl) {
+export function lockedParts(tbl, { rows = null, cells = null } = {}) {
+  const inRows = (r) => rows == null || (r >= rows[0] && r <= rows[1]);
+  const cellTest = cells || ((c, r) => inRows(r));
   const wrappers = new Set();
-  for (const tr of rowsOf(tbl)) {
-    for (const w of wrappersOf(tr)) wrappers.add(w);
-    for (const tc of cellsOf(tr)) for (const w of wrappersOf(tc)) wrappers.add(w);
-  }
+  rowsOf(tbl).forEach((tr, r) => {
+    if (inRows(r)) for (const w of wrappersOf(tr)) wrappers.add(w);
+    for (const c of layout(tr)) if (cellTest(c, r)) for (const w of wrappersOf(c.tc)) wrappers.add(w);
+  });
   for (const w of wrappers) {
     if (!isW(w, 'sdt')) continue;
     const sdtPr = wChild(w, 'sdtPr');
     const lock = wAttr(wChild(sdtPr, 'lock'), 'val');
-    if (lock === 'sdtContentLocked' || lock === 'contentLocked') return 'This table’s rows or cells are locked fields: change its layout in Word';
-    if (wChild(sdtPr, 'dataBinding')) return 'This table’s rows or cells are linked to the document’s data: change its layout in Word';
+    const name = wAttr(wChild(sdtPr, 'alias'), 'val');
+    const field = name ? `the field “${name}”` : 'a field';
+    if (lock === 'sdtContentLocked' || lock === 'contentLocked') return `This would change ${field}, which is locked: change it in Word`;
+    if (wChild(sdtPr, 'dataBinding')) return `This would change ${field}, which is linked to the document’s data: change it in Word`;
   }
   return null;
 }

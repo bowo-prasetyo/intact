@@ -2520,10 +2520,13 @@ export class DocxDocument {
     return [...table.querySelectorAll(':scope > tbody > tr, :scope > tr')];
   }
 
-  /** Why a table's structure can't be changed here, or null. */
-  tableLocked(table) {
+  /**
+   * Why a table's structure can't be changed here, or null. `scope` limits the fields that count to
+   * the rows and cells a change touches (see tables.js lockedParts); none, the whole table.
+   */
+  tableLocked(table, scope = undefined) {
     if (table?.dataset.raw == null) return 'This table can’t be changed here: change it in Word';
-    return lockedParts(this.raw[Number(table.dataset.raw)]);
+    return lockedParts(this.raw[Number(table.dataset.raw)], scope);
   }
 
   /** Text width between the page margins, in twips. */
@@ -2631,7 +2634,7 @@ export class DocxDocument {
    * tracking (`tracked`: author and date). Returns { rows } (the new rendered rows) or { reason }.
    */
   insertTableRows(table, index, count, below, tracked = null) {
-    const reason = this.tableLocked(table);
+    const reason = this.tableLocked(table, { rows: [index, index] }); // the row copied, and where the copies go
     if (reason) return { reason };
     let made = [];
     const rev = tracked && this.rowRevisionMaker(tracked);
@@ -2646,7 +2649,7 @@ export class DocxDocument {
     const rows = this.tableRows(table);
     if (!rows.length) return { row: null, reason: 'This table has no rows to copy' };
     const res = this.insertTableRows(table, rows.length - 1, 1, true, tracked);
-    if (res.reason) return { row: null, reason: res.reason.replace('change its layout', 'add rows') };
+    if (res.reason) return { row: null, reason: res.reason };
     return { row: res.rows[0], reason: null };
   }
 
@@ -2656,7 +2659,7 @@ export class DocxDocument {
    * { removed } (the table went) or { reason }.
    */
   deleteTableRows(table, from, to, tracked = null) {
-    const reason = this.tableLocked(table);
+    const reason = this.tableLocked(table, { rows: [from, to] });
     if (reason) return { reason };
     const domRows = this.tableRows(table).slice(from, to + 1);
     if (!tracked) {
@@ -2701,9 +2704,10 @@ export class DocxDocument {
    * aren't tracked. Returns { reason } or {}.
    */
   insertTableColumns(table, start, span, count, right, tracked = null) {
-    const reason = this.tableLocked(table);
-    if (reason) return { reason };
     const at = right ? start + span : start;
+    // Every row gets a cell (so no row may be a locked field), and cells across the place widen.
+    const reason = this.tableLocked(table, { rows: null, cells: (c) => c.start < at && at < c.start + c.span });
+    if (reason) return { reason };
     const like = right ? start + span - 1 : start;
     const rev = tracked && this.rowRevisionMaker(tracked);
     this.editTable(table, (tbl) => {
@@ -2722,7 +2726,7 @@ export class DocxDocument {
    * Returns { removed } (the table went) or { reason }.
    */
   deleteTableColumns(table, from, to, tracked = null) {
-    const reason = this.tableLocked(table);
+    const reason = this.tableLocked(table, { rows: null, cells: (c) => c.start <= to && c.start + c.span - 1 >= from });
     if (reason) return { reason };
     const tbl = this.raw[Number(table.dataset.raw)];
     if (tracked) {
@@ -2768,11 +2772,15 @@ export class DocxDocument {
    * add nothing). Returns { cell } (the merged cell) or { reason }.
    */
   mergeTableCells(table, [r0, r1], [c0, c1], tracked = null) {
-    const reason = this.tableLocked(table);
-    if (reason) return { reason };
+    if (table?.dataset.raw == null) return { reason: 'This table can’t be changed here: change it in Word' };
     const tbl = this.raw[Number(table.dataset.raw)];
     const area = mergeArea(tbl, r0, r1, c0, c1);
     if (!area) return { reason: 'These cells can’t be merged: select a rectangle of cells' };
+    const reason = this.tableLocked(table, {
+      rows: [area.r0, area.r1],
+      cells: (c, r) => r >= area.r0 && r <= area.r1 && c.start <= area.c1 && c.start + c.span - 1 >= area.c0,
+    });
+    if (reason) return { reason };
     const cells = areaCells(tbl, area);
     if (cells.flat().length < 2) return { reason: 'Select the cells to merge: more than one' };
     const domRows = this.tableRows(table);
@@ -2840,10 +2848,12 @@ export class DocxDocument {
 
   /** Splits a rendered cell into `cols` × `rows` cells (see tables.js splitCell), tracked while tracking. Returns {} or { reason }. */
   splitTableCell(table, td, cols, rows, tracked = null) {
-    const reason = this.tableLocked(table);
-    if (reason) return { reason };
     if (td.dataset.revCell || td.dataset.revMerge || td.parentElement.dataset.revRow) return { reason: 'This cell is a tracked change: accept or reject it first' };
     const rowIndex = this.tableRows(table).indexOf(td.parentElement);
+    const index = [...td.parentElement.cells].indexOf(td);
+    // The cell and its row; split into columns, the other rows may span new grid columns too.
+    const reason = this.tableLocked(table, { rows: cols > 1 ? null : [rowIndex, rowIndex], cells: (c, r) => r === rowIndex && layout(rowsOf(this.raw[Number(table.dataset.raw)])[r]).indexOf(c) === index });
+    if (reason) return { reason };
     const cellIndex = [...td.parentElement.cells].indexOf(td);
     const trial = splitCell(this.raw[Number(table.dataset.raw)].cloneNode(true), rowIndex, cellIndex, cols, rows);
     if (trial.reason) return trial;
@@ -2902,8 +2912,7 @@ export class DocxDocument {
   deleteTable(table, tracked = null) {
     const rows = this.tableRows(table);
     if (!tracked) {
-      const reason = this.tableLocked(table);
-      if (reason && !reason.startsWith('This table’s rows')) return { reason };
+      if (table?.dataset.raw == null) return { reason: 'This table can’t be changed here: change it in Word' };
       if (table.querySelector('[data-tracked], [data-rev-mark], [data-fmt], [data-fmt-para], [data-rev-row], [data-rev-cell]')) {
         return { reason: 'The table holds tracked changes: accept or reject them first, or turn on Track changes' };
       }

@@ -78,7 +78,8 @@
         spacing, list numbering, images, tables layout, the shapes of text boxes, footnotes, fields,
         equations, comment anchors, section settings, embedded fonts and tracked changes. Such content is shown greyed
         out (tracked changes with their author) and cannot be edited here, and so are locked form
-        fields and fields linked to the document's data.
+        fields and fields linked to the document's data. In a table, such a field stops only the
+        changes that would alter it: rows and columns elsewhere still change.
       </p>
       <h2>Limitations</h2>
       <ul>

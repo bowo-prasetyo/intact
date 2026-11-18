@@ -93,3 +93,49 @@ test('rows in a locked field, or one linked to data, stay as they are', async ({
   await expect(status(page)).toHaveText('Read-only: Content control “Rows” – locked in Word');
   await expect(page.locator('table tr')).toHaveCount(1);
 });
+
+// Only the rows and cells a change touches count: a locked row (a form's total, say) or a cell
+// linked to data doesn't stop changes elsewhere in the table.
+const cellField = (name, inner, extra) => `<w:sdt><w:sdtPr><w:alias w:val="${name}"/><w:id w:val="30"/>${extra}</w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+const PARTLY = `<w:tbl>${GRID}<w:tr>${CELL('Item')}${CELL('Qty')}</w:tr><w:tr>${CELL('Paper')}${CELL('5')}</w:tr>`
+  + `${field(`<w:tr>${CELL('Total')}${CELL('5')}</w:tr>`, '<w:lock w:val="sdtContentLocked"/>')}</w:tbl><w:p/>`;
+
+test('a locked row stops only changes to it: rows elsewhere are inserted and deleted', async ({ page }) => {
+  await openInEditor(page, await buildDocx(PARTLY));
+  await page.locator('td', { hasText: 'Paper' }).click();
+  await layout(page, 'Insert row below');
+  await expect(status(page)).toHaveText('Row inserted below');
+  await expect.poll(() => texts(page)).toEqual([['Item', 'Qty'], ['Paper', '5'], ['', ''], ['Total', '5']]);
+  await page.locator('td', { hasText: 'Item' }).click();
+  await layout(page, 'Delete row');
+  await expect(status(page)).toHaveText('Row deleted – Undo (Ctrl+Z) brings it back');
+  await expect.poll(() => texts(page)).toEqual([['Paper', '5'], ['', ''], ['Total', '5']]);
+  const { xml } = await download(page);
+  expect(xml).toContain('<w:lock w:val="sdtContentLocked"/></w:sdtPr><w:sdtContent><w:tr>');
+  expect(xml).toContain('Total');
+});
+
+test('a column would add a cell to the locked row, so it is refused, naming the field', async ({ page }) => {
+  await openInEditor(page, await buildDocx(PARTLY));
+  await page.locator('td', { hasText: 'Paper' }).click();
+  await layout(page, 'Insert column to the right');
+  await expect(status(page)).toHaveText('This would change the field “Rows”, which is locked: change it in Word');
+  await expect.poll(() => texts(page)).toEqual([['Item', 'Qty'], ['Paper', '5'], ['Total', '5']]);
+});
+
+test('a cell linked to data: columns beside it change, its own column does not', async ({ page }) => {
+  const bound = '<w:dataBinding w:xpath="/order/qty" w:storeItemID="{11111111-1111-1111-1111-111111111111}"/>';
+  await openInEditor(page, await buildDocx(`<w:tbl>${GRID}<w:tr>${CELL('Item')}${CELL('Qty')}</w:tr>`
+    + `<w:tr>${CELL('Paper')}${cellField('Quantity', CELL('5'), bound)}</w:tr></w:tbl><w:p/>`));
+  await page.locator('td', { hasText: 'Item' }).click();
+  await layout(page, 'Insert column to the left');
+  await expect.poll(() => texts(page)).toEqual([['', 'Item', 'Qty'], ['', 'Paper', '5']]);
+  await page.locator('td', { hasText: 'Qty' }).click();
+  await layout(page, 'Delete column');
+  await expect(status(page)).toHaveText('This would change the field “Quantity”, which is linked to the document’s data: change it in Word');
+  await page.locator('td', { hasText: 'Item' }).click();
+  await layout(page, 'Delete column');
+  await expect.poll(() => texts(page)).toEqual([['', 'Qty'], ['', '5']]);
+  const { xml } = await download(page);
+  expect(xml).toContain(bound);
+});
