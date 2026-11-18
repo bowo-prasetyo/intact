@@ -205,7 +205,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   edited: DrawingML shapes (`wps:wsp`, Word 2010 and later) and legacy VML text boxes. The text is
   edited like the body (formatting, Undo, Track Changes); on save only the text changes, written into
   the shape and into its copy for older readers (`mc:Fallback`), whose tracked changes get ids of
-  their own. A text box left alone is written back exactly as it was
+  their own. A text box left alone is written back exactly as it was. Text boxes and pictures that
+  share a run with other content, as LibreOffice writes them, are shown and edited the same way
+  (written back as a run each, which means the same)
 - See a designed document as Word lays it out: a section set in columns (`w:cols`, with a line
   between them when it has one) is shown in columns; paragraph borders (`w:pBdr`, with their style,
   width, colour and distance from the text) and shading (`w:shd`, theme colours too); drop caps
@@ -422,7 +424,8 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 3. **Save** – the editor DOM is walked back into WordprocessingML: stored properties are cloned,
    toggles are merged in (respecting the schema order of `CT_RPr`/`CT_PPr`), adjacent runs with the
    same formatting are merged, and placeholders are written back verbatim. Only
-   `word/document.xml` changes, plus `styles.xml` if a heading or the Table Grid style had to be
+   `word/document.xml` changes (and only if the text did: saved as it was when rendered, the
+   part goes back byte for byte, so an edit to a header alone, or one undone, leaves it alone), plus `styles.xml` if a heading or the Table Grid style had to be
    added, `numbering.xml` if a new list was started, `footnotes.xml` / `endnotes.xml` if a note was
    edited, a header or footer part if it was edited, and for inserted pictures their files in
    `word/media`, relationships and content types.
@@ -507,9 +510,15 @@ tests themselves (`tests/helpers.js`). The core checks are:
 normalisations, such as merging adjacent runs with identical formatting). A new feature that touches
 the document should add its case to the kitchen-sink fixture in `tests/roundtrip.spec.js`.
 
-Real documents written by Word and other applications live in `tests/fixtures/` (anonymized; see the
-README there) and go through the same promises, with every part other than `document.xml` required
-to come back byte for byte. A `.docx` added there is tested automatically.
+Real documents written by Word, LibreOffice, pandoc and python-docx live in `tests/fixtures/`
+(anonymized; see the README there, and `sources/` for how the generated ones are made). Each goes
+through every promise in `tests/fixtures.spec.js`: all its text (body, headers, footers, text
+boxes, notes) and pictures are shown; saved without edits, or with an edit undone, every part comes
+back byte for byte; typing in a paragraph, heading, list item, table cell, header, footer, text box
+or note, pressing Enter or making a word bold changes only that block of that part (as a tracked
+change where the document has Track Changes on), the typed text in the formatting around it; the
+saved package stays sound (well-formed XML, content types, relationship targets); and the page logs
+no errors. A `.docx` added there is tested automatically.
 First run: `npx playwright install chromium firefox`. To run one browser:
 `npm test -- --project=chromium` (or `firefox`).
 

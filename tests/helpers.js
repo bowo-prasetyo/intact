@@ -217,6 +217,7 @@ export function canonicalize(page, xml) {
     };
 
     const doc = new DOMParser().parseFromString(text, 'application/xml');
-    return kids(doc.getElementsByTagNameNS(W, 'body')[0]).map(generic);
+    // The body's blocks; in a header, footer or notes part, its root's (paragraphs, tables, notes).
+    return kids(doc.getElementsByTagNameNS(W, 'body')[0] || doc.documentElement).map(generic);
   }, xml);
 }

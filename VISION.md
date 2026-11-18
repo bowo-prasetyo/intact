@@ -78,8 +78,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Deleting text never silently drops tracked changes or leaves orphaned comments ✔
 - Read-only content says what it is when clicked or typed into, instead of ignoring the keys ✔
 - Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
-- Add real-world fixture documents (started: a letter written in Word ✔; more from Google Docs and
-  LibreOffice welcome); test Safari
+- Add real-world fixture documents (a letter written in Word ✔; reports, memos and minutes written
+  by LibreOffice, pandoc and python-docx ✔; Google Docs welcome), each edited in every kind of place
+  by the tests ✔; test Safari
 
 **Next — do the core job better**
 - Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔

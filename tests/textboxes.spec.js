@@ -127,3 +127,35 @@ test('tables, pictures and comments can’t be added in a text box; the status b
   await page.keyboard.press('ControlOrMeta+Enter');
   await expect(page.locator('.statusbar [role=status]')).toHaveText('A page break can’t go in a text box here: add it in Word');
 });
+
+test('a text box in one run with text (as LibreOffice writes it) is shown and edited; the text beside it too', async ({ page }) => {
+  // LibreOffice puts a run's pictures and text boxes in one w:r with the text around them; Word
+  // gives each its own run. Either way it is drawn, and the text stays text.
+  const shared = textbox().replace(/^<w:r>/, '').replace(/<\/w:r>$/, '');
+  await openInEditor(page, await buildDocx(`<w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Before </w:t>${shared}<w:t xml:space="preserve"> after.</w:t></w:r></w:p>`));
+  await expect(content(page)).toHaveText('A pull quote');
+  await expect(page.locator('.docx-page p strong').first()).toHaveText('Before ');
+  await content(page).locator('p').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' here');
+  await page.locator('.docx-page > p strong', { hasText: 'after.' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' More');
+  const { xml } = await download(page);
+  expect(await texts(page, xml)).toEqual(['A pull quote here', 'A pull quote here']);
+  // A run each, with the run's properties: the text, the box, the text.
+  expect(xml).toContain('<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Before </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><mc:AlternateContent');
+  expect(xml).toMatch(/<\/mc:AlternateContent><\/w:r><w:r><w:rPr><w:b\/><\/w:rPr><w:t xml:space="preserve"> after\. More<\/w:t><\/w:r>/);
+});
+
+test('untouched, a run shared by a text box and text comes back byte for byte', async ({ page }) => {
+  const shared = textbox().replace(/^<w:r>/, '').replace(/<\/w:r>$/, '');
+  const docx = await buildDocx(`<w:p><w:r><w:t xml:space="preserve">Before </w:t>${shared}</w:r></w:p><w:p><w:r><w:t>Other paragraph.</w:t></w:r></w:p>`);
+  await openInEditor(page, docx);
+  await page.locator('.docx-page > p', { hasText: 'Other paragraph.' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('!');
+  await page.keyboard.press('ControlOrMeta+z');
+  const { xml } = await download(page);
+  expect(xml).toBe(await documentXmlOf(docx));
+});

@@ -86,7 +86,7 @@ test('rejecting a deleted column brings its text back', async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Reject all changes' }).click();
   await expect(page.locator('td[data-rev-cell]')).toHaveCount(0);
   const { xml } = await download(page);
-  expect(rows(xml)[2]).toContain('<w:r><w:t xml:space="preserve">A3</w:t></w:r>');
+  expect(rows(xml)[2]).toContain('<w:r><w:t>A3</w:t></w:r>'); // all rejected: the table as it came
   expect(xml).not.toContain('cellDel');
   expect(xml).not.toContain('w:delText');
 });
