@@ -687,7 +687,7 @@ import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../edito
 import { PROTECTION_LABELS } from '../docx/package.js';
 import { checkAccessibility } from '../editor/accessibility.js';
 import { drawLineNumbers } from '../editor/lineNumbers.js';
-import { estimatePages, drawPageBreaks } from '../editor/pages.js';
+import { estimatePages, drawPageBreaks, UNIT_SELECTOR } from '../editor/pages.js';
 import { printCss, basicPrintCss, printModes } from '../editor/printBands.js';
 import { PERSONAL } from '../docx/properties.js';
 import { checkScreening } from '../editor/screening.js';
@@ -1227,7 +1227,7 @@ let pagesTimer = 0;
 let pagesObserver = null;
 const narrow = typeof matchMedia === 'function' ? matchMedia('screen and (max-width: 860px)') : null;
 
-/** The text's height on a page at the current zoom: the paper less its margins, as Word fills it. */
+/** The text's height on a page, in the page's own pixels: the paper less its margins, as Word fills it. */
 function textHeight() {
   const p = doc.page;
   const z = sheetZoom.value;
@@ -1238,7 +1238,56 @@ function textHeight() {
   // A header or footer taller than its margin pushes the text away from it, as in Word.
   const top = Math.max(p.top, doc.headers.length ? p.header + shown('header') : 0);
   const bottom = Math.max(p.bottom, doc.footers.length ? p.footer + shown('footer') : 0);
-  return (p.minHeight - top - bottom) * z;
+  return p.minHeight - top - bottom;
+}
+
+/**
+ * Where the pages break at 100%, as printed: zoomed, the browser lays the text out at that size,
+ * which moves lines, so the page is copied (hidden, at 100%) and measured there, and each break is
+ * put back on the page shown at the same place in the same paragraph or row.
+ */
+function pagesAt100() {
+  const z = sheetZoom.value;
+  if (z === 1) return estimatePages(page.value, textHeight(), 1);
+  const sheet = page.value.closest('.docx-sheet');
+  const ghost = sheet.cloneNode(false); // the sheet's classes, for the page's styles
+  ghost.removeAttribute('style');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.cssText = `position: absolute; left: -100000px; top: 0; visibility: hidden; pointer-events: none; width: ${doc.page.width}px; zoom: 1;`;
+  const copy = page.value.cloneNode(true);
+  copy.removeAttribute('contenteditable');
+  ghost.append(copy);
+  sheet.parentElement.append(ghost);
+  try {
+    const { count, breaks } = estimatePages(copy, textHeight(), 1);
+    const inCopy = [...copy.querySelectorAll(UNIT_SELECTOR)];
+    const shown = [...page.value.querySelectorAll(UNIT_SELECTOR)];
+    return {
+      count,
+      breaks: breaks.map(({ y, block }) => {
+        const target = shown[inCopy.indexOf(block)];
+        if (!target) return null;
+        const from = block.getBoundingClientRect();
+        const to = target.getBoundingClientRect();
+        const at = to.top + (from.height ? (y - from.top) / from.height : 0) * to.height;
+        return { y: snapToLine(target, at), block: target };
+      }).filter(Boolean),
+    };
+  } finally {
+    ghost.remove();
+  }
+}
+
+/** The top of the line of `block` (shown) nearest client y `at`: a break goes between lines. */
+function snapToLine(block, at) {
+  const range = document.createRange();
+  range.selectNodeContents(block);
+  let best = at;
+  let gap = Infinity;
+  for (const r of range.getClientRects()) {
+    if (r.height && Math.abs(r.top - at) < gap) { gap = Math.abs(r.top - at); best = r.top; }
+  }
+  return best;
 }
 
 function updatePages() {
@@ -1249,10 +1298,10 @@ function updatePages() {
     pageBreaksEl.value?.replaceChildren();
     return;
   }
-  const { count, breaks } = estimatePages(page.value, textHeight(), sheetZoom.value);
+  const { count, breaks } = pagesAt100();
   pageCount.value = count;
   if (pageBreaksEl.value) {
-    if (showPageBreaks.value) drawPageBreaks(pageBreaksEl.value, breaks, sheetZoom.value);
+    if (showPageBreaks.value) drawPageBreaks(pageBreaksEl.value, breaks.map((b) => b.y), sheetZoom.value);
     else pageBreaksEl.value.replaceChildren();
   }
 }

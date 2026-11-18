@@ -69,7 +69,7 @@ function unitsOf(page, zoom) {
   const units = [];
   const forced = [];
   const rows = new Set();
-  for (const el of page.querySelectorAll(`${BLOCKS}, tr, .raw-block`)) {
+  for (const el of page.querySelectorAll(UNIT_SELECTOR)) {
     if (el.parentElement.closest(SKIP) || el.closest('.docx-notes, .docx-hf-band, .textbox')) continue;
     if (el.tagName === 'TR') {
       // A row of a nested table belongs to its outer row.
@@ -102,10 +102,14 @@ function unitsOf(page, zoom) {
   return { units, forced: forced.sort((a, b) => a - b) };
 }
 
+/** The elements the pages are filled with, in the page's order: for finding one in a copy. */
+export const UNIT_SELECTOR = `${BLOCKS}, tr, .raw-block`;
+
 /**
- * The pages of `page` (the editable page element), about: { count, breaks }, where `breaks` are the
- * client y positions at which pages 2, 3… begin. `height` is the text's height on a page in client
- * pixels (the paper less its margins, as shown at the current `zoom`).
+ * The pages of `page` (the editable page element), about: { count, breaks }, where `breaks` are
+ * where pages 2, 3… begin: { y, block }, the client y position and the element (paragraph, row) in
+ * which it is. `height` is the text's height on a page in client pixels (the paper less its margins,
+ * as shown at the current `zoom`).
  */
 export function estimatePages(page, height, zoom = 1) {
   const { units, forced } = unitsOf(page, zoom);
@@ -124,7 +128,7 @@ export function estimatePages(page, height, zoom = 1) {
     }
     if (hard) {
       start = u.top;
-      breaks.push(u.top);
+      breaks.push({ y: u.top, block: u.block });
     } else if (u.bottom - start > height + 0.05 && u.top > start + 0.5) {
       // Doesn't fit: the page ends before this unit, or a little earlier so as not to leave a
       // paragraph's first line alone at the bottom (orphan) or its last alone at the top (widow),
@@ -142,7 +146,7 @@ export function estimatePages(page, height, zoom = 1) {
       if (k === 0 && prev && HEADING.test(prev.block.tagName) && prev.index === prev.count - 1 && units[j - prev.count]?.block === prev.block) j -= prev.count;
       if (units[j].top <= start + 0.5) j = i;
       start = units[j].top;
-      breaks.push(start);
+      breaks.push({ y: start, block: units[j].block });
       i = j; // go on from the first unit of the new page
       prevBottom = units[j].bottom;
       continue;
@@ -150,7 +154,7 @@ export function estimatePages(page, height, zoom = 1) {
     // A unit taller than a page (a big picture or a long row): Word carries on on the next pages.
     while (u.bottom - start > height + 0.05) {
       start += height;
-      breaks.push(start);
+      breaks.push({ y: start, block: u.block });
     }
     prevBottom = u.bottom;
   }

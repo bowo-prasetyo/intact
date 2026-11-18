@@ -78,7 +78,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   paper size and margins (and a header or footer taller than its margin), line by line as Word fills
   a page, with Word's widow and orphan control, headings kept with the text after them, table rows
   kept whole, and a new page at each page break, "page break before" and section break that starts
-  one; kept up to date as you type. Drawn over the page, never in it; clicking the count shows or
+  one; kept up to date as you type. Zoomed in or out, where the browser lays the text out at that
+  size, the pages are worked out on a hidden copy at 100%, as printed, so the count and the breaks
+  don't change with the zoom. Drawn over the page, never in it; clicking the count shows or
   hides the lines (remembered in this browser). The count matches the printout; Word may break a
   line or two differently with its own fonts
 - Tab and Shift+Tab move between table cells; Tab in the last cell adds a row, as in Word (a copy of
@@ -703,9 +705,8 @@ The About page shows the version.
 - The page count is worked out, not Word's: the browser's fonts and line breaking, the last
   section's paper and margins for every section, footnotes not taking room at the bottom of a page,
   and rows kept whole where Word may split them. A paragraph's "keep with next" and "keep lines
-  together" other than headings' aren't followed. Zoomed in or out, the browser lays the text out at
-  that size, which can move a break by a line or two (100% is as printed). On a phone, where the
-  page takes the screen's width, pages aren't counted
+  together" other than headings' aren't followed. On a phone, where the page takes the screen's
+  width, pages aren't counted
 - The PDF is the browser's: its fonts (a font the device lacks is substituted, as on screen), and
   links and a document outline as the browser makes them. Saving the PDF is the print window's
 - The screening check knows what such software commonly misses, not what a given employer's does;

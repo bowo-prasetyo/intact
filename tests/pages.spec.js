@@ -46,13 +46,23 @@ test('page breaks, "page break before" and section breaks start new pages', asyn
 });
 
 test('the count follows the text as it is typed and deleted', async ({ page }) => {
-  await openInEditor(page, await buildDocx(lines(40)));
+  // Paragraphs added one by one until a second page starts (how many depends on the fonts)…
+  await openInEditor(page, await buildDocx(lines(30)));
   await expect(count(page)).toHaveText('≈ 1 page');
   await page.locator('.docx-page p').last().click();
   await page.keyboard.press('End');
-  for (let i = 0; i < 12; i++) await page.keyboard.press('Enter');
+  let added = 0;
+  while ((await count(page).textContent()) !== '≈ 2 pages' && added < 60) {
+    await page.keyboard.press('Enter');
+    await page.keyboard.type(`More ${++added}`);
+    await page.waitForTimeout(350); // worked out a moment after the last change
+  }
   await expect(count(page)).toHaveText('≈ 2 pages');
-  await page.keyboard.press('Control+z');
+  expect(added).toBeGreaterThan(5);
+  // …and the last one taken away again: one page.
+  await page.keyboard.press('Shift+Home');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Backspace');
   await expect(count(page)).toHaveText('≈ 1 page');
 });
 
@@ -98,21 +108,22 @@ test('showing the breaks can be turned off, and it is remembered', async ({ page
   await expect(page.locator('.page-estimate')).toHaveCount(1);
 });
 
-test('the marks follow the zoom', async ({ page }) => {
-  // The browser lays text out at the zoomed size, so a page can end a line or two apart.
+test('zoomed, the pages break where they do at 100%, as printed', async ({ page }) => {
   await openInEditor(page, await buildDocx(TWO_PAGES));
   const firstAfter = () => page.evaluate(() => {
     const y = document.querySelector('.page-estimate')?.getBoundingClientRect().top;
     const p = [...document.querySelectorAll('.docx-page p')].find((el) => el.getBoundingClientRect().top > y);
-    return Number(p?.textContent.match(/\d+/)?.[0]);
+    return p?.textContent;
   });
+  await expect(page.locator('.page-estimate')).toHaveCount(1);
   const at100 = await firstAfter();
-  for (const button of ['Zoom out', 'Zoom out', 'Zoom out']) await page.getByRole('button', { name: button }).click();
-  await expect(count(page)).toHaveText('≈ 2 pages');
-  await expect.poll(async () => Math.abs((await firstAfter()) - at100)).toBeLessThanOrEqual(3);
-  await page.getByRole('button', { name: /back to 100%/i }).click();
-  for (const button of ['Zoom in', 'Zoom in']) await page.getByRole('button', { name: button }).click();
-  await expect.poll(async () => Math.abs((await firstAfter()) - at100)).toBeLessThanOrEqual(3);
+  for (const zoom of [['Zoom out', 3], ['Zoom in', 2], ['Zoom in', 4]]) {
+    const back = page.getByRole('button', { name: /back to 100%/i });
+    if (await back.count()) await back.click();
+    for (let i = 0; i < zoom[1]; i++) await page.getByRole('button', { name: zoom[0] }).click();
+    await expect(count(page)).toHaveText('≈ 2 pages');
+    await expect.poll(firstAfter).toBe(at100);
+  }
 });
 
 test('the estimate agrees with the printout', async ({ page, browserName }) => {
