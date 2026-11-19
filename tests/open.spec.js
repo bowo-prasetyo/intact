@@ -72,9 +72,11 @@ test('in the editor, a file dropped outside the page is refused and one the page
     expect(await dropFile(page, where, { name: 'other.docx', type: DOCX, bytes }), where).toEqual({ dropAllowed: false, browserDefault: false });
   }
   await expect(page).toHaveURL(/#\/edit$/);
-  // On the page: pictures go in (see insert.spec.js); a document doesn't, and the status bar says why.
+  // On the page: pictures go in (see insert.spec.js); a document is offered to open in a new tab
+  // (see tabs.spec.js), not here.
   expect((await dropFile(page, '.docx-page p', { name: 'other.docx', type: DOCX, bytes })).browserDefault).toBe(false);
-  await expect(page.locator('.statusbar [role=status]')).toHaveText('To open another document, download or close this one first');
+  await expect(page.getByRole('dialog', { name: 'Open in a new tab' })).toContainText('“other.docx” opens in a new tab');
+  await page.getByRole('dialog', { name: 'Open in a new tab' }).getByRole('button', { name: 'Cancel' }).click();
   expect((await dropFile(page, '.docx-page p', { name: 'notes.txt', type: 'text/plain', bytes: Buffer.from('hi') })).browserDefault).toBe(false);
   await expect(page.locator('.statusbar [role=status]')).toHaveText('Only pictures can be dropped into the document');
   await expect(page.locator('.docx-page')).toHaveText('Dropped document');

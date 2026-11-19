@@ -16,6 +16,10 @@
         </button>
         <button ref="saveMenuButton" class="primary arrow" type="button" title="More ways to save: a PDF" aria-label="More ways to save" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
       </span>
+      <button class="ghost open-tab" type="button" title="Open another document in a new tab, beside this one (Ctrl+O)" aria-label="Open another document in a new tab" @click="openAnother">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 8 8M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
+        <span class="label">Open</span>
+      </button>
       <button class="ghost" type="button" @click="close">Close</button>
     </AppHeader>
 
@@ -617,6 +621,14 @@
       </template>
     </div>
 
+    <form v-if="dropOffer.file" ref="dropOfferEl" class="chooser author-dialog drop-offer" role="dialog" aria-label="Open in a new tab" @submit.prevent="openDroppedInNewTab" @keydown.esc="dropOffer.file = null">
+      <p>“{{ dropOffer.file.name }}” opens in a new tab, beside this document, which stays open here.</p>
+      <div class="actions">
+        <button type="submit" class="confirm">Open in a new tab</button>
+        <button type="button" @click="dropOffer.file = null">Cancel</button>
+      </div>
+    </form>
+
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
 
     <ReviewDialog v-if="reviewData" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
@@ -650,7 +662,7 @@
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }}</button>
-      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, and 1. or * then a space at the start of a paragraph a list – click to type them as they are' : 'Quotes, dashes, ellipses and list numbers are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
+      <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, 1. or * then a space at the start of a paragraph a list, and a web or e-mail address then a space a link – click to type them as they are' : 'Quotes, dashes, ellipses, list numbers and addresses are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
@@ -674,6 +686,7 @@ import ReviewDialog from '../components/ReviewDialog.vue';
 import HelpDialog from '../components/HelpDialog.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { saveDraft, deleteDraft, newDraftId, MAX_AGE } from '../drafts.js';
+import { openStartInNewTab, openFileInNewTab, holdDraft } from '../tabs.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 import { controlAt, controlBox, setControlText, clearPlaceholder, fieldAtSelection } from '../editor/controls.js';
@@ -704,7 +717,7 @@ import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
-import { smartQuote, smartReplacement, listTrigger, autoCorrect } from '../editor/smartTyping.js';
+import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import { updateFields } from '../docx/fieldUpdates.js';
 import {
@@ -3573,7 +3586,7 @@ const autoFormat = ref((() => { try { return localStorage.getItem(AUTOFORMAT_KEY
 function toggleAutoFormat() {
   autoFormat.value = !autoFormat.value;
   try { localStorage.setItem(AUTOFORMAT_KEY, autoFormat.value ? '1' : '0'); } catch { /* this session only */ }
-  message.value = autoFormat.value ? 'Quotes, dashes and lists are formatted as you type' : 'Quotes, dashes and list numbers are typed as they are';
+  message.value = autoFormat.value ? 'Quotes, dashes, lists and links are formatted as you type' : 'Quotes, dashes, list numbers and addresses are typed as they are';
   page.value.focus();
 }
 
@@ -3583,6 +3596,7 @@ function toggleAutoFormat() {
  * is tracked while tracking. True if the key press was dealt with here.
  */
 function smartTyping(e) {
+  if (autoFormat.value && e.inputType === 'insertParagraph' && autoLinkEnter(e)) return true;
   if (!autoFormat.value || e.inputType !== 'insertText' || !e.data || [...e.data].length !== 1) return false;
   const range = selectionInPage();
   if (!range || inPlainField() || range.startContainer.parentElement?.closest('.raw-inline, [data-raw]')) return false;
@@ -3594,6 +3608,7 @@ function smartTyping(e) {
   const before = lead.toString();
   const lang = range.startContainer.parentElement?.closest('[lang]')?.lang || doc.styles.language() || 'en';
   if (range.collapsed && autoCorrectSymbol(e, range, before)) return true;
+  if (e.data === ' ' && range.collapsed && autoLinkSpace(e, range, before)) return true;
   if (e.data === ' ' && range.collapsed && autoList(e, block, range, before)) return true;
   if (range.collapsed) {
     const swap = smartReplacement(before, e.data);
@@ -3653,6 +3668,93 @@ function autoCorrectSymbol(e, range, before) {
   sel.setBaseAndExtent(at, now.startOffset - hit.from.length, at, now.startOffset);
   typeText(hit.to);
   return true;
+}
+
+/**
+ * AutoFormat's links (Word's "Internet and network paths with hyperlinks"): a web or e-mail address
+ * followed by a space or Enter becomes a link to it (see linkTrigger). The space is typed first, as
+ * an undo step of its own, so Ctrl+Z straight after gives back the address as plain text, as in Word.
+ * True if the key press was dealt with here.
+ */
+function autoLinkSpace(e, range, before) {
+  if (!linkable(range, before)) return false;
+  e.preventDefault();
+  typeText(' ');
+  undoStack.commit();
+  makeTypedLink(1);
+  return true;
+}
+
+/** Enter after an address: the address becomes a link (an undo step of its own), then the paragraph is split. */
+function autoLinkEnter(e) {
+  const range = selectionInPage();
+  if (!range?.collapsed || inPlainFieldQuiet()) return false;
+  const block = closestBlock(range.startContainer);
+  if (!block) return false;
+  const lead = document.createRange();
+  lead.setStart(block, 0);
+  lead.setEnd(range.startContainer, range.startOffset);
+  if (!linkable(range, lead.toString())) return false;
+  e.preventDefault();
+  undoStack.flush();
+  makeTypedLink(0);
+  // Then Enter, as it would have been: tracked while tracking.
+  const opts = trackedBy(selectionInPage()?.startContainer);
+  if (opts) pendingSplit = opts;
+  document.execCommand('insertParagraph'); // fires input
+  return true;
+}
+
+/** Whether a link can be made of the address just before the caret (`before`: the paragraph's text before it). */
+function linkable(range, before) {
+  const trigger = linkTrigger(before);
+  const node = range.startContainer;
+  if (!trigger || node.nodeType !== 3) return false;
+  // Typed in one piece of text, not already in a link, a field kept as it is or a plain-text field.
+  const end = range.startOffset - trigger.after;
+  if (end - trigger.text.length < 0 || node.data.slice(end - trigger.text.length, end) !== trigger.text) return false;
+  if (node.parentElement.closest('a, .raw-inline, [data-raw], .field') || inPlainFieldQuiet()) return false;
+  return true;
+}
+
+function inPlainFieldQuiet() {
+  const range = selectionInPage();
+  return !!(range && controlAt(range.startContainer, page.value)?.querySelector(':scope > [data-plain]'));
+}
+
+/**
+ * Makes a link of the address that ends `skip` characters (plus its punctuation) before the caret,
+ * as one undo step. Not tracked as such, as making text a link isn't (the text, typed while
+ * tracking, is a tracked insertion, and the link goes with it).
+ */
+function makeTypedLink(skip) {
+  const caret = selectionInPage();
+  const node = caret?.startContainer;
+  if (!caret?.collapsed || node?.nodeType !== 3) return;
+  const lead = document.createRange();
+  const block = closestBlock(node);
+  lead.setStart(block, 0);
+  lead.setEnd(node, caret.startOffset - skip);
+  const trigger = linkTrigger(lead.toString());
+  if (!trigger) return;
+  const end = caret.startOffset - skip - trigger.after;
+  const start = end - trigger.text.length;
+  if (start < 0 || node.data.slice(start, end) !== trigger.text) return;
+  undoStack.flush();
+  const after = node.splitText(end); // the punctuation and what was typed after the address
+  const text = start ? node.splitText(start) : node;
+  const a = newLink(trigger.href, []);
+  text.replaceWith(a);
+  a.append(text);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  const r = document.createRange();
+  r.setStart(after, Math.min(after.data.length, trigger.after + skip));
+  r.collapse(true);
+  sel.addRange(r);
+  onInput();
+  undoStack.commit();
+  message.value = `Made a link to ${trigger.href.replace(/^mailto:/, '')} – Ctrl+Z takes it back`;
 }
 
 /**
@@ -4416,9 +4518,8 @@ function onDrop(e) {
   e.preventDefault();
   const pictures = files.filter((f) => f.type.startsWith('image/'));
   if (!pictures.length) {
-    message.value = /\.(docx|dotx|docm|dotm)$/i.test(files[0].name)
-      ? 'To open another document, download or close this one first'
-      : 'Only pictures can be dropped into the document';
+    if (/\.(docx|dotx|docm|dotm)$/i.test(files[0].name)) offerNewTab(files[0]);
+    else message.value = 'Only pictures can be dropped into the document';
     return;
   }
   let at = null;
@@ -4793,6 +4894,7 @@ function onDocumentMousedown(e) {
   if (spacingMenu.open && !spacingMenuEl.value?.contains(e.target) && !spacingButton.value?.contains(e.target)) spacingMenu.open = false;
   if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
+  if (dropOffer.file && !dropOfferEl.value?.contains(e.target)) dropOffer.file = null;
   if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
@@ -4950,6 +5052,11 @@ function onWindowKeydown(e) {
   if (explainKeyOutsideText(e)) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
+  if (mod && !e.shiftKey && !e.altKey && key === 'o') {
+    e.preventDefault(); // Word's Open: another document, in a new tab (the browser's would leave the app)
+    openAnother();
+    return;
+  }
   if (mod && e.shiftKey && !e.altKey && key === 'e') {
     e.preventDefault(); // Word's Track Changes shortcut, wherever the focus is in the editor
     toggleTracking();
@@ -5016,6 +5123,37 @@ function applyEdit(change) {
   page.value.normalize();
   undoStack.commit();
   markDirty();
+}
+
+// ------------------------------------------------------------------ other documents, in other tabs
+
+// Another document opens in a new tab, beside this one (see tabs.js): the Open button and Ctrl+O
+// (Word's Open) open the start page there; a document dropped on the page is offered to open
+// there, and handed over in memory. This tab holds its draft's lock, so the start page in another
+// tab shows the draft as open here rather than offering to restore a second copy.
+const dropOffer = reactive({ file: null });
+const dropOfferEl = ref(null);
+let releaseDraft = () => {};
+onMounted(() => { releaseDraft = holdDraft(draftId); });
+onBeforeUnmount(() => releaseDraft());
+
+function openAnother() {
+  if (!openStartInNewTab()) message.value = 'The browser didn’t open a new tab: allow pop-ups for this site, or open Intact in a new tab yourself';
+}
+function offerNewTab(file) {
+  dropOffer.file = file;
+  nextTick(() => dropOfferEl.value?.querySelector('.confirm')?.focus());
+}
+function openDroppedInNewTab() {
+  const file = dropOffer.file;
+  dropOffer.file = null;
+  const result = openFileInNewTab(file);
+  message.value = {
+    opened: `“${file.name}” is opening in a new tab`,
+    blocked: 'The browser didn’t open a new tab: allow pop-ups for this site, or open the file from a new tab',
+    unsupported: `A new tab is open: choose “${file.name}” there`,
+  }[result];
+  page.value?.focus();
 }
 
 // ------------------------------------------------------------------ save as PDF
@@ -5254,7 +5392,9 @@ async function close() {
 
 <style scoped>
 .editor-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-.file { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; }
+/* The file's name gives way (cut off) before the header's buttons do, so a narrow screen never
+   scrolls sideways, whatever the fonts. */
+.file { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow: hidden; }
 .filename {
   min-width: 0; max-width: 100%; font: inherit; color: #fff; background: transparent;
   border: 1px solid transparent; border-radius: 4px; padding: 4px 6px;
@@ -5272,6 +5412,19 @@ async function close() {
 .dirty { color: #ffd166; margin-left: 6px; }
 .primary { background: #fff; color: var(--brand); border: 0; border-radius: 4px; padding: 6px 14px; font-weight: 600; cursor: pointer; }
 .primary:disabled { opacity: .6; }
+.open-tab { display: inline-flex; align-items: center; gap: 6px; }
+.chooser.drop-offer { left: 50%; top: 72px; transform: translateX(-50%); width: 340px; max-width: calc(100vw - 16px); max-height: none; font-size: 13px; }
+.drop-offer p { margin: 0; line-height: 1.45; }
+@media (max-width: 560px) { .open-tab { padding: 5px 8px; } .open-tab .label { display: none; } }
+/* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
+@media (max-width: 420px) { :deep(.brand span) { display: none; } }
+/* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
+@media (max-width: 360px) {
+  :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }
+  .primary { padding: 6px 10px; }
+  .save-split .primary.arrow { padding: 6px 5px; }
+  .ghost { padding: 5px 8px; }
+}
 .save-split { display: inline-flex; gap: 1px; }
 .save-split .primary:first-child { border-radius: 4px 0 0 4px; }
 .save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }

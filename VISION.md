@@ -133,6 +133,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - About how many pages, and where they break, drawn over the page ✔; headers, footers and page
   numbers on every printed page ✔; save as PDF from the print window ✔; removing personal
   information as a default you choose ✔; check a CV for employers' screening software ✔
+- Typed web and e-mail addresses made links, as Word's AutoFormat ✔; several documents at once, each
+  in a tab of its own, with drafts that know where they are open ✔
 
 ## How we'll know it's working
 

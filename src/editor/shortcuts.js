@@ -72,6 +72,7 @@ export const SHORTCUTS = [
   ['Ctrl+Z, Ctrl+Y', 'Undo, redo'],
   ['Ctrl+mouse wheel (or pinch) on the page', 'Zoom in or out (the buttons at the right of the status bar too)'],
   ['Ctrl+S', 'Review changes and download'],
+  ['Ctrl+O', 'Open another document, in a new tab (this one stays open)'],
   ['Ctrl+P', 'Print, or save as PDF (the header, footer and page numbers on every page)'],
   ['Alt+F10, then Esc', 'Go to the toolbar (arrow keys move along it), and back to the text'],
   ['Ctrl+/', 'Help: these shortcuts, and checks before you send the file'],
