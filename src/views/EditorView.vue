@@ -5418,6 +5418,13 @@ async function close() {
 @media (max-width: 560px) { .open-tab { padding: 5px 8px; } .open-tab .label { display: none; } }
 /* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
 @media (max-width: 420px) { :deep(.brand span) { display: none; } }
+/* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
+@media (max-width: 360px) {
+  :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }
+  .primary { padding: 6px 10px; }
+  .save-split .primary.arrow { padding: 6px 5px; }
+  .ghost { padding: 5px 8px; }
+}
 .save-split { display: inline-flex; gap: 1px; }
 .save-split .primary:first-child { border-radius: 4px 0 0 4px; }
 .save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
