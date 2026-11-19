@@ -10,9 +10,12 @@
           <span class="text">{{ labelChip.text }}</span>
         </span>
       </div>
-      <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="requestDownload">
-        {{ saving ? 'Saving…' : 'Download' }}
-      </button>
+      <span class="save-split">
+        <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="requestDownload">
+          {{ saving ? 'Saving…' : 'Download' }}
+        </button>
+        <button ref="saveMenuButton" class="primary arrow" type="button" title="More ways to save: a PDF" aria-label="More ways to save" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
+      </span>
       <button class="ghost" type="button" @click="close">Close</button>
     </AppHeader>
 
@@ -206,6 +209,7 @@
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
           <div ref="marksEl" class="marks-layer" aria-hidden="true" />
           <div v-if="hasLineNumbers" ref="lineNumbersEl" class="line-numbers-layer" aria-hidden="true" />
+          <div ref="pageBreaksEl" class="page-breaks-layer" aria-hidden="true" />
           <div v-if="picture.el" class="picture-frame" :class="{ floating: picture.wrap !== 'inline', cropping: picture.cropping }" :style="{ left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.w}px`, height: `${picture.h}px` }">
             <span v-for="h in HANDLES" :key="h" class="handle" :class="h" :title="picture.cropping ? 'Drag to crop' : h.length === 2 ? 'Drag to resize' : 'Drag to stretch'" @pointerdown.prevent.stop="picture.cropping ? startCrop($event, h) : startResize($event, h)" />
             <span v-if="!picture.cropping" class="handle rotate" title="Drag to rotate (Shift: in steps of 15°)" @pointerdown.prevent.stop="startRotate" />
@@ -439,6 +443,28 @@
       <div class="actions"><button type="button" @click="closePicturePanel">Close</button></div>
     </form>
 
+    <div v-if="saveMenu.open" ref="saveMenuEl" class="change-menu save-menu" role="menu" aria-label="Save" :style="{ left: `${saveMenu.x}px`, top: `${saveMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSaveMenu(true)" @keydown="onMenuArrows">
+      <button type="button" role="menuitem" @click="saveMenuAction('docx')">Word document (.{{ doc.format.ext }})<span class="shortcut">Ctrl+S</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">Ctrl+P</span></button>
+    </div>
+
+    <form v-if="pdfDialog.open" ref="pdfDialogEl" class="chooser author-dialog pdf-dialog" role="dialog" aria-label="Save as PDF" aria-describedby="pdf-how" :style="{ left: `${pdfDialog.x}px`, top: `${pdfDialog.y}px` }" @submit.prevent="printToPdf" @keydown.esc="closePdfDialog">
+      <h2>Save as PDF</h2>
+      <p id="pdf-how">Your browser makes the PDF, on this device: in the print window, choose <strong>Save as PDF</strong> (or <strong>Microsoft Print to PDF</strong>) as the printer or destination, then save. It suggests the name <strong>{{ baseName || 'document' }}.pdf</strong>.</p>
+      <ul class="pdf-notes">
+        <li v-if="pageCount">About {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }} on {{ paperName() }}{{ pdfBands.every ? `, with the ${pdfBands.every} on each` : '' }}.</li>
+        <li v-if="pdfBands.once">The {{ pdfBands.once }} {{ pdfBands.once.includes(' and ') ? 'print' : 'prints' }} once, {{ pdfBands.onceWhere }}, as {{ pdfBands.once.includes(' and ') ? 'they show' : 'it shows' }} here: {{ pdfBands.why }}</li>
+        <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
+        <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
+        <li>Comments and the marks drawn over the page here aren’t in the PDF.</li>
+      </ul>
+      <p class="pdf-word">The Word file isn’t saved by this: download it as well to keep your changes.</p>
+      <div class="actions">
+        <button type="submit" class="confirm">Open print window</button>
+        <button type="button" @click="closePdfDialog">Cancel</button>
+      </div>
+    </form>
+
     <div v-if="tableMenu.open" ref="tableMenuEl" class="change-menu" role="menu" aria-label="Table layout" :style="{ left: `${tableMenu.x}px`, top: `${tableMenu.y}px` }" @mousedown.prevent @keydown.esc="closeTableMenu" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="tableAction('rowsAbove')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows above` : 'Insert row above' }}</button>
       <button type="button" role="menuitem" @click="tableAction('rowsBelow')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows below` : 'Insert row below' }}</button>
@@ -593,7 +619,7 @@
 
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
 
-    <ReviewDialog v-if="reviewData" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <ReviewDialog v-if="reviewData" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -623,6 +649,7 @@
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
+      <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }}</button>
       <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, and 1. or * then a space at the start of a paragraph a list – click to type them as they are' : 'Quotes, dashes, ellipses and list numbers are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
@@ -660,6 +687,10 @@ import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../edito
 import { PROTECTION_LABELS } from '../docx/package.js';
 import { checkAccessibility } from '../editor/accessibility.js';
 import { drawLineNumbers } from '../editor/lineNumbers.js';
+import { estimatePages, drawPageBreaks, UNIT_SELECTOR } from '../editor/pages.js';
+import { printCss, basicPrintCss, printModes } from '../editor/printBands.js';
+import { PERSONAL } from '../docx/properties.js';
+import { checkScreening } from '../editor/screening.js';
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
@@ -820,11 +851,20 @@ function hiddenText() {
 function inspection() {
   const comments = threads.value.flatMap((t) => [t, ...t.replies]);
   const hidden = hiddenText();
-  return {
+  const found = {
     ...doc.inspect(),
     comments: { count: comments.length, authors: [...new Set(comments.map((c) => c.author).filter(Boolean))] },
     hidden: { count: hidden.count, removable: hidden.removableCount, sample: hidden.sample },
     canChange: !textLocked.value,
+  };
+  return {
+    ...found,
+    // Removing personal information: chosen by the default (see choosePersonalDefault), which is
+    // offered where it would lose nothing; and your name, to say when the author isn't you.
+    removePersonalAuto: personalAuto && doc.removePersonal,
+    personalDefault: personalDefault.value,
+    personalDefaultOffered: namesSomeone() && nothingLost(found),
+    you: named.value ? author.value : '',
   };
 }
 
@@ -869,9 +909,49 @@ async function releaseAction(what) {
 /** Remove personal information from the downloaded file (or not): see doc.writePersonal. */
 async function setRemovePersonal(on) {
   if (textLocked.value) return explainLock();
+  personalChosen = true;
+  personalAuto = false;
   doc.removePersonal = on;
   markDirty();
-  await openReview();
+  await openReview('release'); // the part ticked in stays open, though nothing in it needs a look now
+}
+
+// Personal information in the file's properties often isn't the sender's: a CV or letter made from
+// someone else's file or template carries their name as its author. Removing it can be made the
+// default, by choice, in the review ("Do this for every file I change…", remembered in this
+// browser): then it is chosen for each file where nothing would be lost by it: one you have changed
+// (a file downloaded as it was opened stays as it was), whose properties name someone (not a
+// placeholder such as "Author"), with no comments or tracked changes (whose names would become
+// "Author"), no restriction, and its properties recording the edit. The review says so; unticked
+// for a file, it stays unticked for it.
+const PERSONAL_KEY = 'intact.removePersonal';
+const personalDefault = ref((() => { try { return localStorage.getItem(PERSONAL_KEY) === '1'; } catch { return false; } })());
+let personalChosen = false; // ticked or unticked for this file
+let personalAuto = false; // ticked for this file by the default
+const PLACEHOLDER = /^(author|unknown|user|admin(istrator)?)$/i;
+
+/** Whether the file's properties name someone. */
+function namesSomeone() {
+  return [...(doc.properties.core || []), ...(doc.properties.app || [])]
+    .some((x) => PERSONAL.has(x.label) && x.value && !PLACEHOLDER.test(x.value.trim()));
+}
+/** Whether removing personal information loses nothing here (no names on comments or changes). */
+function nothingLost(found) {
+  return !found.comments.count && !found.revisions && !textLocked.value;
+}
+function choosePersonalDefault(found) {
+  if (personalChosen || doc.removePersonalSet) return;
+  const auto = personalDefault.value && namesSomeone() && nothingLost(found) && dirty.value && doc.updateProperties;
+  if (auto !== personalAuto) {
+    personalAuto = auto;
+    doc.removePersonal = auto;
+  }
+}
+async function setPersonalDefault(on) {
+  personalDefault.value = on;
+  try { localStorage.setItem(PERSONAL_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+  if (on && !doc.removePersonal) return setRemovePersonal(true);
+  await openReview('release');
 }
 
 function explainLock() {
@@ -971,9 +1051,33 @@ const hf = reactive({ header: 0, footer: 0 });
 let variantStyle = null;
 let printStyle = null;
 function refreshPrintPage() {
-  const pg = doc.page;
-  if (printStyle) printStyle.textContent = `@page { size: ${pg.width}px ${pg.minHeight}px; margin: ${pg.top}px ${pg.right}px ${pg.bottom}px ${pg.left}px; }`;
+  if (printStyle) printStyle.textContent = basicPrintCss(doc.page);
 }
+
+// Printing, and so saving as PDF: just before the browser lays the pages out, headers and footers
+// are set to print on every page (see editor/printBands.js), and the page's title becomes the file's
+// name, which browsers suggest as the PDF's name. Both go back afterwards.
+let titleBeforePrint = null;
+function onBeforePrint() {
+  if (!page.value || !printStyle) return;
+  printStyle.textContent = printCss(page.value, doc, sheetZoom.value);
+  titleBeforePrint ??= document.title; // once, should the browser say so twice
+  document.title = baseName.value || titleBeforePrint;
+}
+function onAfterPrint() {
+  refreshPrintPage();
+  if (titleBeforePrint != null) document.title = titleBeforePrint;
+  titleBeforePrint = null;
+}
+onMounted(() => {
+  window.addEventListener('beforeprint', onBeforePrint);
+  window.addEventListener('afterprint', onAfterPrint);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeprint', onBeforePrint);
+  window.removeEventListener('afterprint', onAfterPrint);
+  if (titleBeforePrint != null) document.title = titleBeforePrint;
+})
 function refreshVariants() {
   if (!variantStyle) return;
   variantStyle.textContent = ['header', 'footer']
@@ -1108,6 +1212,134 @@ function scheduleLineNumbers() {
     if (page.value && lineNumbersEl.value) drawLineNumbers(page.value, lineNumbersEl.value, lineSections, sheetZoom.value);
   });
 }
+// ------------------------------------------------------------------ pages, about
+
+// The sheet is one long page; Word decides where pages break when it opens the file. How many pages
+// the document would print on, and about where each begins, is worked out from the paper size and
+// margins (see editor/pages.js): counted in the status bar and drawn over the page as dashed lines,
+// never in it. Shown or not is remembered in this browser. Not on a phone, where the page takes the
+// phone's width and margins, so its lines aren't the paper's.
+const PAGES_KEY = 'intact.pageBreaks';
+const showPageBreaks = ref((() => { try { return localStorage.getItem(PAGES_KEY) !== '0'; } catch { return true; } })());
+const pageBreaksEl = ref(null);
+const pageCount = ref(0); // 0: not worked out (a phone's width)
+let pagesTimer = 0;
+let pagesObserver = null;
+const narrow = typeof matchMedia === 'function' ? matchMedia('screen and (max-width: 860px)') : null;
+
+/** The text's height on a page, in the page's own pixels: the paper less its margins, as Word fills it. */
+function textHeight() {
+  const p = doc.page;
+  const z = sheetZoom.value;
+  const shown = (which) => {
+    const part = [...page.value.querySelectorAll(`:scope > .docx-hf-band.${which} .docx-hf-part`)].find((el) => el.getClientRects().length);
+    return part ? part.getBoundingClientRect().height / z : 0;
+  };
+  // A header or footer taller than its margin pushes the text away from it, as in Word.
+  const top = Math.max(p.top, doc.headers.length ? p.header + shown('header') : 0);
+  const bottom = Math.max(p.bottom, doc.footers.length ? p.footer + shown('footer') : 0);
+  return p.minHeight - top - bottom;
+}
+
+/**
+ * Where the pages break at 100%, as printed: zoomed, the browser lays the text out at that size,
+ * which moves lines, so the page is copied (hidden, at 100%) and measured there, and each break is
+ * put back on the page shown at the same place in the same paragraph or row.
+ */
+function pagesAt100() {
+  const z = sheetZoom.value;
+  if (z === 1) return estimatePages(page.value, textHeight(), 1);
+  const sheet = page.value.closest('.docx-sheet');
+  const ghost = sheet.cloneNode(false); // the sheet's classes, for the page's styles
+  ghost.removeAttribute('style');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.cssText = `position: absolute; left: -100000px; top: 0; visibility: hidden; pointer-events: none; width: ${doc.page.width}px; zoom: 1;`;
+  const copy = page.value.cloneNode(true);
+  copy.removeAttribute('contenteditable');
+  ghost.append(copy);
+  sheet.parentElement.append(ghost);
+  try {
+    const { count, breaks } = estimatePages(copy, textHeight(), 1);
+    const inCopy = [...copy.querySelectorAll(UNIT_SELECTOR)];
+    const shown = [...page.value.querySelectorAll(UNIT_SELECTOR)];
+    return {
+      count,
+      breaks: breaks.map(({ y, block }) => {
+        const target = shown[inCopy.indexOf(block)];
+        if (!target) return null;
+        const from = block.getBoundingClientRect();
+        const to = target.getBoundingClientRect();
+        const at = to.top + (from.height ? (y - from.top) / from.height : 0) * to.height;
+        return { y: snapToLine(target, at), block: target };
+      }).filter(Boolean),
+    };
+  } finally {
+    ghost.remove();
+  }
+}
+
+/** The top of the line of `block` (shown) nearest client y `at`: a break goes between lines. */
+function snapToLine(block, at) {
+  const range = document.createRange();
+  range.selectNodeContents(block);
+  let best = at;
+  let gap = Infinity;
+  for (const r of range.getClientRects()) {
+    if (r.height && Math.abs(r.top - at) < gap) { gap = Math.abs(r.top - at); best = r.top; }
+  }
+  return best;
+}
+
+function updatePages() {
+  pagesTimer = 0;
+  if (!page.value) return;
+  if (narrow?.matches) {
+    pageCount.value = 0;
+    pageBreaksEl.value?.replaceChildren();
+    return;
+  }
+  const { count, breaks } = pagesAt100();
+  pageCount.value = count;
+  if (pageBreaksEl.value) {
+    if (showPageBreaks.value) drawPageBreaks(pageBreaksEl.value, breaks.map((b) => b.y), sheetZoom.value);
+    else pageBreaksEl.value.replaceChildren();
+  }
+}
+/** Works the pages out again a moment after the last change (typing goes on undisturbed). */
+function schedulePages(delay = 250) {
+  clearTimeout(pagesTimer);
+  pagesTimer = setTimeout(updatePages, delay);
+}
+function togglePageBreaks() {
+  showPageBreaks.value = !showPageBreaks.value;
+  try { localStorage.setItem(PAGES_KEY, showPageBreaks.value ? '1' : '0'); } catch { /* this session only */ }
+  nextTick(updatePages);
+}
+const pageCountTitle = computed(() => `About ${pageCount.value} ${pageCount.value === 1 ? 'page' : 'pages'} on ${paperName()}, worked out from the paper size and margins. Word lays out the pages itself when it opens the file, with its own fonts, so they may break a little differently. Click to ${showPageBreaks.value ? 'hide' : 'show'} where the pages break.`);
+function paperName() {
+  const p = doc.page;
+  const [w, h] = [p.width, p.minHeight].map((v) => Math.round((v * 25.4) / 96));
+  const sizes = { '210x297': 'A4', '216x279': 'Letter', '216x356': 'Legal', '148x210': 'A5', '297x420': 'A3', '184x267': 'Executive' };
+  const name = sizes[`${Math.min(w, h)}x${Math.max(w, h)}`];
+  return name ? `${name} paper` : `${w} × ${h} mm paper`;
+}
+onMounted(() => {
+  pagesObserver = new MutationObserver(() => schedulePages());
+  pagesObserver.observe(page.value, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+  window.addEventListener('resize', schedulePages);
+  narrow?.addEventListener?.('change', schedulePages);
+  document.fonts?.ready.then(() => schedulePages(0));
+  schedulePages(0);
+  // Declared further down (zoom), so watched once everything is.
+  watch([sheetZoom, pageTick, () => ({ ...hf })], () => nextTick(() => schedulePages(0)));
+});
+onBeforeUnmount(() => {
+  pagesObserver?.disconnect();
+  clearTimeout(pagesTimer);
+  window.removeEventListener('resize', schedulePages);
+  narrow?.removeEventListener?.('change', schedulePages);
+});
+
 onMounted(() => {
   if (!hasLineNumbers) return;
   lineObserver = new MutationObserver(scheduleLineNumbers);
@@ -4561,6 +4793,8 @@ function onDocumentMousedown(e) {
   if (spacingMenu.open && !spacingMenuEl.value?.contains(e.target) && !spacingButton.value?.contains(e.target)) spacingMenu.open = false;
   if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
+  if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
+  if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
 }
 
@@ -4784,6 +5018,70 @@ function applyEdit(change) {
   markDirty();
 }
 
+// ------------------------------------------------------------------ save as PDF
+
+// Download's menu: the Word file, or a PDF. The browser makes the PDF, from its print window (there
+// is nothing to upload and no PDF library to load): a short dialog says how, and what the PDF will
+// show that the sender may not want in it (tracked changes, highlights). Printing sets the headers
+// and footers on every page and suggests the file's name (see onBeforePrint).
+const saveMenu = reactive({ open: false, x: 0, y: 0 });
+const saveMenuEl = ref(null);
+const saveMenuButton = ref(null);
+const pdfDialog = reactive({ open: false, x: 0, y: 0 });
+const pdfDialogEl = ref(null);
+const hasHighlight = ref(false);
+const pdfBands = ref({}); // what the dialog says about the header and footer
+
+/** The header and footer in the PDF, in words: on every page, or once (and why). */
+function describeBands() {
+  const modes = printModes(page.value, doc, sheetZoom.value);
+  const names = (mode) => ['header', 'footer'].filter((w) => modes[w] === mode).join(' and ');
+  const once = names('once');
+  const sections = [...doc.headers, ...doc.footers].some((v) => v.section > 1);
+  return {
+    every: names('every'),
+    once,
+    onceWhere: once === 'header' ? 'at the start' : once === 'footer' ? 'at the end' : 'at the start and the end',
+    why: sections
+      ? 'the document’s sections have headers and footers of their own, which only Word can put on the right pages.'
+      : 'a page number with pictures or a table beside it needs Word (or a browser that prints page-margin text, such as Chrome or Edge).',
+  };
+}
+
+function toggleSaveMenu() {
+  if (saveMenu.open) return closeSaveMenu();
+  const rect = saveMenuButton.value.getBoundingClientRect();
+  Object.assign(saveMenu, { open: true, x: Math.max(8, Math.min(rect.right - 220, window.innerWidth - 228)), y: rect.bottom + 4 });
+  nextTick(() => saveMenuEl.value?.querySelector('button')?.focus());
+}
+function closeSaveMenu(refocus = false) {
+  saveMenu.open = false;
+  if (refocus) saveMenuButton.value?.focus();
+}
+function saveMenuAction(what) {
+  closeSaveMenu();
+  if (what === 'docx') requestDownload();
+  else openPdfDialog();
+}
+function openPdfDialog() {
+  updatePages();
+  hasHighlight.value = !!page.value.querySelector('mark');
+  pdfBands.value = describeBands();
+  const rect = saveMenuButton.value?.getBoundingClientRect();
+  Object.assign(pdfDialog, { open: true, x: Math.max(8, Math.min((rect?.right ?? window.innerWidth) - 360, window.innerWidth - 368)), y: (rect?.bottom ?? 48) + 4 });
+  nextTick(() => pdfDialogEl.value?.querySelector('.confirm')?.focus());
+}
+function closePdfDialog() {
+  pdfDialog.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+function printToPdf() {
+  pdfDialog.open = false;
+  // After the dialog has gone from the screen, so the print window opens on the page alone.
+  nextTick(() => requestAnimationFrame(() => window.print()));
+}
+
 // ------------------------------------------------------------------ file actions
 
 // "Review my changes" before Download: what will go back to the recipient. It can be skipped; the
@@ -4809,7 +5107,7 @@ function checkFromHelp(part) {
   openReview(part);
 }
 
-/** Opens "Review your changes"; `part` ('release' or 'accessibility'): opened at that part. */
+/** Opens "Review your changes"; `part` ('release', 'accessibility' or 'screening'): opened at that part. */
 async function openReview(part = '') {
   reviewFocus.value = typeof part === 'string' ? part : '';
   closeChooser();
@@ -4819,21 +5117,30 @@ async function openReview(part = '') {
   // What happens to the restrictions and signatures in the file (see "restrictions" above).
   // Written as Download would, to know whether anything changed (signatures, properties).
   await withHostsUnlocked(() => doc.write(page.value));
+  // Removing personal information, chosen for you where nothing would be lost by it; written again
+  // when that changes what Download writes.
+  const before = doc.removePersonal;
+  choosePersonalDefault(inspection());
+  if (doc.removePersonal !== before) await withHostsUnlocked(() => doc.write(page.value));
   const signature = doc.signatures ? { count: doc.signatures.count, removed: doc.changed } : null;
   // The page's elements stay here, out of Vue's reach; the dialog gets what to say about them.
   issues = checkAccessibility(page.value, doc);
+  const screening = checkScreening(page.value, baseName.value);
+  issues.push(...screening.issues);
+  const forDialog = (list) => list.map(({ targets, ...issue }) => ({ ...issue, count: targets.length }));
   reviewData.value = {
     ...review, signature, protection: doc.protection, overridden: unlocked.value, restored: doc.restored,
     label: doc.properties.label, marking: doc.properties.marking, inspection: inspection(),
     properties: doc.propertiesUpdate(),
-    accessibility: issues.map(({ targets, ...issue }) => ({ ...issue, count: targets.length })),
+    accessibility: forDialog(issues.filter((i) => !i.id.startsWith('ats-'))),
+    screening: { cv: screening.cv, issues: forDialog(screening.issues) },
   };
   if (reviewData.value.fields) reviewData.value.fields.updatedHere = fieldsUpdatedAt === page.value.innerHTML;
 }
 
 // ------------------------------------------------------------------ accessibility and properties
 
-let issues = []; // the last accessibility check (see editor/accessibility.js)
+let issues = []; // the last accessibility and screening checks (see editor/accessibility.js, screening.js)
 const shown = new Map(); // issue id -> the target shown last, to show the next one each time
 
 /** Shows the next place an accessibility issue was found, closing the review; pictures open their alt text. */
@@ -4965,6 +5272,18 @@ async function close() {
 .dirty { color: #ffd166; margin-left: 6px; }
 .primary { background: #fff; color: var(--brand); border: 0; border-radius: 4px; padding: 6px 14px; font-weight: 600; cursor: pointer; }
 .primary:disabled { opacity: .6; }
+.save-split { display: inline-flex; gap: 1px; }
+.save-split .primary:first-child { border-radius: 4px 0 0 4px; }
+.save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
+.save-menu { min-width: 220px; }
+.save-menu button { display: flex; justify-content: space-between; gap: 16px; }
+.save-menu .shortcut { color: var(--muted); font-size: 12px; }
+.chooser.pdf-dialog { width: 360px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); font-size: 13px; }
+.pdf-dialog h2 { margin: 0; font-size: 15px; }
+.pdf-dialog p { margin: 0; line-height: 1.45; }
+.pdf-dialog .pdf-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.4; }
+.pdf-dialog .pdf-notes .warn::marker { color: #b26a00; }
+.pdf-dialog .pdf-word { color: var(--muted); }
 @media (max-width: 560px) { .ext, :deep(.nav) { display: none; } }
 .ghost { background: transparent; color: #fff; border: 1px solid rgb(255 255 255 / 50%); border-radius: 4px; padding: 5px 12px; cursor: pointer; }
 
@@ -5117,7 +5436,7 @@ async function close() {
 .toolbar select.font-choice { min-width: 0; width: 132px; }
 .toolbar select.size-choice { min-width: 0; width: 58px; }
 .toolbar select.char-style { min-width: 0; width: 124px; }
-.smart-typing { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
+.page-count, .smart-typing { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
 .no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
 .marks-toggle { font-size: 16px !important; }
 .track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
@@ -5174,7 +5493,7 @@ async function close() {
 .statusbar .zoom button:disabled { opacity: .4; cursor: default; }
 .statusbar .zoom .zoom-level { min-width: 44px; font-variant-numeric: tabular-nums; }
 
-@media (max-width: 860px) {
+@media screen and (max-width: 860px) {
   .canvas { padding: 0; }
   .docx-sheet { min-height: 100% !important; width: 100% !important; box-shadow: none; }
   .docx-page { padding: 24px 16px !important; }
@@ -5189,7 +5508,8 @@ async function close() {
 /* Unscoped: applies to the generated document HTML. */
 /* Printing (Ctrl+P) prints the document, not the editor around it: on the document's paper size, in
    its margins (the @page rule is set from the document when it opens), with its page breaks. Headers
-   and footers are printed once, at the start and the end, as the page shows them. */
+   and footers go on every page where they can (set just before printing: editor/printBands.js);
+   otherwise they are printed once, at the start and the end, as the page shows them. */
 @media print {
   html, body { background: #fff !important; }
   .editor-shell { display: block !important; height: auto !important; }
@@ -5198,9 +5518,10 @@ async function close() {
   .canvas { overflow: visible !important; padding: 0 !important; background: none !important; }
   .docx-sheet { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; box-shadow: none !important; zoom: 1 !important; }
   .docx-page { padding: 0 !important; overflow: visible !important; }
+  .docx-page, .docx-sheet [contenteditable] { caret-color: transparent !important; }
   .docx-sheet .docx-hf-band.header { padding-top: 0; min-height: 0; }
   .docx-sheet .docx-hf-band.footer { position: static; padding: 12pt 0 0; min-height: 0; }
-  .docx-sheet .docx-hf-part { opacity: 1; box-shadow: none !important; }
+  .docx-sheet .docx-hf-part { opacity: 1 !important; box-shadow: none !important; }
   .docx-sheet .docx-hf-part::after { display: none !important; }
   .docx-sheet .raw-inline.page-break { border: 0 !important; margin: 0 !important; break-after: page; }
   .docx-sheet [data-page-break-before] { break-before: page; }
@@ -5230,6 +5551,13 @@ async function close() {
 .docx-sheet .marks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 /* Line numbers in the margin, as Word prints them: drawn over the sheet, never part of the page. */
 .docx-sheet .line-numbers-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+.docx-sheet .page-breaks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+/* Where a page would begin, about (editor/pages.js): a dashed line across the sheet, numbered in the margin. */
+.docx-sheet .page-estimate { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--sheet-line); }
+.docx-sheet .page-estimate span {
+  position: absolute; right: 6px; top: -8px; padding: 0 4px; border-radius: 3px; background: #fff;
+  font: 600 10px/16px system-ui, sans-serif; color: var(--sheet-accent); white-space: nowrap; user-select: none;
+}
 .docx-sheet .line-number { position: absolute; font-size: 9pt; color: #6b6b6b; text-align: right; white-space: nowrap; user-select: none; }
 .docx-sheet .fmark { position: absolute; color: #4f74b3; font-family: system-ui, sans-serif; white-space: pre; user-select: none; }
 .docx-sheet .fmark.space { transform: translateX(-50%); }

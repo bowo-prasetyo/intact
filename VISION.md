@@ -57,7 +57,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
   a server, and they conflict with "private".
 - **Other formats.** No spreadsheets, slides, PDF or legacy `.doc`. Do one format well.
-- **Pixel-perfect pagination.** The editor shows content faithfully, not exact Word page breaks.
+- **Pixel-perfect pagination.** The editor shows content faithfully, not exact Word page breaks. It
+  says about how many pages there are and about where they break, worked out and marked as such
+  (≈), because whether a CV or a letter still fits on a page is part of fixing it.
 
 ## Principles for deciding what's next
 
@@ -128,6 +130,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Page numbers (and a footer for them) ✔; insert footnotes ✔ and endnotes ✔; page setup for the
   whole document ✔
 - Update tables of contents, cross-references and caption numbers (F9) ✔; page numbers stay Word's
+- About how many pages, and where they break, drawn over the page ✔; headers, footers and page
+  numbers on every printed page ✔; save as PDF from the print window ✔; removing personal
+  information as a default you choose ✔; check a CV for employers' screening software ✔
 
 ## How we'll know it's working
 
