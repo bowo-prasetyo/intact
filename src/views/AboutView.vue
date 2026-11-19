@@ -4,8 +4,9 @@
     <main class="about">
       <h1>About</h1>
       <p>
-        A small, client-only editor for <code>.docx</code> files, the format Microsoft Word uses. The file is unzipped and
-        parsed in your browser; no data is sent to any server.
+        A small, client-only editor for <code>.docx</code> files, the format Microsoft Word uses: fix a document you were
+        sent, or write a new one that opens in Word as it looks here. The file is unzipped and parsed in your browser; no
+        data is sent to any server.
       </p>
       <h2>What you can edit</h2>
       <ul>
