@@ -211,10 +211,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   only: it isn't stored or sent anywhere. Tracked while tracking, undone with Ctrl+Z
 - Insert a check box or today's date (the toolbar's Insert button), as Word's Developer tab and
   Insert Date and Time do: the check box is Word's check box content control (`w14:checkbox`, ☐ and
-  ☒ in MS Gothic), ticked with a click here and in Word; the date is typed at the caret as text,
-  in one of a few forms in the text's language ("19 November 2026", "Thursday, 19 November 2026",
-  "19/11/2026", "2026-11-19"), so it stays the day the form was filled in. Both are tracked while
-  tracking
+  ☒ in MS Gothic), ticked with a click here and in Word; the date goes at the caret in one of a few
+  forms in the text's language ("19 November 2026", "Thursday, 19 November 2026", "19/11/2026",
+  "2026-11-19"): as text, so it stays the day the form was filled in, or, with Update automatically
+  ticked (as in Word's Date and Time dialog, and remembered in this browser), as Word's DATE field
+  in the same format (`DATE \@ "d MMMM yyyy"`, its picture worked out from how the date is written
+  in that language), showing today's date, which Word changes to the day it opens or prints the
+  file: a quote's or letter's date that is always current. Both are tracked while tracking
 - Edit footnotes and endnotes in place: they are listed below the text (as in Word's draft view),
   numbered in the order the text refers to them, and edited like the text: typing, formatting,
   Undo, Find and Replace and Track Changes all work in them. Clicking a note's number in the text
@@ -470,6 +473,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   where the caret was. Its buttons are named and say whether they are on (bold, alignment, lists…) for
   screen readers. Its controls stay in place: Accept, Reject and the count of tracked changes are always
   there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens.
+  The icon buttons get short text labels (Insert, Picture, Sign, Table, Layout, Footnote, Endnote,
+  Update, Page no., Page setup, Find, Fill in) where the toolbar has room for them: each in turn, as
+  long as it fits without the toolbar taking another row, worked out again when the window's width
+  changes, so the toolbar never grows; their names for screen readers stay as they were
   On a phone it is one row that scrolls sideways, faded at the edge where more controls are, with
   touch-sized buttons. The tools a phone is used for come first (Undo, Redo, Bold, Italic,
   Underline, Highlight, the lists, Insert, Draw signature, Insert picture and New comment), the rest a
@@ -727,8 +734,11 @@ The About page shows the version.
 - Deleting a footnote or endnote reference leaves its note in the notes part (Word ignores it), but
   for a note added here; pictures, tables, page breaks, new comments and notes can't go in a note (comments already in notes can be replied to, edited,
   resolved and deleted in the panel)
-- A page number shows 1 here (it prints numbered: see Print): Word numbers the pages when it opens
-  the file. A
+- A page number (`PAGE`) shows # here, as each page has its own (it prints numbered: see Print;
+  Word numbers the pages when it opens the file), and the number of pages (`NUMPAGES`,
+  `SECTIONPAGES`) about how many there are, as the status bar says (on a phone, the number in the
+  file): drawn over the numbers the file holds, which are kept as they are and aren't typed into.
+  The End key doesn't go past a page number at the end of a line (click after it). A
   footer made here is for all pages of the first section and those after it without their own; a
   first page set to have a different footer, and even pages where they differ, don't show it, as in
   Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns
@@ -801,7 +811,8 @@ The About page shows the version.
   another tab isn't recognised as such
 - Share… needs a browser that can share `.docx` files (the Web Share API with files): Safari on
   iPhone, iPad and Mac can; Chrome shares only some kinds of file, so where it can't share a `.docx`,
-  Share… isn't offered and Download keeps the file on the device. A date is inserted as text, not as
-  a field Word updates
+  Share… isn't offered and Download keeps the file on the device. A date that updates shows the day
+  it was inserted here (Word updates it when it opens the file); dates already in a file as fields
+  aren't updated here
 - The screening check knows what such software commonly misses, not what a given employer's does;
   it doesn't rate how well a CV matches a job

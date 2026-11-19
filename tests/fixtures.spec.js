@@ -317,8 +317,17 @@ for (const name of FIXTURES) {
     for (const kind of ['header', 'footer']) {
       test(`typing in a ${kind} changes only its part`, async ({ page }) => {
         await openInEditor(page, buffer, name);
-        const target = page.locator(`.docx-hf-band.${kind} .docx-hf-part:visible > p`).filter({ hasText: /\S/, hasNot: page.locator('.textbox') }).first();
-        test.skip(!(await target.count()), `${name} shows no ${kind} with text`);
+        // A paragraph with text of its own: a page number alone shows # and isn't typed into.
+        await page.evaluate((k) => {
+          const own = (p) => [...p.childNodes].some(function has(n) {
+            if (n.nodeType === 3) return /\S/.test(n.data);
+            return n.nodeType === 1 && !n.matches('.page-field, .textbox, .raw-hidden') && [...n.childNodes].some(has);
+          });
+          const p = [...document.querySelectorAll(`.docx-hf-band.${k} .docx-hf-part > p`)].find((el) => el.getClientRects().length && own(el));
+          p?.setAttribute('data-test-target', '');
+        }, kind);
+        const target = page.locator(`.docx-hf-band.${kind} .docx-hf-part > p[data-test-target]`);
+        test.skip(!(await target.count()), `${name} shows no ${kind} with text of its own`);
         const text = (await target.textContent()).trim();
         const host = target.locator('xpath=ancestor::*[@data-part][1]');
         const partName = await host.getAttribute('data-part');
