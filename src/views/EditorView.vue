@@ -5484,9 +5484,53 @@ function explainKeyOutsideText(e) {
   return false;
 }
 
+/**
+ * End (and Shift+End) as Word has it, also on a line with something that can't be typed into, such
+ * as a page number: Chrome's End doesn't move on such a line. There the caret (or the selection's
+ * end) goes to the end of the caret's line, found where the paragraph's right edge is level with the
+ * caret, and past a page number or a field's hidden marks that end it. True if it was dealt with.
+ */
+function endOfLine(extend) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.focusNode || !page.value?.contains(sel.focusNode)) return false;
+  const block = closestBlock(sel.focusNode);
+  // Only a line with a page number (elsewhere the browser's End works), and not right to left.
+  if (!block?.querySelector('.page-field') || getComputedStyle(block).direction === 'rtl') return false;
+  const caret = document.createRange();
+  caret.setStart(sel.focusNode, sel.focusOffset);
+  let at = caret.getBoundingClientRect();
+  if (!at.height) at = block.getClientRects()[0] || block.getBoundingClientRect();
+  const box = block.getBoundingClientRect();
+  const x = box.right - parseFloat(getComputedStyle(block).paddingRight || 0) - 1;
+  const y = at.top + at.height / 2;
+  const pos = document.caretPositionFromPoint?.(x, y);
+  let node = pos ? pos.offsetNode : document.caretRangeFromPoint?.(x, y)?.startContainer;
+  let offset = pos ? pos.offset : document.caretRangeFromPoint?.(x, y)?.startOffset;
+  if (!node || !block.contains(node)) {
+    node = block;
+    offset = block.childNodes.length;
+  } else {
+    // Inside something that can't be typed into: just after it, and after hidden marks that follow.
+    const locked = (node.nodeType === 1 ? node : node.parentElement).closest('[contenteditable="false"]');
+    if (locked && block.contains(locked)) {
+      let last = locked;
+      while (last.nextSibling?.nodeType === 1 && last.nextSibling.classList.contains('raw-hidden')) last = last.nextSibling;
+      node = last.parentNode;
+      offset = [...node.childNodes].indexOf(last) + 1;
+    }
+  }
+  if (extend) sel.extend(node, offset);
+  else sel.collapse(node, offset);
+  return true;
+}
+
 function onKeydown(e) {
   selectedChange = null;
   if (formKeydown(e)) return;
+  if (e.key === 'End' && !e.ctrlKey && !e.metaKey && !e.altKey && endOfLine(e.shiftKey)) {
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape' && picture.cropping) {
     e.preventDefault();
     toggleCropping();

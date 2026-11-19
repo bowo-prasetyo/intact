@@ -805,8 +805,8 @@ The About page shows the version.
 - A page number (`PAGE`) shows # here, as each page has its own (it prints numbered: see Print;
   Word numbers the pages when it opens the file), and the number of pages (`NUMPAGES`,
   `SECTIONPAGES`) about how many there are, as the status bar says (on a phone, the number in the
-  file): drawn over the numbers the file holds, which are kept as they are and aren't typed into.
-  The End key doesn't go past a page number at the end of a line (click after it). A
+  file): drawn over the numbers the file holds, which are kept as they are and aren't typed into
+  (End and Shift+End go past one at the end of a line, to type or select after it). A
   footer made here is for all pages of the first section and those after it without their own; a
   first page set to have a different footer, and even pages where they differ, don't show it, as in
   Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns
