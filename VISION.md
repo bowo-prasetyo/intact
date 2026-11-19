@@ -137,6 +137,8 @@ Saying no to these keeps the product small enough to keep its promises:
   in a tab of its own, with drafts that know where they are open ✔
 - Fill in legacy forms (check boxes, drop-down lists and text fields), also when protected for
   filling in, with Tab between fields ✔; draw a signature on a form ✔
+- Phones: the most used tools first, messages in view, and Share… to send the file back ✔; insert a
+  check box or today's date ✔
 
 ## How we'll know it's working
 

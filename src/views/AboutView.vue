@@ -21,6 +21,8 @@
         <li>Tables whose rows or cells are fields, including repeating sections</li>
         <li>Legacy form fields (check boxes, drop-down lists and text fields), also in forms protected for filling in, with Tab between fields</li>
         <li>Draw signature: sign with your finger, a pen or the mouse (or type your name), and it goes in at the caret as a picture</li>
+        <li>Insert a check box (ticked with a click, here and in Word) or today's date, in the text's language</li>
+        <li>Share… from Download's menu, where the browser can share files: send the file back by mail or a messaging app</li>
         <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too); Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space)</li>

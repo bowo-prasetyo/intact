@@ -16,7 +16,13 @@ export function rovingToolbar(toolbar, { onEscape } = {}) {
 
   const all = () => [...toolbar.querySelectorAll(CONTROLS)];
   const usable = (el) => !el.matches(':disabled') && !el.hidden && el.getClientRects().length > 0;
-  const items = () => all().filter(usable);
+  // On a phone (one row) the most used controls come first (CSS order): the arrows follow what is shown.
+  const items = () => {
+    const list = all().filter(usable);
+    if (getComputedStyle(toolbar).flexWrap !== 'nowrap') return list;
+    const at = new Map(list.map((el) => [el, el.getBoundingClientRect().left]));
+    return list.sort((a, b) => at.get(a) - at.get(b));
+  };
 
   /** One control takes Tab (the current one, or the first usable); the rest are reached by arrows. */
   function sync() {
