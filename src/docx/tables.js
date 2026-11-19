@@ -843,3 +843,78 @@ export function normalizeHMerge(tbl) {
     }
   }
 }
+
+// ---------------------------------------------------------------- cell shading and borders
+
+const BORDER_SIDES = ['top', 'left', 'bottom', 'right'];
+const TCBORDERS_ORDER = ['top', 'start', 'left', 'bottom', 'end', 'right', 'insideH', 'insideV', 'tl2br', 'tr2bl'];
+
+/**
+ * Changes the cells of `area` ({ r0, r1, c0, c1 }, in rows and grid columns) as Word's Shading and
+ * Borders buttons do, in each cell's own properties (<w:tcPr>): `change(tc, edges)` changes one,
+ * where `edges` says which sides of the area it is on ({ top, left, bottom, right }). Tracked
+ * (`rev` makes a <w:tcPrChange>), the old properties are recorded once: changed again, the first
+ * record stays, as Word keeps it.
+ */
+export function formatCells(tbl, area, change, rev = null) {
+  areaCells(tbl, area).forEach((cells, i) => {
+    const r = area.r0 + i;
+    for (const c of cells) {
+      const edges = { top: r === area.r0, bottom: r === area.r1, left: c.start === area.c0, right: c.start + c.span - 1 === area.c1 };
+      const pending = !!wChild(wChild(c.tc, 'tcPr'), 'tcPrChange');
+      const old = rev && !pending ? oldProps(c.tc) : null;
+      change(c.tc, edges);
+      if (old) markPropChange(c.tc, rev('tcPrChange'), old);
+    }
+  });
+}
+
+/** A cell's shading: a fill colour (RRGGBB), as Word writes it (<w:shd w:val="clear" w:color="auto" w:fill="…"/>), or none. */
+export function setShading(tc, hex) {
+  if (!hex) {
+    removeW(wChild(tc, 'tcPr'), 'shd');
+    return;
+  }
+  const shd = ensureOrdered(tcPr(tc), 'shd', TCPR_ORDER);
+  for (const a of [...shd.attributes]) shd.removeAttributeNode(a);
+  shd.setAttributeNS(W, 'w:val', 'clear');
+  shd.setAttributeNS(W, 'w:color', 'auto');
+  shd.setAttributeNS(W, 'w:fill', hex);
+}
+
+/**
+ * Sets sides of a cell's borders (<w:tcBorders>): `sides` maps 'top', 'left', 'bottom', 'right' to
+ * true (a single line, ½ pt, automatic colour: Word's default border) or false (no border, "nil",
+ * which hides a table style's border too). Sides not named stay as they are.
+ */
+export function setBorders(tc, sides) {
+  const props = tcPr(tc);
+  const borders = ensureOrdered(props, 'tcBorders', TCPR_ORDER);
+  for (const side of BORDER_SIDES) {
+    if (!(side in sides)) continue;
+    // Word's logical sides (start, end) are the same edges: one of each is kept.
+    removeW(borders, side === 'left' ? 'start' : side === 'right' ? 'end' : side);
+    const b = ensureOrdered(borders, side, TCBORDERS_ORDER);
+    for (const a of [...b.attributes]) b.removeAttributeNode(a);
+    if (sides[side]) {
+      b.setAttributeNS(W, 'w:val', 'single');
+      b.setAttributeNS(W, 'w:sz', '4');
+      b.setAttributeNS(W, 'w:space', '0');
+      b.setAttributeNS(W, 'w:color', 'auto');
+    } else {
+      b.setAttributeNS(W, 'w:val', 'nil');
+    }
+  }
+}
+
+/** A cell's own borders (<w:tcBorders>) by side: { top, left, bottom, right } -> its border element, if set. */
+export function cellBorders(tc) {
+  const borders = wChild(wChild(tc, 'tcPr'), 'tcBorders');
+  if (!borders) return {};
+  return {
+    top: wChild(borders, 'top'),
+    bottom: wChild(borders, 'bottom'),
+    left: wChild(borders, 'left') || wChild(borders, 'start'),
+    right: wChild(borders, 'right') || wChild(borders, 'end'),
+  };
+}

@@ -500,9 +500,34 @@
       <button type="button" role="menuitem" :disabled="!tableMenu.multi" :title="tableMenu.multi ? '' : 'Select the cells to merge first'" @click="tableAction('merge')">Merge cells</button>
       <button type="button" role="menuitem" @click="openSplitDialog">Split cells…</button>
       <hr />
+      <button type="button" role="menuitem" aria-haspopup="dialog" @click="openCellFormat">Shading and borders…</button>
+      <hr />
       <button type="button" role="menuitem" @click="tableAction('deleteRows')">{{ tableMenu.rows > 1 ? `Delete ${tableMenu.rows} rows` : 'Delete row' }}</button>
       <button type="button" role="menuitem" @click="tableAction('deleteColumns')">{{ tableMenu.cols > 1 ? `Delete ${tableMenu.cols} columns` : 'Delete column' }}</button>
       <button type="button" role="menuitem" @click="tableAction('deleteTable')">Delete table</button>
+    </div>
+
+    <!-- Word's Shading and Borders buttons (Table Design), for the selected cells. -->
+    <div v-if="cellFormat.open" ref="cellFormatEl" class="palette cell-format" role="dialog" aria-label="Shading and borders" :style="{ left: `${cellFormat.x}px`, top: `${cellFormat.y}px` }" @mousedown="keepSelection" @keydown.esc="closeCellFormat">
+      <p class="palette-label">Borders</p>
+      <div class="border-choices">
+        <button v-for="b in BORDER_CHOICES" :key="b.value" type="button" :title="b.title" @click="formatCells('borders', b.value)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11zM8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width=".8" stroke-dasharray="1 1.2" fill="none" opacity=".55" /><path :d="b.icon" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" fill="none" /></svg>
+          <span>{{ b.label }}</span>
+        </button>
+      </div>
+      <p class="palette-label">Shading</p>
+      <button type="button" class="no-color" @click="formatCells('shading', null)">No colour</button>
+      <div class="swatches">
+        <button v-for="c in shadingChoices.theme" :key="c.hex + c.label" type="button" class="swatch" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="formatCells('shading', c.hex)" />
+      </div>
+      <template v-if="shadingChoices.used.length">
+        <p class="palette-label">In this document</p>
+        <div class="swatches">
+          <button v-for="c in shadingChoices.used" :key="c.hex" type="button" class="swatch" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="formatCells('shading', c.hex)" />
+        </div>
+      </template>
+      <MoreColors @pick="(hex) => formatCells('shading', hex)" />
     </div>
 
     <form v-if="splitDialog.open" ref="splitDialogEl" class="chooser author-dialog split-dialog" role="dialog" aria-label="Split cells" :style="{ left: `${splitDialog.x}px`, top: `${splitDialog.y}px` }" @submit.prevent="splitCells" @keydown.esc="closeSplitDialog">
@@ -629,7 +654,7 @@
       <button type="button" class="no-color" @click="pickHighlight(null)">No colour</button>
     </div>
 
-    <div v-if="colorPalette.open" ref="colorPaletteEl" class="palette color-palette" role="dialog" aria-label="Font colour" :style="{ left: `${colorPalette.x}px`, top: `${colorPalette.y}px` }" @mousedown.prevent @keydown.esc="closeColorPalette">
+    <div v-if="colorPalette.open" ref="colorPaletteEl" class="palette color-palette" role="dialog" aria-label="Font colour" :style="{ left: `${colorPalette.x}px`, top: `${colorPalette.y}px` }" @mousedown="keepSelection" @keydown.esc="closeColorPalette">
       <button type="button" class="no-color" @click="pickFontColor(null)">Automatic</button>
       <p class="palette-label">Theme colours</p>
       <div class="swatches">
@@ -641,6 +666,7 @@
           <button v-for="c in colorChoices.used" :key="c.hex" type="button" class="swatch" :class="{ current: fontColor?.hex === c.hex && !fontColor?.theme }" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="pickFontColor(c)" />
         </div>
       </template>
+      <MoreColors :current="fontColor && !fontColor.theme ? fontColor.hex : null" @pick="(hex) => pickFontColor({ hex, label: `#${hex}` })" />
     </div>
 
     <form v-if="dropOffer.file" ref="dropOfferEl" class="chooser author-dialog drop-offer" role="dialog" aria-label="Open in a new tab" @submit.prevent="openDroppedInNewTab" @keydown.esc="dropOffer.file = null">
@@ -720,6 +746,7 @@ import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
+import MoreColors from '../components/MoreColors.vue';
 import { findPlaceholders } from '../editor/placeholders.js';
 import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
@@ -2835,6 +2862,100 @@ function tableAction(kind) {
   message.value = done;
 }
 
+// ------------------------------------------------------------------ cell shading and borders
+
+// Word's Borders button's most used choices, for the selected cells as a block.
+const BORDER_CHOICES = [
+  { value: 'all', label: 'All borders', title: 'All borders: a line around every selected cell', icon: 'M2.5 2.5h11v11h-11zM8 2.5v11M2.5 8h11' },
+  { value: 'outside', label: 'Outside borders', title: 'Outside borders: a line around the selected cells as a block', icon: 'M2.5 2.5h11v11h-11z' },
+  { value: 'bottom', label: 'Bottom border', title: 'Bottom border: a line under the selected cells (a heading row, a total)', icon: 'M2.5 13.5h11' },
+  { value: 'none', label: 'No border', title: 'No border: no lines around the selected cells, not even the table style’s', icon: '' },
+];
+const cellFormat = reactive({ open: false, x: 0, y: 0, sel: null });
+const cellFormatEl = ref(null);
+
+/** A colour mixed with white (`amount` 0–1 of white), as Word's lighter tints of the theme colours. */
+function tint(hex, amount) {
+  return [0, 2, 4].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) + (255 - parseInt(hex.slice(i, i + 2), 16)) * amount).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+// Shading: the theme's colours lightened, as Word's palette offers them for a fill (text stays
+// readable on them), then the theme's own; and the colours the document's text uses.
+const shadingChoices = computed(() => {
+  const theme = colorChoices.value.theme;
+  return {
+    theme: [
+      ...theme.map((c) => ({ hex: tint(c.hex, 0.8), label: `${c.label}, lighter 80%` })),
+      ...theme.map((c) => ({ hex: tint(c.hex, 0.4), label: `${c.label}, lighter 40%` })),
+      ...theme,
+    ],
+    used: colorChoices.value.used,
+  };
+});
+
+function openCellFormat() {
+  const sel = tableSelection();
+  tableMenu.open = false;
+  if (!sel) {
+    message.value = 'Click in a table first';
+    return;
+  }
+  loadChoices();
+  const rect = layoutButton.value.getBoundingClientRect();
+  Object.assign(cellFormat, { open: true, sel, x: Math.max(8, rect.left - 60), y: rect.bottom + 4 });
+  nextTick(() => {
+    keepInView(cellFormat, cellFormatEl.value);
+    cellFormatEl.value?.querySelector('button')?.focus();
+  });
+}
+
+function closeCellFormat() {
+  cellFormat.open = false;
+  page.value.focus();
+  restoreSelection();
+}
+
+/** Shading (`value` a colour, or null) or borders (`value` 'all', 'outside', 'bottom', 'none') for the selected cells. */
+function formatCells(kind, value) {
+  const sel = cellFormat.sel?.cell.isConnected ? cellFormat.sel : tableSelection();
+  cellFormat.open = false;
+  refocus();
+  if (!sel) {
+    message.value = 'Click in a table first';
+    return;
+  }
+  const locked = readOnlyAt(sel.cell, page.value);
+  if (locked) return explainReadOnly(locked, true);
+  const tracked = trackedBy(sel.cell);
+  // The selection's ends, by their text: the cells are put back in their rows, which would collapse a Range.
+  const was = selectionInPage();
+  const ends = was && [was.startContainer, was.startOffset, was.endContainer, was.endOffset];
+  undoStack.flush();
+  const res = doc.formatTableCells(sel.table, sel.rows, sel.cols, kind, value, tracked);
+  if (res.reason) {
+    message.value = res.reason;
+    return;
+  }
+  // The selection stays as it was (its cells are kept), as Word keeps it, for the next choice.
+  if (ends && ends[0].isConnected && ends[2].isConnected) {
+    const range = document.createRange();
+    range.setStart(ends[0], ends[1]);
+    range.setEnd(ends[2], ends[3]);
+    const s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(range);
+  } else if (sel.cell.isConnected) placeCaret(sel.cell.querySelector(BLOCK_SELECTOR) || sel.cell, true);
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  onSelectionChange();
+  const cells = sel.multi ? 'the selected cells' : 'the cell';
+  message.value = (kind === 'shading'
+    ? (value ? `Shading #${value} on ${cells}` : `Shading taken off ${cells}`)
+    : { all: `All borders on ${cells}`, outside: `Outside borders on ${cells}`, bottom: `Bottom border on ${cells}`, none: `No borders on ${cells}` }[value])
+    + (tracked ? ' (tracked)' : '');
+}
+
 const splitDialog = reactive({ open: false, x: 0, y: 0, cols: 2, rows: 1 });
 const splitDialogEl = ref(null);
 
@@ -3317,7 +3438,11 @@ async function insertPictures(files, at = null, { width, descr, what = 'Picture'
   }
   const locked = readOnlySelection();
   if (locked) return explainReadOnly(locked, true);
-  if (refuseInNote(range, 'A picture')) return;
+  // A logo goes in a header or footer, with the part's own picture files; not in notes or text boxes.
+  // (The innermost story counts: a text box in a footer is a text box.)
+  const story = noteAt(range.startContainer);
+  const part = story?.classList.contains('docx-hf-part') ? doc.partOf(story) : null;
+  if (!part && refuseInNote(range, 'A picture')) return;
   if (controlAt(range.startContainer, page.value)) {
     message.value = 'A picture can’t go in a field: insert it in Word';
     return;
@@ -3327,7 +3452,7 @@ async function insertPictures(files, at = null, { width, descr, what = 'Picture'
   const made = [];
   const reasons = [];
   for (const file of files) {
-    const res = await doc.addPicture(file, { width, descr });
+    const res = await doc.addPicture(file, { width, descr, part });
     if (res.span) made.push(res.span);
     else reasons.push(res.reason);
   }
@@ -3836,6 +3961,14 @@ function applyFontColor(color) {
   restyleSelection(setColor(color ? { hex: color.hex, theme: color.theme } : null));
 }
 
+/**
+ * A palette keeps the text's selection while its swatches are clicked; its colour-code box and
+ * picker take the focus as fields do (the selection is put back when a colour is applied).
+ */
+function keepSelection(e) {
+  if (!e.target.closest('input')) e.preventDefault();
+}
+
 function toggleColorPalette() {
   if (colorPalette.open) return closeColorPalette();
   const rect = colorButton.value.getBoundingClientRect();
@@ -3855,8 +3988,7 @@ function closeColorPalette() {
 function pickFontColor(color) {
   colorPalette.open = false;
   fontColor.value = color;
-  page.value.focus();
-  restoreSelection();
+  refocus(); // the selection as it was, also after typing a colour code took the focus
   applyFontColor(color);
 }
 
@@ -5189,6 +5321,7 @@ function onDocumentMousedown(e) {
   if (spacingMenu.open && !spacingMenuEl.value?.contains(e.target) && !spacingButton.value?.contains(e.target)) spacingMenu.open = false;
   if (tableMenu.open && !tableMenuEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) tableMenu.open = false;
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
+  if (cellFormat.open && !cellFormatEl.value?.contains(e.target)) cellFormat.open = false;
   if (dropOffer.file && !dropOfferEl.value?.contains(e.target)) dropOffer.file = null;
   if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
   if (insertMenu.open && !insertMenuEl.value?.contains(e.target) && !insertButton.value?.contains(e.target)) insertMenu.open = false;
@@ -6109,7 +6242,11 @@ async function close() {
 .swatch { height: 24px; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; cursor: pointer; padding: 0; }
 .swatch.current, .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .palette-label { margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
-.color-palette { width: 210px; }
+.color-palette { width: 220px; }
+.cell-format { width: 280px; max-height: calc(100vh - 16px); overflow-y: auto; }
+.border-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.border-choices button { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.border-choices button:hover, .border-choices button:focus-visible { background: var(--hover); }
 .toolbar select.font-choice { min-width: 0; width: 132px; }
 .toolbar select.size-choice { min-width: 0; width: 58px; }
 .toolbar select.char-style { min-width: 0; width: 124px; }

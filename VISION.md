@@ -141,6 +141,8 @@ Saying no to these keeps the product small enough to keep its promises:
   check box or today's date ✔
 - Templates for quotes, letters and invoices: fill in placeholders such as [Client name] once for
   every place they appear ✔; start a new document from a template, leaving the template as it is ✔
+- A business's own look: a logo in the header or footer ✔; a brand colour by its code, remembered
+  for the next document ✔; shading and borders for table cells (a quote's heading row and total) ✔
 
 ## How we'll know it's working
 
