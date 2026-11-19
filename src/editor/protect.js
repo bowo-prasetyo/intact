@@ -39,15 +39,18 @@ export function removesContent(e) {
 }
 
 /**
- * The ranges a beforeinput event would remove: its target ranges, or else the selection (extended
- * by the step a collapsed delete takes, as the browser would). Collapsed ranges remove nothing.
+ * The ranges a beforeinput event would remove: its target ranges (with the selection, when it isn't
+ * collapsed), or else the selection extended by the step a collapsed delete takes, as the browser
+ * would. Collapsed ranges remove nothing.
  */
 export function rangesRemovedBy(e) {
   const targets = (e.getTargetRanges?.() || []).map(toRange).filter((r) => r && !r.collapsed);
-  if (targets.length) return targets;
   const sel = window.getSelection();
-  if (!sel.rangeCount) return [];
-  const range = sel.getRangeAt(0);
+  const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+  // The selection too, after the target ranges: newer Chromium clips a target range at the edge of
+  // an editing host it crosses (the text into a note), so the target alone misses what lies beyond.
+  if (targets.length) return range && !range.collapsed ? [...targets, range.cloneRange()] : targets;
+  if (!range) return [];
   if (!range.collapsed) return [range.cloneRange()];
   const step = STEPS[e.inputType];
   if (!step || typeof sel.modify !== 'function') return [];

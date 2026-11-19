@@ -103,6 +103,32 @@ test('a page number shows #, and the page count about how many pages; the file k
   expect(ftr).toMatch(/ NUMPAGES <\/w:instrText><\/w:r><w:r><w:fldChar w:fldCharType="separate"\/><\/w:r><w:r><w:t( xml:space="preserve")?>1<\/w:t>/);
 });
 
+test('End goes past a page number at the end of the line, and Shift+End selects to there', async ({ page }) => {
+  await openInEditor(page, await buildDocx(BODY, OPTS));
+  const line = page.locator('.docx-hf-band.footer .docx-hf-part:visible > p').first();
+  await line.getByText('Page', { exact: false }).first().click({ position: { x: 2, y: 4 } });
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Shift+End');
+  await expect.poll(() => page.evaluate(() => getSelection().toString().replace(/\s+/g, ' ').trim())).toBe('Page 1 of 1');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('End');
+  await page.keyboard.type(' · Acme');
+  // Typed after the page count, not into it: the count is still the field's, the text after it.
+  await expect(line).toContainText('· Acme');
+  await expect(page.locator('.docx-hf-band.footer .field[data-instr^="NUMPAGES"]')).toHaveText('1');
+  const { zip } = await download(page);
+  expect(await zip.file('word/footer1.xml').async('string')).toMatch(/<w:fldChar w:fldCharType="end"\/><\/w:r><w:r><w:t xml:space="preserve"> · Acme<\/w:t><\/w:r><\/w:p>/);
+});
+
+test('End in a line of text still stops at the end of the text', async ({ page }) => {
+  await openInEditor(page, await buildDocx(BODY));
+  await page.locator('.docx-page > p').first().click({ position: { x: 2, y: 4 } });
+  await page.keyboard.press('Home');
+  await page.keyboard.press('End');
+  await page.keyboard.type('today');
+  await expect(page.locator('.docx-page > p').first()).toHaveText('Invoice sent on today');
+});
+
 test('a page number put in here shows # too', async ({ page }) => {
   await openInEditor(page, await buildDocx(BODY));
   await page.locator('.docx-page > p').first().click();
