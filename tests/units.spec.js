@@ -42,7 +42,7 @@ test('A4 shows centimetres; on Letter paper the margins and indents are in inche
   await para(page).getByLabel('By (in)').fill('0.5');
   await para(page).getByRole('button', { name: 'OK' }).click();
   const { xml } = await download(page);
-  expect(xml).toContain('<w:pPr><w:ind w:hanging="720"/></w:pPr><w:r><w:t xml:space="preserve">Smith, Jane.');
+  expect(xml).toContain('<w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr><w:r><w:t xml:space="preserve">Smith, Jane.');
   expect(xml).toContain('<w:pgSz w:w="12240" w:h="15840"/>');
 });
 

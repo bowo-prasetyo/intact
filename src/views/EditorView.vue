@@ -3322,8 +3322,10 @@ function dialogValues(f, unit) {
   } else {
     rule = Object.keys(LINE_PRESETS).find((k) => LINE_PRESETS[k] === f.line) || 'multiple';
   }
+  // As Word's dialog: with a hanging indent, Left is where the first line starts (w:left less the
+  // hanging), so "Left 0, Hanging 0.5 in" is the usual hanging indent, w:left="720" w:hanging="720".
   return {
-    left: len(f.left), right: len(f.right),
+    left: len(f.left - f.hanging), right: len(f.right),
     special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: len(f.hanging || f.firstLine),
     before: toPt(f.before), after: toPt(f.after), rule, at,
   };
@@ -3336,7 +3338,7 @@ function openParagraphDialog() {
   const unit = docUnit();
   const format = doc.paragraphFormat(block);
   paraInitial = dialogValues(format, unit);
-  paraTwips = { left: format.left, right: format.right, by: format.hanging || format.firstLine };
+  paraTwips = { left: format.left - format.hanging, right: format.right, by: format.hanging || format.firstLine };
   const { stops } = doc.tabStops(block);
   paraInitialTabs = JSON.stringify(stops);
   const rect = anchorRect(spacingButton.value);
@@ -3375,10 +3377,19 @@ function applyParagraphDialog() {
   paraDialog.open = false;
   const num = (v) => (Number.isFinite(Number(v)) && v !== '' ? Number(v) : 0);
   const change = {};
-  if (num(d.left) !== i.left) change.left = toTwips(num(d.left), d.unit);
+  const leftChanged = num(d.left) !== i.left;
+  const specialChanged = d.special !== i.special || (d.special !== 'none' && num(d.by) !== i.by);
+  // By as it was when it wasn't changed (exactly: what is shown is rounded).
+  const by = num(d.by) === i.by && d.special === i.special ? paraTwips.by : Math.max(0, toTwips(num(d.by), d.unit));
+  // With a hanging indent, Left is where the first line starts: w:left is Left and the hanging
+  // together, so it is written again when either changes (from its exact value when Left wasn't).
+  const hangs = (special) => special === 'hanging';
+  if (leftChanged || (specialChanged && (hangs(d.special) || hangs(i.special)))) {
+    const left = leftChanged ? toTwips(num(d.left), d.unit) : paraTwips.left;
+    change.left = left + (hangs(d.special) ? by : 0);
+  }
   if (num(d.right) !== i.right) change.right = toTwips(num(d.right), d.unit);
-  if (d.special !== i.special || (d.special !== 'none' && num(d.by) !== i.by)) {
-    const by = Math.max(0, toTwips(num(d.by), d.unit));
+  if (specialChanged) {
     if (d.special === 'hanging') change.hanging = by;
     else change.firstLine = d.special === 'firstLine' ? by : 0;
   }
