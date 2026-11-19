@@ -2325,6 +2325,23 @@ export class DocxDocument {
    * it is still in the document). Returns { span } (the rendered picture) or { reason }.
    */
   /**
+   * A new check box at the caret, as Word's Developer tab inserts one: a content control with
+   * w14:checkbox (☐ / ☒ in MS Gothic, as Word writes it), rendered as an editable control.
+   */
+  newCheckbox() {
+    const used = new Set([...this.xml.getElementsByTagNameNS(W, 'id')].map((e) => wAttr(e, 'val')));
+    let id;
+    do id = String(Math.floor(Math.random() * 2 ** 31) - 2 ** 30); while (used.has(id));
+    const font = '<w:rFonts w:ascii="MS Gothic" w:eastAsia="MS Gothic" w:hAnsi="MS Gothic" w:hint="eastAsia"/>';
+    const xml = `<w:sdt xmlns:w="${W}" xmlns:w14="${W14}"><w:sdtPr><w:id w:val="${id}"/>`
+      + '<w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox>'
+      + `</w:sdtPr><w:sdtContent><w:r><w:rPr>${font}</w:rPr><w:t>\u2610</w:t></w:r></w:sdtContent></w:sdt>`;
+    const sdt = this.xml.importNode(parseXml(xml).documentElement, true);
+    for (const a of [...sdt.attributes]) if (a.name.startsWith('xmlns')) sdt.removeAttributeNode(a); // declared where needed when saved
+    return this.renderControl(sdt, false);
+  }
+
+  /**
    * A new picture from `file`, in line with the text: at its size (or `width`, in pixels at 96 per
    * inch, keeping its proportions), narrowed to fit between the margins, with alt text `descr`.
    */

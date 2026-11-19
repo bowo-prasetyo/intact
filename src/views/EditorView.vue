@@ -14,7 +14,7 @@
         <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="requestDownload">
           {{ saving ? 'Saving…' : 'Download' }}
         </button>
-        <button ref="saveMenuButton" class="primary arrow" type="button" title="More ways to save: a PDF" aria-label="More ways to save" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
+        <button ref="saveMenuButton" class="primary arrow" type="button" :title="canShareFiles ? 'More ways to save: a PDF, or share the file' : 'More ways to save: a PDF'" aria-label="More ways to save" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
       </span>
       <button class="ghost open-tab" type="button" title="Open another document in a new tab, beside this one (Ctrl+O)" aria-label="Open another document in a new tab" @click="openAnother">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 8 8M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
@@ -38,8 +38,8 @@
     <div ref="toolbarEl" class="toolbar" role="toolbar" aria-label="Editing and review" @mousedown="keepFocus">
       <div class="tb-group">
       <fieldset class="group" :disabled="textLocked" :title="textLocked ? lockMessage : null">
-      <button type="button" title="Undo (Ctrl+Z)" aria-label="Undo" @click="undo">↶</button>
-      <button type="button" title="Redo (Ctrl+Y)" aria-label="Redo" @click="redo">↷</button>
+      <button type="button" class="ph" title="Undo (Ctrl+Z)" aria-label="Undo" @click="undo">↶</button>
+      <button type="button" class="ph" title="Redo (Ctrl+Y)" aria-label="Redo" @click="redo">↷</button>
       <span class="sep" />
       <select :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="applyBlockStyle($event.target.value)">
         <option value="normal">Normal</option>
@@ -82,13 +82,13 @@
         <option v-if="state.charStyle && !characterStyles.some((c) => c.id === state.charStyle)" :value="state.charStyle" disabled>{{ doc.styleLabel(state.charStyle) }}</option>
       </select>
       <span class="sep" />
-      <button type="button" title="Bold (Ctrl+B)" aria-label="Bold" :class="{ on: state.bold }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
-      <button type="button" title="Italic (Ctrl+I)" aria-label="Italic" :class="{ on: state.italic }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
-      <button type="button" title="Underline (Ctrl+U)" aria-label="Underline" :class="{ on: state.underline }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
+      <button type="button" title="Bold (Ctrl+B)" aria-label="Bold" :class="{ on: state.bold, ph: true }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
+      <button type="button" title="Italic (Ctrl+I)" aria-label="Italic" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
+      <button type="button" title="Underline (Ctrl+U)" aria-label="Underline" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
       <button type="button" title="Strikethrough" aria-label="Strikethrough" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
       <button type="button" title="Superscript (Ctrl+Shift+=)" aria-label="Superscript" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
       <button type="button" title="Subscript (Ctrl+=)" aria-label="Subscript" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
-      <span class="split">
+      <span class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
@@ -111,10 +111,10 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7.5 3.5h6.5M7.5 8h6.5M7.5 12.5h6.5M3.5 2.5v11M1.8 4.2l1.7-1.7 1.7 1.7M1.8 11.8l1.7 1.7 1.7-1.7" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
       </button>
       <span class="sep" />
-      <button type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet' }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
+      <button type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet', ph: true }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button type="button" title="Numbering" :class="{ on: state.list === 'number' }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
+      <button type="button" title="Numbering" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
       <button type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" aria-label="Decrease indent" @click="indentBlocks(-1)">
@@ -127,10 +127,13 @@
       <button ref="linkButton" type="button" title="Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here" @click="openLinkDialog">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.6 2.6 0 0 1 3.7 3.7l-1.1 1.1M8.8 11.4l-1.1 1.1a2.6 2.6 0 0 1-3.7-3.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button type="button" title="Insert picture" @click="pickPicture">
+      <button ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date" aria-label="Insert a check box or date" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
+      </button>
+      <button type="button" class="ph" title="Insert picture" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
-      <button type="button" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
+      <button type="button" class="ph" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg>
       </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
@@ -196,7 +199,7 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
       </button>
-      <button type="button" class="new-comment" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
+      <button type="button" class="new-comment ph" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
       </button>
       <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :aria-label="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
@@ -453,6 +456,7 @@
     <div v-if="saveMenu.open" ref="saveMenuEl" class="change-menu save-menu" role="menu" aria-label="Save" :style="{ left: `${saveMenu.x}px`, top: `${saveMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSaveMenu(true)" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="saveMenuAction('docx')">Word document (.{{ doc.format.ext }})<span class="shortcut">Ctrl+S</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">Ctrl+P</span></button>
+      <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">Mail, messages…</span></button>
     </div>
 
     <form v-if="pdfDialog.open" ref="pdfDialogEl" class="chooser author-dialog pdf-dialog" role="dialog" aria-label="Save as PDF" aria-describedby="pdf-how" :style="{ left: `${pdfDialog.x}px`, top: `${pdfDialog.y}px` }" @submit.prevent="printToPdf" @keydown.esc="closePdfDialog">
@@ -634,7 +638,7 @@
 
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
 
-    <ReviewDialog v-if="reviewData" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <ReviewDialog v-if="reviewData" :action="pendingShare ? 'share' : 'download'" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -662,6 +666,20 @@
       </div>
     </form>
 
+    <div v-if="insertMenu.open" ref="insertMenuEl" class="change-menu insert-menu" role="menu" aria-label="Insert" :style="{ left: `${insertMenu.x}px`, top: `${insertMenu.y}px` }" @mousedown.prevent @keydown.esc="closeInsertMenu(true)" @keydown="onMenuArrows">
+      <button type="button" role="menuitem" @click="insertCheckbox">Check box<span class="hint">☐ ticked with a click</span></button>
+      <p class="menu-label" role="presentation">Today’s date</p>
+      <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d.text)">{{ d.text }}</button>
+    </div>
+
+    <div v-if="shareReady.file" ref="shareReadyEl" class="chooser share-ready" role="dialog" aria-label="Share" @keydown.esc="shareReady.file = null">
+      <p>{{ shareReady.file.name }} is ready.</p>
+      <div class="actions">
+        <button type="button" class="confirm" @click="shareFile(shareReady.file)">Share…</button>
+        <button type="button" @click="shareReady.file = null">Cancel</button>
+      </div>
+    </div>
+
     <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
 
     <footer class="statusbar">
@@ -671,7 +689,7 @@
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
-      <span role="status" aria-live="polite">{{ message }}</span>
+      <span role="status" aria-live="polite" :title="message || null">{{ message }}</span>
       <span class="zoom" role="group" aria-label="Zoom">
         <button type="button" title="Zoom out (Ctrl+mouse wheel)" aria-label="Zoom out" :disabled="zoomLevel <= ZOOMS[0]" @click="zoomBy(-1)">−</button>
         <button type="button" class="zoom-level" :title="zoomLevel === 100 ? 'Zoom: the page at its size' : 'Back to 100%'" :aria-label="`Zoom ${zoomLevel}%${zoomLevel === 100 ? '' : ', back to 100%'}`" @click="setZoom(100)">{{ zoomLevel }}%</button>
@@ -1423,6 +1441,7 @@ onBeforeRouteLeave(() => {
 const toolbarEl = ref(null);
 let toolbarNav = null;
 onMounted(() => { toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus }); });
+onMounted(detectShare);
 onBeforeUnmount(() => toolbarNav?.dispose());
 
 // ------------------------------------------------------------------ zoom
@@ -3076,6 +3095,102 @@ async function insertSignature({ file, width }) {
   signatureOpen.value = false;
   const at = signatureRange && page.value.contains(signatureRange.commonAncestorContainer) ? signatureRange : null;
   await insertPictures([file], at, { width, descr: 'Signature', what: 'Signature' });
+}
+
+// ------------------------------------------------------------------ insert: check box, today's date
+
+const insertMenu = reactive({ open: false, x: 0, y: 0, dates: [] });
+const insertMenuEl = ref(null);
+const insertButton = ref(null);
+let insertRange = null; // where the check box or date goes: the selection when the menu opened
+
+/** Today's date in a few of the forms Word's Date and Time dialog offers, in the text's language. */
+function todaysDates(lang) {
+  const today = new Date();
+  const as = (options) => {
+    try { return new Intl.DateTimeFormat(lang, options).format(today); } catch { return new Intl.DateTimeFormat('en', options).format(today); }
+  };
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const dates = [
+    { style: 'long', text: as({ dateStyle: 'long' }) },
+    { style: 'full', text: as({ dateStyle: 'full' }) },
+    { style: 'short', text: as({ year: 'numeric', month: '2-digit', day: '2-digit' }) },
+    { style: 'iso', text: iso },
+  ];
+  return dates.filter((d, i) => dates.findIndex((e) => e.text === d.text) === i);
+}
+
+function toggleInsertMenu() {
+  if (insertMenu.open) return closeInsertMenu();
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text where the check box or date should go';
+    return;
+  }
+  insertRange = range.cloneRange();
+  const lang = (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('[lang]')?.lang
+    || doc.styles.language() || navigator.language || 'en';
+  const rect = insertButton.value.getBoundingClientRect();
+  Object.assign(insertMenu, {
+    open: true,
+    x: Math.max(8, Math.min(rect.left, window.innerWidth - 248)),
+    y: rect.bottom + 4,
+    dates: todaysDates(lang),
+  });
+  nextTick(() => insertMenuEl.value?.querySelector('button')?.focus());
+}
+
+function closeInsertMenu(refocusText = false) {
+  insertMenu.open = false;
+  if (refocusText) refocusAt(insertRange);
+}
+
+/** Today's date as text at the caret (or in place of the selection), as typed: tracked while tracking. */
+function insertDate(text) {
+  closeInsertMenu();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  if (!range) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  undoStack.flush();
+  document.execCommand('insertText', false, text);
+  undoStack.commit();
+  markDirty();
+  message.value = `Date inserted: ${text}`;
+}
+
+/**
+ * A check box at the caret, as Word's Developer tab inserts one: a content control (w14:checkbox)
+ * that a click ticks, here and in Word.
+ */
+function insertCheckbox() {
+  closeInsertMenu();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  if (!range) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (refuseInNote(range, 'A check box')) return;
+  if (controlAt(range.startContainer, page.value) || formTextAt(range.startContainer)) {
+    message.value = 'A check box can’t go in a field: put the caret after it';
+    return;
+  }
+  if (!range.collapsed && refuseRemoving([range])) return;
+  const box = doc.newCheckbox();
+  undoStack.flush();
+  const tracked = trackedBy(range.startContainer);
+  if (!range.collapsed) {
+    if (tracked) deleteTracked(range, false, tracked);
+    else deleteSelection();
+  }
+  if (tracked) insertTracked([box], tracked);
+  else insertAtCaret([box]);
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  message.value = `Check box inserted${tracked ? ' (tracked)' : ''} – click it to tick it`;
 }
 
 function pickPicture() {
@@ -4971,6 +5086,8 @@ function onDocumentMousedown(e) {
   if (tablePicker.open && !tablePickerEl.value?.contains(e.target) && !tableButton.value?.contains(e.target)) tablePicker.open = false;
   if (dropOffer.file && !dropOfferEl.value?.contains(e.target)) dropOffer.file = null;
   if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
+  if (insertMenu.open && !insertMenuEl.value?.contains(e.target) && !insertButton.value?.contains(e.target)) insertMenu.open = false;
+  if (shareReady.file && !shareReadyEl.value?.contains(e.target)) shareReady.file = null;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
 }
@@ -5419,6 +5536,7 @@ function closeSaveMenu(refocus = false) {
 function saveMenuAction(what) {
   closeSaveMenu();
   if (what === 'docx') requestDownload();
+  else if (what === 'share') requestShare();
   else openPdfDialog();
 }
 function openPdfDialog() {
@@ -5450,8 +5568,64 @@ const reviewFocus = ref('');
 const skipReview = ref((() => { try { return localStorage.getItem(SKIP_REVIEW_KEY) === '1'; } catch { return false; } })());
 
 function requestDownload() {
+  pendingShare.value = false;
   if (skipReview.value) save();
   else openReview();
+}
+
+// ------------------------------------------------------------------ share
+
+// Share… (Download's menu, where the browser can share files: Safari on iPhone and iPad, among
+// others) hands the saved file to the device's share sheet, to send it back by mail or a messaging
+// app without finding it in Downloads. The file goes from this page to the app chosen, on the
+// device: nothing is uploaded by Intact. It goes through "Review your changes" as Download does.
+const DOCX_MIME_TEST = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const canShareFiles = ref(false);
+const pendingShare = ref(false);
+const shareReady = reactive({ file: null });
+const shareReadyEl = ref(null);
+
+function detectShare() {
+  try {
+    canShareFiles.value = typeof navigator.share === 'function' && typeof navigator.canShare === 'function'
+      && navigator.canShare({ files: [new File([''], 'test.docx', { type: doc.format.mime || DOCX_MIME_TEST })] });
+  } catch {
+    canShareFiles.value = false;
+  }
+}
+
+function requestShare() {
+  pendingShare.value = true;
+  if (skipReview.value) {
+    pendingShare.value = false;
+    save('share');
+  } else openReview();
+}
+
+/** Opens the share sheet with `file`. True once shared (not when cancelled or refused). */
+async function shareFile(file) {
+  shareReady.file = null;
+  try {
+    await navigator.share({ files: [file], title: file.name });
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      message.value = `${file.name} wasn’t shared – Download keeps a copy on this device`;
+      return false;
+    }
+    if (e?.name === 'NotAllowedError') {
+      // Saving took too long for the browser to count the share as asked for by a tap: one more tap.
+      shareReady.file = file;
+      nextTick(() => shareReadyEl.value?.querySelector('.confirm')?.focus());
+      return false;
+    }
+    console.error(e);
+    message.value = `Couldn’t share ${file.name}: ${e?.message || e} – use Download instead`;
+    return false;
+  }
+  dirty.value = false;
+  discardDraft({ closing: false }); // sent on: as with Download, the file is the copy now
+  message.value = `Shared ${file.name}`;
+  return true;
 }
 
 // Help (Ctrl+/): the shortcuts, and the review's checks without downloading (see HelpDialog).
@@ -5559,6 +5733,7 @@ async function setUpdateProperties(on) {
 
 function closeReview() {
   reviewData.value = null;
+  pendingShare.value = false;
   page.value.focus();
   restoreSelection();
 }
@@ -5567,7 +5742,9 @@ function downloadReviewed() {
   reviewData.value = null;
   page.value.focus(); // carry on editing where you were
   restoreSelection();
-  save();
+  const share = pendingShare.value;
+  pendingShare.value = false;
+  save(share ? 'share' : 'download');
 }
 
 function setSkipReview(on) {
@@ -5575,7 +5752,7 @@ function setSkipReview(on) {
   try { localStorage.setItem(SKIP_REVIEW_KEY, on ? '1' : '0'); } catch { /* this session only */ }
 }
 
-async function save() {
+async function save(action = 'download') {
   if (saving.value) return;
   saving.value = true;
   try {
@@ -5583,6 +5760,11 @@ async function save() {
     const name = `${baseName.value.trim() || 'document'}.${doc.format.ext}`;
     const blob = await withHostsUnlocked(() => doc.save(page.value));
     doc.name = name;
+    if (action === 'share') {
+      saving.value = false;
+      await shareFile(new File([blob], name, { type: doc.format.mime || blob.type }));
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -5649,6 +5831,15 @@ async function close() {
 .save-split .primary:first-child { border-radius: 4px 0 0 4px; }
 .save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
 .save-menu { min-width: 220px; }
+.insert-menu { min-width: 220px; }
+.insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
+.insert-menu .hint { color: var(--muted); font-size: 12px; }
+.insert-menu .menu-label { margin: 6px 8px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.chooser.share-ready { left: 50%; top: 72px; transform: translateX(-50%); width: 300px; max-width: calc(100vw - 16px); padding: 12px; gap: 10px; font-size: 14px; }
+.share-ready p { margin: 0; overflow-wrap: anywhere; }
+.share-ready .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.share-ready .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 6px 14px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.share-ready .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
 .save-menu button { display: flex; justify-content: space-between; gap: 16px; }
 .save-menu .shortcut { color: var(--muted); font-size: 12px; }
 .chooser.pdf-dialog { width: 360px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); font-size: 13px; }
@@ -5825,6 +6016,17 @@ async function close() {
   .toolbar[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
   .statusbar { gap: 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
   .statusbar > * { flex: none; }
+  /* What just happened ("Signature inserted", "Shared letter.docx") comes first in the one line,
+     rather than out of sight to the right; a long message ends in "…" (its tooltip, and screen
+     readers, have all of it), and the counts follow, a swipe away. */
+  .statusbar [role="status"] { order: -1; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .statusbar [role="status"]:empty { display: none; }
+  /* The page already fits the screen's width, and the phone pinches to zoom. */
+  .statusbar > span.zoom { display: none; }
+  /* The tools a phone is used for first: undo, bold, italic, underline, highlight, lists, check box
+     or date, signature, picture and comment; the rest follow, a swipe away. */
+  .toolbar .ph { order: -1; }
+  .toolbar .sep { display: none; }
 }
 /* Touch: targets a finger can hit. */
 @media (pointer: coarse) {

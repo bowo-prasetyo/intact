@@ -192,6 +192,12 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   the selected "______" line, as a picture in line with the text: cropped to the ink, with a
   transparent background, about 6 cm across, with "Signature" as its alt text. Drawn in this page
   only: it isn't stored or sent anywhere. Tracked while tracking, undone with Ctrl+Z
+- Insert a check box or today's date (the toolbar's Insert button), as Word's Developer tab and
+  Insert Date and Time do: the check box is Word's check box content control (`w14:checkbox`, ☐ and
+  ☒ in MS Gothic), ticked with a click here and in Word; the date is typed at the caret as text,
+  in one of a few forms in the text's language ("19 November 2026", "Thursday, 19 November 2026",
+  "19/11/2026", "2026-11-19"), so it stays the day the form was filled in. Both are tracked while
+  tracking
 - Edit footnotes and endnotes in place: they are listed below the text (as in Word's draft view),
   numbered in the order the text refers to them, and edited like the text: typing, formatting,
   Undo, Find and Replace and Track Changes all work in them. Clicking a note's number in the text
@@ -361,6 +367,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   a bibliography lists them, it says the bibliography needs refreshing (`src/docx/fields.js`). The
   review can be skipped, and opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S), or save a PDF (see above)
+- Share… from Download's menu (▾), where the browser can share files (Safari on iPhone and iPad,
+  among others): after "Review your changes", the saved file goes to the device's share sheet, to
+  send it back by mail or a messaging app without looking for it in Downloads. It goes from the page
+  to the app chosen, on the device; Intact uploads nothing. Where the browser asks for one more tap
+  (saving took a moment), a small dialog offers it. Where files can't be shared, the item isn't shown
 - Respect the restrictions Word puts on a document, as Word does: with Restrict Editing on
   (`w:documentProtection`, enforced) it opens read-only, comments only (comments can be added and
   answered), filling in forms only (its fields can be filled in) or with every edit tracked (Track
@@ -433,7 +444,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   screen readers. Its controls stay in place: Accept, Reject and the count of tracked changes are always
   there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens.
   On a phone it is one row that scrolls sideways, faded at the edge where more controls are, with
-  touch-sized buttons, and the status bar is one line. Nothing makes the document scroll sideways
+  touch-sized buttons. The tools a phone is used for come first (Undo, Redo, Bold, Italic,
+  Underline, Highlight, the lists, Insert, Draw signature, Insert picture and New comment), the rest a
+  swipe away, and the arrow keys follow that order. The status bar is one line, and what just happened
+  ("Check box inserted", "Shared letter.docx") comes first in it, rather than out of sight at its
+  end; zoom is left to the phone's pinch. Nothing makes the document scroll sideways
   there: a picture wider than the screen is shown smaller (its size in the file unchanged), and what
   lies past the page's edge is cut off at it, as on paper
 - Help (Ctrl+/, or the toolbar's Help button) lists the keyboard shortcuts and opens the review's
@@ -748,5 +763,9 @@ The About page shows the version.
   may block the new tab (allow pop-ups for the site); without `BroadcastChannel` the new tab opens
   on the start page, to open the file there. Without Web Locks (older browsers), a draft open in
   another tab isn't recognised as such
+- Share… needs a browser that can share `.docx` files (the Web Share API with files): Safari on
+  iPhone, iPad and Mac can; Chrome shares only some kinds of file, so where it can't share a `.docx`,
+  Share… isn't offered and Download keeps the file on the device. A date is inserted as text, not as
+  a field Word updates
 - The screening check knows what such software commonly misses, not what a given employer's does;
   it doesn't rate how well a CV matches a job

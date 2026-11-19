@@ -112,7 +112,7 @@
         <label class="skip"><input type="checkbox" :checked="skip" @change="$emit('skip', $event.target.checked)" /> Download without this review next time</label>
         <div class="buttons">
           <button type="button" @click="$emit('close')">Keep editing</button>
-          <button ref="downloadButton" type="button" class="primary" @click="$emit('download')">Download</button>
+          <button ref="downloadButton" type="button" class="primary" @click="$emit('download')">{{ action === 'share' ? 'Share…' : 'Download' }}</button>
         </div>
       </footer>
     </section>
@@ -133,6 +133,8 @@ const props = defineProps({
   skip: { type: Boolean, default: false },
   // Opened to look at one part ('release', 'accessibility' or 'screening', from Help): that part opens, in view.
   focus: { type: String, default: '' },
+  // What its main button does: 'download', or 'share' (Download's menu: Share…).
+  action: { type: String, default: 'download' },
 });
 const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'personal-default', 'show-issue', 'title', 'update-properties']);
 
