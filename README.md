@@ -63,9 +63,15 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   everything else in its properties kept (and Word's "lines" values, which would win, taken off what
   is changed). Increase and Decrease Indent (Ctrl+M, Ctrl+Shift+M) move a paragraph's left indent to
   the next half inch, or a list item's level. Tracked while tracking (`w:pPrChange`)
+- Lengths in centimetres or inches, as Word shows them: inches for a document on North American
+  paper (Letter, Legal, Executive, Tabloid), centimetres for the others, in Page setup, the
+  Paragraph dialog (indents and tab stops) and a picture's Layout Options. The Units choice in Page
+  setup and the Paragraph dialog switches them, converting what the dialog shows (a length left as
+  it was still counts as unchanged, so it isn't rewritten), and is remembered in this browser for
+  every document (`src/editor/units.js`)
 - Tab stops, as Word's Tabs dialog, in the Paragraph dialog: the paragraph's stops (its styles' and
   list level's, and its own) are listed with their alignment (left, centre, right, decimal, bar) and
-  leader (dots, dashes, line); Set adds one at a position in centimetres (replacing one there),
+  leader (dots, dashes, line); Set adds one at a position in centimetres or inches (replacing one there),
   × removes one and Clear all takes them all off. Only the paragraph's own `w:tabs` is written: a
   stop for each one it doesn't inherit, and a clear (`w:val="clear"`) for a style's stop taken off,
   as Word writes them; tracked while tracking. On the page, tabs go to Word's default stops
@@ -257,9 +263,15 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   the footer to say where, so a footer's design stays the document's; a document without a footer
   gets one for all pages with the number centred, in Word's Footer style: `footer1.xml`, its
   relationship, content type and the first section's reference, written only while it is in the
-  page (Undo takes it away). Tracked while tracking
+  page (Undo takes it away). Tracked while tracking. Page number's menu (▾) puts it where Word's
+  Top of Page and Bottom of Page do: at the left, centre or right of the header or footer (in a
+  new header for all pages, `header1.xml`, if there is none: a student's "Surname 1" at the top
+  right, with the name typed before the number); a header or footer with text keeps its design, and
+  the caret goes there to say where. Edit header and Edit footer, in the same menu, go to the end of
+  the header or footer shown, or give a document without one an empty one for all pages to type in
+  (Undo takes it away)
 - Page setup for the whole document, as Word's: paper size (A4, Letter, Legal, A5, A3, Executive),
-  orientation and margins (in centimetres, with Word's Normal, Narrow, Moderate and Wide), set in
+  orientation and margins (in centimetres or inches, with Word's Normal, Narrow, Moderate and Wide), set in
   every section's `w:pgSz` and `w:pgMar`. Only what is changed in the dialog is written; the rest of
   each section (headers and footers, columns, gutters) is kept. The page and the printout follow,
   and Ctrl+Z puts it back
@@ -777,7 +789,7 @@ The About page shows the version.
   print in Arabic numerals, from 1; line numbers and comments in the margin aren't printed. Browsers that switch tabs with Ctrl+1 to Ctrl+9 may
   keep Ctrl+1, Ctrl+2 and Ctrl+5 for themselves (the installed app, in its own window, gets them):
   the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
-  the browser's: use the Paragraph dialog. Indents are set in centimetres and spacing in points
+  the browser's: use the Paragraph dialog. Indents are set in centimetres or inches and spacing in points
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
 - Tab stops on the page: only a paragraph's first stop, if it is a left one, and evenly spaced stops
   after it are where Word puts them; tabs to a right, centre or decimal stop, and leaders, show at
@@ -806,7 +818,9 @@ The About page shows the version.
   Word numbers the pages when it opens the file), and the number of pages (`NUMPAGES`,
   `SECTIONPAGES`) about how many there are, as the status bar says (on a phone, the number in the
   file): drawn over the numbers the file holds, which are kept as they are and aren't typed into
-  (End and Shift+End go past one at the end of a line, to type or select after it). A
+  (End and Shift+End go past one at the end of a line, as past a footnote's or endnote's
+  reference, to type or select after it; Home and Shift+Home go before one at the start of a line,
+  so text typed there goes before the number, not into it). A
   footer made here is for all pages of the first section and those after it without their own; a
   first page set to have a different footer, and even pages where they differ, don't show it, as in
   Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns

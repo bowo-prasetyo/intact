@@ -115,3 +115,21 @@ test('while tracking, the reference is a tracked insertion', async ({ page }) =>
   expect(await text('word/document.xml')).toMatch(/<w:ins w:id="\d+" w:author="Rita" w:date="[^"]+"><w:r><w:rPr><w:rStyle w:val="FootnoteReference"\/><\/w:rPr><w:footnoteReference w:id="1"\/><\/w:r><\/w:ins>/);
   expect(await text('word/footnotes.xml')).toMatch(/<w:ins w:id="\d+" w:author="Rita" w:date="[^"]+"><w:r><w:t xml:space="preserve">Tracked note\.<\/w:t><\/w:r><\/w:ins>/);
 });
+
+test('End goes past a footnote reference at the end of the line, so typing carries on after it', async ({ page }) => {
+  await openInEditor(page, await buildDocx(BODY));
+  await caretAfter(page, 'First claim.');
+  await page.keyboard.press('ControlOrMeta+Alt+f');
+  await page.keyboard.type('A source.');
+  const line = page.locator('.docx-page > p', { hasText: 'First claim.' });
+  await line.click({ position: { x: 2, y: 4 } });
+  await page.keyboard.press('End');
+  await page.keyboard.type(' More.');
+  // As in Word: the reference stays on "claim.", the new text follows it.
+  expect(await line.evaluate((p) => [...p.childNodes].map((n) => (n.nodeType === 3 ? n.data : n.classList.contains('note-ref') ? '¹' : n.textContent)).join(''))).toBe('First claim.¹ More.');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('Shift+End');
+  await expect.poll(() => page.evaluate(() => getSelection().toString().trim())).toBe('First claim. More.');
+  const text = await saved(page);
+  expect(await text('word/document.xml')).toMatch(/First claim\.<\/w:t><\/w:r><w:r><w:rPr><w:rStyle w:val="FootnoteReference"\/><\/w:rPr><w:footnoteReference w:id="\d+"\/><\/w:r><w:r><w:t xml:space="preserve"> More\.<\/w:t><\/w:r><\/w:p>/);
+});
