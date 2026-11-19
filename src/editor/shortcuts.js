@@ -53,6 +53,8 @@ export const SHORTCUTS = [
   ['Ctrl+Alt+M', 'New comment'],
   ['Ctrl+K', 'Insert a link, or change the one at the caret'],
   ['Tab in the last cell of a table', 'New row'],
+  ['Tab, Shift+Tab in a form protected for filling in', 'Next or previous field'],
+  ['Space or Alt+↓ on a check box or list', 'Tick it, or open the list'],
   ['Ctrl+L, Ctrl+E, Ctrl+R, Ctrl+J', 'Align left, centre, right, justify'],
   ['Ctrl+Shift+N', 'Normal style'],
   ['Ctrl+Alt+1, 2, 3', 'Heading 1, 2, 3'],

@@ -130,6 +130,9 @@
       <button type="button" title="Insert picture" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
+      <button type="button" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg>
+      </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
       <button ref="tableButton" type="button" title="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
@@ -659,6 +662,8 @@
       </div>
     </form>
 
+    <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
+
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }}</button>
@@ -683,6 +688,7 @@ import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
 import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
+import SignatureDialog from '../components/SignatureDialog.vue';
 import HelpDialog from '../components/HelpDialog.vue';
 import { currentDoc, setDocument } from '../store.js';
 import { saveDraft, deleteDraft, newDraftId, MAX_AGE } from '../drafts.js';
@@ -973,7 +979,9 @@ function explainLock() {
 
 const LOCK_HOSTS = '[contenteditable="true"], [data-locked-host]';
 /** Fields that stay editable while only filling in forms is allowed. */
-const OPEN_FIELD = '.sdt:not(.sdt-locked), .sdt-row:not(.sdt-locked), .sdt-cell:not(.sdt-locked)';
+const OPEN_FIELD = '.sdt:not(.sdt-locked), .sdt-row:not(.sdt-locked), .sdt-cell:not(.sdt-locked), .ff-text:not([data-ff-off])';
+/** Legacy form fields (see docx/formFields.js) filled in by a click or a key: check boxes and lists. */
+const FORM_CHOICE = '.ff-check, .ff-drop';
 
 /**
  * Makes the page's editing hosts (the text, cells, notes, headers, footers, text boxes) read-only
@@ -991,6 +999,18 @@ function applyLock(on = textLocked.value) {
     } else if (!lock && 'lockedHost' in el.dataset) {
       el.contentEditable = 'true';
       delete el.dataset.lockedHost;
+    }
+  }
+  // A legacy text form field is text in a paragraph: while only filling in forms is allowed, it is
+  // made an editing host of its own, as Word lets only its fields be typed in.
+  for (const el of root.querySelectorAll('.ff-text')) {
+    const open = on && lockMode.value === 'forms' && !('ffOff' in el.dataset) && !el.parentElement.closest('[contenteditable="false"]:not([data-locked-host])');
+    if (open && !('ffHost' in el.dataset)) {
+      el.contentEditable = 'true';
+      el.dataset.ffHost = '';
+    } else if (!open && 'ffHost' in el.dataset) {
+      el.removeAttribute('contenteditable');
+      delete el.dataset.ffHost;
     }
   }
 }
@@ -2032,6 +2052,7 @@ function onBeforeInput(e) {
     else redo();
     return;
   }
+  if (replaceFormText(e)) return;
   if (!removesContent(e)) return;
   // Typing, deleting or pasting while the selection is in read-only content: say what it is.
   const locked = readOnlySelection();
@@ -3012,6 +3033,51 @@ function insertTable(rows, cols) {
 
 const pictureInput = ref(null);
 
+// ------------------------------------------------------------------ signature
+
+const signatureOpen = ref(false);
+let signatureRange = null; // where the signature goes: the selection when the dialog opened
+
+/** Opens the signature pad, for the caret's place (or in place of the selection, a "____" line). */
+function openSignature() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text where your signature should go, or select the line to sign on';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (refuseInNote(range, 'A signature')) return;
+  if (controlAt(range.startContainer, page.value) || formTextAt(range.startContainer)) {
+    message.value = 'A signature can’t go in a field: put the caret after it';
+    return;
+  }
+  signatureRange = range.cloneRange();
+  signatureOpen.value = true;
+}
+
+function closeSignature() {
+  signatureOpen.value = false;
+  refocusAt(signatureRange);
+}
+
+function refocusAt(range) {
+  page.value.focus();
+  if (range && page.value.contains(range.commonAncestorContainer)) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+async function insertSignature({ file, width }) {
+  signatureOpen.value = false;
+  const at = signatureRange && page.value.contains(signatureRange.commonAncestorContainer) ? signatureRange : null;
+  await insertPictures([file], at, { width, descr: 'Signature', what: 'Signature' });
+}
+
 function pickPicture() {
   pictureInput.value.value = '';
   pictureInput.value.click();
@@ -3027,7 +3093,7 @@ function onPicturesPicked(e) {
  * Inserts pictures at the caret (or `at`, a range), in line with the text and replacing what is
  * selected, as Word does; tracked while tracking.
  */
-async function insertPictures(files, at = null) {
+async function insertPictures(files, at = null, { width, descr, what = 'Picture' } = {}) {
   if (at) {
     page.value.focus();
     const sel = window.getSelection();
@@ -3053,7 +3119,7 @@ async function insertPictures(files, at = null) {
   const made = [];
   const reasons = [];
   for (const file of files) {
-    const res = await doc.addPicture(file);
+    const res = await doc.addPicture(file, { width, descr });
     if (res.span) made.push(res.span);
     else reasons.push(res.reason);
   }
@@ -3078,7 +3144,7 @@ async function insertPictures(files, at = null) {
   markDirty();
   refreshChanges();
   onSelectionChange();
-  message.value = `${made.length === 1 ? 'Picture' : `${made.length} pictures`} inserted${tracked ? ' (tracked)' : ''}${reasons.length ? ` – ${reasons[0]}` : ''}`;
+  message.value = `${made.length === 1 ? what : `${made.length} pictures`} inserted${tracked ? ' (tracked)' : ''}${reasons.length ? ` – ${reasons[0]}` : ''}`;
 }
 
 // ------------------------------------------------------------------ adding comments
@@ -4327,6 +4393,7 @@ function explainKeyOutsideText(e) {
 
 function onKeydown(e) {
   selectedChange = null;
+  if (formKeydown(e)) return;
   if (e.key === 'Escape' && picture.cropping) {
     e.preventDefault();
     toggleCropping();
@@ -4434,7 +4501,8 @@ function onPaste(e) {
   undoStack.flush();
   const html = e.clipboardData.getData('text/html');
   let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
-  const field = controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content');
+  const field = controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content')
+    || formTextAt(range.startContainer);
   if (field?.tagName === 'SPAN' || field?.dataset.plain) {
     // Fields inside a line, and plain-text fields, take text only; inside a line it stays on one
     // line (or becomes line breaks in multi-line fields).
@@ -4537,6 +4605,11 @@ function onDrop(e) {
 
 function onClick(e) {
   if (e.target.closest('.picture')) return; // selected on mousedown
+  const formChoice = e.target.closest(FORM_CHOICE);
+  if (formChoice && page.value.contains(formChoice)) {
+    activateFormField(formChoice);
+    return;
+  }
   const noteRef = e.target.closest('.note-ref[data-note-ref], .note-mark');
   if (noteRef && goToNote(noteRef)) return;
   const marker = e.target.closest('.comment-ref');
@@ -4555,6 +4628,7 @@ function onClick(e) {
     if (window.getSelection().isCollapsed) explainLock(); // not after selecting text, to copy it
     return;
   }
+  selectBlankFormText(e.target);
   const placeholderCell = e.target.closest('td.sdt-cell.showing-placeholder');
   if (placeholderCell) {
     selectCell(placeholderCell); // a field around a table cell: typing replaces its placeholder
@@ -4865,7 +4939,8 @@ function onDateChange(e) {
 
 /** Alt+↓, or Space on a selected field: tick a check box, or open a list or date picker. */
 function activateField(el) {
-  if (doc.control(el).kind === 'checkbox') toggleCheckbox(el);
+  if (el.matches(FORM_CHOICE)) activateFormField(el);
+  else if (doc.control(el).kind === 'checkbox') toggleCheckbox(el);
   else openChooser(el);
 }
 
@@ -4904,6 +4979,11 @@ function choose(choice) {
   const el = chooserTarget;
   closeChooser(true);
   if (!el?.isConnected) return;
+  if (el.matches(FORM_CHOICE)) {
+    changeControl(el, () => doc.chooseFormEntry(el, choice.value));
+    if (lockMode.value === 'forms' && textLocked.value) el.focus();
+    return;
+  }
   changeControl(el, () => {
     setControlText(el, choice.text);
     el.dataset.value = choice.value;
@@ -4918,6 +4998,146 @@ function chooseDate(iso) {
     setControlText(el, doc.formatDate(el, iso));
     el.dataset.fullDate = iso;
   });
+}
+
+// ------------------------------------------------------------------ legacy form fields
+
+/** The legacy text form field (`.ff-text`) holding `node`, if any. */
+function formTextAt(node) {
+  const el = (node?.nodeType === 1 ? node : node?.parentElement)?.closest('.ff-text');
+  return el && page.value.contains(el) ? el : null;
+}
+
+/** Ticks or clears a legacy check box, or opens a legacy drop-down list, as one undoable step. */
+function activateFormField(el) {
+  if (textLocked.value && lockMode.value !== 'forms') return explainLock();
+  const info = doc.formField(el);
+  if (!info) return;
+  if (!info.enabled) {
+    message.value = `${el.title}`;
+    return;
+  }
+  if (readOnlyAt(el.parentElement, page.value)) {
+    message.value = 'This field is in content kept as it is: fill it in in Word';
+    return;
+  }
+  if (info.kind === 'checkbox') {
+    changeControl(el, () => doc.toggleFormCheck(el));
+    message.value = `${info.name || 'Check box'} ${info.checked ? 'cleared' : 'ticked'}`;
+    return;
+  }
+  const box = el.getBoundingClientRect();
+  chooserTarget = el;
+  Object.assign(chooser, {
+    open: true,
+    kind: 'dropdown',
+    x: Math.max(8, Math.min(box.left, window.innerWidth - 240)),
+    y: box.bottom + 4,
+    choices: info.entries.map((text, value) => ({ text, value })),
+    current: info.entries[info.selected] ?? '',
+  });
+  nextTick(() => chooserEl.value?.querySelector('[aria-selected="true"], button')?.focus());
+}
+
+/**
+ * A text form field still holding Word's blank result (five spaces) is selected when clicked, so
+ * typing replaces it, as in Word.
+ */
+function selectBlankFormText(target) {
+  const el = formTextAt(target);
+  if (!el || el.textContent.trim() || !window.getSelection().isCollapsed) return;
+  selectFormText(el);
+}
+
+function selectFormText(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/**
+ * Typing over, or deleting, the whole text of a legacy text form field: the browser would take the
+ * field's element (and, while only filling in forms is allowed, the place to type) with the text, so
+ * the text is replaced here, in the field. Deleted, it gets Word's blank (five spaces) back. True if
+ * the input was handled. While tracking, the browser's own editing (tracked) does it.
+ */
+function replaceFormText(e) {
+  const deleting = e.inputType.startsWith('delete');
+  if (e.inputType !== 'insertText' && e.inputType !== 'insertReplacementText' && !deleting) return false;
+  const range = selectionInPage();
+  const el = range && formTextAt(range.startContainer);
+  if (!el || !el.contains(range.endContainer) || trackedBy(range.startContainer)) return false;
+  const all = el.textContent;
+  const blank = !all.trim();
+  // A caret in a blank field types over the blank; otherwise, only a selection of all its text.
+  if (!(blank || (!range.collapsed && range.toString() === all))) return false;
+  const text = deleting ? '\u2002'.repeat(5) : (e.data ?? e.dataTransfer?.getData('text/plain') ?? '');
+  if (!text) return false;
+  e.preventDefault();
+  undoStack.flush();
+  setControlText(el, text);
+  const node = [...el.childNodes].find((n) => n.nodeType === 3) || el.querySelector('*')?.firstChild;
+  const sel = window.getSelection();
+  const after = document.createRange();
+  if (node?.nodeType === 3) {
+    if (deleting) after.selectNodeContents(node);
+    else after.setStart(node, node.data.length);
+  } else after.selectNodeContents(el);
+  sel.removeAllRanges();
+  sel.addRange(after);
+  undoStack.commit();
+  onInput();
+  return true;
+}
+
+/** The fields Tab moves between while only filling in forms is allowed, in the page's order. */
+function fillableFields() {
+  return [...page.value.querySelectorAll('.ff-text[data-ff-host], .ff-check:not([data-ff-off]), .ff-drop:not([data-ff-off]), .sdt:not(.sdt-locked) > .sdt-content')]
+    .filter((el) => !el.closest('.docx-hf-band, [hidden]'));
+}
+
+function focusField(el) {
+  if (el.matches(FORM_CHOICE)) {
+    el.focus();
+    el.scrollIntoView({ block: 'nearest' });
+    message.value = `${el.title.replace(/ – .*/, '')}: ${el.matches('.ff-check') ? 'Space ticks or clears it' : 'Space or Alt+↓ opens its list'}`;
+    return;
+  }
+  el.focus();
+  selectFormText(el);
+  el.scrollIntoView({ block: 'nearest' });
+}
+
+/**
+ * Keys for legacy form fields. While only filling in forms is allowed, Tab and Shift+Tab (and Enter
+ * in a text form field) go to the next or previous field, as in a form protected in Word; on a
+ * check box or list, Space, Enter or Alt+↓ ticks it or opens it. True if the key was used.
+ */
+function formKeydown(e) {
+  const mod = e.ctrlKey || e.metaKey;
+  const choice = document.activeElement?.matches?.(FORM_CHOICE) && page.value.contains(document.activeElement) ? document.activeElement : null;
+  if (choice && !mod && (e.key === ' ' || e.key === 'Enter' || (e.altKey && e.key === 'ArrowDown'))) {
+    e.preventDefault();
+    activateFormField(choice);
+    return true;
+  }
+  if (!(textLocked.value && lockMode.value === 'forms')) return false;
+  const range = selectionInPage();
+  const inText = range && formTextAt(range.startContainer);
+  if ((e.key === 'Tab' || (e.key === 'Enter' && inText)) && !mod && !e.altKey) {
+    const fields = fillableFields();
+    if (!fields.length) return false;
+    e.preventDefault();
+    const here = choice || inText || (range && controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content'));
+    const i = fields.indexOf(here);
+    const step = e.shiftKey ? -1 : 1;
+    const next = i < 0 ? (step > 0 ? 0 : fields.length - 1) : (i + step + fields.length) % fields.length;
+    focusField(fields[next]);
+    return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ comments
@@ -5044,7 +5264,7 @@ function onWindowKeydown(e) {
     return;
   }
   // Typing into a locked document: nothing changes (nothing is editable), so say why.
-  if (textLocked.value && isEditingKey(e) && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')
+  if (textLocked.value && !e.defaultPrevented && isEditingKey(e) && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')
     && (selectionInPage() || document.activeElement === document.body)) {
     explainLock();
     return;
@@ -5694,6 +5914,20 @@ async function close() {
    because the browser's editing drops unrendered nodes when it moves text, as in merging paragraphs. */
 .docx-sheet .raw-hidden { display: none; }
 .docx-sheet span.raw-hidden { display: inline; }
+/* Legacy form fields (docx/formFields.js): the box or chosen entry is drawn from the marker's
+   attributes, so the paragraph's text is unchanged; grey as Word shades form fields. */
+.docx-sheet span.raw-hidden.ff-check::before { content: '\2610'; font-family: 'Segoe UI Symbol', 'MS Gothic', 'DejaVu Sans', sans-serif; }
+.docx-sheet span.raw-hidden.ff-check[data-checked="1"]::before { content: '\2612'; }
+.docx-sheet span.raw-hidden.ff-drop::before { content: attr(data-ff-text); }
+.docx-sheet span.raw-hidden.ff-drop::after { content: ' \25BE'; font-size: 0.8em; opacity: 0.6; }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop) { background: #e6e6e6; cursor: pointer; border-radius: 2px; }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop):hover { background: var(--sheet-tint); }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop):focus-visible { outline: 2px solid var(--sheet-accent); outline-offset: 1px; }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop)[data-ff-off] { cursor: default; opacity: 0.6; }
+.docx-sheet .ff-text { background: #e6e6e6; }
+.docx-sheet .ff-text[data-ff-host] { outline: none; }
+.docx-sheet .ff-text[data-ff-host]:focus { box-shadow: 0 0 0 2px var(--sheet-accent); }
+.docx-sheet .ff-shadow { display: none; }
 .docx-sheet .raw-block, .docx-sheet .raw-inline:not(:has(img)) {
   background: #f1f3f6; color: #555; border-radius: 3px; cursor: default; user-select: none;
 }
