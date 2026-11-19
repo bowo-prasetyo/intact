@@ -117,7 +117,7 @@ const labelled = (page) => page.locator('.toolbar button.with-label .short-label
 test('icon buttons get text labels where there is room, without the toolbar growing', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 800 });
   await openInEditor(page, await buildDocx(BODY));
-  await expect.poll(() => labelled(page)).toEqual(['Insert', 'Picture', 'Sign', 'Table', 'Layout', 'Footnote', 'Endnote', 'Update', 'Page no.', 'Page setup', 'Find', 'Fill in']);
+  await expect.poll(() => labelled(page)).toEqual(['Insert', 'Symbol', 'Picture', 'Sign', 'Table', 'Layout', 'Footnote', 'Endnote', 'Update', 'Page no.', 'Page setup', 'Find', 'Fill in']);
   // Its name stays what it was, with the label shown or not.
   await expect(page.getByRole('button', { name: 'Insert picture' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Find and replace' })).toBeVisible();

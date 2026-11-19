@@ -25,7 +25,7 @@
         <li>Share… from Download's menu, where the browser can share files: send the file back by mail or a messaging app</li>
         <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
-        <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too); Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space)</li>
+        <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too); Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space); Format Painter (Ctrl+Shift+C, Ctrl+Shift+V); Change Case (Shift+F3); Insert Symbol</li>
         <li>Zoom from 50% to 200% in the status bar, or with Ctrl+mouse wheel on the page</li>
         <li>AutoFormat as you type: smart quotes and dashes in the text's language, symbols such as (c) ©, (tm) ™ and --&gt; →, lists started by typing "1. " or "* ", and web and e-mail addresses made links when a space follows them (turn it off in the status bar)</li>
         <li>Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2), space before and after, and indents (Ctrl+M, Ctrl+Shift+M), with Word's Paragraph dialog</li>
@@ -40,7 +40,7 @@
         <li>Track Changes for your own edits, formatting included, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
         <li>Accept and reject tracked changes, one at a time or all at once</li>
-        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links</li>
+        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links; tables from Excel, Google Sheets and Word paste as tables</li>
         <li>Links (Ctrl+K) to web pages, e-mail addresses and DOIs: insert, change or remove them</li>
         <li>Word and character count of the document and of the selection; spelling checked in the document's language where the browser can</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>

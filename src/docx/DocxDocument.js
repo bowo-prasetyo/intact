@@ -3149,9 +3149,13 @@ export class DocxDocument {
    * A new table of `rows` × `cols` empty cells across the page, in the Table Grid style (added to
    * the file if need be); while tracking, its rows are tracked insertions. Returns the rendered table.
    */
-  newTable(rows, cols, tracked = null) {
+  newTable(rows, cols, tracked = null, { widths = null, merges = [] } = {}) {
     const styleId = this.styles.ensureTableGrid();
-    const tbl = newTableXml(this.xml, rows, cols, this.textWidth, styleId, tracked && this.rowRevisionMaker(tracked));
+    const tbl = newTableXml(this.xml, rows, cols, this.textWidth, styleId, tracked && this.rowRevisionMaker(tracked), widths);
+    // Merged cells (a pasted table's), as Word writes a merge: { r0, r1, c0, c1 } each. They are
+    // part of the new table, so not tracked apart from its rows.
+    for (const area of merges) mergeCells(tbl, area);
+    if (merges.length) fitWidths(tbl, { before: Infinity, textWidth: 0 });
     const table = this.renderTable(tbl);
     const label = trackedChangeLabel(tbl);
     if (label) table.dataset.tracked = label;

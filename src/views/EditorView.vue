@@ -113,6 +113,12 @@
       <button type="button" title="Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays" @click="clearCharacterFormatting">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3h8M7 3l-2.5 9M9.5 9.5l4 4M13.5 9.5l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
       </button>
+      <button type="button" class="painter-toggle" :title="painter.active ? 'Format Painter is on: select (or click) the text to paint the formatting on – Esc or a click here stops it' : 'Format Painter (Ctrl+Shift+C, Ctrl+Shift+V): copies the formatting at the caret to the text you select next; double-click to paint it on several places'" aria-label="Format Painter" :class="{ on: painter.active }" :aria-pressed="painter.active" @click="togglePainter" @dblclick="startPainter(true)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="1.8" width="10" height="4.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M12 4h1.8v3.6H7.6v2.2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="6.4" y="9.8" width="2.4" height="4.6" rx=".6" fill="currentColor" /></svg>
+      </button>
+      <button ref="caseButton" type="button" title="Change case (Shift+F3): Sentence case, lowercase, UPPERCASE, Capitalize Each Word" aria-label="Change case" aria-haspopup="menu" :aria-expanded="caseMenu.open" @click="toggleCaseMenu">
+        <span class="case-icon" aria-hidden="true">Aa</span>
+      </button>
       <span class="sep" />
       <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :aria-label="a.label" :class="{ on: state.align === a.value }" :aria-pressed="state.align === a.value" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
@@ -139,6 +145,9 @@
       </button>
       <button ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date" aria-label="Insert a check box or date" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">Insert</span>
+      </button>
+      <button type="button" title="Insert a symbol: ©, €, ✓, →, ½ and others, by group or name" aria-label="Insert symbol" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
+        <span class="symbol-icon" aria-hidden="true">Ω</span><span class="short-label">Symbol</span>
       </button>
       <button type="button" class="ph" title="Insert picture" aria-label="Insert picture" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Picture</span>
@@ -248,6 +257,7 @@
           <div
             ref="page"
             class="docx-page"
+            :class="{ painting: painter.active }"
             contenteditable="true"
             spellcheck="true"
             :style="pageStyle"
@@ -257,6 +267,7 @@
             @paste="onPaste"
             @drop="onDrop"
             @mousedown="onPageMousedown"
+            @mouseup="onPageMouseup"
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
@@ -714,6 +725,10 @@
       <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" title="As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
     </div>
 
+    <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" aria-label="Change case" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
+      <button v-for="c in CASES" :key="c.id" type="button" role="menuitem" @click="changeCaseTo(c.id)">{{ c.label }}</button>
+    </div>
+
     <div v-if="shareReady.file" ref="shareReadyEl" class="chooser share-ready" role="dialog" aria-label="Share" @keydown.esc="shareReady.file = null">
       <p>{{ shareReady.file.name }} is ready.</p>
       <div class="actions">
@@ -723,6 +738,7 @@
     </div>
 
     <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
+    <SymbolDialog v-if="symbolOpen" @close="closeSymbols" @insert="insertSymbol" />
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
@@ -748,6 +764,10 @@ import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
+import SymbolDialog from '../components/SymbolDialog.vue';
+import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
+import { nameOf } from '../editor/symbols.js';
+import { elementChildren } from '../docx/xml.js';
 import { wordDatePicture, dateFieldInstruction } from '../editor/dates.js';
 import { findPlaceholders } from '../editor/placeholders.js';
 import CommentsPanel from '../components/CommentsPanel.vue';
@@ -760,7 +780,7 @@ import { openStartInNewTab, openFileInNewTab, holdDraft } from '../tabs.js';
 import { createHistory } from '../editor/history.js';
 import { isEmptyBlock, isAtBlockStart, adjacentCell, selectCell } from '../editor/structure.js';
 import { controlAt, controlBox, setControlText, clearPlaceholder, fieldAtSelection } from '../editor/controls.js';
-import { parseClipboard, runNodes, insertAtCaret, newLink } from '../editor/paste.js';
+import { parseClipboard, runNodes, insertAtCaret, newLink, tablesAsText } from '../editor/paste.js';
 import { normalizeLink } from '../docx/links.js';
 import {
   removesContent, rangesRemovedBy, trackedChangeAt, refusalMessage, commentMarkers, restoreCommentMarkers,
@@ -775,7 +795,7 @@ import { printCss, basicPrintCss, printModes } from '../editor/printBands.js';
 import { PERSONAL } from '../docx/properties.js';
 import { checkScreening } from '../editor/screening.js';
 import { shortcutFor } from '../editor/shortcuts.js';
-import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
+import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState, portions } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
 import { rovingToolbar, fitLabels } from '../editor/toolbar.js';
 import { fitPictures, pictureZoom } from '../editor/fitPictures.js';
@@ -792,7 +812,7 @@ import { formatNumber } from '../docx/numbering.js';
 import { updateFields } from '../docx/fieldUpdates.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
-  inField,
+  inField, replaceTracked,
 } from '../editor/track.js';
 
 const router = useRouter();
@@ -3941,6 +3961,8 @@ function runShortcut(name) {
   if (name === 'pageBreak') return insertPageBreak();
   if (name === 'footnote') return insertFootnote();
   if (name === 'endnote') return insertEndnote();
+  if (name === 'copyFormat') return startPainter(false, true);
+  if (name === 'pasteFormat') return paintSelection();
 }
 
 /**
@@ -3957,6 +3979,264 @@ function clearCharacterFormatting() {
     }
     return null;
   });
+}
+
+// ------------------------------------------------------------------ change case
+
+const caseMenu = reactive({ open: false, x: 0, y: 0 });
+const caseMenuEl = ref(null);
+const caseButton = ref(null);
+let caseRange = null; // the text to change: the selection when the menu opened
+
+function toggleCaseMenu() {
+  if (caseMenu.open) return closeCaseMenu();
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Select the text to change the case of';
+    return;
+  }
+  caseRange = range.cloneRange();
+  const rect = caseButton.value.getBoundingClientRect();
+  Object.assign(caseMenu, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 220)), y: rect.bottom + 4 });
+  nextTick(() => {
+    keepInView(caseMenu, caseMenuEl.value);
+    caseMenuEl.value?.querySelector('button')?.focus();
+  });
+}
+
+function closeCaseMenu(refocusText = false) {
+  caseMenu.open = false;
+  if (refocusText) refocusAt(caseRange);
+}
+
+/** The word at a collapsed `range` (letters and digits around the caret), or null. */
+function wordAt(range) {
+  const node = range.startContainer;
+  if (node.nodeType !== 3) return null;
+  const isWord = (ch) => /[\p{L}\p{N}'’]/u.test(ch || '');
+  let start = range.startOffset;
+  let end = range.startOffset;
+  while (start > 0 && isWord(node.data[start - 1])) start--;
+  while (end < node.length && isWord(node.data[end])) end++;
+  if (start === end) return null;
+  const word = document.createRange();
+  word.setStart(node, start);
+  word.setEnd(node, end);
+  return word;
+}
+
+/**
+ * Change Case, as Word's Aa menu and Shift+F3: the selected text (or the word at the caret) in
+ * `kind`'s case (see editor/case.js), or, with `kind` null, the next in Shift+F3's cycle (UPPERCASE,
+ * lowercase, Capitalize Each Word). Each run keeps its formatting. While tracking, each changed run
+ * is a tracked deletion and insertion, as Word records a change of case. Deleted text isn't changed.
+ */
+function changeCaseTo(kind) {
+  if (caseMenu.open) closeCaseMenu(true);
+  else restoreSelection();
+  if (textLocked.value) return explainLock();
+  let range = selectionInPage();
+  if (!range) return;
+  if (range.collapsed) {
+    range = wordAt(range);
+    if (!range) {
+      message.value = 'Select the text to change the case of, or put the caret in a word';
+      return;
+    }
+    selectRange(range);
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  const pieces = portions(range).filter((p) => !p.node.parentElement.closest('[data-tc="del"]'));
+  if (!pieces.length) return;
+  const block = closestBlock(range.startContainer) || closestBlock(pieces[0].node);
+  const before = document.createRange();
+  if (block) {
+    before.setStart(block, 0);
+    before.setEnd(pieces[0].node, pieces[0].s);
+  }
+  const lang = pieces[0].node.parentElement.closest('[lang]')?.lang || doc.styles.language() || undefined;
+  const texts = pieces.map((p) => p.node.data.slice(p.s, p.e));
+  kind ||= nextCase(texts.join(''), lang);
+  if (!kind) return;
+  const changed = changeCase(texts, kind, block ? before.toString() : '', lang);
+  if (changed.every((t, i) => t === texts[i])) {
+    message.value = `The text is in ${caseLabel(kind)} already`;
+    return;
+  }
+  const tracked = trackedBy(range.startContainer);
+  if (tracked && refuseRemoving([range])) return;
+  undoStack.flush();
+  let first = null;
+  let last = null;
+  if (tracked) {
+    // From the last piece back, so that the pieces before keep their offsets.
+    const date = revisionDate();
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const { node, s, e } = pieces[i];
+      if (changed[i] === texts[i]) {
+        first = [node, s];
+        last ||= [node, e];
+        continue;
+      }
+      const r = document.createRange();
+      r.setStart(node, s);
+      r.setEnd(node, e);
+      const after = replaceTracked(r, changed[i], { ...tracked, date });
+      first = [after.node, after.offset - changed[i].length];
+      last ||= [after.node, after.offset];
+    }
+    refreshChanges();
+  } else {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const { node, s, e } = pieces[i];
+      node.data = node.data.slice(0, s) + changed[i] + node.data.slice(e);
+      first = [node, s];
+      last ||= [node, s + changed[i].length];
+    }
+  }
+  const sel = document.createRange();
+  sel.setStart(...first);
+  sel.setEnd(...last);
+  selectRange(sel); // still selected, as in Word: Shift+F3 again goes on to the next case
+  undoStack.commit();
+  markDirty();
+  onSelectionChange();
+  message.value = `${caseLabel(kind)}${tracked ? ' (tracked)' : ''}`;
+}
+
+// ------------------------------------------------------------------ format painter
+
+// Word's Format Painter: a click copies the character formatting where the caret is (or of the
+// selection's first character) and paints it on the text selected next; a double-click keeps it on
+// for several places, until Esc or another click on it. Selecting whole paragraphs paints the
+// paragraph's style too. Ctrl+Shift+C and Ctrl+Shift+V copy and paint without the button.
+const painter = reactive({ active: false, sticky: false, copied: false, rPr: null, block: null });
+
+/** The text node whose formatting the selection (or the caret) has: the first selected, or beside the caret. */
+function formatSourceNode(range) {
+  const first = portions(range)[0];
+  if (first) return first.node;
+  let node = range.startContainer;
+  if (node.nodeType === 3) return node;
+  node = node.childNodes[range.startOffset - 1] || node.childNodes[range.startOffset] || node;
+  const walker = document.createTreeWalker(closestBlock(node) || node, NodeFilter.SHOW_TEXT);
+  return walker.nextNode();
+}
+
+/** Copies the formatting at the selection; `active`: and turns the painter on (`sticky`: until stopped). */
+function startPainter(sticky = false, keyboard = false) {
+  restoreSelection();
+  const range = selectionInPage() || savedRange;
+  const node = range && formatSourceNode(range);
+  if (!node || !page.value.contains(node)) {
+    message.value = 'Put the caret in the text whose formatting you want to copy';
+    return;
+  }
+  Object.assign(painter, { copied: true, rPr: doc.rPrOf(node), block: blockKind(closestBlock(node)) });
+  if (keyboard) {
+    message.value = 'Formatting copied – select text and press Ctrl+Shift+V to paint it on';
+    return;
+  }
+  Object.assign(painter, { active: true, sticky });
+  message.value = sticky
+    ? 'Format Painter: select (or click) each place to paint the formatting on – Esc when you’re done'
+    : 'Format Painter: select (or click) the text to paint the formatting on';
+  page.value.focus();
+}
+
+function stopPainter() {
+  painter.active = false;
+  painter.sticky = false;
+  message.value = 'Format Painter off';
+}
+
+function togglePainter() {
+  if (painter.active) stopPainter();
+  else startPainter(false);
+}
+
+/** The paragraph style select's value for a block, as state.block reads it. */
+const blockKind = (block) => (block ? doc.blockValue(block.dataset.style) : null);
+
+/** After selecting with the painter on: paints the formatting on the selection (or the word clicked). */
+function onPageMouseup() {
+  if (!painter.active) return;
+  setTimeout(() => {
+    if (!painter.active) return;
+    let range = selectionInPage();
+    if (!range) return;
+    if (range.collapsed) {
+      range = wordAt(range);
+      if (!range) return;
+      selectRange(range);
+    }
+    paintSelection();
+    if (!painter.sticky) painter.active = false;
+  });
+}
+
+/**
+ * Paints the copied formatting on the selection: its character formatting replaces the text's (a
+ * tracked formatting change while tracking), and selecting whole paragraphs gives them the copied
+ * paragraph style too.
+ */
+function paintSelection() {
+  if (!painter.copied) return;
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range || range.collapsed) {
+    message.value = 'Select the text to paint the formatting on';
+    return;
+  }
+  const blocks = selectedBlocks(range);
+  const whole = blocks.length && isAtBlockStart(range, blocks[0]) && atBlockEnd(range, blocks[blocks.length - 1]);
+  if (whole && painter.block && blocks.some((b) => blockKind(b) !== painter.block)) applyBlockStyle(painter.block);
+  const src = painter.rPr;
+  const painted = formatSelection((r) => restyle(doc, r, (rPr) => {
+    const change = elementChildren(rPr).find((c) => c.localName === 'rPrChange');
+    for (const c of elementChildren(rPr)) if (c !== change) rPr.removeChild(c);
+    for (const c of src ? elementChildren(src) : []) if (c.localName !== 'rPrChange') rPr.insertBefore(c.cloneNode(true), change || null);
+  }));
+  if (painted) message.value = painter.sticky ? 'Formatting painted – select the next place, or Esc when you’re done' : 'Formatting painted';
+}
+
+/** True if `range` ends at the end of `block`'s text. */
+function atBlockEnd(range, block) {
+  const rest = document.createRange();
+  rest.setStart(range.endContainer, range.endOffset);
+  rest.setEnd(block, block.childNodes.length);
+  return !rest.toString().replace(/​/g, '');
+}
+
+// ------------------------------------------------------------------ insert symbol
+
+const symbolOpen = ref(false);
+let symbolRange = null; // where the symbol goes: the selection when the dialog opened
+
+function openSymbols() {
+  restoreSelection();
+  const range = selectionInPage();
+  if (!range) {
+    message.value = 'Click in the text where the symbol should go';
+    return;
+  }
+  symbolRange = range.cloneRange();
+  symbolOpen.value = true;
+}
+
+function closeSymbols() {
+  symbolOpen.value = false;
+  refocusAt(symbolRange);
+}
+
+/** The symbol chosen, at the caret (or in place of the selection), as a key press would type it. */
+function insertSymbol(char) {
+  closeSymbols();
+  typeText(char);
+  message.value = `Symbol inserted: ${char.trim() ? char : nameOf(char)}`;
 }
 
 // ------------------------------------------------------------------ fonts, sizes, colours, character styles
@@ -4854,7 +5134,20 @@ function onKeydown(e) {
     updateAllFields();
     return;
   }
+  if (e.key === 'F3' && e.shiftKey && !mod && !e.altKey) {
+    e.preventDefault();
+    changeCaseTo(null);
+    return;
+  }
+  if (e.key === 'Escape' && painter.active) {
+    e.preventDefault();
+    stopPainter();
+    return;
+  }
   const shortcut = shortcutFor(e);
+  // Ctrl+Shift+V pastes formatting once some was copied (Ctrl+Shift+C); before, it is the browser's
+  // paste as plain text.
+  if (shortcut === 'pasteFormat' && !painter.copied) return;
   if (shortcut) {
     e.preventDefault();
     runShortcut(shortcut);
@@ -4920,23 +5213,118 @@ function onPaste(e) {
     onInput();
     return;
   }
-  const { blocks, skippedImages } = parseClipboard(html, text);
+  let { blocks, skippedImages } = parseClipboard(html, text);
   if (!blocks.length) return;
+  // A table goes in the text: where one can't go, its rows are pasted as lines with tabs.
+  const noTable = blocks.some((b) => b.table) ? tableRefusal(range) : null;
+  if (noTable) blocks = tablesAsText(blocks);
   // Pasted into a link: its text joins that link (a link can't hold another).
   if ((range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('a')) {
-    for (const b of blocks) for (const r of b.runs) r.href = null;
+    for (const b of paragraphBlocks(blocks)) for (const r of b.runs) r.href = null;
   }
   const tracked = trackedBy(range.startContainer);
   if (!range.collapsed) {
     if (tracked) deleteTracked(range, false, tracked);
     else deleteSelection();
   }
-  pasteBlocks(blocks, tracked);
+  const tables = pasteMixed(blocks, tracked);
   onInput();
   undoStack.commit();
+  const notes = [];
+  if (tables.length === 1) notes.push(`Table pasted: ${tables[0].cols} × ${tables[0].rows}${tracked ? ' (tracked)' : ''}`);
+  else if (tables.length) notes.push(`${tables.length} tables pasted${tracked ? ' (tracked)' : ''}`);
+  if (noTable) notes.push(`The table was pasted as text, with tabs between its cells: ${noTable}`);
   if (skippedImages) {
-    message.value = `${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted with the text – copy a picture on its own and paste it, or use Insert picture`;
+    notes.push(`${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted with the text – copy a picture on its own and paste it, or use Insert picture`);
   }
+  if (notes.length) message.value = notes.join(' · ');
+}
+
+/** The paragraph blocks of parsed clipboard blocks, those in tables' cells too. */
+function paragraphBlocks(blocks) {
+  return blocks.flatMap((b) => (b.table ? b.table.cells.flatMap((c) => c.blocks) : [b]));
+}
+
+/** Why a pasted table can't go at `range` (it is pasted as text there), or null if it can. */
+function tableRefusal(range) {
+  const note = noteAt(range.startContainer);
+  if (note) return `a table can’t go in ${storyName(note)} here`;
+  if (controlAt(range.startContainer, page.value) || formTextAt(range.startContainer)) return 'a table can’t go in a field';
+  const el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  if (el?.closest('td')) return 'a table can’t go inside a table’s cell here';
+  return null;
+}
+
+/**
+ * Pastes parsed blocks, paragraphs and tables in turn (see pasteBlocks and pasteTable). Returns the
+ * tables pasted, as { rows, cols }.
+ */
+function pasteMixed(blocks, tracked) {
+  const tables = [];
+  for (let i = 0; i < blocks.length;) {
+    if (blocks[i].table) {
+      pasteTable(blocks[i].table, tracked);
+      tables.push(blocks[i].table);
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < blocks.length && !blocks[j].table) j++;
+    pasteBlocks(blocks.slice(i, j), tracked);
+    i = j;
+  }
+  if (tables.length) {
+    doc.renumber(page.value);
+    refreshChanges();
+  }
+  return tables;
+}
+
+/** The rendered cell of `table` that starts at grid row `r`, column `c` (cells span columns). */
+function cellAtGrid(table, r, c) {
+  let at = 0;
+  for (const td of table.rows[r]?.cells || []) {
+    if (at === c) return td;
+    at += td.colSpan || 1;
+    if (at > c) return null;
+  }
+  return null;
+}
+
+/**
+ * A table pasted at the caret, as Word pastes one from Excel, Google Sheets or a web page: where
+ * Insert table puts one (before the paragraph if the caret is at its start, else the paragraph is
+ * split there), in Word's Table Grid style, its columns in proportion to the copied widths, merged
+ * cells merged, and each cell's text pasted into it with its basic formatting. While tracking, its
+ * rows (and the text in them) are tracked insertions. The caret goes to the paragraph after it.
+ */
+function pasteTable({ rows, cols, cells, widths }, tracked) {
+  const range = selectionInPage();
+  if (!range) return null;
+  range.collapse(true);
+  let block = closestBlock(range.startContainer);
+  if (!block) {
+    block = doc.emptyParagraph();
+    page.value.append(block);
+  } else if (!isEmptyBlock(block) && !isAtBlockStart(range, block)) {
+    document.execCommand('insertParagraph');
+    if (tracked) markSplit(tracked);
+    block = closestBlock(selectionInPage().startContainer) || block;
+  }
+  const merges = cells.filter((c) => c.rowspan > 1 || c.colspan > 1)
+    .map((c) => ({ r0: c.r, r1: c.r + c.rowspan - 1, c0: c.c, c1: c.c + c.colspan - 1 }));
+  const table = doc.newTable(rows, cols, tracked, { widths, merges });
+  block.before(table);
+  refreshCss(); // the Table Grid style may be new
+  for (const cell of cells) {
+    if (!cell.blocks.length) continue;
+    const target = cellAtGrid(table, cell.r, cell.c)?.querySelector(BLOCK_SELECTOR);
+    if (!target) continue;
+    placeCaret(target, true);
+    pasteBlocks(cell.blocks, tracked, false);
+  }
+  placeCaret(block, true);
+  return table;
 }
 
 /**
@@ -4945,7 +5333,7 @@ function onPaste(e) {
  * further one starts a new paragraph that keeps the destination paragraph's settings, unless it is
  * a list item, which joins the destination list if it is of the same kind or else a new list.
  */
-function pasteBlocks(blocks, tracked = null) {
+function pasteBlocks(blocks, tracked = null, renumber = true) {
   const startRange = selectionInPage();
   const dest = startRange && closestBlock(startRange.startContainer);
   const destWasEmpty = !!dest && isEmptyBlock(dest);
@@ -4979,7 +5367,7 @@ function pasteBlocks(blocks, tracked = null) {
     if (tracked && block.runs.length) insertTracked(runNodes(block.runs), tracked);
     else insertAtCaret(runNodes(block.runs));
   });
-  doc.renumber(page.value);
+  if (renumber) doc.renumber(page.value);
 }
 
 /** Picture files dropped on the page are inserted where they are dropped; other files aren't. */
@@ -5381,6 +5769,7 @@ function onDocumentMousedown(e) {
   if (dropOffer.file && !dropOfferEl.value?.contains(e.target)) dropOffer.file = null;
   if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
   if (insertMenu.open && !insertMenuEl.value?.contains(e.target) && !insertButton.value?.contains(e.target)) insertMenu.open = false;
+  if (caseMenu.open && !caseMenuEl.value?.contains(e.target) && !caseButton.value?.contains(e.target)) caseMenu.open = false;
   if (shareReady.file && !shareReadyEl.value?.contains(e.target)) shareReady.file = null;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
@@ -6317,6 +6706,13 @@ async function close() {
 .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .swatch { height: 24px; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; cursor: pointer; padding: 0; }
 .swatch.current, .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.case-icon, .symbol-icon { display: inline-block; min-width: 16px; font-size: 14px; line-height: 16px; text-align: center; }
+.case-icon { font-weight: 600; letter-spacing: -.02em; }
+.symbol-icon { font-family: 'Times New Roman', Times, serif; font-size: 16px; }
+/* The Format Painter's brush, over the page while it is on. */
+.docx-page.painting, .docx-page.painting * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M3 2v14' stroke='%23000' stroke-width='1.5'/%3E%3Crect x='7' y='3' width='9' height='4' rx='.8' fill='%23fff' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M16 5h2v3h-6.5v2.5' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Crect x='10.2' y='10.5' width='2.6' height='6' rx='.6' fill='%23000'/%3E%3C/svg%3E") 3 2, text;
+}
 .palette-label { margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
 .color-palette { width: 220px; }
 .cell-format { width: 280px; max-height: calc(100vh - 16px); overflow-y: auto; }

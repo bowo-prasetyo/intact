@@ -456,7 +456,7 @@ export function undeleteRow(tr) {
 }
 
 /** A new table's XML: `rows` × `cols` empty cells across `textWidth` twips, in table style `styleId`. */
-export function newTableXml(doc, rows, cols, textWidth, styleId, revision = null) {
+export function newTableXml(doc, rows, cols, textWidth, styleId, revision = null, weights = null) {
   const tbl = createW(doc, 'tbl');
   const tblPr = tbl.appendChild(createW(doc, 'tblPr'));
   if (styleId) tblPr.appendChild(createW(doc, 'tblStyle', { val: styleId }));
@@ -464,15 +464,17 @@ export function newTableXml(doc, rows, cols, textWidth, styleId, revision = null
   tblPr.appendChild(createW(doc, 'tblLook', {
     val: '04A0', firstRow: 1, lastRow: 0, firstColumn: 1, lastColumn: 0, noHBand: 0, noVBand: 1,
   }));
-  const width = Math.floor(textWidth / cols);
+  // Equal columns, or in proportion to `weights` (relative widths, as a pasted table gives them).
+  const total = weights?.length === cols ? weights.reduce((a, b) => a + b, 0) : 0;
+  const widths = Array.from({ length: cols }, (_, c) => Math.max(1, Math.floor(total ? (textWidth * weights[c]) / total : textWidth / cols)));
   const grid = tbl.appendChild(createW(doc, 'tblGrid'));
-  for (let c = 0; c < cols; c++) grid.appendChild(createW(doc, 'gridCol', { w: width }));
+  for (let c = 0; c < cols; c++) grid.appendChild(createW(doc, 'gridCol', { w: widths[c] }));
   for (let r = 0; r < rows; r++) {
     const tr = tbl.appendChild(createW(doc, 'tr'));
     if (revision) markRow(tr, revision());
     for (let c = 0; c < cols; c++) {
       const tc = tr.appendChild(createW(doc, 'tc'));
-      tc.appendChild(createW(doc, 'tcPr')).appendChild(createW(doc, 'tcW', { w: width, type: 'dxa' }));
+      tc.appendChild(createW(doc, 'tcPr')).appendChild(createW(doc, 'tcW', { w: widths[c], type: 'dxa' }));
       tc.appendChild(createW(doc, 'p'));
     }
   }

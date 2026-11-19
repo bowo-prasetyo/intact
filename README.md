@@ -314,6 +314,16 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   to web and e-mail addresses come through from web pages, Google Docs and Word; fonts, colours,
   styles, other links and pictures in copied text don't (the status bar says when pictures were
   skipped; a picture copied on its own is inserted)
+- Paste tables from Excel, Google Sheets, LibreOffice Calc, Word or a web page as tables, as Word
+  pastes them: the rows and columns, cells merged across and down (`gridSpan`, `vMerge`), the
+  columns' widths in proportion to the copied ones (`<col width>`, or the cells'), and each cell's
+  text with the basic formatting above (Excel's bold heading cells, written by class in its
+  clipboard HTML, too). The table goes where Insert table puts one, in Word's Table Grid style
+  across the page; text copied around it pastes before and after it. One cell copied on its own
+  pastes as its text. Tracked while tracking (its rows and their text are insertions); one step for
+  Undo. Where a table can't go (a header, footer, note, text box, field or another table's cell),
+  and for one wider than Word's 63 columns, its rows are pasted as lines with tabs between the
+  cells, and the status bar says so
 - Links (toolbar button or Ctrl+K), as in Word: the selected text, or new text at the caret,
   becomes a link to a web address, an e-mail address or a DOI (`10.1000/xyz` becomes
   `https://doi.org/10.1000/xyz`); in a link, the same dialog changes its address or removes it. Links
@@ -342,6 +352,23 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   buttons beside the size, Ctrl+Shift+> and Ctrl+Shift+<) step the selected text through Word's
   sizes (… 10, 11, 12, 14, 16 … 72, then by 10), each run from its own size, and Ctrl+] and Ctrl+[
   change it by 1 pt
+- Format Painter (the brush button, or Ctrl+Shift+C and Ctrl+Shift+V), as in Word: a click copies
+  the character formatting at the caret (or of the selection's first character) and paints it on
+  the text selected next, or the word clicked; a double-click keeps it on for several places, until
+  Esc or another click on it. The text's run properties become the copied ones (a tracked
+  formatting change while tracking); painting whole paragraphs gives them the copied paragraph
+  style too. Ctrl+Shift+V is the browser's paste as plain text until formatting has been copied
+- Change Case (the Aa menu, or Shift+F3), as in Word: Sentence case., lowercase, UPPERCASE,
+  Capitalize Each Word and tOGGLE cASE for the selection, or the word at the caret; Shift+F3 goes
+  round UPPERCASE, lowercase and Capitalize Each Word, the text staying selected. Each run keeps its
+  formatting; the text's language decides the letters (Turkish dotted i, for example). While
+  tracking, a changed run is a tracked deletion and insertion, as Word records it; text already
+  deleted isn't changed
+- Insert Symbol (the toolbar's Ω Symbol), as Word's Symbol dialog: ©, €, ✓, →, ½, accented letters,
+  Greek, arrows, maths and the spaces Word offers (non-breaking, thin, en and em), by group or by
+  name ("euro", "tick"), or any character by its Unicode code (`20AC`, `U+00BD`, as Word's
+  Character code). It goes in at the caret as typed (tracked while tracking); the symbols used last
+  are offered first, remembered in this browser
 - Formatting changed while tracking is tracked, as Word records it: bold, italic, underline,
   strikethrough, superscript, subscript, highlight, font, size, colour, character style and clear
   formatting record the text's old run properties (`w:rPrChange`); paragraph style, alignment and
@@ -464,7 +491,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   password, protected by rights management (a sensitivity label that encrypts, or IRM), a Word
   97–2003 `.doc` with a `.docx` name, or something else. Intact doesn't decrypt files
 - Word's keyboard shortcuts: Ctrl+B/I/U, Ctrl+Shift+= / Ctrl+= (superscript / subscript),
-  Ctrl+Alt+H (highlight), Ctrl+Space (clear character formatting; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
+  Ctrl+Alt+H (highlight), Shift+F3 (change case), Ctrl+Shift+C / Ctrl+Shift+V (copy and paint formatting), Ctrl+Space (clear character formatting; highlight stays, as in Word), Ctrl+Shift+8 (formatting marks), Ctrl+L/E/R/J (alignment), Ctrl+Shift+N (Normal), Ctrl+Alt+1–3 (headings),
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
   (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+K (link), Ctrl+F/H,
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
@@ -473,7 +500,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   where the caret was. Its buttons are named and say whether they are on (bold, alignment, lists…) for
   screen readers. Its controls stay in place: Accept, Reject and the count of tracked changes are always
   there, turned off while there is nothing to accept, and keep their labels on wide and laptop screens.
-  The icon buttons get short text labels (Insert, Picture, Sign, Table, Layout, Footnote, Endnote,
+  The icon buttons get short text labels (Insert, Symbol, Picture, Sign, Table, Layout, Footnote, Endnote,
   Update, Page no., Page setup, Find, Fill in) where the toolbar has room for them: each in turn, as
   long as it fits without the toolbar taking another row, worked out again when the window's width
   changes, so the toolbar never grows; their names for screen readers stay as they were
@@ -724,9 +751,14 @@ The About page shows the version.
   the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
   the browser's: use the Paragraph dialog. Indents are set in centimetres and spacing in points
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
+- The Format Painter copies character formatting and a paragraph's style, not its alignment,
+  spacing or indents; Ctrl+Shift+C opens the developer tools in some browsers instead (use the
+  button)
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs,
-  lists and links to web and e-mail addresses (not highlight); pictures within copied text and other
-  links (their text is kept) are not added. Making existing text a link isn't tracked
+  lists, tables and links to web and e-mail addresses (not highlight); pictures within copied text and other
+  links (their text is kept) are not added. A pasted table's cell shading, borders, number alignment
+  and row heights aren't kept (it takes Table Grid's), and a table pasted in another table's cell is
+  pasted as text, not as a nested table or into the cells there. Making existing text a link isn't tracked
 - Chrome and Edge check spelling in the languages chosen in their settings, whatever the document's
   language
 - Text that holds someone's tracked change can't be deleted together with it; accept or reject the
