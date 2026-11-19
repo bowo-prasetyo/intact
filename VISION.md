@@ -184,7 +184,7 @@ Saying no to these keeps the product small enough to keep its promises:
   and a report, each a Word document with placeholders to fill in ✔; each checked to be written in
   the order Word's schema requires, its parts related and typed ✔
 - Mail merge from a CSV: one letter (or one document of them) for each row, through the
-  placeholders
+  placeholders ✔
 - Page setup for one section: a landscape page in a portrait document, its own margins
 - Change a style's definition (Heading 1 in another font or colour, Normal's spacing), as Word's
   Modify Style

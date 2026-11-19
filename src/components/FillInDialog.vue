@@ -24,6 +24,7 @@
     <div class="actions">
       <button v-if="items.length" type="submit" class="confirm" :disabled="!ready">Fill in</button>
       <button type="button" @click="emit('close')">{{ items.length ? 'Cancel' : 'Close' }}</button>
+      <button v-if="items.length" type="button" class="merge" title="Fill them in from each row of a list (a CSV from Excel or Google Sheets): a letter for each row" @click="emit('mailmerge')">From a list…</button>
     </div>
   </form>
 </template>
@@ -45,7 +46,8 @@ const props = defineProps({
   tracked: { type: Function, default: () => null },
 });
 // reveal(range): bring a placeholder into view; filled(message): what was filled in, for the status bar.
-const emit = defineEmits(['close', 'reveal', 'filled']);
+// mailmerge: fill them in from a list instead (see MailMergeDialog).
+const emit = defineEmits(['close', 'reveal', 'filled', 'mailmerge']);
 
 const EXAMPLES = '[Client name], {{date}}, «Amount» or <<Amount>>';
 const items = ref([]);
@@ -127,6 +129,7 @@ defineExpose({ scan });
 .where { font-size: 12px; color: var(--muted); }
 .note { margin: 0; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.actions .merge { margin-right: auto; order: -1; }
 .actions button { font: inherit; border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; }
 .actions button:hover { background: var(--hover); }
 .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }

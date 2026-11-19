@@ -242,7 +242,7 @@
     </div>
 
     <FindBar v-if="findOpen" ref="findBar" :root="page" :roots="searchRoots" :edit="applyEdit" :tracked="trackedBy" @close="onFindClosed" @reveal="revealRange" />
-    <FillInDialog v-if="fillIn.open" ref="fillInDialog" :style="{ left: `${fillIn.x}px`, top: `${fillIn.y}px` }" :roots="() => [page]" :edit="applyEdit" :tracked="trackedBy" @close="closeFillIn" @reveal="revealRange" @filled="onFilled" />
+    <FillInDialog v-if="fillIn.open" ref="fillInDialog" :style="{ left: `${fillIn.x}px`, top: `${fillIn.y}px` }" :roots="() => [page]" :edit="applyEdit" :tracked="trackedBy" @close="closeFillIn" @reveal="revealRange" @filled="onFilled" @mailmerge="openMailMerge" />
 
     <div class="workspace">
       <NavigationPane v-if="navOpen" :headings="navHeadings" :current="navCurrent" @close="toggleNav" @go="goToHeading" />
@@ -494,6 +494,7 @@
       <button type="button" role="menuitem" @click="saveMenuAction('docx')">Word document (.{{ fileExt }})<span class="shortcut">Ctrl+S</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">Ctrl+P</span></button>
       <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">Mail, messages…</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('merge')">Mail merge…<span class="shortcut">A letter for each row of a list</span></button>
     </div>
 
     <form v-if="pdfDialog.open" ref="pdfDialogEl" class="chooser author-dialog pdf-dialog" role="dialog" aria-label="Save as PDF" aria-describedby="pdf-how" :style="{ left: `${pdfDialog.x}px`, top: `${pdfDialog.y}px` }" @submit.prevent="printToPdf" @keydown.esc="closePdfDialog">
@@ -871,6 +872,7 @@
 
     <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
     <SymbolDialog v-if="symbolOpen" @close="closeSymbols" @insert="insertSymbol" />
+    <MailMergeDialog v-if="mailMerge.open" :placeholders="mailMerge.placeholders" :single-blocked="mailMerge.singleBlocked" :merge="runMailMerge" @close="closeMailMerge" />
     <EquationDialog v-if="refDialog === 'equation'" @close="closeRefDialog" @insert="insertEquation" />
     <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
@@ -902,6 +904,9 @@ import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
 import SymbolDialog from '../components/SymbolDialog.vue';
+import MailMergeDialog from '../components/MailMergeDialog.vue';
+import JSZip from 'jszip';
+import { mailMerge as mergeDocuments, singleBlocker } from '../docx/merge.js';
 import EquationDialog from '../components/EquationDialog.vue';
 import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
@@ -7277,7 +7282,62 @@ function saveMenuAction(what) {
   closeSaveMenu();
   if (what === 'docx') requestDownload();
   else if (what === 'share') requestShare();
+  else if (what === 'merge') openMailMerge();
   else openPdfDialog();
+}
+
+// ------------------------------------------------------------------ mail merge
+
+// Mail merge from a CSV (see docx/merge.js and MailMergeDialog): the document as it would be
+// downloaded, with each row of a list in its placeholders, as one document or a .zip of one for
+// each row. The document itself is left as it is.
+const mailMerge = reactive({ open: false, placeholders: [], singleBlocked: null });
+
+function openMailMerge() {
+  fillIn.open = false;
+  const all = findPlaceholders(page.value);
+  const notes = page.value.querySelector('.note-ref[data-note-ref]');
+  Object.assign(mailMerge, {
+    open: true,
+    placeholders: all.map((p) => ({ text: p.text, label: p.label })),
+    singleBlocked: notes ? 'it has footnotes or endnotes, which each copy would refer to' : null,
+  });
+}
+
+function closeMailMerge() {
+  mailMerge.open = false;
+  refocus();
+}
+
+async function runMailMerge({ rows, mapping, mode, nameColumn }) {
+  await draftSettled();
+  const saved = await withHostsUnlocked(() => doc.save(page.value));
+  const bytes = await saved.arrayBuffer();
+  if (mode === 'single') {
+    const main = await (await JSZip.loadAsync(bytes)).file(doc.mainPath).async('string');
+    const why = singleBlocker(main);
+    if (why) throw new Error(`One document can’t be made of this one: ${why}. Choose a separate document for each row.`);
+  }
+  const parts = { main: doc.mainPath, others: [...doc.headers, ...doc.footers, ...Object.values(doc.noteParts)].map((v) => v.path).filter(Boolean) };
+  const result = await mergeDocuments(bytes, {
+    rows, placeholders: mailMerge.placeholders, mapping, parts, mode, nameColumn,
+    baseName: baseName.value.trim() || 'document', mime: doc.format.mime,
+  });
+  downloadBlob(result.blob, result.name);
+  const kept = result.keptInHeaders.length ? ` – in the header or footer, ${result.keptInHeaders.join(', ')} ${result.keptInHeaders.length === 1 ? 'is' : 'are'} left as written, as every copy shares it` : '';
+  message.value = `Merged ${result.count} ${result.count === 1 ? 'row' : 'rows'}: ${result.name}${kept}`;
+}
+
+/** Saves `blob` as a download named `name`. */
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 function openPdfDialog() {
   updatePages();

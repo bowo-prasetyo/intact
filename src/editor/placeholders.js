@@ -8,14 +8,14 @@ import { textSegments } from './find.js';
 
 // [Text], {{Text}}, «Text» and <<Text>>: on one line, at most 80 characters, with no brackets of
 // the same kind inside.
-const PATTERN = /\[([^[\]\n]{1,80})\]|\{\{([^{}\n]{1,80})\}\}|«([^«»\n]{1,80})»|<<([^<>\n]{1,80})>>/gu;
+export const PATTERN = /\[([^[\]\n]{1,80})\]|\{\{([^{}\n]{1,80})\}\}|«([^«»\n]{1,80})»|<<([^<>\n]{1,80})>>/gu;
 
 /**
  * Whether the text between the brackets names something to fill in: a word of at least two letters
  * ("Name", "Nama Organisasi", "date"), not a citation or reference ("[1]", "[2–4]", "[Smith 2020]"),
  * a check box ("[ ]", "[x]") or an editorial note ("[sic]", "[…]").
  */
-function names(inner) {
+export function names(inner) {
   const text = inner.trim();
   if (!/\p{L}.*\p{L}/su.test(text)) return false; // at least two letters
   if (/^(sic|sic!|emphasis added|citation needed|ibid\.?|et al\.?)$/iu.test(text)) return false;
