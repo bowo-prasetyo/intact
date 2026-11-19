@@ -63,6 +63,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   everything else in its properties kept (and Word's "lines" values, which would win, taken off what
   is changed). Increase and Decrease Indent (Ctrl+M, Ctrl+Shift+M) move a paragraph's left indent to
   the next half inch, or a list item's level. Tracked while tracking (`w:pPrChange`)
+- Tab stops, as Word's Tabs dialog, in the Paragraph dialog: the paragraph's stops (its styles' and
+  list level's, and its own) are listed with their alignment (left, centre, right, decimal, bar) and
+  leader (dots, dashes, line); Set adds one at a position in centimetres (replacing one there),
+  × removes one and Clear all takes them all off. Only the paragraph's own `w:tabs` is written: a
+  stop for each one it doesn't inherit, and a clear (`w:val="clear"`) for a style's stop taken off,
+  as Word writes them; tracked while tracking. On the page, tabs go to Word's default stops
+  (`w:defaultTabStop`, half an inch unless the file says otherwise), or, where a paragraph's first
+  stop is a left one, to that stop, so a letter's "Nomor:" and "Perihal:" lines line up as in Word
 - Print the document (Ctrl+P, or the browser's Print): only the page is printed, not the editor
   around it, on the document's paper size and in its margins, with a new page at each page break,
   "page break before" and section break; tracked changes and highlights print as they show.
@@ -255,6 +263,15 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   every section's `w:pgSz` and `w:pgMar`. Only what is changed in the dialog is written; the rest of
   each section (headers and footers, columns, gutters) is kept. The page and the printout follow,
   and Ctrl+Z puts it back
+- A watermark, as Word's Design > Watermark, in Page setup: DRAFT, CONFIDENTIAL, DO NOT COPY,
+  SAMPLE, URGENT, ASAP or your own text, diagonal or horizontal, in Word's semi-transparent silver.
+  Written as Word writes one, as WordArt in every header behind the text (a VML text path named
+  `PowerPlusWaterMarkObject`, centred between the margins), at the start of each header's first
+  paragraph; the rest of the header is kept. A document without a header gets one for all pages,
+  in Word's Header style (`header1.xml`, its relationship, content type and the first section's
+  reference), saved only while it is in the page. Word's own text watermark shows, and can be
+  changed or taken off (a header made only for it goes with it). It is drawn behind the text in the
+  middle of each page the page count works out, and printed on every page; Ctrl+Z takes it back
 - Edit headers and footers in place, in the page's margins, as in Word: the first page's, other
   pages', even pages' and each section's, chosen with tabs above and below the page (a click in one
   edits it; it is dimmed until then). Typing, formatting, Undo, Find and Replace and Track Changes
@@ -344,8 +361,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   (`w:themeColor`) and the colours its text uses, then More colours: a colour picker and a box for a
   colour's code (`#0E6467`, or short as `#0E6`), for a brand colour; colours chosen that way are
   remembered in this browser and offered again as Your colours, in any document (cell shading
-  offers them too). Character style its own character styles (such as Strong or Emphasis). Only
-  the document's fonts and sizes are offered, so text stays on brand. The selected text's run
+  offers them too). Character style its own character styles (such as Strong or Emphasis). The
+  document's fonts come first, so text stays on brand, then, under Other fonts, Word's usual ones
+  that Windows and macOS have (Arial, Calibri, Cambria, Times New Roman and others), written by name,
+  for a blank document or one with few fonts of its own. The selected text's run
   properties are changed and the text is rebuilt as runs with them, so the page shows what is saved.
   Clear formatting (button or Ctrl+Space) takes direct character formatting and the character style
   off, as Word does; highlight, language and a link's style stay. Grow Font and Shrink Font (the
@@ -364,6 +383,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   formatting; the text's language decides the letters (Turkish dotted i, for example). While
   tracking, a changed run is a tracked deletion and insertion, as Word records it; text already
   deleted isn't changed
+- A right-click menu, as Word's (also the Menu key or Shift+F10): Cut, Copy, Paste and Paste as text
+  (the browser may ask to let the page read the clipboard; Ctrl+V never needs it), Accept and Reject
+  on a tracked change, Link… or, in a link, Open, Edit and Remove link, New comment and Paragraph…,
+  and in a table Insert rows above or below and columns left or right, Merge and Split cells,
+  Shading and borders and Delete row, column or table. Dialogs opened from it open where it was.
+  Cut deletes as a key press would, so it is tracked while tracking. Locked text offers Copy (and a
+  comment where comments are allowed). Shift+right-click, and a long press on a touch screen, give
+  the browser's own menu, with its spelling suggestions
 - Insert Symbol (the toolbar's Ω Symbol), as Word's Symbol dialog: ©, €, ✓, →, ½, accented letters,
   Greek, arrows, maths and the spaces Word offers (non-breaking, thin, en and em), by group or by
   name ("euro", "tick"), or any character by its Unicode code (`20AC`, `U+00BD`, as Word's
@@ -730,8 +757,9 @@ The About page shows the version.
 - Tracked changes inside locked content are accepted or rejected together, not one by one; edits
   inside form fields and text moved by dragging aren't tracked (cut and paste is), nor is ending a list
   with Enter on an empty item, or a picture's layout
-- Fonts and sizes are chosen from those the document uses (and Word's usual sizes), not from every
-  font installed; a colour by its code is written as that colour, not as a theme colour, and a theme
+- Fonts are chosen from those the document uses and Word's usual ones, and sizes from the document's
+  and Word's usual sizes, not from every font installed; a font not on this device is shown with a
+  substitute (the status bar names it); a colour by its code is written as that colour, not as a theme colour, and a theme
   colour's tints and shades aren't offered for text. A font, size or colour applies to selected
   text, not to the word at the caret. "Your colours" are kept per browser (another browser or device
   doesn't have them)
@@ -751,6 +779,14 @@ The About page shows the version.
   the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
   the browser's: use the Paragraph dialog. Indents are set in centimetres and spacing in points
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
+- Tab stops on the page: only a paragraph's first stop, if it is a left one, and evenly spaced stops
+  after it are where Word puts them; tabs to a right, centre or decimal stop, and leaders, show at
+  the default stops (they are kept, and Word lays them out)
+- A watermark is text only (Word's picture watermarks are kept, not made or shown here), in Word's
+  silver, the same in every header; it isn't tracked. It is drawn in the middle of each page as
+  the page count works them out, so it may sit a little higher or lower than in Word
+- The right-click menu's Paste reads the clipboard through the browser, which may ask first or
+  refuse (then use Ctrl+V)
 - The Format Painter copies character formatting and a paragraph's style, not its alignment,
   spacing or indents; Ctrl+Shift+C opens the developer tools in some browsers instead (use the
   button)

@@ -96,7 +96,7 @@ export async function buildDocx(bodyXml, { parts = {}, rels = '', sectPr = '' } 
 <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>
 ${rels}</Relationships>`);
   for (const [path, content] of Object.entries(parts)) zip.file(path, content);
-  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  if (!parts['word/styles.xml']) zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles ${W_NS}>
 <w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>

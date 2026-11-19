@@ -25,10 +25,12 @@
         <li>Share… from Download's menu, where the browser can share files: send the file back by mail or a messaging app</li>
         <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
-        <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too); Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space); Format Painter (Ctrl+Shift+C, Ctrl+Shift+V); Change Case (Shift+F3); Insert Symbol</li>
+        <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too), and Word's usual fonts after them; Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space); Format Painter (Ctrl+Shift+C, Ctrl+Shift+V); Change Case (Shift+F3); Insert Symbol</li>
         <li>Zoom from 50% to 200% in the status bar, or with Ctrl+mouse wheel on the page</li>
         <li>AutoFormat as you type: smart quotes and dashes in the text's language, symbols such as (c) ©, (tm) ™ and --&gt; →, lists started by typing "1. " or "* ", and web and e-mail addresses made links when a space follows them (turn it off in the status bar)</li>
-        <li>Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2), space before and after, and indents (Ctrl+M, Ctrl+Shift+M), with Word's Paragraph dialog</li>
+        <li>Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2), space before and after, and indents (Ctrl+M, Ctrl+Shift+M), with Word's Paragraph dialog, and tab stops in it</li>
+        <li>A right-click menu: Cut, Copy, Paste, Paste as text, links, comments, the Paragraph dialog, Accept and Reject, and a table's rows, columns and cells (Shift+right-click: the browser's menu, with spelling suggestions)</li>
+        <li>A watermark (DRAFT, CONFIDENTIAL or your own text), in Page setup, as Word puts one in the header</li>
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page</li>
         <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
         <li>About how many pages, in the status bar, with a dashed line where each page begins</li>

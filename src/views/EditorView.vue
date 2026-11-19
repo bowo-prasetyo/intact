@@ -62,13 +62,16 @@
         </optgroup>
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
       </select>
-      <select class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts" @change="applyFont($event.target.value)">
+      <select class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts first, then Word’s usual ones" @change="applyFont($event.target.value)">
         <option v-if="!fontValue" value="" disabled hidden>{{ state.font }}</option>
         <optgroup label="Theme fonts">
-          <option v-for="f in fontChoices.slice(0, 2)" :key="f.value" :value="f.value">{{ f.label }}</option>
+          <option v-for="f in fontChoices.filter((x) => x.group === 'theme')" :key="f.value" :value="f.value">{{ f.label }}</option>
         </optgroup>
-        <optgroup v-if="fontChoices.length > 2" label="In this document">
-          <option v-for="f in fontChoices.slice(2)" :key="f.value" :value="f.value">{{ f.label }}</option>
+        <optgroup v-if="fontChoices.some((x) => x.group === 'document')" label="In this document">
+          <option v-for="f in fontChoices.filter((x) => x.group === 'document')" :key="f.value" :value="f.value">{{ f.label }}</option>
+        </optgroup>
+        <optgroup label="Other fonts">
+          <option v-for="f in fontChoices.filter((x) => x.group === 'standard')" :key="f.value" :value="f.value" :style="{ fontFamily: `'${f.name}'` }">{{ f.label }}</option>
         </optgroup>
       </select>
       <select class="size-choice" :value="sizeValue" aria-label="Font size" title="Font size" @change="applyFontSize(Number($event.target.value))">
@@ -241,6 +244,9 @@
     <div class="workspace">
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
+          <div v-if="watermark.text" class="watermark-layer" aria-hidden="true">
+            <span v-for="(y, i) in watermark.centers" :key="i" class="watermark-mark" :class="{ diagonal: watermark.diagonal }" :style="{ top: `${y}px`, color: watermark.color, fontFamily: `'${watermark.font}', Calibri, Carlito, sans-serif`, fontSize: `${watermark.size}px` }">{{ watermark.text }}</span>
+          </div>
           <div ref="marksEl" class="marks-layer" aria-hidden="true" />
           <div v-if="hasLineNumbers" ref="lineNumbersEl" class="line-numbers-layer" aria-hidden="true" />
           <div ref="pageBreaksEl" class="page-breaks-layer" aria-hidden="true" />
@@ -268,6 +274,7 @@
             @drop="onDrop"
             @mousedown="onPageMousedown"
             @mouseup="onPageMouseup"
+            @contextmenu="onContextMenu"
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
@@ -589,6 +596,23 @@
         <label>Left (cm) <input v-model.number="pageDialog.left" type="number" min="0" step="0.1" /></label>
         <label>Right (cm) <input v-model.number="pageDialog.right" type="number" min="0" step="0.1" /></label>
       </fieldset>
+      <fieldset>
+        <legend>Watermark</legend>
+        <label>Text
+          <select v-model="pageDialog.mark" aria-label="Watermark text">
+            <option value="">(none)</option>
+            <option v-for="m in WATERMARKS" :key="m" :value="m">{{ m }}</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </label>
+        <label v-if="pageDialog.mark === 'custom'">Custom text <input v-model="pageDialog.markText" type="text" maxlength="60" autocomplete="off" aria-label="Watermark’s own text" /></label>
+        <label v-if="pageDialog.mark">Layout
+          <select v-model="pageDialog.markLayout" aria-label="Watermark layout">
+            <option value="diagonal">Diagonal</option>
+            <option value="horizontal">Horizontal</option>
+          </select>
+        </label>
+      </fieldset>
       <p class="note">For the whole document, every section</p>
       <div class="actions">
         <button type="submit" class="confirm">OK</button>
@@ -625,6 +649,36 @@
           </select>
         </label>
         <label v-if="!LINE_PRESETS[paraDialog.rule]">At ({{ paraDialog.rule === 'multiple' ? 'lines' : 'pt' }}) <input v-model.number="paraDialog.at" type="number" min="0" :step="paraDialog.rule === 'multiple' ? 0.05 : 1" /></label>
+      </fieldset>
+      <fieldset class="tab-stops">
+        <legend>Tab stops</legend>
+        <ul v-if="paraDialog.tabs.length" aria-label="Tab stops">
+          <li v-for="t in paraDialog.tabs" :key="t.pos">
+            <span class="pos">{{ formatCm(t.pos) }} cm</span>
+            <span>{{ TAB_ALIGNS[t.align] || t.align }}</span>
+            <span class="leader">{{ TAB_LEADERS[t.leader]?.label || '' }}</span>
+            <button type="button" :aria-label="`Remove the tab stop at ${formatCm(t.pos)} cm`" title="Remove this tab stop" @click="removeTabStop(t.pos)">×</button>
+          </li>
+        </ul>
+        <p v-else class="hint">None: tabs go to Word’s default stops, every {{ formatCm(doc.defaultTabStop) }} cm.</p>
+        <div class="tab-add">
+          <label>At (cm) <input v-model.number="paraDialog.tabPos" type="number" min="0" step="0.25" aria-label="Tab stop position (cm)" @keydown.enter.prevent="addTabStop" /></label>
+          <label>Alignment
+            <select v-model="paraDialog.tabAlign">
+              <option v-for="(label, value) in TAB_ALIGNS" :key="value" :value="value">{{ label }}</option>
+            </select>
+          </label>
+          <label>Leader
+            <select v-model="paraDialog.tabLeader">
+              <option v-for="(l, value) in TAB_LEADERS" :key="value" :value="value">{{ l.label }}</option>
+            </select>
+          </label>
+          <div class="tab-buttons">
+            <button type="button" @click="addTabStop">Set</button>
+            <button type="button" :disabled="!paraDialog.tabs.length" @click="paraDialog.tabs = []">Clear all</button>
+          </div>
+        </div>
+        <p v-if="paraDialog.tabError" class="error" role="alert">{{ paraDialog.tabError }}</p>
       </fieldset>
       <div class="actions">
         <button type="submit" class="confirm">OK</button>
@@ -727,6 +781,51 @@
 
     <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" aria-label="Change case" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
       <button v-for="c in CASES" :key="c.id" type="button" role="menuitem" @click="changeCaseTo(c.id)">{{ c.label }}</button>
+    </div>
+
+    <!-- The right-click menu, as Word's: what can be done where it was opened. Shift+right-click
+         gives the browser's own menu (with its spelling suggestions). -->
+    <div v-if="ctxMenu.open" ref="ctxMenuEl" class="change-menu context-menu" role="menu" aria-label="Context menu" :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }" @mousedown.prevent @contextmenu.prevent @keydown.esc="closeContextMenu(true)" @keydown="onMenuArrows">
+      <template v-if="!ctxMenu.locked">
+        <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCut">Cut<span class="key">Ctrl+X</span></button>
+      </template>
+      <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCopy">Copy<span class="key">Ctrl+C</span></button>
+      <template v-if="!ctxMenu.locked">
+        <button type="button" role="menuitem" @click="contextPaste(false)">Paste<span class="key">Ctrl+V</span></button>
+        <button type="button" role="menuitem" @click="contextPaste(true)">Paste as text</button>
+      </template>
+      <template v-if="ctxMenu.change && !lockMode">
+        <hr />
+        <button type="button" role="menuitem" @click="contextRun(() => resolveCurrent(true, 'stay'))">Accept change</button>
+        <button type="button" role="menuitem" @click="contextRun(() => resolveCurrent(false, 'stay'))">Reject change</button>
+      </template>
+      <hr v-if="!ctxMenu.locked || canComment" />
+      <template v-if="!ctxMenu.locked">
+        <template v-if="ctxMenu.link">
+          <button type="button" role="menuitem" @click="contextOpenLink">Open link</button>
+          <button type="button" role="menuitem" @click="contextRun(openLinkDialog, true)">Edit link…</button>
+          <button type="button" role="menuitem" @click="contextRun(removeLinkAtCaret)">Remove link</button>
+        </template>
+        <button v-else type="button" role="menuitem" @click="contextRun(openLinkDialog, true)">Link…<span class="key">Ctrl+K</span></button>
+      </template>
+      <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">Ctrl+Alt+M</span></button>
+      <template v-if="!ctxMenu.locked">
+        <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">Paragraph…</button>
+        <template v-if="ctxMenu.table">
+          <hr />
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('rowsAbove'))">Insert row above</button>
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('rowsBelow'))">Insert row below</button>
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('columnsLeft'))">Insert column to the left</button>
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('columnsRight'))">Insert column to the right</button>
+          <button v-if="ctxMenu.multi" type="button" role="menuitem" @click="contextRun(() => tableAction('merge'))">Merge cells</button>
+          <button type="button" role="menuitem" @click="contextRun(openSplitDialog, true)">Split cells…</button>
+          <button type="button" role="menuitem" @click="contextRun(openCellFormat, true)">Shading and borders…</button>
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('deleteRows'))">Delete row</button>
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('deleteColumns'))">Delete column</button>
+          <button type="button" role="menuitem" @click="contextRun(() => tableAction('deleteTable'))">Delete table</button>
+        </template>
+      </template>
+      <p class="menu-note" role="presentation">Shift+right-click: the browser’s menu, with spelling suggestions</p>
     </div>
 
     <div v-if="shareReady.file" ref="shareReadyEl" class="chooser share-ready" role="dialog" aria-label="Share" @keydown.esc="shareReady.file = null">
@@ -1460,9 +1559,11 @@ function updatePages() {
     pageCount.value = 0;
     pageBreaksEl.value?.replaceChildren();
     showPageCount();
+    refreshWatermark();
     return;
   }
   const { count, breaks } = pagesAt100();
+  refreshWatermark(breaks.map((b) => b.y));
   pageCount.value = count;
   showPageCount();
   if (pageBreaksEl.value) {
@@ -2805,7 +2906,7 @@ function closeTableMenu() {
 function onMenuArrows(e) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
   e.preventDefault();
-  const items = [...e.currentTarget.querySelectorAll('button')];
+  const items = [...e.currentTarget.querySelectorAll('button:not(:disabled)')];
   const i = items.indexOf(document.activeElement);
   const next = { ArrowDown: (i + 1) % items.length, ArrowUp: (i - 1 + items.length) % items.length, Home: 0, End: items.length - 1 }[e.key];
   items[next].focus();
@@ -2945,7 +3046,7 @@ function openCellFormat() {
     return;
   }
   loadChoices();
-  const rect = layoutButton.value.getBoundingClientRect();
+  const rect = anchorRect(layoutButton.value);
   Object.assign(cellFormat, { open: true, sel, x: Math.max(8, rect.left - 60), y: rect.bottom + 4 });
   nextTick(() => {
     keepInView(cellFormat, cellFormatEl.value);
@@ -3006,7 +3107,7 @@ const splitDialogEl = ref(null);
 /** Split cells…: asks how many columns and rows, as Word does. */
 function openSplitDialog() {
   tableMenu.open = false;
-  const rect = layoutButton.value.getBoundingClientRect();
+  const rect = anchorRect(layoutButton.value);
   Object.assign(splitDialog, { open: true, cols: 2, rows: 1, x: Math.max(8, Math.min(rect.left, window.innerWidth - 240)), y: rect.bottom + 4 });
   nextTick(() => {
     keepInView(splitDialog, splitDialogEl.value);
@@ -3138,7 +3239,38 @@ function indentBlocks(delta) {
 
 // The Paragraph dialog: values as shown (cm, pt, lines), and as they were when it opened, so only
 // what is changed in it is written (fields left alone keep coming from the paragraph's style).
-const paraDialog = reactive({ open: false, x: 0, y: 0, left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1 });
+const paraDialog = reactive({
+  open: false, x: 0, y: 0, left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1,
+  tabs: [], tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
+});
+let paraInitialTabs = '[]';
+// Word's Tabs dialog: alignments and leaders, as w:tab writes them.
+const TAB_ALIGNS = { left: 'Left', center: 'Centre', right: 'Right', decimal: 'Decimal', bar: 'Bar' };
+const TAB_LEADERS = { none: { label: 'None' }, dot: { label: '……… dots' }, hyphen: { label: '-------- dashes' }, underscore: { label: '_____ line' } };
+const MAX_TAB = 31680; // Word's furthest tab stop: 22 inches
+const formatCm = (twips) => String(toCm(twips));
+
+/** Sets a tab stop at the position typed (one already there is replaced), as Word's Tabs dialog's Set. */
+function addTabStop() {
+  paraDialog.tabError = '';
+  const cm = Number(paraDialog.tabPos);
+  if (paraDialog.tabPos === '' || !Number.isFinite(cm) || cm < 0) {
+    paraDialog.tabError = 'Type where the tab stop goes, in centimetres from the left margin';
+    return;
+  }
+  const pos = Math.round(cm * TWIPS_PER_CM);
+  if (pos > MAX_TAB) {
+    paraDialog.tabError = `A tab stop can be at most ${formatCm(MAX_TAB)} cm from the margin`;
+    return;
+  }
+  const stop = { pos, align: paraDialog.tabAlign, leader: paraDialog.tabLeader };
+  paraDialog.tabs = [...paraDialog.tabs.filter((t) => Math.abs(t.pos - pos) > 5), stop].sort((a, b) => a.pos - b.pos);
+  paraDialog.tabPos = '';
+}
+
+function removeTabStop(pos) {
+  paraDialog.tabs = paraDialog.tabs.filter((t) => t.pos !== pos);
+}
 const paraDialogEl = ref(null);
 let paraInitial = null;
 const toCm = (twips) => Math.round((twips / TWIPS_PER_CM) * 100) / 100;
@@ -3165,8 +3297,13 @@ function openParagraphDialog() {
   const [block] = selectedParagraphs();
   if (!block) return;
   paraInitial = dialogValues(doc.paragraphFormat(block));
-  const rect = spacingButton.value.getBoundingClientRect();
-  Object.assign(paraDialog, paraInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  const { stops } = doc.tabStops(block);
+  paraInitialTabs = JSON.stringify(stops);
+  const rect = anchorRect(spacingButton.value);
+  Object.assign(paraDialog, paraInitial, {
+    tabs: stops, tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
+    open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4,
+  });
   nextTick(() => {
     keepInView(paraDialog, paraDialogEl.value);
     paraDialogEl.value?.querySelector('input')?.select();
@@ -3206,6 +3343,13 @@ function applyParagraphDialog() {
     else if (d.rule === 'multiple') Object.assign(change, { line: Math.max(1, Math.round(num(d.at) * 240)), lineRule: 'auto' });
     else Object.assign(change, { line: Math.max(20, Math.round(num(d.at) * 20)), lineRule: d.rule });
   }
+  // A tab position typed but not Set yet is set, as Word's OK does.
+  if (d.tabPos !== '' && Number.isFinite(Number(d.tabPos))) {
+    paraDialog.tabs = d.tabs;
+    addTabStop();
+    d.tabs = paraDialog.tabs;
+  }
+  if (JSON.stringify(d.tabs) !== paraInitialTabs) change.tabs = d.tabs.map((t) => ({ ...t }));
   refocus();
   if (Object.keys(change).length) formatParagraphs(() => change);
 }
@@ -4146,6 +4290,11 @@ function startPainter(sticky = false, keyboard = false) {
   page.value.focus();
 }
 
+function stopPainterQuietly() {
+  painter.active = false;
+  painter.sticky = false;
+}
+
 function stopPainter() {
   painter.active = false;
   painter.sticky = false;
@@ -4209,6 +4358,149 @@ function atBlockEnd(range, block) {
   rest.setStart(range.endContainer, range.endOffset);
   rest.setEnd(block, block.childNodes.length);
   return !rest.toString().replace(/​/g, '');
+}
+
+// ------------------------------------------------------------------ the right-click menu
+
+// Word's right-click menu: Cut, Copy, Paste and Paste as text, a link, a comment, the Paragraph
+// dialog, a tracked change's Accept and Reject, and in a table its rows, columns and cells. Opened
+// by a right-click, the Menu key or Shift+F10; Shift+right-click (and a long press on a touch
+// screen) gives the browser's own menu, which has its spelling suggestions.
+const ctxMenu = reactive({ open: false, x: 0, y: 0, selected: false, locked: false, table: false, multi: false, link: false, change: false });
+const ctxMenuEl = ref(null);
+let contextAnchor = null; // where the menu was, for a dialog opened from it
+
+/** Where a dialog opened from a button goes: below the button, or where the right-click menu was. */
+function anchorRect(button) {
+  const at = contextAnchor;
+  contextAnchor = null;
+  return at || button?.getBoundingClientRect() || { left: 8, bottom: 60 };
+}
+
+function onContextMenu(e) {
+  if (e.shiftKey || e.pointerType === 'touch' || e.sourceCapabilities?.firesTouchEvents) return; // the browser's own
+  const range = selectionInPage();
+  if (!range) return;
+  e.preventDefault();
+  stopPainterQuietly();
+  // From the keyboard (Menu key, Shift+F10) the event has no place on the screen: the caret's.
+  let { clientX: x, clientY: y } = e;
+  if (!x && !y) {
+    const r = range.getClientRects()[0] || closestBlock(range.startContainer)?.getBoundingClientRect();
+    x = r ? r.left : 100;
+    y = r ? r.bottom : 100;
+  }
+  const el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  const table = !!el?.closest('td') && !!tableSelection();
+  // A tracked change under the pointer (the caret can't go into someone else's): its Accept and
+  // Reject act on it, as when it is clicked.
+  const items = changeItems(page.value);
+  const hit = e.target?.nodeType === 1 ? items.find((i) => i.el === e.target || i.el.contains(e.target)) : null;
+  if (hit) selectedChange = { el: hit.el, kind: hit.kind };
+  Object.assign(ctxMenu, {
+    open: true,
+    x,
+    y,
+    selected: !range.collapsed,
+    locked: textLocked.value || !!readOnlySelection(),
+    table,
+    multi: table && !!tableSelection()?.multi,
+    link: !!linkAt(range),
+    change: !!hit || changesAt(range, items).length > 0,
+  });
+  nextTick(() => {
+    keepInView(ctxMenu, ctxMenuEl.value);
+    ctxMenuEl.value?.querySelector('button:not(:disabled)')?.focus();
+  });
+}
+
+function closeContextMenu(refocusText = false) {
+  ctxMenu.open = false;
+  if (refocusText) refocus();
+}
+
+/** Runs a menu item's command on the text, `dialog`: one that opens where the menu was. */
+function contextRun(command, dialog = false) {
+  const at = { left: ctxMenu.x, bottom: ctxMenu.y, top: ctxMenu.y, right: ctxMenu.x };
+  ctxMenu.open = false;
+  refocus();
+  if (dialog) contextAnchor = at;
+  command();
+  if (dialog) nextTick(() => { contextAnchor = null; });
+}
+
+function contextCopy() {
+  ctxMenu.open = false;
+  refocus();
+  if (!document.execCommand('copy')) message.value = 'The browser didn’t copy: use Ctrl+C';
+}
+
+/** Cut: copies the selection, then deletes it as a key press would (tracked while tracking). */
+function contextCut() {
+  ctxMenu.open = false;
+  refocus();
+  const range = selectionInPage();
+  if (!range || range.collapsed) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (refuseRemoving([range])) return;
+  if (!document.execCommand('copy')) {
+    message.value = 'The browser didn’t copy: use Ctrl+X';
+    return;
+  }
+  undoStack.flush();
+  const opts = trackedBy(range.startContainer);
+  if (opts) deleteTracked(range, false, opts);
+  else deleteSelection();
+  onInput();
+  undoStack.commit();
+}
+
+/**
+ * Paste (or Paste as text) from the menu: the page reads the clipboard, which the browser may ask
+ * to allow, and pastes it as Ctrl+V would (Ctrl+V needs no permission, so the message says so).
+ */
+async function contextPaste(asText) {
+  ctxMenu.open = false;
+  refocus();
+  const saved = selectionInPage()?.cloneRange();
+  const data = new DataTransfer();
+  try {
+    if (asText || !navigator.clipboard.read) {
+      data.setData('text/plain', await navigator.clipboard.readText());
+    } else {
+      for (const item of await navigator.clipboard.read()) {
+        for (const type of item.types) {
+          const blob = await item.getType(type);
+          if (type === 'text/html' || type === 'text/plain') data.setData(type, await blob.text());
+          else if (type.startsWith('image/')) data.items.add(new File([blob], `pasted.${type.slice(6)}`, { type }));
+        }
+      }
+    }
+  } catch {
+    message.value = `The browser didn’t let the page read the clipboard: use ${asText ? 'Ctrl+Shift+V' : 'Ctrl+V'} to paste`;
+    return;
+  }
+  if (saved) {
+    page.value.focus();
+    selectRange(saved);
+  }
+  pasteFrom(data);
+}
+
+function contextOpenLink() {
+  ctxMenu.open = false;
+  const a = linkAt(selectionInPage() || savedRange);
+  if (a && /^(https?:|mailto:)/i.test(a.getAttribute('href'))) window.open(a.href, '_blank', 'noopener');
+  refocus();
+}
+
+/** Remove link, from the menu: the link at the caret becomes text. */
+function removeLinkAtCaret() {
+  const range = selectionInPage();
+  linkTarget = range && linkAt(range);
+  linkRange = range?.cloneRange() || null;
+  if (linkTarget) removeLink();
 }
 
 // ------------------------------------------------------------------ insert symbol
@@ -4731,7 +5023,9 @@ const MARGIN_PRESETS = [
   { name: 'Moderate', top: 2.54, bottom: 2.54, left: 1.91, right: 1.91 },
   { name: 'Wide', top: 2.54, bottom: 2.54, left: 5.08, right: 5.08 },
 ];
-const pageDialog = reactive({ open: false, x: 0, y: 0, paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0 });
+const pageDialog = reactive({ open: false, x: 0, y: 0, paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal' });
+// Word's Watermark gallery's texts (Design > Watermark).
+const WATERMARKS = ['DRAFT', 'CONFIDENTIAL', 'DO NOT COPY', 'SAMPLE', 'URGENT', 'ASAP'];
 const pageDialogEl = ref(null);
 const pageSetupButton = ref(null);
 let pageInitial = null;
@@ -4757,6 +5051,7 @@ function openPageSetup() {
   pageInitial = {
     paper: paper ? paper.name : 'custom', orient: now.orient === 'landscape' || now.w > now.h ? 'landscape' : 'portrait',
     top: cm(now.top), bottom: cm(now.bottom), left: cm(now.left), right: cm(now.right), w: now.w, h: now.h,
+    ...watermarkNow(),
   };
   const rect = pageSetupButton.value.getBoundingClientRect();
   Object.assign(pageDialog, pageInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
@@ -4790,22 +5085,120 @@ function applyPageSetup() {
     Object.assign(change, { w: landscape ? long : short, h: landscape ? short : long, orient: d.orient });
   }
   for (const k of ['top', 'bottom', 'left', 'right']) if (num(d[k]) !== i[k]) change[k] = Math.round(num(d[k]) * TWIPS_PER_CM);
+  const markText = (d.mark === 'custom' ? d.markText : d.mark).trim();
+  const markInitial = (i.mark === 'custom' ? i.markText : i.mark).trim();
+  const markChanged = markText !== markInitial || (!!markText && d.markLayout !== i.markLayout);
   refocus();
-  if (!Object.keys(change).length) return;
-  const width = change.w ?? i.w;
-  const left = change.left ?? Math.round(i.left * TWIPS_PER_CM);
-  const right = change.right ?? Math.round(i.right * TWIPS_PER_CM);
-  if (width - left - right < 1440) {
-    message.value = 'The margins leave less than 2.5 cm for the text: nothing was changed';
-    return;
+  const paged = Object.keys(change).length > 0;
+  if (!paged && !markChanged) return;
+  if (paged) {
+    const width = change.w ?? i.w;
+    const left = change.left ?? Math.round(i.left * TWIPS_PER_CM);
+    const right = change.right ?? Math.round(i.right * TWIPS_PER_CM);
+    if (width - left - right < 1440) {
+      message.value = 'The margins leave less than 2.5 cm for the text: nothing was changed';
+      return;
+    }
   }
+  if (markChanged && textLocked.value) return explainLock();
   undoStack.flush();
-  doc.setPageSetup({ ...doc.pageSetup, ...change });
+  if (paged) doc.setPageSetup({ ...doc.pageSetup, ...change });
+  if (markChanged) setWatermark(markText, d.markLayout !== 'horizontal');
   pageChanged();
   undoStack.commit();
   markDirty();
-  message.value = 'Page setup changed for the whole document';
+  const said = [];
+  if (paged) said.push('Page setup changed for the whole document');
+  if (markChanged) said.push(markText ? `Watermark: ${markText}` : 'Watermark removed');
+  message.value = said.join(' · ');
 }
+
+// ------------------------------------------------------------------ watermark
+
+// Word's text watermark (Design > Watermark): WordArt in the headers, behind the text, on every
+// page (see doc.newWatermark). The page draws it over each page it estimates, and prints it on
+// every page; in the file it is the headers' (a header is made for a document without one).
+const watermark = reactive({ text: '', diagonal: true, color: 'silver', font: 'Calibri', size: 0, centers: [] });
+let watermarkPrint = null; // the print stylesheet that puts it on every printed page
+
+/** The watermark the document has now, as the Page setup dialog shows it. */
+function watermarkNow() {
+  const el = page.value?.querySelector('.docx-hf-band.header .watermark');
+  const text = el?.dataset.watermark || '';
+  return {
+    mark: !text ? '' : WATERMARKS.includes(text) ? text : 'custom',
+    markText: WATERMARKS.includes(text) ? '' : text,
+    markLayout: el && !el.dataset.diagonal ? 'horizontal' : 'diagonal',
+  };
+}
+
+/**
+ * Puts watermark `text` (none: '') in every header, at the start of its first paragraph, in place
+ * of the one there; a document without a header gets one (saved only while it is in the page).
+ */
+function setWatermark(text, diagonal) {
+  for (const el of page.value.querySelectorAll('.docx-hf-band.header .watermark')) el.remove();
+  let band = page.value.querySelector(':scope > .docx-hf-band.header');
+  if (!text) {
+    // A header made only for the watermark goes with it.
+    const parts = band ? [...band.querySelectorAll('.docx-hf-part')] : [];
+    if (parts.length && parts.every((h) => doc.headers.find((v) => v.path === h.dataset.part)?.added && !h.textContent.trim() && !h.querySelector('.raw-inline:not(.raw-hidden), img'))) band.remove();
+    return;
+  }
+  if (!band) {
+    band = doc.newHeader();
+    refreshCss();
+    page.value.prepend(band);
+  }
+  let n = 0;
+  for (const host of band.querySelectorAll('.docx-hf-part')) {
+    let p = host.querySelector(BLOCK_SELECTOR);
+    if (!p) {
+      p = doc.emptyParagraph();
+      host.prepend(p);
+    }
+    p.prepend(doc.newWatermark(text, { diagonal, n: ++n }));
+  }
+}
+
+/** VML's colours (a name, #RGB or #RRGGBB, maybe with " [n]") as CSS has them. */
+const vmlColor = (c) => (c || 'silver').replace(/\s*\[\d+\]$/, '').trim() || 'silver';
+
+/** The watermark shown: one in the middle of each page estimated (`breaks`: client y where pages start). */
+function refreshWatermark(breaks = []) {
+  const el = page.value?.querySelector('.docx-hf-band.header .watermark');
+  const text = el?.dataset.watermark || '';
+  watermark.text = text;
+  if (!text) {
+    if (watermarkPrint) watermarkPrint.textContent = '';
+    return;
+  }
+  watermark.diagonal = el.dataset.diagonal === '1';
+  watermark.color = vmlColor(el.dataset.color);
+  watermark.font = el.dataset.font || 'Calibri';
+  // As Word fits the WordArt: about the width between the margins, less for a short word.
+  const letters = Math.max(1, [...text].length);
+  const across = (doc.page.width - doc.page.left - doc.page.right) * (watermark.diagonal ? 1.1 : 0.95) * Math.min(1, 0.55 + letters * 0.04);
+  watermark.size = Math.round(Math.min(across / (letters * 0.62), across / 2.2));
+  const sheet = page.value.closest('.docx-sheet');
+  const base = sheet.getBoundingClientRect();
+  const zoom = sheetZoom.value || 1;
+  const tops = [0, ...breaks.map((y) => (y - base.top) / zoom)];
+  const bottom = sheet.offsetHeight;
+  const pageHeight = doc.page.height || 1123;
+  watermark.centers = tops.map((t, i) => {
+    const end = i + 1 < tops.length ? tops[i + 1] : Math.min(bottom, t + pageHeight);
+    return Math.round(t + Math.max(0, end - t) / 2);
+  });
+  // Printing: on every printed page, in its middle, behind the text.
+  watermarkPrint ||= Object.assign(document.createElement('style'), { id: 'intact-watermark-print' });
+  if (!watermarkPrint.isConnected) document.head.append(watermarkPrint);
+  const cssText = text.replace(/[\\"]/g, '\\$&').replace(/[\n\r]/g, ' ');
+  watermarkPrint.textContent = `@media print { .docx-sheet .docx-page::after { content: "${cssText}"; position: fixed; left: 50%; top: 50%; z-index: -1;`
+    + ` transform: translate(-50%, -50%)${watermark.diagonal ? ' rotate(-45deg)' : ''}; font: 700 ${watermark.size}px '${watermark.font.replace(/'/g, '')}', Calibri, Carlito, sans-serif;`
+    + ` color: ${watermark.color}; opacity: .5; white-space: nowrap; pointer-events: none; } }`;
+}
+onBeforeUnmount(() => watermarkPrint?.remove());
 
 /** Ctrl+Enter: a page break at the caret (tracked while tracking). Not inside form fields. */
 function insertPageBreak() {
@@ -5183,6 +5576,11 @@ function onKeydown(e) {
 
 function onPaste(e) {
   e.preventDefault();
+  pasteFrom(e.clipboardData);
+}
+
+/** Pastes clipboard data (a DataTransfer: a paste event's, or one made from the clipboard read). */
+function pasteFrom(clipboardData) {
   const range = selectionInPage();
   const locked = readOnlySelection();
   if (locked) {
@@ -5192,16 +5590,16 @@ function onPaste(e) {
   if (!range || refuseRemoving([range])) return;
   // A picture on its own (a screenshot, an image copied from an app): inserted as a picture.
   // Some browsers list a copied picture only among the clipboard's items, not its files.
-  const files = e.clipboardData.files?.length ? [...e.clipboardData.files]
-    : [...(e.clipboardData.items || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+  const files = clipboardData.files?.length ? [...clipboardData.files]
+    : [...(clipboardData.items || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
   const pictures = files.filter((f) => f.type.startsWith('image/'));
-  if (pictures.length && !e.clipboardData.getData('text/plain').trim()) {
+  if (pictures.length && !clipboardData.getData('text/plain').trim()) {
     insertPictures(pictures);
     return;
   }
   undoStack.flush();
-  const html = e.clipboardData.getData('text/html');
-  let text = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+  const html = clipboardData.getData('text/html');
+  let text = clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
   const field = controlAt(range.startContainer, page.value)?.querySelector(':scope > .sdt-content')
     || formTextAt(range.startContainer);
   if (field?.tagName === 'SPAN' || field?.dataset.plain) {
@@ -5493,7 +5891,7 @@ async function openLinkDialog() {
   }
   linkTarget = linkAt(range);
   linkRange = range.cloneRange();
-  const anchor = linkButton.value?.getBoundingClientRect();
+  const anchor = anchorRect(linkButton.value);
   Object.assign(linkDialog, {
     open: true,
     address: linkTarget ? linkTarget.getAttribute('href') : '',
@@ -5770,6 +6168,7 @@ function onDocumentMousedown(e) {
   if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
   if (insertMenu.open && !insertMenuEl.value?.contains(e.target) && !insertButton.value?.contains(e.target)) insertMenu.open = false;
   if (caseMenu.open && !caseMenuEl.value?.contains(e.target) && !caseButton.value?.contains(e.target)) caseMenu.open = false;
+  if (ctxMenu.open && !ctxMenuEl.value?.contains(e.target)) ctxMenu.open = false;
   if (shareReady.file && !shareReadyEl.value?.contains(e.target)) shareReady.file = null;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
   if (changeMenu.open && !changeMenuEl.value?.contains(e.target) && !acceptMenuButton.value?.contains(e.target) && !rejectMenuButton.value?.contains(e.target)) changeMenu.open = null;
@@ -6598,7 +6997,7 @@ async function close() {
 }
 .docx-page {
   flex: 1; box-sizing: border-box; outline: none; min-width: 0;
-  white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; caret-color: #000;
+  white-space: pre-wrap; overflow-wrap: break-word; tab-size: 36pt; /* Word's default stops, half an inch apart; a paragraph's own: see doc.applyTabStops */ caret-color: #000;
   /* What lies past the page's edges (a floating picture placed partly off the page, or one placed
      for a wider page than a phone's) is cut off there, as Word cuts it off at the edge of the paper,
      rather than making the document scroll sideways. Clip, not hidden: nothing becomes scrollable. */
@@ -6633,11 +7032,25 @@ async function close() {
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 .change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.context-menu { min-width: 230px; }
+.context-menu button { display: flex; justify-content: space-between; gap: 16px; }
+.context-menu button:disabled { opacity: .45; cursor: default; }
+.context-menu .key { color: var(--muted); font-size: 12px; }
+.context-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.context-menu .menu-note { margin: 4px 0 0; padding: 6px 10px 2px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); max-width: 230px; }
 .change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
 .spacing-menu button { padding-left: 28px; position: relative; }
 .spacing-menu button[aria-checked="true"]::before { content: '✓'; position: absolute; left: 10px; }
-.chooser.para-dialog { width: 300px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+.chooser.para-dialog { width: 300px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
 .para-dialog fieldset { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 10px 10px; border: 1px solid var(--border); border-radius: 4px; }
+.para-dialog .tab-stops ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.para-dialog .tab-stops li { display: grid; grid-template-columns: 64px 60px 1fr 24px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.para-dialog .tab-stops li button { width: 24px; height: 22px; padding: 0; border: 0; background: none; color: inherit; border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1; }
+.para-dialog .tab-stops li button:hover { background: var(--hover); }
+.para-dialog .tab-stops .leader { color: var(--muted); }
+.para-dialog .tab-stops .hint { margin: 0; color: var(--muted); font-size: 12px; }
+.para-dialog .tab-add { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.para-dialog .tab-buttons { display: flex; gap: 6px; justify-content: flex-end; }
 .para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
 .page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
 .para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -6862,6 +7275,13 @@ async function close() {
 .docx-sheet .marks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 /* Line numbers in the margin, as Word prints them: drawn over the sheet, never part of the page. */
 .docx-sheet .line-numbers-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+/* The watermark: behind the text (the page comes after it), in the middle of each page. */
+.docx-sheet .watermark-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
+.docx-sheet .watermark-mark {
+  position: absolute; left: 50%; transform: translate(-50%, -50%); font-weight: 700; line-height: 1; opacity: .5;
+  white-space: nowrap; user-select: none;
+}
+.docx-sheet .watermark-mark.diagonal { transform: translate(-50%, -50%) rotate(-45deg); }
 .docx-sheet .page-breaks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 /* Where a page would begin, about (editor/pages.js): a dashed line across the sheet, numbered in the margin. */
 .docx-sheet .page-estimate { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--sheet-line); }

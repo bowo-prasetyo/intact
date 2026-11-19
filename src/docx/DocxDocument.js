@@ -71,6 +71,8 @@ const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
 const newParaId = () => (Math.floor(Math.random() * 0x7ffffffe) + 1).toString(16).toUpperCase().padStart(8, '0');
 const FOOTER_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer';
 const FOOTER_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml';
+const HEADER_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header';
+const HEADER_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml';
 const FOOTNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes';
 const FOOTNOTES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml';
 const ENDNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes';
@@ -146,6 +148,32 @@ const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
 const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
+
+// The namespaces of Word's VML, for a watermark (declared on a header made here).
+const VML_NS = 'xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word"';
+
+/**
+ * A run that is Word's text watermark (a VML text path whose shape Word names
+ * PowerPlusWaterMarkObject…): { text, diagonal, color, font }, or null.
+ */
+export function watermarkInfo(run) {
+  const shape = [...run.getElementsByTagNameNS(NS.v, 'shape')].find((s) => /^PowerPlusWaterMarkObject/.test(s.getAttribute('id') || ''));
+  const path = shape?.getElementsByTagNameNS(NS.v, 'textpath')[0];
+  if (!path) return null;
+  const style = shape.getAttribute('style') || '';
+  const rot = Number(/rotation:\s*(-?[\d.]+)/.exec(style)?.[1] || 0);
+  const color = shape.getAttribute('fillcolor') || 'silver';
+  const font = /font-family:\s*"?([^";]+)/.exec(path.getAttribute('style') || '')?.[1] || 'Calibri';
+  return { text: path.getAttribute('string') || '', diagonal: Math.abs(((rot % 360) + 360) % 360 - 315) < 1 || Math.abs(rot + 45) < 1, color, font };
+}
+
+// Fonts Word offers that come with Windows and macOS (with Office), offered after a document's own.
+const STANDARD_FONTS = [
+  'Aptos', 'Arial', 'Arial Black', 'Arial Narrow', 'Book Antiqua', 'Bookman Old Style', 'Calibri', 'Calibri Light', 'Cambria',
+  'Candara', 'Century Gothic', 'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel', 'Courier New', 'Franklin Gothic Medium',
+  'Garamond', 'Georgia', 'Gill Sans MT', 'Lucida Console', 'Lucida Sans Unicode', 'Palatino Linotype', 'Segoe UI',
+  'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana',
+];
 
 export class DocxDocument {
   /** @param {ArrayBuffer|Blob} data */
@@ -584,6 +612,49 @@ export class DocxDocument {
   }
 
   /**
+   * A header for all pages, for a document without one (as newFooter): one empty paragraph in Word's
+   * Header style, saved only while its band is in the page. Returns the band.
+   */
+  newHeader() {
+    const dir = this.mainDir ? `${this.mainDir}/` : '';
+    let n = 1;
+    while (this.zip.file(`${dir}header${n}.xml`) || this.headers.some((h) => h.path === `${dir}header${n}.xml`)) n++;
+    let rid = 'rIdHeader1';
+    for (let i = 1; this.rels.has(rid) || this.headers.some((h) => h.rid === rid); i++) rid = `rIdHeader${i}`;
+    const style = this.styles.ensureBuiltin('header');
+    const text = `${XML_HEADER}<w:hdr xmlns:w="${W}" xmlns:r="${NS.r}" ${VML_NS}><w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr></w:p></w:hdr>`;
+    this.headers.push({ rid, type: 'default', label: 'All pages', section: 1, path: `${dir}header${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true });
+    return this.renderBand('header');
+  }
+
+  /**
+   * Word's text watermark (Design > Watermark): WordArt in the header, behind the text, centred on
+   * the page between the margins, as Word writes it (a VML text path, PowerPlusWaterMarkObject), in
+   * semi-transparent silver, diagonal (turned 315°) or horizontal. Returns the run, rendered, for the
+   * start of a header's first paragraph. `n` tells one header's from another's (their shape ids).
+   */
+  newWatermark(text, { diagonal = true, font = 'Calibri', n = 1 } = {}) {
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // Word sizes the WordArt to the text: as wide as the margins (a little more, turned), less for a
+    // short word, and its height in proportion to the letters (about 3:1 for each).
+    const letters = Math.max(1, [...text].length);
+    const across = (this.page.width - this.page.left - this.page.right) * 0.75; // pt between the margins
+    const w = Math.round(across * (diagonal ? 1.15 : 1) * Math.min(1, 0.55 + letters * 0.04) * 10) / 10;
+    const h = Math.round(((w * 3) / letters) * 10) / 10;
+    const id = 357831060 + n;
+    const xml = `<w:r xmlns:w="${W}" ${VML_NS}><w:rPr><w:noProof/></w:rPr><w:pict>`
+      + `<v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" adj="10800" path="m@7,l@8,m@5,21600l@6,21600e">`
+      + '<v:formulas><v:f eqn="sum #0 0 10800"/><v:f eqn="prod #0 2 1"/><v:f eqn="sum 21600 0 @1"/><v:f eqn="sum 0 0 @2"/><v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 0"/><v:f eqn="if @0 21600 @1"/><v:f eqn="if @0 0 @2"/><v:f eqn="if @0 @4 21600"/><v:f eqn="mid @5 @6"/><v:f eqn="mid @8 @5"/><v:f eqn="mid @7 @8"/><v:f eqn="mid @6 @7"/><v:f eqn="sum @6 0 @5"/></v:formulas>'
+      + '<v:path textpathok="t" o:connecttype="custom" o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800" o:connectangles="270,180,90,0"/>'
+      + '<v:textpath on="t" fitshape="t"/><v:handles><v:h position="#0,bottomRight" xrange="6629,14971"/></v:handles><o:lock v:ext="edit" text="t" shapetype="t"/></v:shapetype>'
+      + `<v:shape id="PowerPlusWaterMarkObject${id}" o:spid="_x0000_s${2049 + n}" type="#_x0000_t136" style="position:absolute;margin-left:0;margin-top:0;width:${w}pt;height:${h}pt;${diagonal ? 'rotation:315;' : ''}z-index:-251657216;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" o:allowincell="f" fillcolor="silver" stroked="f">`
+      + `<v:fill opacity=".5"/><v:textpath style="font-family:&quot;${esc(font)}&quot;;font-size:1pt" string="${esc(text)}"/><w10:wrap anchorx="margin" anchory="margin"/></v:shape>`
+      + '</w:pict></w:r>';
+    const run = this.xml.importNode(parseXml(xml).documentElement, true);
+    return this.rawInline(run);
+  }
+
+  /**
    * A new footnote or endnote (`kind`): { ref (its reference, for the caret), note (the note, for
    * the notes section) }. The note starts with its number and a space, in Word's Footnote (Endnote)
    * Text style, as Word starts one. A document without such notes gets the part for them when
@@ -726,16 +797,18 @@ export class DocxDocument {
   }
 
   /**
-   * A footer made here is referred to by the first section (and so by the sections after it that
-   * have none of their own) while its band is in the page, else by none. Run on the body as saved.
+   * A footer (or header) made here is referred to by the first section (and so by the sections after
+   * it that have none of their own) while its band is in the page, else by none. Run on the body as
+   * saved.
    */
   placeNewFooters(root) {
     const sects = [...this.body.getElementsByTagNameNS(W, 'sectPr')];
-    for (const v of this.footers.filter((f) => f.added)) {
-      for (const s of sects) for (const ref of wChildren(s, 'footerReference')) if (ref.getAttributeNS(NS.r, 'id') === v.rid) s.removeChild(ref);
+    for (const [local, v] of [...this.footers.map((f) => ['footerReference', f]), ...this.headers.map((h) => ['headerReference', h])]) {
+      if (!v.added) continue;
+      for (const s of sects) for (const ref of wChildren(s, local)) if (ref.getAttributeNS(NS.r, 'id') === v.rid) s.removeChild(ref);
       v.present = !!root.querySelector(`.docx-hf-part[data-part="${CSS.escape(v.path)}"]`);
       if (!v.present || !sects[0]) continue;
-      const ref = createW(this.xml, 'footerReference');
+      const ref = createW(this.xml, local);
       ref.setAttributeNS(W, 'w:type', 'default');
       ref.setAttributeNS(NS.r, 'r:id', v.rid);
       const refs = elementChildren(sects[0]).filter((c) => c.localName === 'headerReference' || c.localName === 'footerReference');
@@ -748,6 +821,10 @@ export class DocxDocument {
     for (const v of this.footers.filter((f) => f.added)) {
       const xml = this.partsOut?.[v.path];
       await this.registerPart(v.path, v.rid, FOOTER_REL, FOOTER_CT, !!(v.present && xml), xml && serializeXml(xml));
+    }
+    for (const v of this.headers.filter((h) => h.added)) {
+      const xml = this.partsOut?.[v.path];
+      await this.registerPart(v.path, v.rid, HEADER_REL, HEADER_CT, !!(v.present && xml), xml && serializeXml(xml));
     }
     for (const [kind, rel, ct] of [['footnote', FOOTNOTES_REL, FOOTNOTES_CT], ['endnote', ENDNOTES_REL, ENDNOTES_CT]]) {
       const notes = this.noteParts[kind];
@@ -817,6 +894,7 @@ export class DocxDocument {
     const footer = this.renderBand('footer');
     if (footer) frag.append(footer);
     this.applyContextualSpacing(frag);
+    this.applyTabStops(frag);
     this.markTracked(frag);
     // Each text box, note, header and footer as it would be saved now: one that still saves the same
     // way is written back as it was. Text boxes first, innermost first: the others hold them.
@@ -1898,6 +1976,18 @@ export class DocxDocument {
       if (!this.commentOrder.has(id)) this.commentOrder.set(id, this.commentOrder.size + 1);
       span.dataset.n = String(this.commentOrder.get(id));
       span.title = comment ? `Comment by ${comment.author}: ${comment.paragraphs.join(' ')}` : 'Comment';
+      return span;
+    }
+    const mark = local === 'r' && watermarkInfo(node);
+    if (mark) {
+      // A watermark: the page draws it over each page (see the editor's watermark layer).
+      const span = this.hiddenRaw(node);
+      span.classList.add('watermark');
+      span.dataset.watermark = mark.text;
+      span.dataset.diagonal = mark.diagonal ? '1' : '';
+      span.dataset.color = mark.color;
+      span.dataset.font = mark.font;
+      span.title = `Watermark “${mark.text}” – change it in Page setup`;
       return span;
     }
     const box = local === 'r' && textboxInfo(node, this.styles.themeColors);
@@ -3168,6 +3258,7 @@ export class DocxDocument {
    */
   renumber(root) {
     this.applyContextualSpacing(root);
+    this.applyTabStops(root);
     this.renumberNotes(root);
     if (!this.numberingXml && !root.querySelector('.list')) return;
     // Each header and footer numbers its own lists; the body (with its notes) numbers the rest.
@@ -4271,7 +4362,8 @@ export class DocxDocument {
   /**
    * Sets paragraph `el`'s own spacing and indentation, as Word's Paragraph dialog does: `change` has
    * any of before, after, line, lineRule, left, right, firstLine, hanging (twips; null removes the
-   * paragraph's own value, so its style's applies). Only what `change` names is written; everything
+   * paragraph's own value, so its style's applies), and `tabs`, the tab stops it is to have (see
+   * tabStops). Only what `change` names is written; everything
    * else in the paragraph's properties is kept as it is.
    */
   setParagraphFormat(el, change) {
@@ -4302,12 +4394,101 @@ export class DocxDocument {
     if (has('right')) dropInd.push('end', 'rightChars', 'endChars');
     if (has('firstLine') || has('hanging')) dropInd.push('firstLineChars', 'hangingChars', has('firstLine') ? 'hanging' : 'firstLine');
     write('ind', { left: 'left', right: 'right', firstLine: 'firstLine', hanging: 'hanging' }, dropInd);
+    if (has('tabs')) this.writeTabs(pPr, change.tabs, this.tabStops(el).inherited);
     el.dataset.ppr = this.keep(pPr);
     if (['left', 'right', 'firstLine', 'hanging'].some(has) && this.listOf(el)) el.dataset.indSet = '';
     // Show it: the properties these set, from the paragraph's own (its style's come from the stylesheet).
     const css = this.styles.pPrCss(pPr, el.dir === 'rtl');
     for (const prop of ['margin-top', 'margin-bottom', 'line-height', 'padding-left', 'padding-right', 'text-indent']) {
       el.style.setProperty(prop, css[prop] || '');
+    }
+    this.applyTabStops({ querySelectorAll: () => [el] });
+  }
+
+  // ---------------------------------------------------------------- tab stops
+
+  /** Word's default tab stops, in twips (w:defaultTabStop in settings.xml; half an inch if unset). */
+  get defaultTabStop() {
+    if (this._defaultTab == null) {
+      const m = /<w:defaultTabStop\b[^>]*\bw:val="(\d+)"/.exec(this.settingsText || '');
+      this._defaultTab = m && Number(m[1]) > 0 ? Number(m[1]) : 720;
+    }
+    return this._defaultTab;
+  }
+
+  /**
+   * The tab stops paragraph `el` has, as Word works them out: its styles' (from the base style down),
+   * its list level's, then its own, each adding stops and clearing ones before (w:tab w:val="clear").
+   * Returns { stops, inherited }: [{ pos (twips from the margin), align ('left', 'center', 'right',
+   * 'decimal' or 'bar'), leader ('none', 'dot', 'hyphen', 'underscore', 'heavy', 'middleDot') }],
+   * sorted; `inherited` are those without the paragraph's own.
+   */
+  tabStops(el) {
+    const own = el.dataset.ppr != null ? this.raw[Number(el.dataset.ppr)] : null;
+    const list = this.listOf(el);
+    this.kinds ||= new Numbering(this.numberingXml);
+    const level = list ? this.kinds.levels(list.numId)?.get(list.ilvl)?.pPr : null;
+    const styles = this.styles.chain(el.dataset.style || this.styles.defaultParagraph).map((st) => st.pPr);
+    const apply = (stops, pPr) => {
+      for (const t of wChildren(wChild(pPr, 'tabs'), 'tab')) {
+        const pos = Number(wAttr(t, 'pos'));
+        if (!Number.isFinite(pos)) continue;
+        stops.delete(pos);
+        const val = wAttr(t, 'val');
+        if (val === 'clear' || val === 'num') continue;
+        const align = { start: 'left', end: 'right' }[val] || val || 'left';
+        stops.set(pos, { pos, align, leader: wAttr(t, 'leader') || 'none' });
+      }
+      return stops;
+    };
+    const sorted = (m) => [...m.values()].sort((a, b) => a.pos - b.pos);
+    const base = [this.styles.defaultPPr, ...styles, level].reduce(apply, new Map());
+    const inherited = sorted(base);
+    return { inherited, stops: sorted(apply(new Map(base), own)) };
+  }
+
+  /**
+   * The paragraph's own <w:tabs> that give it exactly `stops` (see tabStops) over those it inherits:
+   * a stop for each one it doesn't inherit as it is, and a clear for each inherited one it hasn't.
+   * Written into (a copy of) `pPr`; no <w:tabs> if it needs none.
+   */
+  writeTabs(pPr, stops, inherited) {
+    removeW(pPr, 'tabs');
+    const tabs = [];
+    const same = (a, b) => a.pos === b.pos && a.align === b.align && a.leader === b.leader;
+    for (const t of inherited) if (!stops.some((s) => s.pos === t.pos)) tabs.push({ pos: t.pos, clear: true });
+    for (const s of stops) if (!inherited.some((t) => same(t, s))) tabs.push(s);
+    if (!tabs.length) return;
+    const el = ensureOrdered(pPr, 'tabs', PPR_ORDER);
+    for (const t of tabs.sort((a, b) => a.pos - b.pos)) {
+      const attrs = t.clear ? { val: 'clear', pos: t.pos } : { val: t.align, ...(t.leader && t.leader !== 'none' ? { leader: t.leader } : {}), pos: t.pos };
+      el.appendChild(createW(this.xml, 'tab', attrs));
+    }
+  }
+
+  /**
+   * How the page shows a paragraph's tabs: the browser puts tab stops at multiples of one width
+   * (CSS tab-size), from where the paragraph's text starts. That is Word's default stops, or, where
+   * the paragraph's first stop of its own is a left one, that stop: exactly where Word puts its
+   * first tab (and the next where its stops are evenly spaced, as in "Name:\tAddress:\t" forms).
+   */
+  tabSize(el) {
+    const { stops } = this.tabStops(el);
+    const left = this.paragraphFormat(el).left;
+    const first = stops.find((s) => s.pos > left && s.align !== 'bar');
+    const width = first && first.align === 'left' ? first.pos - left : this.defaultTabStop;
+    return `${width / 20}pt`;
+  }
+
+  /** Lays out the tabs of the paragraphs under `root` that have any (see tabSize). */
+  applyTabStops(root) {
+    for (const el of root.querySelectorAll('p, h1, h2, h3, h4, h5, h6')) {
+      if (!el.textContent.includes('\t')) {
+        if (el.style.tabSize) el.style.removeProperty('tab-size');
+        continue;
+      }
+      const size = this.tabSize(el);
+      if (el.style.tabSize !== size) el.style.tabSize = size;
     }
   }
 
@@ -4318,7 +4499,8 @@ export class DocxDocument {
 
   /**
    * The fonts to offer: the theme's heading and body fonts (as Word lists them), then the fonts the
-   * document's text and styles use: [{ value ('theme:major', 'theme:minor' or a name), label, name }].
+   * document's text and styles use, then Word's usual fonts:
+   * [{ value ('theme:major', 'theme:minor' or a name), label, name, group ('theme', 'document', 'standard') }].
    */
   fontChoices() {
     const { major, minor } = this.styles.fonts;
@@ -4333,7 +4515,13 @@ export class DocxDocument {
         if (name && !SYMBOL_FONTS.test(name)) names.add(name);
       }
     }
-    for (const name of [...names].filter((n) => n !== major && n !== minor).sort((a, b) => a.localeCompare(b))) out.push({ value: name, label: name, name });
+    for (const name of [...names].filter((n) => n !== major && n !== minor).sort((a, b) => a.localeCompare(b))) out.push({ value: name, label: name, name, group: 'document' });
+    // Then Word's usual fonts, those Windows and macOS have, for a document with few of its own (a
+    // blank one, say): after the document's, so a brand template's fonts stay first.
+    const listed = new Set(out.map((f) => f.name));
+    for (const name of STANDARD_FONTS) if (!listed.has(name)) out.push({ value: name, label: name, name, group: 'standard' });
+    out[0].group = 'theme';
+    out[1].group = 'theme';
     return out;
   }
 

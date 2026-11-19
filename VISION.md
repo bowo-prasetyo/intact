@@ -147,6 +147,8 @@ Saying no to these keeps the product small enough to keep its promises:
   many pages ✔; labels on the toolbar's icon buttons where there is room ✔
 - Tables pasted from Excel, Google Sheets and Word as tables ✔; Format Painter ✔; Change Case
   (Shift+F3) ✔; Insert Symbol ✔
+- Tab stops in the Paragraph dialog, and tabs on the page at Word's stops ✔; a right-click menu ✔;
+  Word's usual fonts after the document's own ✔; a DRAFT or CONFIDENTIAL watermark ✔
 
 ## How we'll know it's working
 

@@ -35,7 +35,13 @@ async function select(page, n, word) {
 test('the toolbar offers the document’s own fonts, sizes and character styles', async ({ page }) => {
   await openInEditor(page, await buildDocx(BODY, OPTS));
   const font = page.getByRole('combobox', { name: 'Font', exact: true });
-  await expect(font.locator('option:not([hidden])')).toHaveText(['Georgia (Headings)', 'Verdana (Body)', 'Courier New']);
+  await expect(font.locator('optgroup[label="Theme fonts"] option')).toHaveText(['Georgia (Headings)', 'Verdana (Body)']);
+  await expect(font.locator('optgroup[label="In this document"] option')).toHaveText(['Courier New']);
+  // Then Word's usual fonts, without those already listed.
+  const others = await font.locator('optgroup[label="Other fonts"] option').allTextContents();
+  expect(others).toEqual(expect.arrayContaining(['Arial', 'Calibri', 'Cambria', 'Times New Roman']));
+  expect(others).not.toContain('Courier New');
+  expect(others).not.toContain('Georgia');
   const size = page.getByRole('combobox', { name: 'Font size' });
   await expect(size.locator('optgroup[label="In this document"] option')).toHaveText(['11', '14', '16']);
   await expect(size.locator('optgroup[label="Other sizes"] option').first()).toHaveText('8');
@@ -45,6 +51,19 @@ test('the toolbar offers the document’s own fonts, sizes and character styles'
   await select(page, 1, 'Brand');
   await expect(font).toHaveValue('Courier New');
   await expect(size).toHaveValue('14');
+});
+
+test('a blank document offers Word’s usual fonts, written by name', async ({ page }) => {
+  await page.goto('./');
+  await page.getByText('Blank document').click();
+  const font = page.getByRole('combobox', { name: 'Font', exact: true });
+  await page.locator('.docx-page').click();
+  await page.keyboard.type('Dear Ms Smith');
+  await page.keyboard.press('Shift+Home');
+  await font.selectOption('Times New Roman');
+  await expect(font).toHaveValue('Times New Roman');
+  const { xml } = await download(page);
+  expect(xml).toContain('<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>');
 });
 
 test('a font, a theme font and a size are written as Word writes them, on the selected text only', async ({ page }) => {
