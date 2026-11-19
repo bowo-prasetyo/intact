@@ -18,7 +18,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 
 ## Features
 
-- Open `.docx` (file picker, by mouse or keyboard, or by dropping it anywhere on the start page; a file dropped where the editor can't take it is refused, never opened by the browser in the app's place) or start a blank document; Word templates (`.dotx`) and
+- Open `.docx` (file picker, by mouse or keyboard, or by dropping it anywhere on the start page; a document dropped on the editor's page opens in a new tab, and a file dropped where the editor can't take it is refused, never opened by the browser in the app's place) or start a blank document; Word templates (`.dotx`) and
   files with macros (`.docm`, `.dotm`) open too and are saved as what they are (the header shows the
   extension). Macros are never run: a bar says the file contains them and that they are kept, as
   they are, and "Before you release" lists them
@@ -272,7 +272,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   `https://doi.org/10.1000/xyz`); in a link, the same dialog changes its address or removes it. Links
   are written as Word writes them (`w:hyperlink` with an external relationship in the part the link
   is in, so links in notes work too, and Word's Hyperlink style, added if missing); a link inserted
-  while tracking is a tracked insertion. Relationships of links that are deleted again are taken out
+  while tracking is a tracked insertion. Relationships of links that are deleted again are taken out.
+  A web or e-mail address typed in the text becomes a link when a space or Enter follows it, as
+  Word's AutoFormat makes it ("Internet and network paths with hyperlinks"): `https://…`,
+  `http://…` and `www.…` addresses, `mailto:` links and e-mail addresses, without the punctuation
+  around them ("(see www.example.com)." links www.example.com; a bracket the address opened stays in
+  it). Ctrl+Z straight after gives the address back as plain text; the AutoFormat button turns it
+  off; typed while tracking, the link goes with the tracked insertion. Not in a link already, a
+  plain-text field or a field
 - Fonts, sizes, colours and character styles from the document itself, as a brand template needs:
   the Font menu offers the theme's heading and body fonts (written as Word writes theme fonts,
   `w:asciiTheme`) and the fonts the document uses; Font size the sizes it uses, then Word's usual
@@ -422,6 +429,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   warnings and choices (such as recording the edit in the properties). Before you release,
   Accessibility, the changed paragraphs (more than five) and other notes are folded behind their
   counts, and open by themselves when they hold something to check
+- Several documents at once, each in a tab of its own (a CV in one, its cover letter in the next):
+  the Open button in the header, or Ctrl+O (Word's Open, which in the browser would leave the app),
+  opens the start page in a new tab, and this document stays open. A document dropped on the page
+  is offered to open in a new tab, and handed to it in memory (a `BroadcastChannel` between the two
+  tabs: nothing is stored or sent). Each tab holds a Web Lock for its document's draft, so the start
+  page in another tab shows that draft as "Open in another tab" instead of offering to restore a
+  second copy whose edits would overwrite each other's; closed there, it can be restored
 - Unsaved changes survive a reload, a crash or a closed tab: while a document has changes not
   downloaded, a copy is kept in this browser (IndexedDB), on this device only, a moment after each
   edit ("Changes kept on this device" in the status bar), and the start page offers to restore or
@@ -709,5 +723,12 @@ The About page shows the version.
   width, pages aren't counted
 - The PDF is the browser's: its fonts (a font the device lacks is substituted, as on screen), and
   links and a document outline as the browser makes them. Saving the PDF is the print window's
+- Typed addresses become links as Word makes them: an address without `www.` or a scheme (such as
+  linkedin.com/in/…) stays text, as in Word; use Ctrl+K for it. Network paths (`\\server\share`)
+  aren't made links
+- A document dropped on the page is handed to the new tab only while both are open, and a browser
+  may block the new tab (allow pop-ups for the site); without `BroadcastChannel` the new tab opens
+  on the start page, to open the file there. Without Web Locks (older browsers), a draft open in
+  another tab isn't recognised as such
 - The screening check knows what such software commonly misses, not what a given employer's does;
   it doesn't rate how well a CV matches a job

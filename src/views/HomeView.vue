@@ -26,8 +26,12 @@
           <li v-for="d in drafts" :key="d.id">
             <span class="draft-name">{{ d.name }}</span>
             <span class="draft-when">{{ ago(d.savedAt) }}</span>
-            <button type="button" class="restore" :disabled="busy" :aria-label="`Restore ${d.name}`" @click="restore(d)">Restore</button>
-            <button type="button" class="discard" :disabled="busy" :aria-label="`Discard the changes to ${d.name}`" @click="discard(d)">Discard</button>
+            <!-- Being edited in another tab: restoring it here would make a second copy. -->
+            <span v-if="openElsewhere.has(d.id)" class="draft-open" title="This document is open in another tab of this browser: switch to that tab to go on with it">Open in another tab</span>
+            <template v-else>
+              <button type="button" class="restore" :disabled="busy" :aria-label="`Restore ${d.name}`" @click="restore(d)">Restore</button>
+              <button type="button" class="discard" :disabled="busy" :aria-label="`Discard the changes to ${d.name}`" @click="discard(d)">Discard</button>
+            </template>
           </li>
         </ul>
       </section>
@@ -63,22 +67,56 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import { openFile, newDocument, openDraft } from '../store.js';
 import { listDrafts, deleteDraft, MAX_AGE } from '../drafts.js';
+import { receiveFile, draftsOpenElsewhere } from '../tabs.js';
 
 const router = useRouter();
+const route = useRoute();
 const busy = ref(false);
 const error = ref('');
 const dragOver = ref(false);
 const fileInput = ref(null);
 
 // Drafts of documents left with unsaved changes (a reload, a crash, a closed tab): see drafts.js.
+// Those being edited in other tabs are shown as open there (see tabs.js), looked at again when
+// this tab is shown, as the others may have opened or closed one meanwhile.
 const drafts = ref([]);
+const openElsewhere = ref(new Set());
 const maxDays = Math.round(MAX_AGE / 86400000);
-onMounted(async () => { drafts.value = await listDrafts(); });
+async function refreshDrafts() {
+  const [list, open] = await Promise.all([listDrafts(), draftsOpenElsewhere()]);
+  drafts.value = list;
+  openElsewhere.value = open;
+}
+function onVisible() {
+  if (document.visibilityState === 'visible') refreshDrafts();
+}
+onMounted(() => {
+  refreshDrafts();
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('focus', refreshDrafts);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisible);
+  window.removeEventListener('focus', refreshDrafts);
+});
+
+// A document handed to this tab by the one that opened it (a file dropped on its page: see
+// tabs.js): asked for by the token in this tab's address, and opened.
+onMounted(async () => {
+  const id = route.query.receive;
+  if (typeof id !== 'string' || !id) return;
+  router.replace({ name: 'home' }); // a reload doesn't ask again
+  busy.value = true;
+  const file = await receiveFile(id);
+  busy.value = false;
+  if (file) load(file);
+  else error.value = 'The document couldn’t be brought over from the other tab (it may have been closed). Open it here instead.';
+});
 const restore = (d) => run(() => openDraft(d));
 async function discard(d) {
   await deleteDraft(d.id);
@@ -164,6 +202,7 @@ const createNew = () => run(newDocument);
 </script>
 
 <style scoped>
+.draft-open { color: var(--muted); font-size: .9em; font-style: italic; }
 .home { min-height: 100vh; display: flex; flex-direction: column; }
 .home-main { max-width: 760px; margin: 0 auto; padding: 48px 16px; text-align: center; }
 h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0 0 14px; text-wrap: balance; }

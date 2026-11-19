@@ -117,3 +117,43 @@ export function autoCorrect(before, typed) {
   }
   return { from: (before + typed).slice(-from.length), to };
 }
+
+// Word's AutoFormat "Internet and network paths with hyperlinks": a web or e-mail address typed in
+// the text becomes a link when a space, or Enter, follows it. Punctuation around it isn't part of
+// it: "(see www.example.com)." links www.example.com; a closing bracket the address opened stays in
+// it, as in https://en.wikipedia.org/wiki/Word_(software).
+const OPENING = /^[("'“‘«<[{]+/;
+const CLOSING = /[.,;:!?"'”’»>\]}]+$/;
+const EMAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
+
+/** `address` without closing brackets it didn't open, and the punctuation after it. */
+function trimAddress(address) {
+  let text = address;
+  for (;;) {
+    const before = text;
+    text = text.replace(CLOSING, '');
+    if (text.endsWith(')') && (text.match(/\(/g) || []).length < (text.match(/\)/g) || []).length) text = text.slice(0, -1);
+    if (text === before) return text;
+  }
+}
+
+/**
+ * The address that `before` (the paragraph's text before the caret, which is where a space or
+ * Enter is being typed) ends with, as a link: { text (as typed, the link's text), href, after (how
+ * many characters of punctuation follow it, before the caret) }, or null if it doesn't end with one.
+ * Web addresses (http://, https://, www.), e-mail addresses (made mailto:) and mailto: links.
+ */
+export function linkTrigger(before) {
+  const word = /\S+$/.exec(before)?.[0];
+  if (!word) return null;
+  const lead = OPENING.exec(word)?.[0].length || 0;
+  const text = trimAddress(word.slice(lead));
+  if (!text) return null;
+  let href = null;
+  if (/^https?:\/\/[^\s/?#.]+\.[^\s/?#]*[A-Za-z0-9]/i.test(text) || /^https?:\/\/localhost\b/i.test(text)) href = text;
+  else if (/^www\.[^\s/?#.]+\.[A-Za-z]{2,}/i.test(text)) href = `https://${text}`;
+  else if (/^mailto:[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/i.test(text)) href = text;
+  else if (EMAIL.test(text)) href = `mailto:${text}`;
+  if (!href) return null;
+  return { text, href, after: word.length - lead - text.length };
+}
