@@ -112,7 +112,6 @@ test('a page number put in here shows # too', async ({ page }) => {
 
 // ------------------------------------------------------------------ toolbar labels
 
-const toolbarHeight = (page) => page.locator('.toolbar').evaluate((t) => t.offsetHeight);
 const labelled = (page) => page.locator('.toolbar button.with-label .short-label').allTextContents();
 
 test('icon buttons get text labels where there is room, without the toolbar growing', async ({ page }) => {
@@ -125,17 +124,18 @@ test('icon buttons get text labels where there is room, without the toolbar grow
 
   for (const width of [1280, 1440]) {
     await page.setViewportSize({ width, height: 800 });
-    await expect.poll(async () => (await labelled(page)).length).toBeGreaterThan(0);
-    // As many as fit: the toolbar is as tall as without them.
-    const withLabels = await toolbarHeight(page);
-    const without = await page.locator('.toolbar').evaluate((t) => {
+    // The labels are fitted again once the toolbar has its new width (a ResizeObserver, a moment
+    // after the resize): wait for that, then check that as many fit as leave it as tall as without.
+    const fit = () => page.locator('.toolbar').evaluate((t) => {
       const shown = [...t.querySelectorAll('.with-label')];
+      const withLabels = t.offsetHeight;
       shown.forEach((b) => b.classList.remove('with-label'));
-      const h = t.offsetHeight;
+      const without = t.offsetHeight;
       shown.forEach((b) => b.classList.add('with-label'));
-      return h;
+      return { count: shown.length, grows: withLabels > without };
     });
-    expect(withLabels).toBe(without);
+    await expect.poll(fit).toEqual({ count: expect.any(Number), grows: false });
+    expect((await fit()).count).toBeGreaterThan(0);
   }
 });
 
