@@ -34,6 +34,9 @@ export function shortcutFor(e) {
     }[key] || (space ? 'clearFormatting' : null);
   }
   if (e.shiftKey && !e.altKey) {
+    // Ctrl+Shift+C and Ctrl+Shift+V: copy formatting and paint it on, as Word's Format Painter.
+    if (e.code === 'KeyC') return 'copyFormat';
+    if (e.code === 'KeyV') return 'pasteFormat';
     return { n: 'normal', l: 'bullets', m: 'outdent' }[key] || (space ? 'nonBreakingSpace' : null);
   }
   // Ctrl+Alt+digit; not AltGr (Ctrl+Alt on some layouts), which types characters.
@@ -49,6 +52,8 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+>, Ctrl+Shift+<', 'Grow or shrink the font (Word\'s steps: 10, 11, 12, 14…)'],
   ['Ctrl+], Ctrl+[', 'Font 1 pt bigger or smaller'],
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
+  ['Shift+F3', 'Change case: UPPERCASE, lowercase, Capitalize Each Word in turn'],
+  ['Ctrl+Shift+C, Ctrl+Shift+V', 'Copy formatting, and paint it on the selected text (Format Painter)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+Alt+M', 'New comment'],
   ['Ctrl+K', 'Insert a link, or change the one at the caret'],

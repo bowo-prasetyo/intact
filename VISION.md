@@ -145,6 +145,8 @@ Saying no to these keeps the product small enough to keep its promises:
   for the next document ✔; shading and borders for table cells (a quote's heading row and total) ✔
 - Today's date as a field Word updates ✔; page numbers shown as # and the page count as about how
   many pages ✔; labels on the toolbar's icon buttons where there is room ✔
+- Tables pasted from Excel, Google Sheets and Word as tables ✔; Format Painter ✔; Change Case
+  (Shift+F3) ✔; Insert Symbol ✔
 
 ## How we'll know it's working
 
