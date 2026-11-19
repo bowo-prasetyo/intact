@@ -127,7 +127,7 @@ test('Select All in the text leaves the header and footer out; deleting it keeps
   expect(await partOf(zip, 'header1')).toBe(PARTS['word/header1.xml']);
 });
 
-test('tables and pictures can’t be added in a header; the status bar says so', async ({ page }) => {
+test('tables and page breaks can’t be added in a header; the status bar says so', async ({ page }) => {
   await openInEditor(page, await buildDocx(BODY, OPTS));
   await header(page).getByText('Client name').click();
   await page.keyboard.press('ControlOrMeta+Enter');

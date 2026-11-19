@@ -112,6 +112,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   around it, and columns beside a locked cell. A change that would alter such a field (a column
   adding a cell to a locked row, deleting the column of a linked cell) is refused, and the status
   bar names the field
+- Shading and borders for table cells, from the Table layout menu (Shading and borders…), as Word's
+  Shading and Borders buttons: a fill colour for the selected cells (the theme's colours, lightened
+  80% and 40% as Word offers them, the colours the text uses, your colours, any colour by its code,
+  or No colour) and All borders, Outside borders (round the selected cells as a block), Bottom
+  border (a heading row or a total) or No border (which hides the table style's too). Written in
+  each cell's properties (`w:shd`, `w:tcBorders`), one undoable step, the selection kept; tracked
+  while tracking as a change of the cells' formatting (`w:tcPrChange`). A cell's own borders in the
+  file are drawn as Word draws them
 - Merge and split cells from the same menu, as Word does: Merge cells joins the selected cells
   (grown to whole cells where a merged cell sticks out) into one spanning them across (`gridSpan`)
   and down (`vMerge`), their content one after another in it; Split cells… divides a cell into
@@ -131,6 +139,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   a screenshot) or by dropping picture files on the page: in line with the text at the caret, at
   their size or narrowed to fit between the margins, tracked while tracking. The picture's file,
   relationship and content type are added when saving, only if it is still in the document
+- A logo in the header or footer (a letterhead): with the caret in a header or footer, Insert
+  picture (or pasting or dropping one) puts it there, in line at the caret, with the picture file's
+  relationship in that part's own relationships (`header1.xml.rels`), as Word writes it; the text's
+  part is not changed. Undo takes it out, and its file and relationship with it
 - Lay out pictures, as Word does: a click selects a picture (a frame with handles); corners resize
   it in proportion, sides stretch it; a floating picture is dragged to a new place (measured from
   the margin and its paragraph, so it moves with the text). Layout Options (the button beside a
@@ -316,8 +328,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   the Font menu offers the theme's heading and body fonts (written as Word writes theme fonts,
   `w:asciiTheme`) and the fonts the document uses; Font size the sizes it uses, then Word's usual
   ones; Font colour (a split button that applies the last colour) Automatic, the theme's ten colours
-  (`w:themeColor`) and the colours its text uses; Character style its own character styles (such as
-  Strong or Emphasis). Nothing else is offered, so text stays on brand. The selected text's run
+  (`w:themeColor`) and the colours its text uses, then More colours: a colour picker and a box for a
+  colour's code (`#0E6467`, or short as `#0E6`), for a brand colour; colours chosen that way are
+  remembered in this browser and offered again as Your colours, in any document (cell shading
+  offers them too). Character style its own character styles (such as Strong or Emphasis). Only
+  the document's fonts and sizes are offered, so text stays on brand. The selected text's run
   properties are changed and the text is rebuilt as runs with them, so the page shows what is saved.
   Clear formatting (button or Ctrl+Space) takes direct character formatting and the character style
   off, as Word does; highlight, language and a link's style stay. Grow Font and Shrink Font (the
@@ -681,9 +696,11 @@ The About page shows the version.
 - Tracked changes inside locked content are accepted or rejected together, not one by one; edits
   inside form fields and text moved by dragging aren't tracked (cut and paste is), nor is ending a list
   with Enter on an empty item, or a picture's layout
-- Fonts, sizes and colours are chosen from those the document uses (and Word's usual sizes), not
-  from every font installed or any colour; a theme colour's tints and shades aren't offered. A
-  font, size or colour applies to selected text, not to the word at the caret
+- Fonts and sizes are chosen from those the document uses (and Word's usual sizes), not from every
+  font installed; a colour by its code is written as that colour, not as a theme colour, and a theme
+  colour's tints and shades aren't offered for text. A font, size or colour applies to selected
+  text, not to the word at the caret. "Your colours" are kept per browser (another browser or device
+  doesn't have them)
 
 - 3-D lighting is worked out for a bevel's surface, not for a picture's depth (extrusion) or contour;
   Word's preset 3-D rotations are shown with angles as near as their look (a rotation set by angles
@@ -724,8 +741,11 @@ The About page shows the version.
   when it opens the file), nor dates, document properties, mail-merge fields or citations, nor
   fields in notes, headers and footers or written as simple fields (`w:fldSimple`); it isn't
   tracked. Editing a comment's text replaces any formatting within it
-- Pictures, tables, page breaks and new comments can't go in a header, footer or text box (the
-  status bar says so); a note reference in a header stays as it is
+- Tables, page breaks and new comments can't go in a header, footer or text box, nor pictures in a
+  text box or note (the status bar says so); a note reference in a header stays as it is
+- Cell borders are a single ½ pt line in the automatic colour, as Word's Borders button draws them;
+  their style, width and colour are set in Word. Borders and shading go on cells, not on the whole
+  table or on paragraphs
 - A text box's size, position and look are kept, not changed here, and it grows to show all its text
   where Word would cut it off; text wrapping around it follows its rectangle. Groups of shapes,
   canvases, shapes without text, charts and SmartArt stay as they are. A text box laid out on the page

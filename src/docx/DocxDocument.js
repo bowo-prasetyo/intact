@@ -16,7 +16,7 @@ import {
   NS, parseXml, serializeXml, wChild, wChildren, wAttr, onOff, createW, ensureOrdered, removeW,
   RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren, XML_HEADER,
 } from './xml.js';
-import { StyleSheet, jcToCss } from './styles.js';
+import { StyleSheet, jcToCss, borderCss } from './styles.js';
 import { textboxInfo, setTextboxText, textboxContents, syncCopies } from './textboxes.js';
 import { loadEmbeddedFonts } from './fonts.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
@@ -48,7 +48,7 @@ import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
   markCell, deleteCellTracked, undeleteCell, acceptInsertedCell, removeCells, removeRow, resolveMerge, restoreGrid, dropGridChange,
-  hMerge, isTrackedHMerge, resolveCellProps, normalizeHMerge,
+  hMerge, isTrackedHMerge, resolveCellProps, normalizeHMerge, formatCells, setShading, setBorders, cellBorders,
 } from './tables.js';
 import {
   COMMENT_PART_RELS, commentIdsIn, pairedCommentRanges, removedComments, pruneCommentMarkers, pruneCommentParts,
@@ -171,7 +171,9 @@ export class DocxDocument {
     this.zip = zip;
     this.name = name;
     this.mediaUrls = new Map();
-    this.newMedia = new Map(); // pictures inserted this session: relationship id -> { path, target, data, ext, type }
+    // Pictures inserted this session, in the body or a header or footer: `${relsPath}|${rid}` ->
+    // { rid, relsPath, part (a header or footer's path, or null for the body), path, target, data, ext, type }.
+    this.newMedia = new Map();
     // Links added this session (pasted, inserted or retargeted), per relationships part:
     // rels path -> Map(address -> relationship id). The ids stay the same from one save to the next.
     this.linkIds = new Map();
@@ -2214,6 +2216,12 @@ export class DocxDocument {
     td.style.width = w && wAttr(w, 'type') === 'dxa' ? `${Number(wAttr(w, 'w')) / 15}px` : '';
     const shd = wAttr(wChild(tcPr, 'shd'), 'fill');
     td.style.backgroundColor = shd && /^[0-9a-f]{6}$/i.test(shd) ? '#' + shd : '';
+    // The cell's own borders, over its table's: a side set to none ("nil") hides the table's.
+    const borders = cellBorders(tc);
+    for (const side of ['top', 'left', 'bottom', 'right']) {
+      const prop = `border${side[0].toUpperCase()}${side.slice(1)}`;
+      td.style[prop] = borders[side] ? borderCss(borders[side]) || 'none' : '';
+    }
     // A cell inserted or deleted with tracking (a tracked column): cells of one change share a key.
     const rev = cellRevision(tc);
     if (rev) {
@@ -2355,7 +2363,7 @@ export class DocxDocument {
    * A new picture from `file`, in line with the text: at its size (or `width`, in pixels at 96 per
    * inch, keeping its proportions), narrowed to fit between the margins, with alt text `descr`.
    */
-  async addPicture(file, { width, descr } = {}) {
+  async addPicture(file, { width, descr, part = null } = {}) {
     const ext = PICTURE_TYPES[file.type];
     if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF or BMP picture` };
     const data = new Uint8Array(await file.arrayBuffer());
@@ -2380,7 +2388,7 @@ export class DocxDocument {
       h = Math.max(1, Math.round((h * maxWidth) / w));
       w = maxWidth;
     }
-    const { rid, n } = this.addMedia(data, file.type, url);
+    const { rid, n } = this.addMedia(data, file.type, url, part);
     const id = await this.nextDocPrId();
     const cx = Math.round(w * 9525);
     const cy = Math.round(h * 9525);
@@ -2394,32 +2402,52 @@ export class DocxDocument {
       + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
     const r = this.xml.importNode(parseXml(xml).documentElement, true);
     for (const a of [...r.attributes]) if (a.name.startsWith('xmlns')) r.removeAttributeNode(a); // declared where needed when saved
-    return { span: this.rawInline(r) };
+    // In a header or footer, drawn with that part's relationships, where its picture file is.
+    let span = null;
+    if (part) this.inPart(part, () => { span = this.rawInline(r); });
+    else span = this.rawInline(r);
+    return { span };
+  }
+
+  /** The header or footer part (as in this.headers, this.footers) a rendered element is in, or null. */
+  partOf(el) {
+    const path = el?.closest?.('.docx-hf-part')?.dataset.part;
+    return (path && [...this.headers, ...this.footers].find((v) => v.path === path)) || null;
   }
 
   /**
    * A picture file added this session (`data`, of MIME `type`; `url` shows it): a new file in
    * word/media and a relationship to it, written on save if a picture uses it. Returns { rid, path, n }.
    */
-  addMedia(data, type, url = URL.createObjectURL(new Blob([data], { type }))) {
+  addMedia(data, type, url = URL.createObjectURL(new Blob([data], { type })), part = null) {
     const ext = PICTURE_TYPES[type] || 'png';
     let n = 1;
     const taken = (path) => this.zip.file(path) || [...this.newMedia.values()].some((m) => m.path === path);
     while (taken(`${this.mainDir ? this.mainDir + '/' : ''}media/image${n}.${ext}`)) n++;
-    const target = `media/image${n}.${ext}`;
-    const path = `${this.mainDir ? this.mainDir + '/' : ''}${target}`;
+    const path = `${this.mainDir ? this.mainDir + '/' : ''}media/image${n}.${ext}`;
+    // Relative to the part that uses it: a header or footer next to the main part (as Word puts
+    // them) shares its media folder; one elsewhere points at the file from the package's root.
+    const owner = part ? part.path : this.mainPath;
+    const ownerDir = owner.includes('/') ? owner.slice(0, owner.lastIndexOf('/')) : '';
+    const target = ownerDir === (this.mainDir || '') ? `media/image${n}.${ext}` : `/${path}`;
+    const rels = part ? part.rels : this.rels;
+    const relsPath = part ? relsPathOf(part.path) : this.relsPath;
     let k = 1;
-    while (this.rels.has(`rIdImage${k}`)) k++;
+    while (rels.has(`rIdImage${k}`)) k++;
     const rid = `rIdImage${k}`;
-    this.rels.set(rid, { type: IMAGE_REL, target, external: false, path });
+    rels.set(rid, { type: IMAGE_REL, target, external: false, path });
     this.mediaUrls.set(path, url);
-    this.newMedia.set(rid, { path, target, data, ext, type });
+    this.newMedia.set(`${relsPath}|${rid}`, { rid, relsPath, part: part?.path || null, path, target, data, ext, type });
     return { rid, path, n };
   }
 
-  /** The address the editor shows a picture file (by relationship id) at, or null. */
-  mediaUrl(rid) {
-    const rel = rid && this.rels.get(rid);
+  /**
+   * The address the editor shows a picture file (by relationship id) at, or null: in the part
+   * `span` is in (a header or footer has relationships of its own), else in the part being drawn.
+   */
+  mediaUrl(rid, span = null) {
+    const rels = this.partOf(span)?.rels || this.rels;
+    const rel = rid && rels.get(rid);
     return (rel && this.mediaUrls.get(rel.path)) || null;
   }
 
@@ -2443,14 +2471,27 @@ export class DocxDocument {
    */
   async writeMedia() {
     if (!this.newMedia.size) return;
-    // Used: shown by a picture, or kept as the original of a picture with an artistic effect.
-    const used = new Set([...this.body.getElementsByTagName('*')].map((el) => el.getAttributeNS(NS.r, 'embed')).filter(Boolean));
-    const rels = parseXml((await this.text(this.relsPath)) || `<Relationships xmlns="${NS.pr}"/>`);
+    // Used: shown by a picture, or kept as the original of a picture with an artistic effect, in
+    // the part the picture was put in (a header or footer as it will be saved, if it changed).
+    const embeds = (root) => new Set(root ? [...root.getElementsByTagName('*')].map((el) => el.getAttributeNS(NS.r, 'embed')).filter(Boolean) : []);
+    const usedIn = new Map();
+    const used = (m) => {
+      // A footer added here and taken out again before saving isn't written, nor its pictures.
+      if (m.part && [...this.headers, ...this.footers].some((v) => v.path === m.part && v.added && !v.present)) return false;
+      const key = m.part || '';
+      if (!usedIn.has(key)) usedIn.set(key, embeds(m.part ? this.partsOut?.[m.part]?.documentElement : this.body));
+      return usedIn.get(key).has(m.rid);
+    };
     const ct = parseXml(await this.text('[Content_Types].xml'));
-    let changed = false;
-    for (const [rid, m] of this.newMedia) {
+    const relsDocs = new Map();
+    let ctChanged = false;
+    for (const m of this.newMedia.values()) {
+      if (!relsDocs.has(m.relsPath)) relsDocs.set(m.relsPath, { xml: parseXml((await this.text(m.relsPath)) || `<Relationships xmlns="${NS.pr}"/>`), changed: false });
+      const entry = relsDocs.get(m.relsPath);
+      const rels = entry.xml;
+      const { rid } = m;
       const rel = [...rels.documentElement.children].find((r) => r.getAttribute('Id') === rid);
-      if (used.has(rid)) {
+      if (used(m)) {
         if (rel) continue;
         this.zip.file(m.path, m.data);
         const el = rels.createElementNS(NS.pr, 'Relationship');
@@ -2464,17 +2505,22 @@ export class DocxDocument {
           d.setAttribute('Extension', m.ext);
           d.setAttribute('ContentType', m.type);
           ct.documentElement.insertBefore(d, ct.documentElement.firstElementChild);
+          ctChanged = true;
         }
-        changed = true;
+        entry.changed = true;
       } else if (rel) {
         this.zip.remove(m.path);
         rel.remove();
-        changed = true;
+        entry.changed = true;
       }
     }
-    if (!changed) return;
-    this.zip.file(this.relsPath, serializeXml(rels));
-    this.zip.file('[Content_Types].xml', serializeXml(ct));
+    for (const [path, { xml, changed }] of relsDocs) {
+      if (!changed) continue;
+      // A part that had no relationships before gets none back once its pictures are gone.
+      if (!xml.documentElement.firstElementChild && !this.openedEntries.has(path)) this.zip.remove(path);
+      else this.zip.file(path, serializeXml(xml));
+    }
+    if (ctChanged) this.zip.file('[Content_Types].xml', serializeXml(ct));
   }
 
   // ---------------------------------------------------------------- picture layout
@@ -2495,7 +2541,7 @@ export class DocxDocument {
     span.dataset.wrap = info.wrap;
     span.removeAttribute('style');
     this.placePicture(span, info, w, h);
-    drawPicture(span, { w, h, look, alt: info.descr, url: this.mediaUrl(blipOf(this.raw[Number(span.dataset.raw)])), inline: info.wrap === 'inline' });
+    drawPicture(span, { w, h, look, alt: info.descr, url: this.mediaUrl(blipOf(this.raw[Number(span.dataset.raw)]), span), inline: info.wrap === 'inline' });
   }
 
   /** Where a picture goes: in line, floating left or right, on a line of its own, or behind or in front of the text. */
@@ -2623,7 +2669,7 @@ export class DocxDocument {
   pictureOriginal(span) {
     const run = this.raw[Number(span.dataset.raw)];
     const rid = pictureLook(run).artistic?.original || blipOf(run);
-    return { rid, url: this.mediaUrl(rid) };
+    return { rid, url: this.mediaUrl(rid, span) };
   }
 
   /**
@@ -2636,7 +2682,7 @@ export class DocxDocument {
       this.changePicture(span, (run) => clearArtistic(run));
       return;
     }
-    const { rid } = this.addMedia(png, 'image/png');
+    const { rid } = this.addMedia(png, 'image/png', undefined, this.partOf(span));
     this.changePicture(span, (run) => setArtistic(run, { effect, rendered: rid, original, amount }));
   }
 
@@ -2902,6 +2948,34 @@ export class DocxDocument {
    * as Word does) into one: their content goes into the first, one cell after another (empty cells
    * add nothing). Returns { cell } (the merged cell) or { reason }.
    */
+  /**
+   * Shading or borders for the cells in rows `r0`–`r1` and grid columns `c0`–`c1` (grown to whole
+   * cells), as Word's Shading and Borders buttons set them, tracked while tracking: `kind` is
+   * 'shading' (`value` a colour RRGGBB, or null for none) or 'borders' (`value` 'all', 'outside',
+   * 'bottom' or 'none'). Returns { reason } if they can't be changed.
+   */
+  formatTableCells(table, [r0, r1], [c0, c1], kind, value, tracked = null) {
+    if (table?.dataset.raw == null) return { reason: 'This table can’t be changed here: change it in Word' };
+    const tbl = this.raw[Number(table.dataset.raw)];
+    const area = mergeArea(tbl, r0, r1, c0, c1) || { r0, r1, c0, c1 };
+    const reason = this.tableLocked(table, {
+      rows: [area.r0, area.r1],
+      cells: (c, r) => r >= area.r0 && r <= area.r1 && c.start <= area.c1 && c.start + c.span - 1 >= area.c0,
+    });
+    if (reason) return { reason };
+    const change = kind === 'shading'
+      ? (tc) => setShading(tc, value)
+      : (tc, edges) => setBorders(tc, {
+        all: { top: true, left: true, bottom: true, right: true },
+        none: { top: false, left: false, bottom: false, right: false },
+        outside: Object.fromEntries(Object.entries(edges).filter(([, on]) => on)),
+        bottom: edges.bottom ? { bottom: true } : {},
+      }[value]);
+    const rev = tracked && this.rowRevisionMaker(tracked);
+    this.editTable(table, (t) => formatCells(t, area, change, rev));
+    return {};
+  }
+
   mergeTableCells(table, [r0, r1], [c0, c1], tracked = null) {
     if (table?.dataset.raw == null) return { reason: 'This table can’t be changed here: change it in Word' };
     const tbl = this.raw[Number(table.dataset.raw)];
@@ -4316,7 +4390,7 @@ export class DocxDocument {
     const ids = this.linkIds.get(path);
     let rid = ids.get(href);
     if (!rid) {
-      const taken = new Set([...(rels?.keys() || []), ...ids.values(), ...this.newMedia.keys()]);
+      const taken = new Set([...(rels?.keys() || []), ...ids.values(), ...[...this.newMedia.values()].map((m) => m.rid)]);
       let n = 1;
       while (taken.has(`rIdLink${n}`)) n++;
       rid = `rIdLink${n}`;
