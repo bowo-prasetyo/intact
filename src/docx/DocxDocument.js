@@ -41,6 +41,7 @@ import { drawPicture } from './pictureView.js';
 import { ommlToMathml, isEquation } from './omml.js';
 import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
+import { formFieldInfo, formFieldTitle, setFormCheck, setFormDropdown } from './formFields.js';
 import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
 import { propertyPaths, readProperties, personalParts, anonymize, updateCore } from './properties.js';
 import {
@@ -1724,14 +1725,28 @@ export class DocxDocument {
       if (local === 'pPr' || local === 'proofErr' || local === 'smartTagPr' || local === 'customXmlPr') continue;
       const mark = local === 'r' && fieldMarker(child);
       if (mark) {
-        parent.append(this.hiddenRaw(child));
-        if (mark.type === 'begin') fields.push({ instr: '', outer: parent });
+        const marker = this.hiddenRaw(child);
+        const form = mark.type === 'begin' ? formFieldInfo(child) : null;
+        if (form) this.showFormField(marker, form);
+        parent.append(marker);
+        if (mark.type === 'begin') fields.push({ instr: '', outer: parent, form });
         else if (mark.type === 'instr' && fields.length) fields[fields.length - 1].instr += mark.text;
         else if (mark.type === 'separate' && fields.length) {
           const wrap = document.createElement('span');
           wrap.className = 'field';
-          const instr = fields[fields.length - 1].instr;
+          const { instr, form: ff } = fields[fields.length - 1];
           wrap.title = fieldTitle(instr);
+          if (ff?.kind === 'text') {
+            // A text form field: its result is its value, typed in (alone, while only filling in
+            // forms is allowed: see the editor's applyLock).
+            wrap.classList.add('ff-text');
+            wrap.title = formFieldTitle(ff);
+            if (!ff.enabled) wrap.dataset.ffOff = '';
+          } else if (ff) {
+            // A check box's or list's result, if a file has one, isn't what Word shows: the marker is.
+            wrap.classList.add('ff-shadow');
+            wrap.contentEditable = 'false';
+          }
           wrap.dataset.instr = instr.trim(); // for updating it here (see fieldUpdates.js)
           const ref = referenceManager(instr);
           if (ref && ref.source !== 'Word') wrap.dataset.refManager = `${ref.source} ${ref.kind}`;
@@ -1776,6 +1791,55 @@ export class DocxDocument {
         parent.append(this.rawInline(child));
       }
     }
+  }
+
+  /**
+   * Shows a legacy check box or drop-down list on its begin marker (see formFields.js): the marker
+   * stays a hidden marker to the editor (and field updates), and the page draws the box or the
+   * chosen entry from its data-ff-* attributes (CSS ::before), so no text is added to the paragraph.
+   */
+  showFormField(marker, info) {
+    if (info.kind === 'text') return;
+    marker.classList.add(info.kind === 'checkbox' ? 'ff-check' : 'ff-drop');
+    marker.title = formFieldTitle(info);
+    marker.setAttribute('aria-label', marker.title);
+    if (!info.enabled) marker.dataset.ffOff = '';
+    if (info.kind === 'checkbox') {
+      marker.dataset.checked = info.checked ? '1' : '0';
+      marker.setAttribute('role', 'checkbox');
+      marker.setAttribute('aria-checked', String(info.checked));
+    } else {
+      // Word shows five spaces' width for a list with no entries.
+      marker.dataset.ffText = info.entries[info.selected] ?? '\u2002'.repeat(5);
+      marker.setAttribute('role', 'button');
+      marker.setAttribute('aria-haspopup', 'listbox');
+    }
+    marker.tabIndex = -1; // focused by Tab while only filling in forms is allowed
+  }
+
+  /** The legacy form field a rendered begin marker (.ff-check, .ff-drop) starts. */
+  formField(marker) {
+    return formFieldInfo(this.raw[Number(marker.dataset.raw)]);
+  }
+
+  /**
+   * Changes a legacy check box or drop-down list: `change(run)` changes a copy of its begin marker,
+   * which replaces it (so Undo stays exact), and it is shown again.
+   */
+  changeFormField(marker, change) {
+    const run = this.raw[Number(marker.dataset.raw)].cloneNode(true);
+    change(run);
+    marker.dataset.raw = this.keep(run);
+    this.showFormField(marker, formFieldInfo(run));
+  }
+
+  toggleFormCheck(marker) {
+    const on = !this.formField(marker).checked;
+    this.changeFormField(marker, (run) => setFormCheck(run, on));
+  }
+
+  chooseFormEntry(marker, index) {
+    this.changeFormField(marker, (run) => setFormDropdown(run, index));
   }
 
   hiddenRaw(node) {
@@ -2260,7 +2324,11 @@ export class DocxDocument {
    * own size or narrowed to fit between the margins. Its file goes into word/media when saved (if
    * it is still in the document). Returns { span } (the rendered picture) or { reason }.
    */
-  async addPicture(file) {
+  /**
+   * A new picture from `file`, in line with the text: at its size (or `width`, in pixels at 96 per
+   * inch, keeping its proportions), narrowed to fit between the margins, with alt text `descr`.
+   */
+  async addPicture(file, { width, descr } = {}) {
     const ext = PICTURE_TYPES[file.type];
     if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF or BMP picture` };
     const data = new Uint8Array(await file.arrayBuffer());
@@ -2277,6 +2345,10 @@ export class DocxDocument {
     }
     const maxWidth = this.textWidth / 15;
     let { w, h } = size;
+    if (width) {
+      h = Math.max(1, Math.round((h * width) / w));
+      w = width;
+    }
     if (w > maxWidth) {
       h = Math.max(1, Math.round((h * maxWidth) / w));
       w = maxWidth;
@@ -2288,7 +2360,7 @@ export class DocxDocument {
     const name = (file.name || `image${n}.${ext}`).replace(/[<>&"]/g, '');
     const xml = `<w:r xmlns:w="${W}" xmlns:wp="${NS.wp}" xmlns:a="${NS.a}" xmlns:pic="${PIC}" xmlns:r="${NS.r}"><w:drawing>`
       + `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>`
-      + `<wp:docPr id="${id}" name="Picture ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
+      + `<wp:docPr id="${id}" name="Picture ${id}"${descr ? ` descr="${descr.replace(/[<>&"]/g, '')}"` : ''}/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
       + `<a:graphic><a:graphicData uri="${PIC}"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr>`
       + `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
       + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`

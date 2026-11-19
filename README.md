@@ -178,6 +178,20 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
   date picker for the field at the caret. Fields around whole table cells or rows work too. Locked
   fields and fields linked to the document's data stay read-only and say why
+- Fill in legacy forms, as Word's older form fields (Developer → Legacy Tools) that school, medical
+  and club forms still use: check boxes (`FORMCHECKBOX`) are shown as Word draws them and tick on a
+  click, drop-down lists (`FORMDROPDOWN`) show their chosen entry and offer the others, and text
+  fields (`FORMTEXT`) are typed in, Word's blank (five spaces) selected on a click so typing replaces
+  it. Ticking or choosing changes only the field's settings (`w:ffData`: `w:checked`, `w:result`),
+  as Word does; the box or entry is drawn by the page, never added to the text. A form protected for
+  filling in (Restrict Editing) is filled in as in Word: only its fields take typing, Tab and
+  Shift+Tab (and Enter in a text field) go from field to field, and Space, Enter or Alt+↓ ticks a box
+  or opens a list. Fields turned off in Word stay as they are and say so
+- Sign a form (the toolbar's Draw signature): draw a signature with a finger, pen or mouse, in black
+  or blue ink, or type your name in a handwriting font, and it goes in at the caret, or in place of
+  the selected "______" line, as a picture in line with the text: cropped to the ink, with a
+  transparent background, about 6 cm across, with "Signature" as its alt text. Drawn in this page
+  only: it isn't stored or sent anywhere. Tracked while tracking, undone with Ctrl+Z
 - Edit footnotes and endnotes in place: they are listed below the text (as in Word's draft view),
   numbered in the order the text refers to them, and edited like the text: typing, formatting,
   Undo, Find and Replace and Track Changes all work in them. Clicking a note's number in the text
@@ -692,6 +706,10 @@ The About page shows the version.
 - With no pages, columns are balanced (as Word balances them before a continuous section break), each
   header and footer is shown once, and adjacent paragraphs with the same borders get a border each
   (Word draws one box around them); a drop cap in the margin is shown like one in the text
+- Legacy form fields: a text field's maximum length, type (number, date) and format, and a field's
+  macros and calculations aren't applied; Word applies them when the form is next filled in there.
+  Filling in fields isn't tracked. A signature is a picture of a signature, not a digital signature:
+  it doesn't prove who signed (Word's signature lines and digital signatures are kept, not made here)
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - The tests cover Chromium and Firefox; Safari is untested (find and comment highlighting need

@@ -54,10 +54,11 @@ function neighbour(container, offset, dir, root) {
   return null;
 }
 
-const CHOICE = '.sdt[data-sdt]:is(.sdt-checkbox, .sdt-dropdown, .sdt-date, .sdt-combo)';
+// Legacy check boxes and drop-down lists (see docx/formFields.js) are field markers drawn by the page.
+const CHOICE = '.sdt[data-sdt]:is(.sdt-checkbox, .sdt-dropdown, .sdt-date, .sdt-combo), .ff-check:not([data-ff-off]), .ff-drop:not([data-ff-off])';
 
 /**
- * The check box, drop-down, date or combo box field the selection is on: selected (alone), holding
+ * The check box, drop-down, date or combo box field (or legacy check box or list) the selection is on: selected (alone), holding
  * the caret (a combo box's text), or touching the caret on either side.
  */
 export function fieldAtSelection(range, root) {

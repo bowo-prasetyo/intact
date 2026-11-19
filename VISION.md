@@ -135,6 +135,8 @@ Saying no to these keeps the product small enough to keep its promises:
   information as a default you choose ✔; check a CV for employers' screening software ✔
 - Typed web and e-mail addresses made links, as Word's AutoFormat ✔; several documents at once, each
   in a tab of its own, with drafts that know where they are open ✔
+- Fill in legacy forms (check boxes, drop-down lists and text fields), also when protected for
+  filling in, with Tab between fields ✔; draw a signature on a form ✔
 
 ## How we'll know it's working
 
