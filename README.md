@@ -22,6 +22,11 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   files with macros (`.docm`, `.dotm`) open too and are saved as what they are (the header shows the
   extension). Macros are never run: a bar says the file contains them and that they are kept, as
   they are, and "Before you release" lists them
+- Start a new document from a template, as Word does when a template is opened to write with: a
+  template opens with a bar that says downloading saves the template itself, and "Start a new
+  document" makes it download as a `.docx` instead (a `.dotm` as a `.docm`, macros kept), only the
+  main part's content type changed, so the quote, letter or invoice written from it never replaces
+  the template. "Edit the template instead" goes back. The template file opened is never changed
 - Right-to-left text, as Word shows it: paragraphs (`w:bidi`, directly or from their style) are laid
   out and edited right to left; Word's left and right alignment in them are logical (start and end),
   as Word and LibreOffice read them, and the alignment buttons align as shown; runs marked
@@ -266,6 +271,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   roots, scripts, sums and integrals, brackets, matrices, functions, accents, and Word's script,
   double-struck and bold letters), on their own line or in the line of text. They stay read-only
   and are written back exactly as they were
+- Fill in placeholders (the toolbar's Fill in button, which shows how many there are, or the
+  template bar): text a template leaves to fill in, in brackets — `[Client name]`, `{{date}}`,
+  `«Amount»` or `<<Amount>>` — is listed once each, with how many places it appears; focusing one
+  highlights them all, and what is typed goes in everywhere it appears, as one undoable edit
+  (tracked while tracking), taking each placeholder's formatting as Replace does. Citations and
+  references (`[1]`, `[Smith 2020]`), check boxes (`[x]`) and editorial notes (`[sic]`) aren't
+  placeholders; those in read-only content are listed and left as they are
 - Find and replace (Ctrl/Cmd+F, Ctrl/Cmd+H), with match case and whole words. Matches are found
   across formatting but not across paragraphs; a replacement takes the formatting of the match's
   first character, as in Word. Footnotes, endnotes, headers, footers and text boxes are searched and
@@ -725,6 +737,10 @@ The About page shows the version.
   macros and calculations aren't applied; Word applies them when the form is next filled in there.
   Filling in fields isn't tracked. A signature is a picture of a signature, not a digital signature:
   it doesn't prove who signed (Word's signature lines and digital signatures are kept, not made here)
+- Placeholders are found in the page (its headers, text, notes and footers), not in comments, and
+  only on one line and within one paragraph; a placeholder written as underscores (`________`)
+  or as "XXX" isn't recognised. A new document made from a template doesn't record which template
+  it came from (Word's attached template)
 - Content controls: locked and data-bound ones, and anything but text fields around table cells
   or rows, are read-only
 - The tests cover Chromium and Firefox; Safari is untested (find and comment highlighting need

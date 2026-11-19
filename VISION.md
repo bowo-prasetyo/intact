@@ -139,6 +139,8 @@ Saying no to these keeps the product small enough to keep its promises:
   filling in, with Tab between fields ✔; draw a signature on a form ✔
 - Phones: the most used tools first, messages in view, and Share… to send the file back ✔; insert a
   check box or today's date ✔
+- Templates for quotes, letters and invoices: fill in placeholders such as [Client name] once for
+  every place they appear ✔; start a new document from a template, leaving the template as it is ✔
 
 ## How we'll know it's working
 

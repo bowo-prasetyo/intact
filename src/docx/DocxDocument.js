@@ -105,6 +105,16 @@ const FORMAT_MIME = {
   dotm: 'application/vnd.ms-word.template.macroEnabled.12',
 };
 
+/** The content type of the main part of each kind of Word file, in [Content_Types].xml. */
+const MAIN_PART_TYPE = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml',
+  dotx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml',
+  docm: 'application/vnd.ms-word.document.macroEnabled.main+xml',
+  dotm: 'application/vnd.ms-word.template.macroEnabledTemplate.main+xml',
+};
+/** The kind of document a template makes, as Word makes one when a template is opened from Explorer. */
+const DOCUMENT_OF = { dotx: 'docx', dotm: 'docm' };
+
 // What a run holds that is drawn on its own: pictures, shapes and text boxes, legacy VML, objects.
 const RUN_OBJECTS = new Set(['drawing', 'AlternateContent', 'pict', 'object']);
 /**
@@ -3415,6 +3425,43 @@ export class DocxDocument {
       template: ext === 'dotx' || ext === 'dotm',
       macros: ext === 'docm' || ext === 'dotm' || Object.keys(this.zip.files).some((p) => /vbaProject\.bin$/i.test(p)),
     };
+    this.openedFormat = this.format;
+    this.openedMainType = type;
+  }
+
+  /** Whether this template is being made into a new document (see newFromTemplate). */
+  get fromTemplate() {
+    return this.format !== this.openedFormat;
+  }
+
+  /**
+   * A template opened here saves as the template itself, unless it is made into a new document,
+   * as Word makes one when a template is double-clicked: a .dotx gives a .docx and a .dotm a .docm,
+   * with the main part's content type changed to match and everything else as it is. The template
+   * the file was opened from is never changed. `on` false goes back to saving the template.
+   */
+  newFromTemplate(on) {
+    const from = this.openedFormat;
+    if (!from.template) return;
+    if (!on) {
+      this.format = from;
+      return;
+    }
+    const ext = DOCUMENT_OF[from.ext];
+    this.format = { ...from, ext, mime: FORMAT_MIME[ext], template: false };
+  }
+
+  /** The main part's content type, to match the kind of file being saved (see newFromTemplate). */
+  async writeMainType() {
+    const text = await this.text('[Content_Types].xml');
+    if (!text) return;
+    const ct = parseXml(text);
+    const main = [...ct.getElementsByTagName('Override')].find((o) => o.getAttribute('PartName') === `/${this.mainPath}`);
+    // As opened, unless the template is being made into a document.
+    const type = this.fromTemplate ? MAIN_PART_TYPE[this.format.ext] : this.openedMainType;
+    if (!main || !type || main.getAttribute('ContentType') === type) return;
+    main.setAttribute('ContentType', type);
+    this.zip.file('[Content_Types].xml', serializeXml(ct));
   }
 
   /** Produces a .docx Blob from the current editor content. */
@@ -3526,9 +3573,11 @@ export class DocxDocument {
     this.writeStories();
     await this.writeSettings();
     await this.restorePersonal();
+    await this.writeMainType();
     // Whether the document now differs from the one opened: only then are its properties updated.
-    // A restored draft already holds edits to the file first opened, so it counts as changed too.
-    this.changed = this.restored || this.removePersonal || this.newTitle != null || await this.packageChanged();
+    // A restored draft already holds edits to the file first opened, so it counts as changed too,
+    // and so does a new document made from a template, which is no longer the file opened.
+    this.changed = this.restored || this.removePersonal || this.newTitle != null || this.fromTemplate || await this.packageChanged();
     this.writeCore();
     await this.writePersonal();
   }

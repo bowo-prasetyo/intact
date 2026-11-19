@@ -3,7 +3,7 @@
     <AppHeader>
       <div class="file">
         <input v-model="baseName" class="filename" aria-label="File name" spellcheck="false" :style="{ width: `${Math.max(baseName.length, 4) + 2}ch` }" />
-        <span class="ext" :title="extTitle">.{{ doc.format.ext }}</span>
+        <span class="ext" :title="extTitle">.{{ fileExt }}</span>
         <span v-if="dirty" class="dirty" title="Unsaved changes">●</span>
         <span v-if="labelChip" class="label-chip" tabindex="0" role="note" :title="labelChip.title" :aria-label="labelChip.title">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2.5h6l6 6-5.5 5.5-6-6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><circle cx="5.3" cy="5.8" r="1.1" fill="currentColor" /></svg>
@@ -30,6 +30,16 @@
         <span>{{ unlocked ? unlockedText : lockText }}</span>
       </p>
       <button v-if="lockMode" type="button" @click="editAnyway">Edit anyway</button>
+    </div>
+
+    <!-- A template: saved as itself, or made into a new document as Word does when one is opened
+         to write with. Either way the template file opened is never changed. -->
+    <div v-if="doc.openedFormat.template" class="restriction-bar unlocked template-bar" role="region" aria-label="Template">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M5.8 7.5h4.4M5.8 9.7h4.4M5.8 11.9h2.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="1.4 1.1" /></svg>
+      <p v-if="fromTemplate"><strong>New document from this template.</strong> It downloads as a .{{ fileExt }}; the template ({{ baseName }}.{{ doc.openedFormat.ext }}) stays as it is, ready for the next one.</p>
+      <p v-else><strong>Word template.</strong> Downloading saves the template itself. To write a quote, letter or invoice with it, start a new document: your template stays as it is.</p>
+      <button v-if="placeholderCount && !textLocked" type="button" @click="openFillIn()">Fill in {{ placeholderCount }} {{ placeholderCount === 1 ? 'placeholder' : 'placeholders' }}…</button>
+      <button type="button" @click="setFromTemplate(!fromTemplate)">{{ fromTemplate ? 'Edit the template instead' : 'Start a new document' }}</button>
     </div>
 
     <!-- One toolbar, one Tab stop: arrow keys move along it, Esc goes back to the text, Alt+F10 comes
@@ -165,6 +175,10 @@
       <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
       </button>
+      <button ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" aria-label="Fill in placeholders" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg>
+        <span v-if="placeholderCount" class="badge">{{ placeholderCount }}</span>
+      </button>
       <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" aria-label="Show formatting marks" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
       <span class="sep" />
       <button ref="trackButton" type="button" class="track-toggle" :title="lockMode ? `Track Changes: ${lockMode === 'trackedChanges' ? 'always on' : tracking ? 'on' : 'off'} – ${lockMessage}` : 'Track Changes (Ctrl+Shift+E)'" :class="{ on: tracking }" :aria-pressed="tracking" :disabled="!!lockMode" @click="toggleTracking">
@@ -213,6 +227,7 @@
     </div>
 
     <FindBar v-if="findOpen" ref="findBar" :root="page" :roots="searchRoots" :edit="applyEdit" :tracked="trackedBy" @close="onFindClosed" @reveal="revealRange" />
+    <FillInDialog v-if="fillIn.open" ref="fillInDialog" :style="{ left: `${fillIn.x}px`, top: `${fillIn.y}px` }" :roots="() => [page]" :edit="applyEdit" :tracked="trackedBy" @close="closeFillIn" @reveal="revealRange" @filled="onFilled" />
 
     <div class="workspace">
       <div class="canvas" @mousedown.self="focusEnd">
@@ -454,7 +469,7 @@
     </form>
 
     <div v-if="saveMenu.open" ref="saveMenuEl" class="change-menu save-menu" role="menu" aria-label="Save" :style="{ left: `${saveMenu.x}px`, top: `${saveMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSaveMenu(true)" @keydown="onMenuArrows">
-      <button type="button" role="menuitem" @click="saveMenuAction('docx')">Word document (.{{ doc.format.ext }})<span class="shortcut">Ctrl+S</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('docx')">Word document (.{{ fileExt }})<span class="shortcut">Ctrl+S</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">Ctrl+P</span></button>
       <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">Mail, messages…</span></button>
     </div>
@@ -704,6 +719,8 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } 
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
+import FillInDialog from '../components/FillInDialog.vue';
+import { findPlaceholders } from '../editor/placeholders.js';
 import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
 import SignatureDialog from '../components/SignatureDialog.vue';
@@ -761,7 +778,10 @@ const chars = reactive({ withSpaces: 0, withoutSpaces: 0 }); // characters in th
 const selectedChars = ref(null);
 const baseName = ref(doc.name.replace(/\.(docx|dotx|docm|dotm)$/i, ''));
 // Templates and files with macros are saved as what they are: Word refuses a .docx holding macros.
-const extTitle = { docx: 'Word document', dotx: 'Word template', docm: 'Word document with macros', dotm: 'Word template with macros' }[doc.format.ext];
+// A template can be made into a new document instead (see templateBar below).
+const fromTemplate = ref(doc.fromTemplate);
+const fileExt = computed(() => (fromTemplate.value, doc.format.ext));
+const extTitle = computed(() => ({ docx: 'Word document', dotx: 'Word template', docm: 'Word document with macros', dotm: 'Word template with macros' }[fileExt.value]));
 // The document's own paragraph styles, offered in the style menu after the built-in ones.
 const styleChoices = ref([]);
 const knownBlock = computed(() => ['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)
@@ -786,6 +806,49 @@ const trackButton = ref(null);
 const authorEl = ref(null);
 const authorInput = ref(null);
 watch(tracking, (on) => { doc.tracking = on; });
+
+// ------------------------------------------------------------------ fill in placeholders
+
+// "[Client name]", "{{date}}", «Amount» and <<Amount>> in the document (see editor/placeholders.js),
+// counted with the words, and filled in from a dialog, each once for everywhere it appears.
+const placeholderCount = ref(0);
+const fillIn = reactive({ open: false, x: 0, y: 0 });
+const fillInButton = ref(null);
+const fillInDialog = ref(null);
+
+function countPlaceholders() {
+  placeholderCount.value = page.value ? findPlaceholders(page.value).filter((p) => p.editable).length : 0;
+}
+
+function openFillIn() {
+  if (textLocked.value) return explainLock();
+  findOpen.value = false; // both paint the same highlights
+  const rect = fillInButton.value?.getBoundingClientRect() ?? { left: window.innerWidth, bottom: 96 };
+  Object.assign(fillIn, { open: true, x: Math.max(8, rect.left - 180), y: rect.bottom + 4 });
+  nextTick(() => keepInView(fillIn, fillInDialog.value?.$el));
+}
+
+function closeFillIn() {
+  fillIn.open = false;
+  page.value.focus();
+}
+
+function onFilled(text) {
+  countPlaceholders();
+  nextTick(() => { message.value = text; }); // after the edit's own status bar update
+}
+
+// ------------------------------------------------------------------ templates
+
+/** Makes the template opened into a new document, or goes back to saving the template itself. */
+function setFromTemplate(on) {
+  doc.newFromTemplate(on);
+  fromTemplate.value = doc.fromTemplate;
+  markDirty();
+  message.value = on
+    ? `New document: it downloads as ${baseName.value.trim() || 'document'}.${fileExt.value}, and the template stays as it is`
+    : `Editing the template: it downloads as ${baseName.value.trim() || 'document'}.${fileExt.value}`;
+}
 
 // ------------------------------------------------------------------ restrictions
 
@@ -1526,7 +1589,7 @@ async function keepDraft() {
       return;
     }
     draftKept.value = await saveDraft({
-      id: draftId, name: `${baseName.value.trim() || 'document'}.${doc.format.ext}`, blob,
+      id: draftId, name: `${baseName.value.trim() || 'document'}.${fileExt.value}`, blob,
       firstNewId: doc.firstNewId, unlocked: unlocked.value,
     });
   })();
@@ -1970,6 +2033,7 @@ const wordCount = (text) => (text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/
 /** Counts the words in the text, its notes and text boxes, as Word does: not in headers and footers. */
 function countWords() {
   if (!page.value) return;
+  countPlaceholders();
   const bands = [...page.value.querySelectorAll(':scope > .docx-hf-band')].map((b) => b.innerText || '');
   words.value = wordCount(page.value.innerText || '') - bands.reduce((n, t) => n + wordCount(t), 0);
   const count = (text) => [charCount(text, true), charCount(text, false)];
@@ -2654,7 +2718,10 @@ function toggleTableMenu() {
     newCols: sel.newCols,
     multi: sel.multi,
   });
-  nextTick(() => tableMenuEl.value?.querySelector('button')?.focus());
+  nextTick(() => {
+    keepInView(tableMenu, tableMenuEl.value);
+    tableMenuEl.value?.querySelector('button')?.focus();
+  });
 }
 
 function closeTableMenu() {
@@ -2776,7 +2843,10 @@ function openSplitDialog() {
   tableMenu.open = false;
   const rect = layoutButton.value.getBoundingClientRect();
   Object.assign(splitDialog, { open: true, cols: 2, rows: 1, x: Math.max(8, Math.min(rect.left, window.innerWidth - 240)), y: rect.bottom + 4 });
-  nextTick(() => splitDialogEl.value?.querySelector('input')?.select());
+  nextTick(() => {
+    keepInView(splitDialog, splitDialogEl.value);
+    splitDialogEl.value?.querySelector('input')?.select();
+  });
 }
 
 function closeSplitDialog() {
@@ -2826,7 +2896,10 @@ function toggleSpacingMenu() {
     before: f.before,
     after: f.after,
   });
-  nextTick(() => spacingMenuEl.value?.querySelector('button')?.focus());
+  nextTick(() => {
+    keepInView(spacingMenu, spacingMenuEl.value);
+    spacingMenuEl.value?.querySelector('button')?.focus();
+  });
 }
 
 function closeSpacingMenu() {
@@ -2929,7 +3002,10 @@ function openParagraphDialog() {
   paraInitial = dialogValues(doc.paragraphFormat(block));
   const rect = spacingButton.value.getBoundingClientRect();
   Object.assign(paraDialog, paraInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
-  nextTick(() => paraDialogEl.value?.querySelector('input')?.select());
+  nextTick(() => {
+    keepInView(paraDialog, paraDialogEl.value);
+    paraDialogEl.value?.querySelector('input')?.select();
+  });
 }
 
 function closeParagraphDialog() {
@@ -2975,6 +3051,17 @@ const PICKER_ROWS = 8;
 const PICKER_COLS = 10;
 const MAX_COLS = 63; // as many as Word allows
 const MAX_ROWS = 500;
+/**
+ * Keeps a popup that opens below the toolbar wholly inside the window: once it has rendered, its
+ * own size (not a guess at it) moves it left or up as far as it must, 8px from the edges.
+ */
+function keepInView(state, el) {
+  if (!el) return;
+  const { width, height } = el.getBoundingClientRect();
+  state.x = Math.max(8, Math.min(state.x, window.innerWidth - width - 8));
+  state.y = Math.max(8, Math.min(state.y, window.innerHeight - height - 8));
+}
+
 const tablePicker = reactive({ open: false, x: 0, y: 0, rows: 1, cols: 1, customRows: 2, customCols: 3 });
 const tablePickerEl = ref(null);
 const tableButton = ref(null);
@@ -2983,7 +3070,10 @@ function toggleTablePicker() {
   if (tablePicker.open) return closeTablePicker();
   const rect = tableButton.value.getBoundingClientRect();
   Object.assign(tablePicker, { open: true, rows: 1, cols: 1, x: Math.max(8, Math.min(rect.left - 80, window.innerWidth - 250)), y: rect.bottom + 4 });
-  nextTick(() => tablePickerEl.value?.querySelector('.cell')?.focus());
+  nextTick(() => {
+    keepInView(tablePicker, tablePickerEl.value);
+    tablePickerEl.value?.querySelector('.cell')?.focus();
+  });
 }
 
 function closeTablePicker() {
@@ -3138,7 +3228,10 @@ function toggleInsertMenu() {
     y: rect.bottom + 4,
     dates: todaysDates(lang),
   });
-  nextTick(() => insertMenuEl.value?.querySelector('button')?.focus());
+  nextTick(() => {
+    keepInView(insertMenu, insertMenuEl.value);
+    insertMenuEl.value?.querySelector('button')?.focus();
+  });
 }
 
 function closeInsertMenu(refocusText = false) {
@@ -3533,7 +3626,10 @@ function openChangeMenu(which) {
   const button = which === 'accept' ? acceptMenuButton.value : rejectMenuButton.value;
   const rect = button.getBoundingClientRect();
   Object.assign(changeMenu, { open: which, x: Math.max(8, Math.min(rect.left - 150, window.innerWidth - 220)), y: rect.bottom + 4 });
-  nextTick(() => changeMenuEl.value?.querySelector('button')?.focus());
+  nextTick(() => {
+    keepInView(changeMenu, changeMenuEl.value);
+    changeMenuEl.value?.querySelector('button')?.focus();
+  });
 }
 
 function closeChangeMenu() {
@@ -3613,7 +3709,10 @@ function togglePalette() {
   if (palette.open) return closePalette();
   const rect = paletteButton.value.getBoundingClientRect();
   Object.assign(palette, { open: true, x: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 200)), y: rect.bottom + 4 });
-  nextTick(() => paletteEl.value?.querySelector('.swatch.current, .swatch')?.focus());
+  nextTick(() => {
+    keepInView(palette, paletteEl.value);
+    paletteEl.value?.querySelector('.swatch.current, .swatch')?.focus();
+  });
 }
 
 function closePalette() {
@@ -3741,7 +3840,10 @@ function toggleColorPalette() {
   if (colorPalette.open) return closeColorPalette();
   const rect = colorButton.value.getBoundingClientRect();
   Object.assign(colorPalette, { open: true, x: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 220)), y: rect.bottom + 4 });
-  nextTick(() => colorPaletteEl.value?.querySelector('.swatch.current, .swatch')?.focus());
+  nextTick(() => {
+    keepInView(colorPalette, colorPaletteEl.value);
+    colorPaletteEl.value?.querySelector('.swatch.current, .swatch')?.focus();
+  });
 }
 
 function closeColorPalette() {
@@ -4190,7 +4292,10 @@ function openPageSetup() {
   };
   const rect = pageSetupButton.value.getBoundingClientRect();
   Object.assign(pageDialog, pageInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
-  nextTick(() => pageDialogEl.value?.querySelector('select')?.focus());
+  nextTick(() => {
+    keepInView(pageDialog, pageDialogEl.value);
+    pageDialogEl.value?.querySelector('select')?.focus();
+  });
 }
 
 function closePageSetup() {
@@ -5410,6 +5515,7 @@ async function openFind(replace) {
   const text = selected && selected.length <= 200 && !/\n/.test(selected) ? selected : '';
   // Re-pressing Ctrl+F / Ctrl+H while Find is open keeps the current match.
   const from = range && !findOpen.value ? { node: range.startContainer, offset: range.startOffset } : null;
+  fillIn.open = false; // both paint the same highlights
   findOpen.value = true;
   await nextTick();
   findBar.value?.open({ replace, text, from });
@@ -5527,7 +5633,10 @@ function toggleSaveMenu() {
   if (saveMenu.open) return closeSaveMenu();
   const rect = saveMenuButton.value.getBoundingClientRect();
   Object.assign(saveMenu, { open: true, x: Math.max(8, Math.min(rect.right - 220, window.innerWidth - 228)), y: rect.bottom + 4 });
-  nextTick(() => saveMenuEl.value?.querySelector('button')?.focus());
+  nextTick(() => {
+    keepInView(saveMenu, saveMenuEl.value);
+    saveMenuEl.value?.querySelector('button')?.focus();
+  });
 }
 function closeSaveMenu(refocus = false) {
   saveMenu.open = false;
@@ -5757,7 +5866,7 @@ async function save(action = 'download') {
   saving.value = true;
   try {
     await draftSettled();
-    const name = `${baseName.value.trim() || 'document'}.${doc.format.ext}`;
+    const name = `${baseName.value.trim() || 'document'}.${fileExt.value}`;
     const blob = await withHostsUnlocked(() => doc.save(page.value));
     doc.name = name;
     if (action === 'share') {
@@ -5875,6 +5984,9 @@ async function close() {
 .restriction-bar p { margin: 0; flex: 1; }
 .restriction-bar button { flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
 .restriction-bar button:hover { background: var(--hover); }
+/* The template bar's two buttons go below its text where there isn't room beside it (phones). */
+.template-bar { flex-wrap: wrap; row-gap: 6px; }
+.template-bar p { flex: 1 1 280px; min-width: 0; }
 @media (prefers-color-scheme: dark) { .restriction-bar:not(.unlocked) { --bar: #3a3216; --bar-line: #5c4f20; } }
 .toolbar button:disabled { opacity: .4; cursor: default; }
 .toolbar button.on { background: var(--active); border-color: var(--border); }
@@ -5909,6 +6021,7 @@ async function close() {
 }
 .hf-tabs button[aria-selected="true"] { background: var(--sheet-accent); border-color: var(--sheet-accent); color: #fff; }
 .comments-toggle { gap: 3px; padding: 0 6px; }
+.fill-in-toggle { gap: 3px; padding: 0 6px; }
 .script { font-size: 14px; line-height: 1; }
 .fonts-missing { cursor: help; text-decoration: underline dotted; }
 .draft-status { cursor: help; }
