@@ -11,7 +11,7 @@
     <AppHeader />
     <main class="home-main">
       <h1>Change what you need.<br /> Keep the rest <span class="brand-word">intact</span>.</h1>
-      <p class="lead">Open a <code>.docx</code>, fix it and download it again, right here in your browser.</p>
+      <p class="lead">Open a <code>.docx</code>, fix it and download it again, or start a new one, ready for Word, right here in your browser.</p>
       <ul class="promises" aria-label="What Intact promises">
         <li v-for="p in promises" :key="p.title">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>
@@ -40,7 +40,7 @@
         <button class="tile" type="button" :disabled="busy" @click="createNew">
           <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M6.5 3h7l5 5v11.5A1.5 1.5 0 0 1 17 21H6.5A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z" /><path d="M13.5 3v5h5M12 11v6M9 14h6" /></svg>
           <span class="tile-title">Blank document</span>
-          <span class="tile-sub">Start from scratch</span>
+          <span class="tile-sub">Write a new document</span>
         </button>
 
         <!-- A real button, so the file picker can be reached with the keyboard; the input stays hidden. -->

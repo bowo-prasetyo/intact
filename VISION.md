@@ -1,7 +1,7 @@
 # Vision
 
 > **Fix a Word document in seconds, privately: no install, no account, no upload — and nothing you
-> didn't touch changes.**
+> didn't touch changes. Or write a new one, just as privately, that opens in Word as it looks here.**
 
 This document says who the product is for, what it promises, and what it deliberately won't do.
 Use it to decide feature requests: a change that doesn't serve the job below, or that weakens a
@@ -19,17 +19,30 @@ template, a date in a letter, a sentence in a CV. The usual options all have a c
 - **LibreOffice and other converters** often change things you didn't touch: fonts, spacing,
   numbering, tracked changes. That's a problem when the file goes back to someone who uses Word.
 
+The same costs stand in the way of people who need to *write* a document for someone who uses
+Word: a letter, a memo, minutes, a quote or invoice, a CV. Without Word on their device, they either
+upload their words to a cloud editor or send a file that looks different when it is opened. And
+people who have fixed a few documents here come to want to start the next one here too.
+
 ## Who it's for
 
 1. **Privacy-conscious professionals** (legal, HR, finance, healthcare, public sector) who
    mustn't upload a document but need to correct it.
 2. **People without Word** on the device they're using.
 3. **Anyone sending a file back** to a Word user who will notice if anything else changed.
+4. **People who write everyday documents without Word** (letters, memos, minutes, quotes,
+   invoices, CVs, reports) and send them to people who use it.
 
 ## The job
 
-Open a Word file, change some text and basic formatting, and get back a file that is the original
-with **only those edits**. Success is when the recipient can't tell another tool was used.
+Two jobs, with one test of success: the recipient can't tell another tool was used.
+
+1. **Fix.** Open a Word file, change some text and basic formatting, and get back a file that is
+   the original with **only those edits**.
+2. **Write.** Write an everyday document, from a template or a blank page, and get a file that
+   **opens in Word exactly as it looks here**.
+
+Fixing came first and still sets the bar: what writing adds must not weaken what fixing promises.
 
 ## Promises
 
@@ -40,7 +53,8 @@ These are product requirements, not aspirations. A release that breaks one is a 
 2. **Faithful.** Anything the user did not edit is written back with the same meaning: formatting,
    images, tables, fields, content controls, comments, footnotes and tracked changes. Content the
    editor can't edit is shown read-only and kept, never silently changed or dropped. The round-trip
-   tests (`tests/roundtrip.spec.js`) enforce this; every new capability adds cases to them.
+   tests (`tests/roundtrip.spec.js`) enforce this; every new capability adds cases to them. What is
+   made here is written as Word writes it, so it shows in Word as it shows here.
 3. **Instant.** Opening the page and a document takes seconds, with nothing to install or set up.
 4. **Honest.** When something can't be edited or preserved, the user is told. The README and About
    page list known limitations, and the headline claims stay true.
@@ -49,14 +63,12 @@ These are product requirements, not aspirations. A release that breaks one is a 
 
 Saying no to these keeps the product small enough to keep its promises:
 
-- **Writing documents from scratch.** A blank document exists for quick notes, but this is not a
-  word processor. Page layout, styles management and advanced typesetting are out of scope. The
-  few slices of them that fixing a document needs are in: page numbers in a header or footer (or
-  a new one for them, or for a line of text such as a student's name and course on every page), new
-  footnotes, and paper size, orientation and margins for the whole document. For students'
-  papers, the References tab's essentials are in too: a table of contents, captions,
-  cross-references, equations, and citations with a bibliography in APA or MLA style, each written
-  as Word writes it so the file goes back to Word intact. Changing a style's definition, designing headers and footers, and per-section layout stay out.
+- **Complex authoring and desktop publishing.** Writing everyday documents is in (see The job);
+  what goes beyond them is out: master and sub-documents, building a style system from nothing,
+  linked text boxes and magazine layouts, mail merge from databases or address books (a CSV, which
+  everyday mail merge needs, is in), macros and add-ins, and anything that only a print shop would
+  need. A request for one of these needs a very good reason, as any request that risks the promises
+  does.
 - **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
   a server, and they conflict with "private".
 - **Other formats.** No spreadsheets, slides, PDF or legacy `.doc`. Do one format well.
@@ -67,6 +79,13 @@ Saying no to these keeps the product small enough to keep its promises:
 ## Principles for deciding what's next
 
 - **Fidelity over features.** A feature that risks the round-trip waits until it can be tested.
+- **A document made here is a Word document.** Everything new (a table, a style, a header, a
+  section) is written as Word writes it, and each kind of thing made here is opened in Microsoft
+  Word before release: tests that save a new document and check it as Word reads it, besides the
+  round-trip tests, which check what was kept.
+- **Writing grows from what fixing needs.** A writing feature comes after the fixing feature it is
+  built on (styles applied before styles defined, page setup for the whole document before a
+  section's), so the two jobs share one way of writing each thing.
 - **Unlock what's locked before adding what's new.** The most valuable work is making preserved
   content editable where it matters for the job (for example the text inside content controls in
   templates), not adding new kinds of content.
@@ -160,11 +179,24 @@ Saying no to these keeps the product small enough to keep its promises:
 - Tab stops in the Paragraph dialog, and tabs on the page at Word's stops ✔; a right-click menu ✔;
   Word's usual fonts after the document's own ✔; a DRAFT or CONFIDENTIAL watermark ✔
 
+**Later — writing everyday documents**
+- Starter templates on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV
+  and a report, each a Word document with placeholders to fill in
+- Mail merge from a CSV: one letter (or one document of them) for each row, through the
+  placeholders
+- Page setup for one section: a landscape page in a portrait document, its own margins
+- Change a style's definition (Heading 1 in another font or colour, Normal's spacing), as Word's
+  Modify Style
+- Design headers and footers: a different first page, different odd and even pages
+- Tests that save a new document of each kind and check it as Word reads it
+
 ## How we'll know it's working
 
 - **Fidelity:** zero known round-trip regressions; the fixture set keeps growing.
 - **Trust:** users report that recipients didn't notice anything unusual about the file.
 - **Speed:** a user goes from opening the page to downloading an edited file in under a minute.
+- **Writing:** a document started here (from a template or a blank page) opens in Word looking as
+  it did here, and its recipient can't tell another tool made it.
 
 ## Name
 
@@ -174,9 +206,10 @@ comes back intact, with only your edits. It replaces "Office", which suggested a
 applications and invited trademark questions. Use this one name everywhere: the header, the page
 title, the package name and the `Application` written into new documents.
 
-Call it an **editor**, never a "word processor". A word processor is for writing documents from
-scratch, which is a non-goal above; "editor" says the job is changing a document someone else
-made. It also keeps the descriptor clear of Word.
+Call it an **editor**, never a "word processor". Writing everyday documents is part of the job now,
+but fixing documents is still most of what it is used for, and "editor" says so; "word processor"
+would promise everything Word does, which the non-goals rule out. "Editor" also keeps the
+descriptor clear of Word.
 
 ## Brand colour
 
@@ -219,5 +252,6 @@ effects, or put Word's "W" or blue near it.
 ## Talking about Word
 
 Lead with what Intact does, not with Word. The start page headline is "Change what you need. Keep
-the rest intact." Mention Microsoft Word only to describe compatibility, in plain text and never in
+the rest intact.", and its lead line names both jobs: fixing a `.docx`, or starting a new one ready
+for Word. Mention Microsoft Word only to describe compatibility, in plain text and never in
 a heading or the name: "`.docx` files, the format Microsoft Word uses", not "Edit Word documents".

@@ -8,8 +8,9 @@
 **Intact — private .docx editor.** Change what you need. Keep the rest intact.
 
 Fix a Word document in seconds, privately: no install, no account, no upload — and nothing you
-didn't touch changes. Open a `.docx`, edit its text, and download it again. The file is unzipped,
-parsed and rebuilt entirely in your browser.
+didn't touch changes. Open a `.docx`, edit its text, and download it again. Or start a new one, from
+a blank page, and write it here: it is saved as Word writes it, so it opens in Word as it looks
+here. The file is unzipped, parsed and rebuilt entirely in your browser.
 
 Where this is heading, and what it deliberately won't do, is in [VISION.md](VISION.md).
 
