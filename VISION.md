@@ -51,8 +51,9 @@ Saying no to these keeps the product small enough to keep its promises:
 
 - **Writing documents from scratch.** A blank document exists for quick notes, but this is not a
   word processor. Page layout, styles management and advanced typesetting are out of scope. The
-  few slices of them that fixing a document needs are in: page numbers in a footer (or a new
-  footer for them), new footnotes, and paper size, orientation and margins for the whole document.
+  few slices of them that fixing a document needs are in: page numbers in a header or footer (or
+  a new one for them, or for a line of text such as a student's name and course on every page), new
+  footnotes, and paper size, orientation and margins for the whole document.
   Changing a style's definition, designing headers and footers, and per-section layout stay out.
 - **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
   a server, and they conflict with "private".
@@ -143,6 +144,9 @@ Saying no to these keeps the product small enough to keep its promises:
   every place they appear ✔; start a new document from a template, leaving the template as it is ✔
 - A business's own look: a logo in the header or footer ✔; a brand colour by its code, remembered
   for the next document ✔; shading and borders for table cells (a quote's heading row and total) ✔
+- Students' papers: End goes past a footnote's reference ✔; page numbers at the top or bottom, left,
+  centre or right, and a header or footer to type in ("Surname 1") ✔; lengths in inches on Letter
+  paper, or as chosen ✔
 - Today's date as a field Word updates ✔; page numbers shown as # and the page count as about how
   many pages ✔; labels on the toolbar's icon buttons where there is room ✔
 - Tables pasted from Excel, Google Sheets and Word as tables ✔; Format Painter ✔; Change Case

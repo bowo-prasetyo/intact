@@ -174,9 +174,12 @@
       <button type="button" title="Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s" aria-label="Update fields" @click="updateAllFields">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Update</span>
       </button>
-      <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">Page no.</span>
-      </button>
+      <span class="split">
+        <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber()">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">Page no.</span>
+        </button>
+        <button ref="pageNumberButton" type="button" class="arrow" title="Page number at the top or bottom of the page; edit the header or footer" aria-label="Page number and header options" aria-haspopup="menu" :aria-expanded="pageNumberMenu.open" @click="togglePageNumberMenu">▾</button>
+      </span>
       <button ref="pageSetupButton" type="button" title="Page setup: paper size, orientation and margins" aria-label="Page setup" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg><span class="short-label">Page setup</span>
       </button>
@@ -339,7 +342,7 @@
             <option v-if="picturePanel.hAlign === 'word'" value="word">As set in Word</option>
           </select>
         </label>
-        <label v-if="picturePanel.hAlign === 'offset'">Distance from the margin (cm) <input v-model.number="picturePanel.hOffset" type="number" step="0.1" @change="applyPosition('h')" /></label>
+        <label v-if="picturePanel.hAlign === 'offset'">Distance from the margin ({{ picturePanel.unit }}) <input v-model.number="picturePanel.hOffset" type="number" step="0.1" @change="applyPosition('h')" /></label>
         <label>Vertical
           <select v-model="picturePanel.vAlign" @change="applyPosition('v')">
             <option value="offset">Below its paragraph (moves with text)</option>
@@ -349,13 +352,13 @@
             <option v-if="picturePanel.vAlign === 'word'" value="word">As set in Word</option>
           </select>
         </label>
-        <label v-if="picturePanel.vAlign === 'offset'">Distance below the paragraph (cm) <input v-model.number="picturePanel.vOffset" type="number" step="0.1" @change="applyPosition('v')" /></label>
+        <label v-if="picturePanel.vAlign === 'offset'">Distance below the paragraph ({{ picturePanel.unit }}) <input v-model.number="picturePanel.vOffset" type="number" step="0.1" @change="applyPosition('v')" /></label>
       </fieldset>
       <fieldset>
         <legend>Size</legend>
         <div class="size-row">
-          <label>Width (cm) <input v-model.number="picturePanel.width" type="number" min="0.1" step="0.1" @change="applySize('width')" /></label>
-          <label>Height (cm) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
+          <label>Width ({{ picturePanel.unit }}) <input v-model.number="picturePanel.width" type="number" min="0.1" step="0.1" @change="applySize('width')" /></label>
+          <label>Height ({{ picturePanel.unit }}) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
         </div>
         <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> Keep proportions</label>
         <button type="button" @click="resetPictureSize">Reset size</button>
@@ -591,10 +594,16 @@
             <option v-if="marginPreset === 'custom'" value="custom">Custom</option>
           </select>
         </label>
-        <label>Top (cm) <input v-model.number="pageDialog.top" type="number" min="0" step="0.1" /></label>
-        <label>Bottom (cm) <input v-model.number="pageDialog.bottom" type="number" min="0" step="0.1" /></label>
-        <label>Left (cm) <input v-model.number="pageDialog.left" type="number" min="0" step="0.1" /></label>
-        <label>Right (cm) <input v-model.number="pageDialog.right" type="number" min="0" step="0.1" /></label>
+        <label>Top ({{ pageDialog.unit }}) <input v-model.number="pageDialog.top" type="number" min="0" step="0.1" /></label>
+        <label>Bottom ({{ pageDialog.unit }}) <input v-model.number="pageDialog.bottom" type="number" min="0" step="0.1" /></label>
+        <label>Left ({{ pageDialog.unit }}) <input v-model.number="pageDialog.left" type="number" min="0" step="0.1" /></label>
+        <label>Right ({{ pageDialog.unit }}) <input v-model.number="pageDialog.right" type="number" min="0" step="0.1" /></label>
+        <label>Units
+          <select :value="pageDialog.unit" aria-label="Units" title="Centimetres or inches, for the margins here and the other dialogs’ lengths (remembered in this browser)" @change="setPageUnit($event.target.value)">
+            <option value="cm">Centimetres</option>
+            <option value="in">Inches</option>
+          </select>
+        </label>
       </fieldset>
       <fieldset>
         <legend>Watermark</legend>
@@ -623,8 +632,8 @@
     <form v-if="paraDialog.open" ref="paraDialogEl" class="chooser author-dialog para-dialog" role="dialog" aria-label="Paragraph" :style="{ left: `${paraDialog.x}px`, top: `${paraDialog.y}px` }" novalidate @submit.prevent="applyParagraphDialog" @keydown.esc="closeParagraphDialog">
       <fieldset>
         <legend>Indentation</legend>
-        <label>Left (cm) <input v-model.number="paraDialog.left" type="number" step="0.1" /></label>
-        <label>Right (cm) <input v-model.number="paraDialog.right" type="number" step="0.1" /></label>
+        <label>Left ({{ paraDialog.unit }}) <input v-model.number="paraDialog.left" type="number" step="0.1" /></label>
+        <label>Right ({{ paraDialog.unit }}) <input v-model.number="paraDialog.right" type="number" step="0.1" /></label>
         <label>Special
           <select v-model="paraDialog.special">
             <option value="none">(none)</option>
@@ -632,7 +641,13 @@
             <option value="hanging">Hanging</option>
           </select>
         </label>
-        <label>By (cm) <input v-model.number="paraDialog.by" type="number" min="0" step="0.1" :disabled="paraDialog.special === 'none'" /></label>
+        <label>By ({{ paraDialog.unit }}) <input v-model.number="paraDialog.by" type="number" min="0" step="0.1" :disabled="paraDialog.special === 'none'" /></label>
+        <label>Units
+          <select :value="paraDialog.unit" aria-label="Units" title="Centimetres or inches, for the indents and tab stops here and the other dialogs’ lengths (remembered in this browser)" @change="setParaUnit($event.target.value)">
+            <option value="cm">Centimetres</option>
+            <option value="in">Inches</option>
+          </select>
+        </label>
       </fieldset>
       <fieldset>
         <legend>Spacing</legend>
@@ -654,15 +669,15 @@
         <legend>Tab stops</legend>
         <ul v-if="paraDialog.tabs.length" aria-label="Tab stops">
           <li v-for="t in paraDialog.tabs" :key="t.pos">
-            <span class="pos">{{ formatCm(t.pos) }} cm</span>
+            <span class="pos">{{ formatLength(t.pos) }} {{ paraDialog.unit }}</span>
             <span>{{ TAB_ALIGNS[t.align] || t.align }}</span>
             <span class="leader">{{ TAB_LEADERS[t.leader]?.label || '' }}</span>
-            <button type="button" :aria-label="`Remove the tab stop at ${formatCm(t.pos)} cm`" title="Remove this tab stop" @click="removeTabStop(t.pos)">×</button>
+            <button type="button" :aria-label="`Remove the tab stop at ${formatLength(t.pos)} ${paraDialog.unit}`" title="Remove this tab stop" @click="removeTabStop(t.pos)">×</button>
           </li>
         </ul>
-        <p v-else class="hint">None: tabs go to Word’s default stops, every {{ formatCm(doc.defaultTabStop) }} cm.</p>
+        <p v-else class="hint">None: tabs go to Word’s default stops, every {{ formatLength(doc.defaultTabStop) }} {{ paraDialog.unit }}.</p>
         <div class="tab-add">
-          <label>At (cm) <input v-model.number="paraDialog.tabPos" type="number" min="0" step="0.25" aria-label="Tab stop position (cm)" @keydown.enter.prevent="addTabStop" /></label>
+          <label>At ({{ paraDialog.unit }}) <input v-model.number="paraDialog.tabPos" type="number" min="0" step="0.25" :aria-label="`Tab stop position (${paraDialog.unit})`" @keydown.enter.prevent="addTabStop" /></label>
           <label>Alignment
             <select v-model="paraDialog.tabAlign">
               <option v-for="(label, value) in TAB_ALIGNS" :key="value" :value="value">{{ label }}</option>
@@ -777,6 +792,16 @@
       <p class="menu-label" role="presentation">Today’s date</p>
       <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
       <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" title="As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
+    </div>
+
+    <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
+    <div v-if="pageNumberMenu.open" ref="pageNumberMenuEl" class="change-menu insert-menu page-number-menu" role="menu" aria-label="Page number and header" :style="{ left: `${pageNumberMenu.x}px`, top: `${pageNumberMenu.y}px` }" @mousedown.prevent @keydown.esc="closePageNumberMenu(true)" @keydown="onMenuArrows">
+      <p class="menu-label" role="presentation">Top of page (header)</p>
+      <button v-for="a in PAGE_NUMBER_ALIGNS" :key="`header-${a.value}`" type="button" role="menuitem" :aria-label="`Page number at the top, ${a.label.toLowerCase()}`" @click="pageNumberAt('header', a.value)">{{ a.label }}<span v-if="a.value === 'right'" class="hint">Surname 1 (MLA)</span></button>
+      <p class="menu-label" role="presentation">Bottom of page (footer)</p>
+      <button v-for="a in PAGE_NUMBER_ALIGNS" :key="`footer-${a.value}`" type="button" role="menuitem" :aria-label="`Page number at the bottom, ${a.label.toLowerCase()}`" @click="pageNumberAt('footer', a.value)">{{ a.label }}</button>
+      <button type="button" role="menuitem" class="menu-sep" @click="editHeaderFooter('header')">Edit header<span class="hint">Text on every page, at the top</span></button>
+      <button type="button" role="menuitem" @click="editHeaderFooter('footer')">Edit footer<span class="hint">Text on every page, at the bottom</span></button>
     </div>
 
     <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" aria-label="Change case" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
@@ -909,6 +934,7 @@ import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterS
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import { updateFields } from '../docx/fieldUpdates.js';
+import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField, replaceTracked,
@@ -2398,10 +2424,10 @@ function addRow(cell) {
 // ------------------------------------------------------------------ picture layout
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-const CM = 360000; // EMU per centimetre
 const PX = 9525; // EMU per pixel
 const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false });
 const picturePanel = reactive({
+  unit: 'cm', // lengths in centimetres or inches (see editor/units.js)
   open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '',
   cropL: 0, cropT: 0, cropR: 0, cropB: 0, rot: 0, flipH: false, flipV: false,
   border: 'none', borderColor: '#000000', shadow: false, glow: false, softEdge: false, reflection: false, colour: 'normal', brightness: 0, contrast: 0,
@@ -2507,7 +2533,8 @@ function startResize(e, handle) {
     target.removeEventListener('pointerup', up);
     target.removeEventListener('pointercancel', up);
     if (size.w === start.w && size.h === start.h) return;
-    changePicture((s) => doc.setPictureSize(s, size.w * PX, size.h * PX), `Picture resized to ${round(size.w * PX / CM, 1)} × ${round(size.h * PX / CM, 1)} cm`);
+    const unit = docUnit();
+    changePicture((s) => doc.setPictureSize(s, size.w * PX, size.h * PX), `Picture resized to ${round(size.w * PX / EMU_PER[unit], 1)} × ${round(size.h * PX / EMU_PER[unit], 1)} ${unit}`);
   };
   target.addEventListener('pointermove', move);
   target.addEventListener('pointerup', up);
@@ -2562,6 +2589,8 @@ function fillPicturePanel() {
   const info = doc.pictureLayout(picture.el);
   if (!info) return;
   const page = doc.page;
+  const unit = docUnit();
+  const PER_UNIT = EMU_PER[unit]; // EMU per unit shown: a centimetre or an inch
   const h = info.h || { relativeFrom: 'margin', align: 'left' };
   const v = info.v || { relativeFrom: 'paragraph', offset: 0 };
   let hAlign = 'word';
@@ -2569,7 +2598,7 @@ function fillPicturePanel() {
   if (h.align && ['left', 'center', 'right'].includes(h.align) && ['margin', 'column'].includes(h.relativeFrom)) hAlign = h.align;
   else if (h.align == null && ['margin', 'column', 'page'].includes(h.relativeFrom)) {
     hAlign = 'offset';
-    hOffset = round(((h.offset || 0) / PX - (h.relativeFrom === 'page' ? page.left : 0)) * PX / CM);
+    hOffset = round(((h.offset || 0) / PX - (h.relativeFrom === 'page' ? page.left : 0)) * PX / PER_UNIT);
   }
   let vAlign = 'word';
   if (v.align && ['top', 'center', 'bottom'].includes(v.align) && v.relativeFrom === 'margin') vAlign = v.align;
@@ -2577,8 +2606,8 @@ function fillPicturePanel() {
   const look = doc.pictureLookOf(picture.el);
   const border = look.border ? (look.border.width <= 1 ? 'thin' : look.border.width <= 2 ? 'medium' : 'thick') : 'none';
   Object.assign(picturePanel, {
-    wrap: info.wrap, hAlign, hOffset, vAlign, vOffset: vAlign === 'offset' ? round((v.offset || 0) / CM) : 0,
-    width: round(info.cx / CM), height: round(info.cy / CM), alt: info.descr,
+    unit, wrap: info.wrap, hAlign, hOffset, vAlign, vOffset: vAlign === 'offset' ? round((v.offset || 0) / PER_UNIT) : 0,
+    width: round(info.cx / PER_UNIT), height: round(info.cy / PER_UNIT), alt: info.descr,
     cropL: round(look.crop.l * 100, 1), cropT: round(look.crop.t * 100, 1), cropR: round(look.crop.r * 100, 1), cropB: round(look.crop.b * 100, 1),
     rot: round(look.rot, 1), flipH: look.flipH, flipV: look.flipV,
     border, borderColor: `#${look.border?.color || '000000'}`.toLowerCase(), shadow: !!look.shadow, glow: !!look.glow, softEdge: !!look.softEdge,
@@ -2624,11 +2653,12 @@ function applyWrap(wrap) {
 
 function applyPosition(which) {
   const p = picturePanel;
+  const PER_UNIT = EMU_PER[p.unit];
   const h = which === 'h' && p.hAlign !== 'word'
-    ? (p.hAlign === 'offset' ? { relativeFrom: 'margin', offset: (Number(p.hOffset) || 0) * CM } : { relativeFrom: 'margin', align: p.hAlign })
+    ? (p.hAlign === 'offset' ? { relativeFrom: 'margin', offset: (Number(p.hOffset) || 0) * PER_UNIT } : { relativeFrom: 'margin', align: p.hAlign })
     : null;
   const v = which === 'v' && p.vAlign !== 'word'
-    ? (p.vAlign === 'offset' ? { relativeFrom: 'paragraph', offset: (Number(p.vOffset) || 0) * CM } : { relativeFrom: 'margin', align: p.vAlign })
+    ? (p.vAlign === 'offset' ? { relativeFrom: 'paragraph', offset: (Number(p.vOffset) || 0) * PER_UNIT } : { relativeFrom: 'margin', align: p.vAlign })
     : null;
   if (!h && !v) return;
   changePicture((s) => doc.setPicturePosition(s, { h, v }), 'Picture positioned');
@@ -2637,13 +2667,14 @@ function applyPosition(which) {
 function applySize(which) {
   const info = doc.pictureLayout(picture.el);
   if (!info) return;
-  let w = Math.max(0.1, Number(picturePanel.width) || 0.1) * CM;
-  let h = Math.max(0.1, Number(picturePanel.height) || 0.1) * CM;
+  const PER_UNIT = EMU_PER[picturePanel.unit];
+  let w = Math.max(0.1, Number(picturePanel.width) || 0.1) * PER_UNIT;
+  let h = Math.max(0.1, Number(picturePanel.height) || 0.1) * PER_UNIT;
   if (picturePanel.lock) {
     if (which === 'width') h = (w * info.cy) / info.cx;
     else w = (h * info.cx) / info.cy;
   }
-  changePicture((s) => doc.setPictureSize(s, w, h), `Picture resized to ${round(w / CM, 1)} × ${round(h / CM, 1)} cm`);
+  changePicture((s) => doc.setPictureSize(s, w, h), `Picture resized to ${round(w / PER_UNIT, 1)} × ${round(h / PER_UNIT, 1)} ${picturePanel.unit}`);
 }
 
 /** Back to the picture's own size (at 96 pixels an inch), narrowed to fit between the margins. */
@@ -3132,7 +3163,6 @@ function splitCells() {
 
 const LINE_SPACINGS = [[1, '1.0'], [1.15, '1.15'], [1.5, '1.5'], [2, '2.0'], [2.5, '2.5'], [3, '3.0']];
 const LINE_PRESETS = { single: 240, '1.5': 360, double: 480 }; // the Paragraph dialog's, in 240ths of a line
-const TWIPS_PER_CM = 1440 / 2.54;
 const INDENT_STEP = 720; // Word's Increase Indent: to the next half inch
 const SPACE_ADDED = 240; // Word's "Add space before/after paragraph": 12 pt
 const spacingMenu = reactive({ open: false, x: 0, y: 0, line: null, before: 0, after: 0 });
@@ -3240,7 +3270,7 @@ function indentBlocks(delta) {
 // The Paragraph dialog: values as shown (cm, pt, lines), and as they were when it opened, so only
 // what is changed in it is written (fields left alone keep coming from the paragraph's style).
 const paraDialog = reactive({
-  open: false, x: 0, y: 0, left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1,
+  open: false, x: 0, y: 0, unit: 'cm', left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1,
   tabs: [], tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
 });
 let paraInitialTabs = '[]';
@@ -3248,19 +3278,25 @@ let paraInitialTabs = '[]';
 const TAB_ALIGNS = { left: 'Left', center: 'Centre', right: 'Right', decimal: 'Decimal', bar: 'Bar' };
 const TAB_LEADERS = { none: { label: 'None' }, dot: { label: '……… dots' }, hyphen: { label: '-------- dashes' }, underscore: { label: '_____ line' } };
 const MAX_TAB = 31680; // Word's furthest tab stop: 22 inches
-const formatCm = (twips) => String(toCm(twips));
+const formatLength = (twips) => String(fromTwips(twips, paraDialog.unit));
+
+/** The unit lengths are shown in, for this document (see editor/units.js). */
+function docUnit() {
+  const now = doc.pageSetupNow();
+  return unitFor(now.w, now.h);
+}
 
 /** Sets a tab stop at the position typed (one already there is replaced), as Word's Tabs dialog's Set. */
 function addTabStop() {
   paraDialog.tabError = '';
-  const cm = Number(paraDialog.tabPos);
-  if (paraDialog.tabPos === '' || !Number.isFinite(cm) || cm < 0) {
-    paraDialog.tabError = 'Type where the tab stop goes, in centimetres from the left margin';
+  const at = Number(paraDialog.tabPos);
+  if (paraDialog.tabPos === '' || !Number.isFinite(at) || at < 0) {
+    paraDialog.tabError = `Type where the tab stop goes, in ${UNIT_NAMES[paraDialog.unit]} from the left margin`;
     return;
   }
-  const pos = Math.round(cm * TWIPS_PER_CM);
+  const pos = toTwips(at, paraDialog.unit);
   if (pos > MAX_TAB) {
-    paraDialog.tabError = `A tab stop can be at most ${formatCm(MAX_TAB)} cm from the margin`;
+    paraDialog.tabError = `A tab stop can be at most ${formatLength(MAX_TAB)} ${paraDialog.unit} from the margin`;
     return;
   }
   const stop = { pos, align: paraDialog.tabAlign, leader: paraDialog.tabLeader };
@@ -3273,10 +3309,11 @@ function removeTabStop(pos) {
 }
 const paraDialogEl = ref(null);
 let paraInitial = null;
-const toCm = (twips) => Math.round((twips / TWIPS_PER_CM) * 100) / 100;
+let paraTwips = null; // the indents as they were, exactly, for switching units
 const toPt = (twips) => Math.round(twips / 2) / 10;
 
-function dialogValues(f) {
+function dialogValues(f, unit) {
+  const len = (twips) => fromTwips(twips, unit);
   let rule = 'multiple';
   let at = Math.round((f.line / 240) * 100) / 100;
   if (f.lineRule === 'exact' || f.lineRule === 'atLeast') {
@@ -3286,8 +3323,8 @@ function dialogValues(f) {
     rule = Object.keys(LINE_PRESETS).find((k) => LINE_PRESETS[k] === f.line) || 'multiple';
   }
   return {
-    left: toCm(f.left), right: toCm(f.right),
-    special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: toCm(f.hanging || f.firstLine),
+    left: len(f.left), right: len(f.right),
+    special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: len(f.hanging || f.firstLine),
     before: toPt(f.before), after: toPt(f.after), rule, at,
   };
 }
@@ -3296,18 +3333,27 @@ function openParagraphDialog() {
   spacingMenu.open = false;
   const [block] = selectedParagraphs();
   if (!block) return;
-  paraInitial = dialogValues(doc.paragraphFormat(block));
+  const unit = docUnit();
+  const format = doc.paragraphFormat(block);
+  paraInitial = dialogValues(format, unit);
+  paraTwips = { left: format.left, right: format.right, by: format.hanging || format.firstLine };
   const { stops } = doc.tabStops(block);
   paraInitialTabs = JSON.stringify(stops);
   const rect = anchorRect(spacingButton.value);
   Object.assign(paraDialog, paraInitial, {
-    tabs: stops, tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
+    unit, tabs: stops, tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
     open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4,
   });
   nextTick(() => {
     keepInView(paraDialog, paraDialogEl.value);
     paraDialogEl.value?.querySelector('input')?.select();
   });
+}
+
+/** The Paragraph dialog's lengths in another unit (remembered for the next dialogs). */
+function setParaUnit(unit) {
+  saveUnit(unit);
+  switchUnit(paraDialog, paraInitial, paraTwips, ['left', 'right', 'by', 'tabPos'], unit);
 }
 
 function closeParagraphDialog() {
@@ -3329,10 +3375,10 @@ function applyParagraphDialog() {
   paraDialog.open = false;
   const num = (v) => (Number.isFinite(Number(v)) && v !== '' ? Number(v) : 0);
   const change = {};
-  if (num(d.left) !== i.left) change.left = Math.round(num(d.left) * TWIPS_PER_CM);
-  if (num(d.right) !== i.right) change.right = Math.round(num(d.right) * TWIPS_PER_CM);
+  if (num(d.left) !== i.left) change.left = toTwips(num(d.left), d.unit);
+  if (num(d.right) !== i.right) change.right = toTwips(num(d.right), d.unit);
   if (d.special !== i.special || (d.special !== 'none' && num(d.by) !== i.by)) {
-    const by = Math.max(0, Math.round(num(d.by) * TWIPS_PER_CM));
+    const by = Math.max(0, toTwips(num(d.by), d.unit));
     if (d.special === 'hanging') change.hanging = by;
     else change.firstLine = d.special === 'firstLine' ? by : 0;
   }
@@ -4878,35 +4924,57 @@ function insertNodes(nodes, range) {
   else insertAtCaret(nodes);
 }
 
+/** The header or footer (`which`) shown, in the page, or null. */
+const shownPart = (which) => page.value.querySelector(`:scope > .docx-hf-band.${which} .docx-hf-part[data-variant="${hf[which]}"]`);
+
+/**
+ * A header or footer (`which`) for all pages, for a document without one: one empty paragraph in
+ * Word's Header or Footer style, saved only while it is in the page (Undo takes it away). Returns
+ * the part to type in.
+ */
+function addHeaderFooter(which) {
+  const band = which === 'header' ? doc.newHeader() : doc.newFooter();
+  refreshCss();
+  if (which === 'header') page.value.prepend(band);
+  else page.value.append(band);
+  pageChanged();
+  return band.querySelector('.docx-hf-part');
+}
+
 /**
  * Page number, as Word's Insert Page Number: Word's PAGE field at the caret in a header or footer.
  * With the caret in the text: into the footer if it is empty, else the caret goes to the footer to
  * say where (a footer's design is the document's); a document without a footer gets one, for all
- * pages, with the number centred. Word numbers the pages: here the field shows 1.
+ * pages, with the number centred. From the menu (`where`: Top or Bottom of Page, `which` 'header'
+ * or 'footer', aligned `align`), the same in the header or footer chosen, aligned as chosen. Word
+ * numbers the pages: here the field shows 1.
  */
-function insertPageNumber() {
+function insertPageNumber(where = null) {
   if (textLocked.value) return explainLock();
   restoreSelection();
   let range = selectionInPage();
-  const inPart = range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('.docx-hf-part');
+  const inPart = !where && range && (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('.docx-hf-part');
+  const which = where?.which || 'footer';
   undoStack.flush();
   if (!inPart) {
-    let host = page.value.querySelector(`:scope > .docx-hf-band.footer .docx-hf-part[data-variant="${hf.footer}"]`);
+    let host = shownPart(which);
     if (host && host.textContent.trim()) {
       placeCaret(host.lastElementChild || host);
       host.scrollIntoView({ block: 'nearest' });
-      message.value = 'Click where the number goes in the footer (or header), then Page number again';
+      message.value = where
+        ? `The ${which} has text already: click where the number goes in it, then Page number`
+        : 'Click where the number goes in the footer (or header), then Page number again';
       return;
     }
+    const align = where?.align || 'center';
     if (!host) {
-      const band = doc.newFooter();
-      refreshCss();
-      page.value.append(band);
-      host = band.querySelector('.docx-hf-part');
-      pageChanged();
+      host = addHeaderFooter(which);
+      const p = host.querySelector(BLOCK_SELECTOR);
+      // A new footer is centred (as newFooter writes it), a new header isn't aligned.
+      if (p && align !== (which === 'footer' ? 'center' : 'left')) p.style.textAlign = align;
     } else {
       const p = host.querySelector(BLOCK_SELECTOR);
-      if (p) withTrackedParagraphs([p], () => { p.style.textAlign = 'center'; });
+      if (p && p.style.textAlign !== align) withTrackedParagraphs([p], () => { p.style.textAlign = align; });
     }
     const target = host.querySelector(BLOCK_SELECTOR) || host;
     if (!target.textContent) for (const br of target.querySelectorAll('br')) br.remove(); // an empty line's placeholder
@@ -4932,7 +5000,64 @@ function insertPageNumber() {
   onInput();
   undoStack.commit();
   measureFooter();
-  message.value = inPart ? 'Page number added: Word numbers the pages' : 'Page number added to the footer: Word numbers the pages';
+  message.value = inPart ? 'Page number added: Word numbers the pages' : `Page number added to the ${which}: Word numbers the pages`;
+}
+
+// Insert Page Number's positions (Top of Page, Bottom of Page), as Word's galleries offer them.
+const PAGE_NUMBER_ALIGNS = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Centre' },
+  { value: 'right', label: 'Right' },
+];
+const pageNumberMenu = reactive({ open: false, x: 0, y: 0 });
+const pageNumberMenuEl = ref(null);
+const pageNumberButton = ref(null);
+
+function togglePageNumberMenu() {
+  if (pageNumberMenu.open) return closePageNumberMenu();
+  restoreSelection();
+  const rect = pageNumberButton.value.getBoundingClientRect();
+  Object.assign(pageNumberMenu, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 248)), y: rect.bottom + 4 });
+  nextTick(() => {
+    keepInView(pageNumberMenu, pageNumberMenuEl.value);
+    pageNumberMenuEl.value?.querySelector('button')?.focus();
+  });
+}
+
+function closePageNumberMenu(refocusText = false) {
+  pageNumberMenu.open = false;
+  if (refocusText) refocus();
+}
+
+function pageNumberAt(which, align) {
+  pageNumberMenu.open = false;
+  page.value.focus();
+  insertPageNumber({ which, align });
+}
+
+/**
+ * Edit Header / Edit Footer, as Word's: the caret goes to the end of the header (or footer) shown;
+ * a document without one gets one for all pages, empty, to type in (as the page number's).
+ */
+function editHeaderFooter(which) {
+  pageNumberMenu.open = false;
+  if (textLocked.value) return explainLock();
+  page.value.focus();
+  let host = shownPart(which);
+  if (host) {
+    placeCaret(host.lastElementChild || host);
+    host.scrollIntoView({ block: 'nearest' });
+    message.value = `Type in the ${which}: it shows on every page it is for`;
+    return;
+  }
+  undoStack.flush();
+  host = addHeaderFooter(which);
+  placeCaret(host.querySelector(BLOCK_SELECTOR) || host, true);
+  host.scrollIntoView({ block: 'nearest' });
+  onInput();
+  undoStack.commit();
+  measureFooter();
+  message.value = `A ${which} for every page: type its text (Undo takes it away)`;
 }
 
 // The page as it was right after fields were updated here (for the review: "updated here").
@@ -5020,7 +5145,7 @@ function insertNote(kind = 'footnote') {
 const insertFootnote = () => insertNote('footnote');
 const insertEndnote = () => insertNote('endnote');
 
-// Page setup, for the whole document: paper size, orientation and margins (cm), as Word's.
+// Page setup, for the whole document: paper size, orientation and margins (cm or inches), as Word's.
 const PAPERS = [
   { name: 'A4', label: '21 × 29.7 cm', w: 11906, h: 16838 },
   { name: 'Letter', label: '8.5 × 11 in', w: 12240, h: 15840 },
@@ -5029,19 +5154,22 @@ const PAPERS = [
   { name: 'A3', label: '29.7 × 42 cm', w: 16838, h: 23811 },
   { name: 'Executive', label: '7.25 × 10.5 in', w: 10440, h: 15120 },
 ];
+// Word's margin presets, in twips: 1 inch, ½ inch, 1 and ¾ inch, 1 and 2 inches.
 const MARGIN_PRESETS = [
-  { name: 'Normal', top: 2.54, bottom: 2.54, left: 2.54, right: 2.54 },
-  { name: 'Narrow', top: 1.27, bottom: 1.27, left: 1.27, right: 1.27 },
-  { name: 'Moderate', top: 2.54, bottom: 2.54, left: 1.91, right: 1.91 },
-  { name: 'Wide', top: 2.54, bottom: 2.54, left: 5.08, right: 5.08 },
+  { name: 'Normal', top: 1440, bottom: 1440, left: 1440, right: 1440 },
+  { name: 'Narrow', top: 720, bottom: 720, left: 720, right: 720 },
+  { name: 'Moderate', top: 1440, bottom: 1440, left: 1080, right: 1080 },
+  { name: 'Wide', top: 1440, bottom: 1440, left: 2880, right: 2880 },
 ];
-const pageDialog = reactive({ open: false, x: 0, y: 0, paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal' });
+const MARGINS = ['top', 'bottom', 'left', 'right'];
+const pageDialog = reactive({ open: false, x: 0, y: 0, unit: 'cm', paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal' });
 // Word's Watermark gallery's texts (Design > Watermark).
 const WATERMARKS = ['DRAFT', 'CONFIDENTIAL', 'DO NOT COPY', 'SAMPLE', 'URGENT', 'ASAP'];
 const pageDialogEl = ref(null);
 const pageSetupButton = ref(null);
 let pageInitial = null;
-const marginPreset = computed(() => MARGIN_PRESETS.find((m) => ['top', 'bottom', 'left', 'right'].every((k) => Math.abs(Number(pageDialog[k]) - m[k]) < 0.01))?.name || 'custom');
+let pageTwips = null; // the margins as they were, exactly, for switching units
+const marginPreset = computed(() => MARGIN_PRESETS.find((m) => MARGINS.every((k) => Math.abs(Number(pageDialog[k]) - fromTwips(m[k], pageDialog.unit)) < 0.01))?.name || 'custom');
 
 /** Shows a change to the page's size, margins or bands: the sheet, the print page, what is drawn over it. */
 function pageChanged() {
@@ -5059,14 +5187,16 @@ function openPageSetup() {
   const now = doc.pageSetupNow();
   const [short, long] = [Math.min(now.w, now.h), Math.max(now.w, now.h)];
   const paper = PAPERS.find((p) => Math.abs(p.w - short) <= 20 && Math.abs(p.h - long) <= 20);
-  const cm = (twips) => Math.round((twips / TWIPS_PER_CM) * 100) / 100;
+  const unit = unitFor(now.w, now.h);
+  const cm = (twips) => fromTwips(twips, unit);
+  pageTwips = { top: now.top, bottom: now.bottom, left: now.left, right: now.right };
   pageInitial = {
     paper: paper ? paper.name : 'custom', orient: now.orient === 'landscape' || now.w > now.h ? 'landscape' : 'portrait',
     top: cm(now.top), bottom: cm(now.bottom), left: cm(now.left), right: cm(now.right), w: now.w, h: now.h,
     ...watermarkNow(),
   };
   const rect = pageSetupButton.value.getBoundingClientRect();
-  Object.assign(pageDialog, pageInitial, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  Object.assign(pageDialog, pageInitial, { unit, open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
   nextTick(() => {
     keepInView(pageDialog, pageDialogEl.value);
     pageDialogEl.value?.querySelector('select')?.focus();
@@ -5080,7 +5210,13 @@ function closePageSetup() {
 
 function pickMargins(name) {
   const m = MARGIN_PRESETS.find((x) => x.name === name);
-  if (m) Object.assign(pageDialog, { top: m.top, bottom: m.bottom, left: m.left, right: m.right });
+  if (m) for (const k of MARGINS) pageDialog[k] = fromTwips(m[k], pageDialog.unit);
+}
+
+/** The Page setup dialog's margins in another unit (remembered for the next dialogs). */
+function setPageUnit(unit) {
+  saveUnit(unit);
+  switchUnit(pageDialog, pageInitial, pageTwips, MARGINS, unit);
 }
 
 /** Applies what was changed in the Page setup dialog to every section, as one undoable step. */
@@ -5096,7 +5232,7 @@ function applyPageSetup() {
     const landscape = d.orient === 'landscape';
     Object.assign(change, { w: landscape ? long : short, h: landscape ? short : long, orient: d.orient });
   }
-  for (const k of ['top', 'bottom', 'left', 'right']) if (num(d[k]) !== i[k]) change[k] = Math.round(num(d[k]) * TWIPS_PER_CM);
+  for (const k of MARGINS) if (num(d[k]) !== i[k]) change[k] = toTwips(num(d[k]), d.unit);
   const markText = (d.mark === 'custom' ? d.markText : d.mark).trim();
   const markInitial = (i.mark === 'custom' ? i.markText : i.mark).trim();
   const markChanged = markText !== markInitial || (!!markText && d.markLayout !== i.markLayout);
@@ -5105,10 +5241,10 @@ function applyPageSetup() {
   if (!paged && !markChanged) return;
   if (paged) {
     const width = change.w ?? i.w;
-    const left = change.left ?? Math.round(i.left * TWIPS_PER_CM);
-    const right = change.right ?? Math.round(i.right * TWIPS_PER_CM);
+    const left = change.left ?? pageTwips.left;
+    const right = change.right ?? pageTwips.right;
     if (width - left - right < 1440) {
-      message.value = 'The margins leave less than 2.5 cm for the text: nothing was changed';
+      message.value = `The margins leave less than ${d.unit === 'in' ? '1 in' : '2.5 cm'} for the text: nothing was changed`;
       return;
     }
   }
@@ -5486,16 +5622,18 @@ function explainKeyOutsideText(e) {
 
 /**
  * End (and Shift+End) as Word has it, also on a line with something that can't be typed into, such
- * as a page number: Chrome's End doesn't move on such a line. There the caret (or the selection's
- * end) goes to the end of the caret's line, found where the paragraph's right edge is level with the
- * caret, and past a page number or a field's hidden marks that end it. True if it was dealt with.
+ * as a page number or a footnote's reference: Chrome's End doesn't move past one. There the caret
+ * (or the selection's end) goes to the end of the caret's line, found where the paragraph's right
+ * edge is level with the caret, and past a page number, a note's reference or a field's hidden
+ * marks that end it. True if it was dealt with.
  */
 function endOfLine(extend) {
   const sel = window.getSelection();
   if (!sel.rangeCount || !sel.focusNode || !page.value?.contains(sel.focusNode)) return false;
   const block = closestBlock(sel.focusNode);
-  // Only a line with a page number (elsewhere the browser's End works), and not right to left.
-  if (!block?.querySelector('.page-field') || getComputedStyle(block).direction === 'rtl') return false;
+  // Only a line with a page number or a note's reference (elsewhere the browser's End works: on
+  // such a line Chrome's End stops before the number, or the reference), and not right to left.
+  if (!block?.querySelector('.page-field, .note-ref') || getComputedStyle(block).direction === 'rtl') return false;
   const caret = document.createRange();
   caret.setStart(sel.focusNode, sel.focusOffset);
   let at = caret.getBoundingClientRect();
@@ -5518,16 +5656,109 @@ function endOfLine(extend) {
       node = last.parentNode;
       offset = [...node.childNodes].indexOf(last) + 1;
     }
+    // Before a note's reference (or a page number) that ends the line: just after it, as Word's End.
+    [node, offset] = pastLockedAtEnd(block, node, offset, at);
   }
   if (extend) sel.extend(node, offset);
   else sel.collapse(node, offset);
   return true;
 }
 
+/**
+ * Home (and Shift+Home) as Word has it on a line that starts with a page number: Chrome's Home puts
+ * the caret inside the number's field there, where typed text would become the field's result. The
+ * caret goes to the start of the line, found where the paragraph's left edge is level with the
+ * caret, and before the field's hidden marks, so text typed goes before the field. True if it was
+ * dealt with; only lines with a page number (elsewhere the browser's Home works), not right to left.
+ */
+function startOfLine(extend) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount || !sel.focusNode || !page.value?.contains(sel.focusNode)) return false;
+  const block = closestBlock(sel.focusNode);
+  if (!block?.querySelector('.page-field') || getComputedStyle(block).direction === 'rtl') return false;
+  const caret = document.createRange();
+  caret.setStart(sel.focusNode, sel.focusOffset);
+  let at = caret.getBoundingClientRect();
+  if (!at.height) at = block.getClientRects()[0] || block.getBoundingClientRect();
+  const box = block.getBoundingClientRect();
+  const x = box.left + parseFloat(getComputedStyle(block).paddingLeft || 0) + 1;
+  const y = at.top + at.height / 2;
+  const pos = document.caretPositionFromPoint?.(x, y);
+  let node = pos ? pos.offsetNode : document.caretRangeFromPoint?.(x, y)?.startContainer;
+  let offset = pos ? pos.offset : document.caretRangeFromPoint?.(x, y)?.startOffset;
+  if (!node || !block.contains(node)) return false;
+  // Inside something that can't be typed into (the number's field): just before it.
+  let locked = (node.nodeType === 1 ? node : node.parentElement).closest('[contenteditable="false"]');
+  if (locked && !block.contains(locked)) locked = null;
+  if (!locked) {
+    // Only where the line starts with the page number (after hidden marks): elsewhere the browser's.
+    let next = node.nodeType === 3 ? (offset === 0 ? node : null) : node.childNodes[offset];
+    while (next && ((next.nodeType === 3 && !next.data.replace(/[\u200b\ufeff]/g, '')) || next.classList?.contains('raw-hidden'))) next = next.nextSibling;
+    if (!next?.matches?.('.page-field, .field:has(> .page-field)')) return false;
+  }
+  if (locked) {
+    while (locked.parentElement !== block && locked.parentElement?.closest('[contenteditable="false"]') && block.contains(locked.parentElement.closest('[contenteditable="false"]'))) {
+      locked = locked.parentElement.closest('[contenteditable="false"]');
+    }
+    node = locked.parentNode;
+    offset = [...node.childNodes].indexOf(locked);
+  }
+  // Before hidden marks (a field's start and instruction) just before it, at the start of the line.
+  const empty = (n) => n.nodeType === 3 && !n.data.replace(/[\u200b\ufeff]/g, '');
+  if (node.nodeType === 3 && offset === 0) {
+    offset = [...node.parentNode.childNodes].indexOf(node);
+    node = node.parentNode;
+  }
+  if (node.nodeType === 1) {
+    while (offset > 0) {
+      const prev = node.childNodes[offset - 1];
+      if (!(empty(prev) || (prev.nodeType === 1 && prev.classList.contains('raw-hidden')))) break;
+      offset--;
+    }
+  }
+  if (extend) sel.extend(node, offset);
+  else sel.collapse(node, offset);
+  return true;
+}
+
+/**
+ * From (`node`, `offset`) at the end of a line of `block`, past what can't be typed into (a note's
+ * reference, a page number) and hidden marks that follow it on the same line (`line`: the caret's
+ * rectangle). Returns the position after them, or the one given.
+ */
+function pastLockedAtEnd(block, node, offset, line) {
+  const empty = (n) => n.nodeType === 3 && !n.data.replace(/[\u200b\ufeff]/g, '');
+  const onLine = (el) => [...el.getClientRects()].some((r) => r.top < line.bottom && r.bottom > line.top);
+  // Up to the element holding the position, while it is at the end of a text node or a run.
+  let at = node;
+  let i = offset;
+  while (at !== block && (at.nodeType === 3 ? i >= at.data.length : i >= at.childNodes.length) && block.contains(at.parentNode)) {
+    i = [...at.parentNode.childNodes].indexOf(at) + 1;
+    at = at.parentNode;
+  }
+  if (at.nodeType === 3) return [node, offset];
+  let next = at.childNodes[i];
+  let past = null;
+  while (next && (empty(next) || (next.nodeType === 1 && (next.classList.contains('raw-hidden')
+    || (next.matches('[contenteditable="false"]:is(.note-ref, .page-field)') && onLine(next)))))) {
+    if (next.nodeType === 1 && !next.classList.contains('raw-hidden')) past = next;
+    next = next.nextSibling;
+  }
+  if (!past) return [node, offset];
+  // After hidden marks that follow it too, as after a page number.
+  let last = past;
+  while (last.nextSibling?.nodeType === 1 && last.nextSibling.classList.contains('raw-hidden')) last = last.nextSibling;
+  return [last.parentNode, [...last.parentNode.childNodes].indexOf(last) + 1];
+}
+
 function onKeydown(e) {
   selectedChange = null;
   if (formKeydown(e)) return;
   if (e.key === 'End' && !e.ctrlKey && !e.metaKey && !e.altKey && endOfLine(e.shiftKey)) {
+    e.preventDefault();
+    return;
+  }
+  if (e.key === 'Home' && !e.ctrlKey && !e.metaKey && !e.altKey && startOfLine(e.shiftKey)) {
     e.preventDefault();
     return;
   }
@@ -6231,6 +6462,7 @@ function onDocumentMousedown(e) {
   if (saveMenu.open && !saveMenuEl.value?.contains(e.target) && !saveMenuButton.value?.contains(e.target)) saveMenu.open = false;
   if (insertMenu.open && !insertMenuEl.value?.contains(e.target) && !insertButton.value?.contains(e.target)) insertMenu.open = false;
   if (caseMenu.open && !caseMenuEl.value?.contains(e.target) && !caseButton.value?.contains(e.target)) caseMenu.open = false;
+  if (pageNumberMenu.open && !pageNumberMenuEl.value?.contains(e.target) && !pageNumberButton.value?.contains(e.target)) pageNumberMenu.open = false;
   if (ctxMenu.open && !ctxMenuEl.value?.contains(e.target)) ctxMenu.open = false;
   if (shareReady.file && !shareReadyEl.value?.contains(e.target)) shareReady.file = null;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
@@ -6999,6 +7231,8 @@ async function close() {
 .insert-menu .hint { color: var(--muted); font-size: 12px; }
 .insert-menu .auto-date { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
 .insert-menu .auto-date .hint { flex-basis: 100%; padding-left: 20px; }
+.page-number-menu { min-width: 260px; }
+.page-number-menu .menu-sep { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; }
 .insert-menu .menu-label { margin: 6px 8px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .chooser.share-ready { left: 50%; top: 72px; transform: translateX(-50%); width: 300px; max-width: calc(100vw - 16px); padding: 12px; gap: 10px; font-size: 14px; }
 .share-ready p { margin: 0; overflow-wrap: anywhere; }

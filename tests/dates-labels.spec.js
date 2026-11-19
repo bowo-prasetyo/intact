@@ -132,7 +132,7 @@ test('End in a line of text still stops at the end of the text', async ({ page }
 test('a page number put in here shows # too', async ({ page }) => {
   await openInEditor(page, await buildDocx(BODY));
   await page.locator('.docx-page > p').first().click();
-  await page.getByRole('button', { name: 'Page number' }).click();
+  await page.getByRole('button', { name: 'Page number', exact: true }).click();
   await expect(page.locator('.docx-hf-band.footer .field.page-field')).toHaveAttribute('data-show', '#');
 });
 
