@@ -9,7 +9,7 @@ const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles
   + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>'
   + '<w:style w:type="paragraph" w:styleId="Form"><w:name w:val="Form"/><w:basedOn w:val="Normal"/><w:pPr><w:tabs><w:tab w:val="left" w:pos="2835"/><w:tab w:val="right" w:leader="dot" w:pos="9000"/></w:tabs></w:pPr></w:style>'
   + '</w:styles>';
-const DOC = '<w:p><w:r><w:t>Nomor</w:t></w:r><w:r><w:tab/><w:t>: 12/ADM/2026</w:t></w:r></w:p>'
+const DOC = '<w:p><w:r><w:t>No</w:t></w:r><w:r><w:tab/><w:t>: 12/ADM/2026</w:t></w:r></w:p>'
   + '<w:p><w:pPr><w:pStyle w:val="Form"/></w:pPr><w:r><w:t>Perihal</w:t></w:r><w:r><w:tab/><w:t>: Undangan</w:t></w:r></w:p>'
   + '<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="1701"/></w:tabs></w:pPr><w:r><w:t>Lampiran</w:t></w:r><w:r><w:tab/><w:t>: 1 berkas</w:t></w:r></w:p>';
 const OPTS = { parts: { 'word/styles.xml': STYLES } };
@@ -38,23 +38,23 @@ const afterTab = (page, text) => para(page, text).evaluate((p) => {
 
 test('tabs go to the paragraph’s first left stop, or to Word’s default stops', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC, OPTS));
-  expect(await afterTab(page, 'Nomor')).toBeCloseTo(1.27, 1); // the default stop, half an inch
+  expect(await afterTab(page, 'No')).toBeCloseTo(1.27, 1); // the default stop, half an inch (short text: before it)
   expect(await afterTab(page, 'Perihal')).toBeCloseTo(5, 1); // the style's 2835 twips
   expect(await afterTab(page, 'Lampiran')).toBeCloseTo(3, 1); // its own 1701 twips
 });
 
 test('the Paragraph dialog lists the tab stops and sets a new one, written as Word writes it', async ({ page }) => {
   await openInEditor(page, await buildDocx(DOC, OPTS));
-  const dialog = await openParagraphDialog(page, 'Nomor');
+  const dialog = await openParagraphDialog(page, 'No');
   await expect(dialog.getByText('None: tabs go to Word’s default stops, every 1.27 cm.')).toBeVisible();
   await dialog.getByLabel('Tab stop position (cm)').fill('4');
   await dialog.getByRole('button', { name: 'Set' }).click();
   await expect(dialog.getByRole('list', { name: 'Tab stops' }).getByRole('listitem')).toHaveText([/4 cm\s*Left/]);
   await dialog.getByRole('button', { name: 'OK' }).click();
-  await expect.poll(() => afterTab(page, 'Nomor')).toBeCloseTo(4, 1);
+  await expect.poll(() => afterTab(page, 'No')).toBeCloseTo(4, 1);
 
   const { xml } = await download(page);
-  expect(savedParagraph(xml, 'Nomor')).toContain('<w:tabs><w:tab w:val="left" w:pos="2268"/></w:tabs>');
+  expect(savedParagraph(xml, 'No')).toContain('<w:tabs><w:tab w:val="left" w:pos="2268"/></w:tabs>');
   // The others are as they were.
   expect(savedParagraph(xml, 'Lampiran')).toContain('<w:tabs><w:tab w:val="left" w:pos="1701"/></w:tabs>');
 });

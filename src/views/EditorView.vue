@@ -4377,14 +4377,26 @@ function anchorRect(button) {
   return at || button?.getBoundingClientRect() || { left: 8, bottom: 60 };
 }
 
+let ctxOpenedAt = 0;
+
 function onContextMenu(e) {
+  // Opened from the keyboard a moment ago (see onKeydown): not again.
+  if (ctxMenu.open && Date.now() - ctxOpenedAt < 500) {
+    e.preventDefault();
+    return;
+  }
   if (e.shiftKey || e.pointerType === 'touch' || e.sourceCapabilities?.firesTouchEvents) return; // the browser's own
+  if (!selectionInPage()) return;
+  e.preventDefault();
+  openContextMenu(e.clientX, e.clientY, e.target);
+}
+
+/** Opens the right-click menu at client (x, y), or at the caret (no place: from the keyboard). */
+function openContextMenu(x = 0, y = 0, target = null) {
   const range = selectionInPage();
   if (!range) return;
-  e.preventDefault();
   stopPainterQuietly();
-  // From the keyboard (Menu key, Shift+F10) the event has no place on the screen: the caret's.
-  let { clientX: x, clientY: y } = e;
+  ctxOpenedAt = Date.now();
   if (!x && !y) {
     const r = range.getClientRects()[0] || closestBlock(range.startContainer)?.getBoundingClientRect();
     x = r ? r.left : 100;
@@ -4395,7 +4407,7 @@ function onContextMenu(e) {
   // A tracked change under the pointer (the caret can't go into someone else's): its Accept and
   // Reject act on it, as when it is clicked.
   const items = changeItems(page.value);
-  const hit = e.target?.nodeType === 1 ? items.find((i) => i.el === e.target || i.el.contains(e.target)) : null;
+  const hit = target?.nodeType === 1 ? items.find((i) => i.el === target || i.el.contains(target)) : null;
   if (hit) selectedChange = { el: hit.el, kind: hit.kind };
   Object.assign(ctxMenu, {
     open: true,
@@ -5525,6 +5537,13 @@ function onKeydown(e) {
   if (e.key === 'F9' && !mod && !e.altKey && !e.shiftKey) {
     e.preventDefault();
     updateAllFields();
+    return;
+  }
+  // The Menu key and Shift+F10 open the right-click menu at the caret; not every browser makes a
+  // contextmenu event of them.
+  if ((e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) && !mod && !e.altKey) {
+    e.preventDefault();
+    openContextMenu();
     return;
   }
   if (e.key === 'F3' && e.shiftKey && !mod && !e.altKey) {
