@@ -138,45 +138,45 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.6 2.6 0 0 1 3.7 3.7l-1.1 1.1M8.8 11.4l-1.1 1.1a2.6 2.6 0 0 1-3.7-3.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" /></svg>
       </button>
       <button ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date" aria-label="Insert a check box or date" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">Insert</span>
       </button>
-      <button type="button" class="ph" title="Insert picture" @click="pickPicture">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
+      <button type="button" class="ph" title="Insert picture" aria-label="Insert picture" @click="pickPicture">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Picture</span>
       </button>
       <button type="button" class="ph" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Sign</span>
       </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
-      <button ref="tableButton" type="button" title="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
+      <button ref="tableButton" type="button" title="Insert table" aria-label="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg><span class="short-label">Table</span>
       </button>
-      <button ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+      <button ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-label="Table layout" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg><span class="short-label">Layout</span>
       </button>
       <button type="button" title="Insert footnote (Ctrl+Alt+F)" aria-label="Insert footnote" @click="insertFootnote">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">Footnote</span>
       </button>
       <button type="button" title="Insert endnote (Ctrl+Alt+D)" aria-label="Insert endnote" @click="insertEndnote">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 4h7M1.5 7.5h5M1.5 13.5h13M11.5 2.5v4.5M13.5 2.5v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 4h7M1.5 7.5h5M1.5 13.5h13M11.5 2.5v4.5M13.5 2.5v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">Endnote</span>
       </button>
       <button type="button" title="Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s" aria-label="Update fields" @click="updateAllFields">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Update</span>
       </button>
       <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">Page no.</span>
       </button>
       <button ref="pageSetupButton" type="button" title="Page setup: paper size, orientation and margins" aria-label="Page setup" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg><span class="short-label">Page setup</span>
       </button>
       </fieldset>
       </div>
       <div class="tb-group">
       <span class="sep" />
-      <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+      <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" aria-label="Find and replace" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg><span class="short-label">Find</span>
       </button>
       <button ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" aria-label="Fill in placeholders" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Fill in</span>
         <span v-if="placeholderCount" class="badge">{{ placeholderCount }}</span>
       </button>
       <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" aria-label="Show formatting marks" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
@@ -710,7 +710,8 @@
     <div v-if="insertMenu.open" ref="insertMenuEl" class="change-menu insert-menu" role="menu" aria-label="Insert" :style="{ left: `${insertMenu.x}px`, top: `${insertMenu.y}px` }" @mousedown.prevent @keydown.esc="closeInsertMenu(true)" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="insertCheckbox">Check box<span class="hint">☐ ticked with a click</span></button>
       <p class="menu-label" role="presentation">Today’s date</p>
-      <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d.text)">{{ d.text }}</button>
+      <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
+      <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" title="As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
     </div>
 
     <div v-if="shareReady.file" ref="shareReadyEl" class="chooser share-ready" role="dialog" aria-label="Share" @keydown.esc="shareReady.file = null">
@@ -747,6 +748,7 @@ import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
+import { wordDatePicture, dateFieldInstruction } from '../editor/dates.js';
 import { findPlaceholders } from '../editor/placeholders.js';
 import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
@@ -775,7 +777,7 @@ import { checkScreening } from '../editor/screening.js';
 import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
-import { rovingToolbar } from '../editor/toolbar.js';
+import { rovingToolbar, fitLabels } from '../editor/toolbar.js';
 import { fitPictures, pictureZoom } from '../editor/fitPictures.js';
 import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
@@ -1437,13 +1439,27 @@ function updatePages() {
   if (narrow?.matches) {
     pageCount.value = 0;
     pageBreaksEl.value?.replaceChildren();
+    showPageCount();
     return;
   }
   const { count, breaks } = pagesAt100();
   pageCount.value = count;
+  showPageCount();
   if (pageBreaksEl.value) {
     if (showPageBreaks.value) drawPageBreaks(pageBreaksEl.value, breaks.map((b) => b.y), sheetZoom.value);
     else pageBreaksEl.value.replaceChildren();
+  }
+}
+/**
+ * The number of pages fields (NUMPAGES) show about how many pages there are, as the status bar
+ * does; not worked out (a phone), the number in the file. Only data attributes change, which
+ * nothing saves or watches.
+ */
+function showPageCount() {
+  const show = pageCount.value ? String(pageCount.value) : '';
+  for (const f of page.value.querySelectorAll('.field.page-field[data-instr^="NUMPAGES" i], .field.page-field[data-instr^="SECTIONPAGES" i]')) {
+    if (f.dataset.show !== show) f.dataset.show = show;
+    if (f.dataset.digits !== String(show.length)) f.dataset.digits = String(show.length);
   }
 }
 /** Works the pages out again a moment after the last change (typing goes on undisturbed). */
@@ -1530,9 +1546,17 @@ onBeforeRouteLeave(() => {
 
 const toolbarEl = ref(null);
 let toolbarNav = null;
-onMounted(() => { toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus }); });
+let toolbarLabels = null;
+onMounted(() => {
+  toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus });
+  toolbarLabels = fitLabels(toolbarEl.value);
+  document.fonts?.ready.then(() => toolbarLabels?.refit()); // labels' widths in the interface font
+});
+// Controls that come and go (Comments, a document's character styles) change what fits. (Watched
+// once mounted: those are declared further down.)
+onMounted(() => watch(() => [threads.value.length, characterStyles.value.length, placeholderCount.value > 0], () => nextTick(() => toolbarLabels?.refit())));
 onMounted(detectShare);
-onBeforeUnmount(() => toolbarNav?.dispose());
+onBeforeUnmount(() => { toolbarNav?.dispose(); toolbarLabels?.dispose(); });
 
 // ------------------------------------------------------------------ zoom
 
@@ -3322,11 +3346,12 @@ function todaysDates(lang) {
     try { return new Intl.DateTimeFormat(lang, options).format(today); } catch { return new Intl.DateTimeFormat('en', options).format(today); }
   };
   const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const SHORT = { year: 'numeric', month: '2-digit', day: '2-digit' };
   const dates = [
-    { style: 'long', text: as({ dateStyle: 'long' }) },
-    { style: 'full', text: as({ dateStyle: 'full' }) },
-    { style: 'short', text: as({ year: 'numeric', month: '2-digit', day: '2-digit' }) },
-    { style: 'iso', text: iso },
+    { style: 'long', text: as({ dateStyle: 'long' }), picture: wordDatePicture(lang, { dateStyle: 'long' }) },
+    { style: 'full', text: as({ dateStyle: 'full' }), picture: wordDatePicture(lang, { dateStyle: 'full' }) },
+    { style: 'short', text: as(SHORT), picture: wordDatePicture(lang, SHORT) },
+    { style: 'iso', text: iso, picture: 'yyyy-MM-dd' },
   ];
   return dates.filter((d, i) => dates.findIndex((e) => e.text === d.text) === i);
 }
@@ -3360,19 +3385,50 @@ function closeInsertMenu(refocusText = false) {
   if (refocusText) refocusAt(insertRange);
 }
 
-/** Today's date as text at the caret (or in place of the selection), as typed: tracked while tracking. */
-function insertDate(text) {
+// "Update automatically", as in Word's Date and Time dialog: off, the date is text; on, a DATE
+// field in the same format, which Word updates to the day it opens (or prints) the file. Remembered
+// in this browser, as Word remembers it.
+const DATE_UPDATES_KEY = 'intact.dateUpdates';
+const dateUpdates = ref((() => { try { return localStorage.getItem(DATE_UPDATES_KEY) === '1'; } catch { return false; } })());
+
+function toggleDateUpdates() {
+  dateUpdates.value = !dateUpdates.value;
+  try { localStorage.setItem(DATE_UPDATES_KEY, dateUpdates.value ? '1' : '0'); } catch { /* this session only */ }
+}
+
+/**
+ * Today's date at the caret (or in place of the selection): as typed, or (Update automatically) as
+ * Word's DATE field with today's date as its result; tracked while tracking.
+ */
+function insertDate({ text, picture }) {
   closeInsertMenu();
   refocusAt(insertRange);
-  const range = selectionInPage();
+  let range = selectionInPage();
   if (!range) return;
   const locked = readOnlySelection();
   if (locked) return explainReadOnly(locked, true);
+  const field = dateUpdates.value;
+  if (field && inField(range.startContainer)) {
+    message.value = 'A date that updates can’t go inside a field: put the caret after it';
+    return;
+  }
+  if (field && !range.collapsed && refuseRemoving([range])) return;
   undoStack.flush();
-  document.execCommand('insertText', false, text);
+  if (!field) {
+    document.execCommand('insertText', false, text);
+  } else {
+    if (!range.collapsed) {
+      const opts = trackedBy(range.startContainer);
+      if (opts) deleteTracked(range, false, opts);
+      else deleteSelection();
+      range = selectionInPage();
+    }
+    insertNodes(doc.newField(dateFieldInstruction(picture), text), range);
+    onInput();
+  }
   undoStack.commit();
   markDirty();
-  message.value = `Date inserted: ${text}`;
+  message.value = field ? `Date inserted: ${text} – Word updates it to the day it opens the file` : `Date inserted: ${text}`;
 }
 
 /**
@@ -5976,14 +6032,28 @@ async function setUpdateProperties(on) {
 function closeReview() {
   reviewData.value = null;
   pendingShare.value = false;
+  backFromReview();
+}
+
+/**
+ * Back in the text where you were, after the review: the selection as it was before it opened.
+ * (Focusing the page alone puts the caret at its start, in a table's cell too.)
+ */
+function backFromReview() {
+  const range = savedRange;
   page.value.focus();
-  restoreSelection();
+  if (range?.startContainer.isConnected && page.value.contains(range.commonAncestorContainer)) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } else {
+    restoreSelection();
+  }
 }
 
 function downloadReviewed() {
   reviewData.value = null;
-  page.value.focus(); // carry on editing where you were
-  restoreSelection();
+  backFromReview(); // carry on editing where you were
   const share = pendingShare.value;
   pendingShare.value = false;
   save(share ? 'share' : 'download');
@@ -6076,6 +6146,8 @@ async function close() {
 .insert-menu { min-width: 220px; }
 .insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
 .insert-menu .hint { color: var(--muted); font-size: 12px; }
+.insert-menu .auto-date { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
+.insert-menu .auto-date .hint { flex-basis: 100%; padding-left: 20px; }
 .insert-menu .menu-label { margin: 6px 8px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .chooser.share-ready { left: 50%; top: 72px; transform: translateX(-50%); width: 300px; max-width: calc(100vw - 16px); padding: 12px; gap: 10px; font-size: 14px; }
 .share-ready p { margin: 0; overflow-wrap: anywhere; }
@@ -6163,6 +6235,10 @@ async function close() {
 .split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
 .changes-group { display: inline-flex; align-items: center; gap: 2px; }
 .labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
+/* Icon buttons' text labels, shown where the toolbar has room for them (see editor/toolbar.js fitLabels). */
+.toolbar .short-label { display: none; }
+.toolbar button.with-label { gap: 4px; padding: 0 6px; }
+.toolbar button.with-label .short-label { display: inline; font-size: 13px; white-space: nowrap; }
 .change-menu {
   position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
@@ -6496,6 +6572,17 @@ async function close() {
   font: 600 10px/1.4 system-ui, sans-serif; text-align: center; vertical-align: super; background: #d0705c; color: #fff;
 }
 .docx-sheet .field { border-bottom: 1px dotted #9aa6b8; }
+/* A page number shows # (each page has its own) and the page count about how many pages there
+   are: drawn over the number the file holds, which stays in the page as it is. */
+.docx-sheet .field.page-field[data-show]:not([data-show=""]) { position: relative; -webkit-text-fill-color: transparent; }
+/* Inline (an inline-block would take Home and End off the line): room made for a longer count. */
+.docx-sheet .field.page-field[data-digits="2"] { padding-right: .6em; }
+.docx-sheet .field.page-field[data-digits="3"] { padding-right: 1.2em; }
+.docx-sheet .field.page-field[data-show]:not([data-show=""])::after { content: attr(data-show); position: absolute; left: 0; top: 0; -webkit-text-fill-color: currentColor; white-space: nowrap; }
+@media print {
+  .docx-sheet .field.page-field[data-show] { -webkit-text-fill-color: inherit; padding-right: 0; }
+  .docx-sheet .field.page-field[data-show]::after { content: none; }
+}
 ::highlight(comment) { background-color: #fbe3dc; }
 ::highlight(field-near) { background-color: var(--sheet-tint); }
 ::highlight(comment-active) { background-color: #f6b9a8; }

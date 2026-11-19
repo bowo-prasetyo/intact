@@ -549,9 +549,18 @@ export class DocxDocument {
 
   /** Word's page number field (PAGE), as page nodes rendered as a field in a file is: its result is "1" until Word numbers the pages. */
   newPageField() {
+    return this.newField(' PAGE   \\* MERGEFORMAT ', '1');
+  }
+
+  /**
+   * A field as Word writes one (begin, instruction `instr`, separate, its result `result`, end), as
+   * rendered nodes to put at the caret: a page number, or today's date that Word updates (DATE).
+   */
+  newField(instr, result) {
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const p = parseXml(`<w:p xmlns:w="${W}"><w:r><w:fldChar w:fldCharType="begin"/></w:r>`
-      + '<w:r><w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'
-      + '<w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>').documentElement;
+      + `<w:r><w:instrText xml:space="preserve">${esc(instr)}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>`
+      + `<w:r><w:t xml:space="preserve">${esc(result)}</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`).documentElement;
     const holder = document.createElement('span');
     this.renderInlines(this.xml.importNode(p, true), holder);
     return [...holder.childNodes];
@@ -1760,6 +1769,15 @@ export class DocxDocument {
             wrap.contentEditable = 'false';
           }
           wrap.dataset.instr = instr.trim(); // for updating it here (see fieldUpdates.js)
+          // A page number: each page's own, which Word works out (and printing here does). Shown
+          // as # rather than the 1 it holds, and the page count as about how many there are
+          // (the editor sets data-show); the result in the file isn't changed, nor typed into.
+          const pageKind = /^\s*(PAGE|NUMPAGES|SECTIONPAGES)\b/i.exec(instr)?.[1].toUpperCase();
+          if (pageKind && !ff) {
+            wrap.classList.add('page-field');
+            wrap.dataset.show = pageKind === 'PAGE' ? '#' : '';
+            wrap.contentEditable = 'false';
+          }
           const ref = referenceManager(instr);
           if (ref && ref.source !== 'Word') wrap.dataset.refManager = `${ref.source} ${ref.kind}`;
           parent.append(wrap);

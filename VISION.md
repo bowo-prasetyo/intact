@@ -143,6 +143,8 @@ Saying no to these keeps the product small enough to keep its promises:
   every place they appear ✔; start a new document from a template, leaving the template as it is ✔
 - A business's own look: a logo in the header or footer ✔; a brand colour by its code, remembered
   for the next document ✔; shading and borders for table cells (a quote's heading row and total) ✔
+- Today's date as a field Word updates ✔; page numbers shown as # and the page count as about how
+  many pages ✔; labels on the toolbar's icon buttons where there is room ✔
 
 ## How we'll know it's working
 

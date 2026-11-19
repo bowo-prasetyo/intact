@@ -106,3 +106,49 @@ export function rovingToolbar(toolbar, { onEscape } = {}) {
     },
   };
 }
+
+/**
+ * Text labels for the toolbar's icon buttons (their `.short-label`), where there is room for them:
+ * each in turn, along the toolbar, as long as it fits without the toolbar taking another row, so
+ * the toolbar never grows. On a wide screen that is all of them, on a laptop some; on a phone (one
+ * row that scrolls) none. Worked out again when the toolbar's width changes. Returns { refit, dispose }.
+ */
+export function fitLabels(toolbar) {
+  const LABELLED = 'with-label';
+  const candidates = () => [...toolbar.querySelectorAll('button')].filter((b) => b.querySelector(':scope > .short-label') && b.getClientRects().length);
+  const rowCount = () => {
+    const middles = [];
+    for (const el of toolbar.querySelectorAll('button, select')) {
+      const r = el.getBoundingClientRect();
+      if (r.width) middles.push(r.top + r.height / 2);
+    }
+    // Controls of one row are centred alike, within a few pixels.
+    return middles.sort((a, b) => a - b).filter((m, i, all) => i === 0 || m - all[i - 1] > 8).length;
+  };
+  let width = 0;
+  let busy = false;
+
+  function refit() {
+    if (busy) return;
+    busy = true;
+    try {
+      for (const b of toolbar.querySelectorAll(`.${LABELLED}`)) b.classList.remove(LABELLED);
+      if (getComputedStyle(toolbar).flexWrap === 'nowrap') return; // a phone: one row, scrolling
+      const rows = rowCount();
+      for (const b of candidates()) {
+        b.classList.add(LABELLED);
+        if (rowCount() > rows) b.classList.remove(LABELLED); // no room for it: its icon alone
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
+  const resized = new ResizeObserver(() => {
+    if (toolbar.clientWidth === width) return; // only its width matters (its height follows the fit)
+    width = toolbar.clientWidth;
+    refit();
+  });
+  resized.observe(toolbar);
+  return { refit, dispose: () => resized.disconnect() };
+}
