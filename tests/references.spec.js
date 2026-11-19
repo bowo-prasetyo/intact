@@ -99,10 +99,18 @@ test('a cross-reference to a heading shows its text, and Update (F9) follows the
   await xref.getByRole('button', { name: 'Insert' }).click();
   const line = page.locator('.docx-page > p', { hasText: 'We measured' });
   await expect(line).toHaveText('We measured it. As in Introduction');
-  await caretAt(page, 'Introduction');
-  await page.keyboard.type(' and aims');
+  // Changed within its text (at its very end, a browser may put the caret after the bookmark, as
+  // Word does after a bookmark's end, and the words typed there aren't the bookmark's).
+  await page.evaluate(() => {
+    const h = document.querySelector('.docx-page > h1');
+    const text = [...h.childNodes].map((n) => (n.nodeType === 3 ? n : n.firstChild)).find((n) => n?.nodeType === 3 && n.data.includes('Introduction'));
+    document.querySelector('.docx-page').focus();
+    getSelection().collapse(text, text.data.indexOf('Introduction') + 5);
+  });
+  await page.keyboard.type('-');
+  await expect(page.locator('.docx-page > h1').first()).toHaveText('Intro-duction');
   await page.keyboard.press('F9');
-  await expect(line).toHaveText('We measured it. As in Introduction and aims');
+  await expect(line).toHaveText('We measured it. As in Intro-duction');
 });
 
 test('Equation: typed as LaTeX, previewed, and written as Word\'s Office Math', async ({ page }) => {
