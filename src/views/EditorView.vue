@@ -5392,7 +5392,9 @@ async function close() {
 
 <style scoped>
 .editor-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-.file { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; }
+/* The file's name gives way (cut off) before the header's buttons do, so a narrow screen never
+   scrolls sideways, whatever the fonts. */
+.file { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow: hidden; }
 .filename {
   min-width: 0; max-width: 100%; font: inherit; color: #fff; background: transparent;
   border: 1px solid transparent; border-radius: 4px; padding: 4px 6px;
@@ -5413,7 +5415,9 @@ async function close() {
 .open-tab { display: inline-flex; align-items: center; gap: 6px; }
 .chooser.drop-offer { left: 50%; top: 72px; transform: translateX(-50%); width: 340px; max-width: calc(100vw - 16px); max-height: none; font-size: 13px; }
 .drop-offer p { margin: 0; line-height: 1.45; }
-@media (max-width: 560px) { .open-tab .label { display: none; } }
+@media (max-width: 560px) { .open-tab { padding: 5px 8px; } .open-tab .label { display: none; } }
+/* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
+@media (max-width: 420px) { :deep(.brand span) { display: none; } }
 .save-split { display: inline-flex; gap: 1px; }
 .save-split .primary:first-child { border-radius: 4px 0 0 4px; }
 .save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }

@@ -77,3 +77,13 @@ test('a draft open in another tab is shown as open there, not offered to restore
   await row.getByRole('button', { name: 'Restore CV.docx' }).click();
   await expect(tab.locator('.docx-page')).toHaveText('Edited: The CV');
 });
+
+test('on a narrow phone the header, Open button and all, never scrolls the page sideways', async ({ page }) => {
+  for (const width of [390, 340, 320]) {
+    await page.setViewportSize({ width, height: 664 });
+    await openInEditor(page, await buildDocx(para('The CV')), 'Alex_Morgan_Curriculum_Vitae_2026.docx');
+    await expect(page.getByRole('button', { name: 'Open another document in a new tab' })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Close' })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), `at ${width}px`).toBeLessThanOrEqual(width);
+  }
+});
