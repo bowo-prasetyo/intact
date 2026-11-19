@@ -10,6 +10,7 @@
       </p>
       <h2>What you can edit</h2>
       <ul>
+        <li>Start from a template on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV or a report, with placeholders that Fill in fills in once for everywhere they appear</li>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F) or an endnote (Ctrl+Alt+D)</li>
         <li>Update fields (F9): the table of contents, cross-references, caption and note numbers; Word updates page numbers when it opens the file</li>

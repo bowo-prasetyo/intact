@@ -1461,6 +1461,11 @@ onMounted(() => {
     },
   });
   undoStack.commit();
+  // A starter: its placeholders are what to do first, so Fill in opens with them.
+  if (doc.starter) {
+    countPlaceholders();
+    if (placeholderCount.value && !textLocked.value) nextTick(openFillIn);
+  }
 });
 
 // ------------------------------------------------------------------ formatting marks

@@ -18,6 +18,11 @@ export async function newDocument() {
   setDocument(await DocxDocument.createBlank('Untitled.docx'));
 }
 
+/** A new document from a starter (see docx/starters.js): a letter, a memo, minutes, a quote… */
+export async function newFromStarter(id) {
+  setDocument(await DocxDocument.createStarter(id));
+}
+
 /**
  * Opens a draft kept in this browser (see drafts.js) where its editing left off: with its unsaved
  * changes, the tracked changes made then still counted as this editing's own, and "Edit anyway"

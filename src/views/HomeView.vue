@@ -60,6 +60,21 @@
         <input ref="fileInput" type="file" :accept="ACCEPT" hidden :disabled="busy" @change="onPick" />
       </div>
 
+      <!-- Starter documents: Word documents made here, with [placeholders] to fill in. -->
+      <section class="starters" aria-labelledby="starters-title">
+        <h2 id="starters-title">Or start from a template</h2>
+        <ul>
+          <li v-for="s in STARTERS" :key="s.id">
+            <button type="button" class="starter" :disabled="busy" :aria-label="`${s.title}: ${s.description}`" @click="createFrom(s.id)">
+              <svg class="starter-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path v-for="(d, i) in STARTER_ICONS[s.id]" :key="i" :d="d" /></svg>
+              <span class="starter-title">{{ s.title }}</span>
+              <span class="starter-sub">{{ s.description }}</span>
+            </button>
+          </li>
+        </ul>
+        <p class="starters-note">{{ paper }} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.</p>
+      </section>
+
       <p v-if="busy" class="status" role="status">Opening…</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </main>
@@ -70,7 +85,8 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
-import { openFile, newDocument, openDraft } from '../store.js';
+import { openFile, newDocument, newFromStarter, openDraft } from '../store.js';
+import { STARTERS, localPaper } from '../docx/starters.js';
 import { listDrafts, deleteDraft, MAX_AGE } from '../drafts.js';
 import { receiveFile, draftsOpenElsewhere } from '../tabs.js';
 
@@ -199,6 +215,20 @@ function onDrop(e) {
   if (!busy.value) load(e.dataTransfer.files[0]);
 }
 const createNew = () => run(newDocument);
+const createFrom = (id) => run(() => newFromStarter(id));
+const paper = localPaper();
+
+// Line drawings for the starters, on a page outline (24 × 24, stroked).
+const PAGE = 'M6.5 3h11A1.5 1.5 0 0 1 19 4.5v15a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z';
+const STARTER_ICONS = {
+  letter: ['M3.5 6.5h17v11h-17z', 'M3.5 6.5l8.5 6.5 8.5-6.5'],
+  memo: [PAGE, 'M8 7.5h3M8 10h8M8 12.5h8M8 15h5'],
+  minutes: [PAGE, 'M8 8h.01M8 12h.01M8 16h.01M10.5 8h5.5M10.5 12h5.5M10.5 16h5.5'],
+  quote: [PAGE, 'M8 8h8M8 11.5h4M14 11.5h2M8 14.5h4M14 14.5h2M13 17.5h3'],
+  invoice: ['M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z', 'M9 8h6M9 11.5h6M9 15h3'],
+  cv: [PAGE, 'M12 10.2a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8.5 14.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5M8 17.5h8'],
+  report: [PAGE, 'M8.5 17v-3M12 17v-6M15.5 17V8.5'],
+};
 </script>
 
 <style scoped>
@@ -243,6 +273,21 @@ h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: 
 .drafts button.restore { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
 .drafts button:hover:not(:disabled) { filter: brightness(1.08); }
 .drafts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.starters { margin-top: 40px; text-align: left; }
+.starters h2 { font-size: 1.05rem; margin: 0 0 12px; text-align: center; }
+.starters ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.starter {
+  width: 100%; height: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: inherit; font: inherit; text-align: left;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+}
+.starter:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgb(0 0 0 / 8%); }
+.starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.starter:disabled { cursor: progress; opacity: .7; }
+.starter-icon { flex: none; margin-bottom: 4px; fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.starter-title { font-weight: 600; }
+.starter-sub { color: var(--muted); font-size: .85rem; line-height: 1.35; }
+.starters-note { margin: 12px 0 0; color: var(--muted); font-size: .85rem; text-align: center; }
 .status { margin-top: 24px; color: var(--muted); }
 .error { margin-top: 24px; color: var(--danger); }
 </style>
