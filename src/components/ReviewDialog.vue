@@ -71,7 +71,8 @@
         </details>
       </section>
 
-      <section v-if="review.screening" class="release screening" aria-labelledby="ats-title">
+      <!-- Only for a CV (or when Help asks for the check): an essay or a letter has no use for it. -->
+      <section v-if="review.screening && (review.screening.cv || focus === 'screening')" class="release screening" aria-labelledby="ats-title">
         <details ref="atsEl" class="section" :open="atsOpen">
           <summary><h3 id="ats-title" class="section-title">CV screening software</h3> <span class="count" :class="{ warn: atsProblems }">{{ atsCount }}</span></summary>
           <p class="intro">Many employers put applications through software that reads a CV’s text before anyone does. It reads plain paragraphs well and can miss or mix up the rest.</p>
@@ -244,7 +245,8 @@ const notes = computed(() => {
     const parts = [r.resolved.accepted && `accepted ${plural(r.resolved.accepted, 'tracked change')}`, r.resolved.rejected && `rejected ${plural(r.resolved.rejected, r.resolved.accepted ? 'change' : 'tracked change')}`].filter(Boolean);
     out.push({ kind: 'info', text: `You ${parts.join(' and ')}. As in Word, accepting and rejecting aren’t themselves tracked.` });
   }
-  if (r.paragraphs.some((p) => !p.tracked && !p.resolved && (!p.formatting || /^Picture/.test(p.formatting[0])))) {
+  // A document started here (blank, or new from a template) has no recipient's version to mark changes against.
+  if (!r.startedHere && r.paragraphs.some((p) => !p.tracked && !p.resolved && (!p.formatting || /^Picture/.test(p.formatting[0])))) {
     out.push({ kind: 'warn', text: 'Some text changes aren’t tracked: the recipient won’t see them marked. Undo them and turn on Track changes to mark them.' });
   }
   if (r.paragraphs.some((p) => p.formatting && !p.tracked && !/^(Paragraph break|Comment|Tracked change|Picture)/.test(p.formatting[0]))) {

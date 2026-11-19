@@ -53,8 +53,10 @@ Saying no to these keeps the product small enough to keep its promises:
   word processor. Page layout, styles management and advanced typesetting are out of scope. The
   few slices of them that fixing a document needs are in: page numbers in a header or footer (or
   a new one for them, or for a line of text such as a student's name and course on every page), new
-  footnotes, and paper size, orientation and margins for the whole document.
-  Changing a style's definition, designing headers and footers, and per-section layout stay out.
+  footnotes, and paper size, orientation and margins for the whole document. For students'
+  papers, the References tab's essentials are in too: a table of contents, captions,
+  cross-references, equations, and citations with a bibliography in APA or MLA style, each written
+  as Word writes it so the file goes back to Word intact. Changing a style's definition, designing headers and footers, and per-section layout stay out.
 - **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
   a server, and they conflict with "private".
 - **Other formats.** No spreadsheets, slides, PDF or legacy `.doc`. Do one format well.
@@ -147,6 +149,10 @@ Saying no to these keeps the product small enough to keep its promises:
 - Students' papers: End goes past a footnote's reference ✔; page numbers at the top or bottom, left,
   centre or right, and a header or footer to type in ("Surname 1") ✔; lengths in inches on Letter
   paper, or as chosen ✔
+- References: a table of contents, captions and cross-references, equations typed as LaTeX,
+  citations and a bibliography in APA or MLA (Word's own sources) ✔; the Navigation pane's
+  headings ✔; a hanging indent as Word's dialog shows it ✔; the review's tracking and CV notes only
+  where they apply ✔
 - Today's date as a field Word updates ✔; page numbers shown as # and the page count as about how
   many pages ✔; labels on the toolbar's icon buttons where there is room ✔
 - Tables pasted from Excel, Google Sheets and Word as tables ✔; Format Painter ✔; Change Case

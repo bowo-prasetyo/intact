@@ -31,7 +31,7 @@ test('contact details only in the header of a CV are flagged, counted and shown'
   const docx = await buildDocx(para('Alex Morgan') + para('Marketing Manager, Globex'), headerWith('alex@example.com · +62 812 0000 0000'));
   await openInEditor(page, docx, 'Alex_Morgan_letter.docx');
   await openReview(page);
-  await expect(section(page).locator('details')).not.toHaveAttribute('open', '');
+  await expect(section(page)).toHaveCount(0); // not a CV: the check is left out
   const asLetter = await toCheck(page);
   await review(page).getByRole('button', { name: 'Keep editing' }).click();
   await page.getByRole('button', { name: 'Close' }).click();
@@ -73,14 +73,13 @@ test('pictures are a tip: no text is read in them', async ({ page }) => {
   await expect(section(page).locator('.count')).toHaveText('1 tip');
 });
 
-test('for a document that isn\'t a CV the check is there, closed, and not counted', async ({ page }) => {
+test('for a document that isn\'t a CV the check is left out, and nothing of it counted', async ({ page }) => {
   await openInEditor(page, await buildDocx(para('Dear Sir,') + para('Please find the contract attached.'), headerWith('legal@example.com')), 'Contract.docx');
   await openReview(page);
-  await expect(section(page).locator('details')).not.toHaveAttribute('open', '');
-  // Its warning (contact details in the header) isn't among the things to check.
-  await expect(section(page).locator('li.warn')).toHaveCount(1);
+  // An essay or a letter has no use for it: Help still opens it (below).
+  await expect(section(page)).toHaveCount(0);
   const count = await toCheck(page);
-  const others = await review(page).locator('li.warn:not(section.screening li)').count();
+  const others = await review(page).locator('li.warn').count();
   expect(count).toBeLessThanOrEqual(others);
 });
 

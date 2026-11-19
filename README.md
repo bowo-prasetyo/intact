@@ -57,7 +57,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - Line and paragraph spacing and indents, as Word's Line and Paragraph Spacing menu and Paragraph
   dialog: line spacing (1.0, 1.15, 1.5, 2.0, 2.5, 3.0; Ctrl+1, Ctrl+5, Ctrl+2), add or remove space
   before (Ctrl+0) and after the paragraph, and in the Paragraph dialog left and right indents, a
-  first-line or hanging indent, space before and after, and line spacing single, 1.5 lines, double,
+  first-line or hanging indent (as Word's dialog shows one, Left is where the first line starts:
+  "Left 0, Hanging 1.27 cm" is the usual hanging indent, `w:left="720" w:hanging="720"`, and a list
+  item's Left is where its number is), space before and after, and line spacing single, 1.5 lines, double,
   at least, exactly or multiple. The dialog shows what the paragraph has (from its style when not its
   own) and writes only what is changed in it, into the paragraph's own `w:spacing` and `w:ind`, with
   everything else in its properties kept (and Word's "lines" values, which would win, taken off what
@@ -247,11 +249,36 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   relationship and content type. A note is saved only while its reference is in the text: Undo, or
   deleting the reference, takes a new one away. The reference is tracked while tracking, and so is
   the note's text
+- References, from the Insert menu, as on Word's References tab:
+  - Table of contents: "Contents" in Word's TOC Heading style and Word's `TOC` field over headings
+    1–3 (\o "1-3" \h \z \u), built at once from the headings as Update fields builds one, linked to
+    them; Word fills in the page numbers when it opens the file (`w:updateFields`)
+  - Caption…: "Figure 1: text" (or Table, Equation) in Word's Caption style, numbered by a `SEQ`
+    field among the others, below a picture or paragraph or above a table, as Word places them
+  - Cross-reference…: to a heading (its text) or a caption (its label and number, or all of it), or
+    "above"/"below", as a `REF` field to a `_Ref` bookmark added on it, as Word adds one
+  - Equation…: typed as in LaTeX (fractions, scripts, roots, sums and integrals with limits,
+    brackets that grow, Greek letters, the usual symbols, functions upright), previewed, and written
+    as Word's own equations (Office Math, `m:oMath`; on its own line, `m:oMathPara`, in an empty
+    paragraph) that Word edits as its own (`src/editor/mathInput.js`)
+  - Citation…: a source the document has, or a new one (a book, a journal article or a website), in
+    APA (7th edition) or MLA (9th edition) style, with the page cited if wanted, as Word's `CITATION`
+    field. Sources are kept as Word keeps them, in its Source Manager's part (`customXml/itemN.xml`,
+    `b:Sources`, with its properties part and relationships), so Word's Manage Sources lists them;
+    the part is written only when a source or the style is changed, else it goes back byte for byte
+  - Bibliography: "References" (APA) or "Works Cited" (MLA) in Heading 1, and Word's `BIBLIOGRAPHY`
+    field listing the document's sources in that style, one paragraph each in Word's Bibliography
+    style with a half-inch hanging indent (`src/docx/references.js`). A new source or another
+    style brings the citations and bibliographies up to date at once
+- Headings (the status bar's button), as Word's Navigation pane: the document's headings by level,
+  the one the caret is under marked; a click goes to a heading. Kept up to date as you type, and
+  shown or hidden as last time in this browser
 - Update fields (the toolbar, or F9, as Word's for the whole text): caption numbers (`SEQ`, with
   Word's number formats, \c repeat, \r reset and \s per chapter) are renumbered in the text's
   order; cross-references (`REF`) show the bookmarked text again, or its paragraph's number
   (\r, \n, \w) and "above"/"below" (\p); note numbers in cross-references (`NOTEREF`) follow the
-  notes; and tables of contents (`TOC`, in Word's content control or in the text) are rebuilt from
+  notes; citations (`CITATION`) and bibliographies (`BIBLIOGRAPHY`, in the text) from the
+  document's sources, in its citation style; and tables of contents (`TOC`, in Word's content control or in the text) are rebuilt from
   the headings (\o outline levels, \u paragraphs' own levels, \t styles), as Word builds one:
   each entry in the table's own formatting for its level (Word's TOC 1–9 styles where it has none),
   linked to its heading with \h, through Word's `_Toc` bookmark (added to a heading without one).
@@ -314,7 +341,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
 - See equations: Word's equations (Office Math) are drawn as MathML by the browser (fractions,
   roots, scripts, sums and integrals, brackets, matrices, functions, accents, and Word's script,
   double-struck and bold letters), on their own line or in the line of text. They stay read-only
-  and are written back exactly as they were
+  and are written back exactly as they were (new ones can be typed: see References)
 - Fill in placeholders (the toolbar's Fill in button, which shows how many there are, or the
   template bar): text a template leaves to fill in, in brackets — `[Client name]`, `{{date}}`,
   `«Amount»` or `<<Amount>>` — is listed once each, with how many places it appears; focusing one
@@ -452,7 +479,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   PAGE) are one change per piece: Accept or Reject resolves all of them in its XML at once, as
   Word's Accept All in it would (insertions, deletions, moves, paragraph breaks, formatting, rows,
   cells and merges), and the piece stays locked or linked
-- Review your changes before downloading: Download (or Ctrl/Cmd+S) first lists every paragraph that
+- Review your changes before downloading: for a document started here (a blank one, or a new one
+  from a template) it doesn't ask for the edits to be tracked, and the CV screening check shows only
+  for a CV (or from Help). Download (or Ctrl/Cmd+S) first lists every paragraph that
   changed, with the words deleted and inserted, which changes are tracked, a warning when some
   aren't, and anything else that changes (comments removed with their text, Track Changes switched,
   styles or lists added). An untouched document says "No changes". When the text changed and the
@@ -825,14 +854,24 @@ The About page shows the version.
   first page set to have a different footer, and even pages where they differ, don't show it, as in
   Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns
   and gutters stay as they are
-- Equations are shown, not edited; they need a math font to look as in Word (Windows and macOS have
+- Equations already in a document are shown, not edited (new ones are typed as LaTeX, a part of it:
+  no matrices, accents or equation arrays); they need a math font to look as in Word (Windows and macOS have
   one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation
   arrays are not aligned at their `&` points
 - Fields are preserved; their instructions can't be edited (their results can, until they are
   updated). Update fields doesn't work out page numbers (`PAGE`, `PAGEREF`, `NUMPAGES`: Word does
-  when it opens the file), nor dates, document properties, mail-merge fields or citations, nor
+  when it opens the file), nor dates, document properties or mail-merge fields, nor citations whose
+  source the document doesn't have or citations and bibliographies in Word's content controls (Word
+  updates them), nor
   fields in notes, headers and footers or written as simple fields (`w:fldSimple`); it isn't
   tracked. Editing a comment's text replaces any formatting within it
+- Citations and bibliographies are formatted here in APA or MLA style as their guides set them out,
+  close to but not always the same as Word's own styles, which Word applies again when it updates
+  them; a citation cites one source, books, journal articles and websites are the kinds of source
+  offered, and Word's other styles (Chicago, Harvard, IEEE…) aren't. A table of contents,
+  bibliography or caption isn't tracked (it can't be inserted while tracking), and its paragraphs go in
+  the text itself, not in a table, note, header, footer or text box. Undo takes a citation out of
+  the text, not its source out of the document's sources (as in Word, where a source stays in the list)
 - Tables, page breaks and new comments can't go in a header, footer or text box, nor pictures in a
   text box or note (the status bar says so); a note reference in a header stays as it is
 - Cell borders are a single ½ pt line in the automatic colour, as Word's Borders button draws them;
