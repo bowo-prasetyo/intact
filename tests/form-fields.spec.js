@@ -119,7 +119,7 @@ test('a form protected for filling in: its fields are filled in, Tab goes from f
   await page.keyboard.press('Tab');
   await expect(page.locator('.docx-page .ff-drop')).toBeFocused();
   await page.keyboard.press('Alt+ArrowDown');
-  await page.getByRole('option', { name: 'Medium' }).click();
+  await page.getByRole('option', { name: 'Medium', exact: true }).click();
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('.docx-page .ff-check').nth(1)).toBeFocused();
   // Enter in a text field goes on, too, rather than splitting the paragraph.

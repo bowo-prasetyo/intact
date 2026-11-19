@@ -17,7 +17,10 @@ export const BUILTIN_STYLES = {
     <w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="${before}" w:after="80"/><w:outlineLvl w:val="${n - 1}"/></w:pPr>
     <w:rPr><w:rFonts w:asciiTheme="majorHAnsi" w:hAnsiTheme="majorHAnsi" w:eastAsiaTheme="majorEastAsia" w:cstheme="majorBidi"/>${n >= 4 ? '<w:i/>' : ''}<w:color w:val="2F5496"/><w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr></w:style>` }];
   })),
-  // Added with what uses them: a footer made here, and new footnotes, as Word defines them.
+  // Added with what uses them: a header (for a watermark) or footer made here, and new footnotes, as Word defines them.
+  header: { name: 'header', id: 'Header', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/>${basedOn}<w:uiPriority w:val="99"/><w:unhideWhenUsed/>
+    <w:pPr><w:tabs><w:tab w:val="center" w:pos="4513"/><w:tab w:val="right" w:pos="9026"/></w:tabs><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:style>` },
   footer: { name: 'footer', id: 'Footer', xml: (basedOn) => `
     <w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/>${basedOn}<w:uiPriority w:val="99"/><w:unhideWhenUsed/>
     <w:pPr><w:tabs><w:tab w:val="center" w:pos="4513"/><w:tab w:val="right" w:pos="9026"/></w:tabs><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:style>` },
