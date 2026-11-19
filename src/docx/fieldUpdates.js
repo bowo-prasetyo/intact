@@ -8,6 +8,7 @@
 // instruction in data-instr; its markers (begin, separate, end) are hidden raw runs around it.
 import { NS, wChild, wAttr, createW, elementChildren, plainText } from './xml.js';
 import { formatNumber } from './numbering.js';
+import { formatCitation, bibliographyXml } from './references.js';
 
 const W = NS.w;
 const BLOCKS = 'p, h1, h2, h3, h4, h5, h6';
@@ -19,6 +20,7 @@ const ARG_SWITCHES = {
   SEQ: new Set(['\\r', '\\s', '\\*']),
   REF: new Set(['\\*', '\\d']),
   NOTEREF: new Set(['\\*']),
+  CITATION: new Set(['\\l', '\\p', '\\s', '\\v', '\\m', '\\f']),
 };
 
 /** A field instruction (' SEQ Figure \\* ARABIC ') as { code: 'SEQ', args: ['Figure'], sw: { '\\*': 'ARABIC' } }. */
@@ -105,12 +107,15 @@ function blockOf({ start }) {
 
 /**
  * Updates the fields in the text of `root` (not notes, headers or footers): caption numbers, note
- * numbers, cross-references and tables of contents. Returns what changed: { seq, noteref, ref, toc,
+ * numbers, cross-references, citations, bibliographies and tables of contents (with `only`, just
+ * those kinds: ['TOC'], ['SEQ']…). Returns what changed: { seq, noteref, ref, toc,
  * entries, missing (cross-references to bookmarks not found), skipped (tables of contents left as
  * they are, with the reason) }.
  */
-export function updateFields(doc, root) {
-  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null };
+export function updateFields(doc, root, { only = null } = {}) {
+  // Only fields of these kinds (as inserting a table of contents updates it alone), or all.
+  const want = (code) => !only || only.includes(code);
+  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0 };
   const all = [...root.querySelectorAll('span.field[data-instr]')].filter((f) => !f.closest(OUTSIDE_TEXT));
   const parsed = new Map(all.map((f) => [f, parseInstr(f.dataset.instr)]));
   const inText = all.filter((f) => !f.closest('.sdt-locked'));
@@ -128,7 +133,7 @@ export function updateFields(doc, root) {
     }
     if (!inText.includes(el)) continue;
     const { code, args, sw } = parsed.get(el);
-    if (code !== 'SEQ' || !args[0]) continue;
+    if (code !== 'SEQ' || !args[0] || !want('SEQ')) continue;
     const id = args[0].toLowerCase();
     let n = counters.get(id) || 0;
     const sLevel = Number(sw['\\s']);
@@ -149,7 +154,7 @@ export function updateFields(doc, root) {
   // Note numbers, then cross-references (whose text may hold the numbers just updated).
   for (const el of inText) {
     const { code, args, sw } = parsed.get(el);
-    if (code !== 'NOTEREF' && code !== 'REF') continue;
+    if ((code !== 'NOTEREF' && code !== 'REF') || !want(code)) continue;
     const mark = marks.get(args[0]);
     if (!mark) {
       tally.missing++;
@@ -172,9 +177,28 @@ export function updateFields(doc, root) {
     if (setResult(el, text)) tally[code === 'REF' ? 'ref' : 'noteref']++;
   }
 
+  // Citations and bibliographies from the document's sources (Word's own: CITATION, BIBLIOGRAPHY),
+  // in its citation style. Those in Word's content controls are left for Word, as are citations
+  // whose source the document doesn't have.
+  const sources = doc.sources?.list || [];
+  const style = doc.sources?.style === 'MLA' ? 'MLA' : 'APA';
+  for (const el of inText) {
+    const { code, args, sw } = parsed.get(el);
+    if (code !== 'CITATION' || !want(code)) continue;
+    const source = sources.find((x) => x.tag === args[0]);
+    if (!source) continue;
+    if (setResult(el, formatCitation(source, style, typeof sw['\\p'] === 'string' ? sw['\\p'] : ''))) tally.citation++;
+  }
+  for (const el of inText) {
+    if (parsed.get(el).code !== 'BIBLIOGRAPHY' || !el.isConnected || !want('BIBLIOGRAPHY')) continue;
+    const res = updateBibliography(doc, root, el, sources, style);
+    if (res.skipped) tally.skipped = res.skipped;
+    else if (res.changed) tally.bibliography++;
+  }
+
   // Tables of contents, last: their entries are the headings as they now are.
   for (const el of all) {
-    if (parsed.get(el).code !== 'TOC' || !el.isConnected) continue;
+    if (parsed.get(el).code !== 'TOC' || !el.isConnected || !want('TOC')) continue;
     const res = updateToc(doc, root, el, parsed.get(el).sw);
     if (res.skipped) tally.skipped = res.skipped;
     else {
@@ -446,31 +470,9 @@ function updateToc(doc, root, field, sw) {
     locked.replaceWith(doc.renderControl(sdt, true));
     return { entries: entries.length };
   }
-  // In the text: from the paragraph with its result's start to the one with its end marker.
-  const markers = [...root.querySelectorAll('.raw-hidden[data-raw]')].filter((el) => markerType(doc, el));
-  let begin = field.previousSibling;
-  while (begin && !(begin.nodeType === 1 && begin.matches('[data-raw]') && markerType(doc, begin) === 'begin')) begin = begin.previousSibling;
-  const from = markers.indexOf(begin);
-  if (from < 0) return { skipped: 'a table of contents Intact can’t read' };
-  let depth = 0;
-  let end = null;
-  for (let i = from; i < markers.length && !end; i++) {
-    const type = markerType(doc, markers[i]);
-    if (type === 'begin') depth++;
-    else if (type === 'end' && --depth === 0) end = markers[i];
-  }
-  const firstBlock = field.closest(BLOCKS);
-  const lastBlock = end?.closest(BLOCKS);
-  if (!firstBlock || !lastBlock || firstBlock.parentElement !== lastBlock.parentElement) return { skipped: 'a table of contents Intact can’t read' };
-  const blocks = [firstBlock];
-  for (let b = firstBlock; b !== lastBlock;) {
-    b = b.nextElementSibling;
-    if (!b) return { skipped: 'a table of contents Intact can’t read' };
-    blocks.push(b);
-  }
-  if (blocks.some((b) => b.querySelector('[data-tc], .inserted, .deleted') || !b.matches(BLOCKS))) {
-    return { skipped: 'a table of contents with tracked changes in it (accept or reject them first)' };
-  }
+  const found = fieldBlocks(doc, root, field, 'a table of contents');
+  if (found.skipped) return found;
+  const { blocks, firstBlock } = found;
   const paras = blocks.map((b) => doc.paragraphXml(b));
   if (!tocMarkers(paras)) return { skipped: 'a table of contents Intact can’t read' };
   const entries = tocHeadings(doc, root, sw, (el) => blocks.includes(el)).map((h) => ({ ...h, bookmark: tocBookmark(doc, h.el, taken) }));
@@ -480,4 +482,58 @@ function updateToc(doc, root, field, sw) {
   firstBlock.before(...fresh);
   for (const b of blocks) b.remove();
   return { entries: entries.length };
+}
+
+/**
+ * The paragraphs of the page a field spans in the text, from the one with its result's start to
+ * the one with its end marker: { blocks, firstBlock } or { skipped: why } (`what` names the field).
+ */
+function fieldBlocks(doc, root, field, what) {
+  const cant = { skipped: `${what} Intact can’t read` };
+  const markers = [...root.querySelectorAll('.raw-hidden[data-raw]')].filter((el) => markerType(doc, el));
+  let begin = field.previousSibling;
+  while (begin && !(begin.nodeType === 1 && begin.matches('[data-raw]') && markerType(doc, begin) === 'begin')) begin = begin.previousSibling;
+  const from = markers.indexOf(begin);
+  if (from < 0) return cant;
+  let depth = 0;
+  let end = null;
+  for (let i = from; i < markers.length && !end; i++) {
+    const type = markerType(doc, markers[i]);
+    if (type === 'begin') depth++;
+    else if (type === 'end' && --depth === 0) end = markers[i];
+  }
+  const firstBlock = field.closest(BLOCKS);
+  const lastBlock = end?.closest(BLOCKS);
+  if (!firstBlock || !lastBlock || firstBlock.parentElement !== lastBlock.parentElement) return cant;
+  const blocks = [firstBlock];
+  for (let b = firstBlock; b !== lastBlock;) {
+    b = b.nextElementSibling;
+    if (!b) return cant;
+    blocks.push(b);
+  }
+  if (blocks.some((b) => b.querySelector('[data-tc], .inserted, .deleted') || !b.matches(BLOCKS))) {
+    return { skipped: `${what} with tracked changes in it (accept or reject them first)` };
+  }
+  return { blocks, firstBlock };
+}
+
+// ------------------------------------------------------------------ bibliographies
+
+/**
+ * Rebuilds the bibliography whose result starts at `field` (in the text) from the document's
+ * sources, one paragraph a source in its entries' paragraph style, sorted as the style sorts them.
+ * Returns { changed } or { skipped: why }.
+ */
+function updateBibliography(doc, root, field, sources, style) {
+  const found = fieldBlocks(doc, root, field, 'a bibliography');
+  if (found.skipped) return found;
+  const { blocks, firstBlock } = found;
+  const entryStyle = blocks.find((b) => b.dataset.style)?.dataset.style || doc.styles.ensureBuiltin('bibliography');
+  const xml = bibliographyXml({ sources, style, entryStyle, withHeading: false });
+  const before = blocks.map((b) => b.textContent).join('\n');
+  const fresh = doc.renderXmlParagraphs(xml);
+  if (fresh.map((b) => b.textContent).join('\n') === before) return { changed: false };
+  firstBlock.before(...fresh);
+  for (const b of blocks) b.remove();
+  return { changed: true };
 }

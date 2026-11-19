@@ -40,6 +40,15 @@ export const BUILTIN_STYLES = {
   ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`toc${n}`, { name: `toc ${n}`, id: `TOC${n}`, xml: (basedOn) => `
     <w:style w:type="paragraph" w:styleId="TOC${n}"><w:name w:val="toc ${n}"/>${basedOn}<w:next w:val="__NORMAL__"/><w:autoRedefine/><w:uiPriority w:val="39"/><w:unhideWhenUsed/>
     <w:pPr><w:spacing w:after="100"/>${n > 1 ? `<w:ind w:left="${220 * (n - 1)}"/>` : ''}</w:pPr></w:style>` }])),
+  // A table of contents' heading, captions and a bibliography's entries, as Word defines them.
+  tocHeading: { name: 'toc heading', id: 'TOCHeading', basedOnKey: 'h1', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="TOCHeading"><w:name w:val="TOC Heading"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:qFormat/>
+    <w:pPr><w:outlineLvl w:val="9"/></w:pPr></w:style>` },
+  caption: { name: 'caption', id: 'Caption', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="caption"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="35"/><w:unhideWhenUsed/><w:qFormat/>
+    <w:pPr><w:spacing w:after="200" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:i/><w:iCs/><w:color w:val="44546A"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>` },
+  bibliography: { name: 'bibliography', id: 'Bibliography', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="Bibliography"><w:name w:val="Bibliography"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="37"/><w:unhideWhenUsed/></w:style>` },
 };
 
 export class StyleSheet {
@@ -102,7 +111,9 @@ export class StyleSheet {
     let id = def.id;
     while (this.byId.has(id)) id += '0';
     const normal = this.defaultParagraph;
-    const basedOn = normal ? `<w:basedOn w:val="${normal}"/>` : '';
+    // Based on another builtin style (TOC Heading on Heading 1), else on Normal.
+    const parent = def.basedOnKey ? this.ensureBuiltin(def.basedOnKey) : normal;
+    const basedOn = parent ? `<w:basedOn w:val="${parent}"/>` : '';
     let xml = def.xml(basedOn).replace(`w:styleId="${def.id}"`, `w:styleId="${id}"`);
     xml = normal ? xml.replace('__NORMAL__', normal) : xml.replace(/<w:next w:val="__NORMAL__"\/>/, '');
     const frag = parseXml(`<root xmlns:w="${NS.w}">${xml}</root>`).documentElement;

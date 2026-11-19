@@ -1,0 +1,73 @@
+<template>
+  <ModalDialog title="Equation" @close="$emit('close')" @submit="insert">
+    <label>Type the equation, as in LaTeX
+      <textarea ref="input" v-model="src" rows="3" spellcheck="false" autocomplete="off" aria-label="Equation, as in LaTeX" placeholder="x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}" @keydown.enter.exact.prevent="insert" />
+    </label>
+    <div class="examples" role="group" aria-label="Examples">
+      <button v-for="e in EXAMPLES" :key="e.src" type="button" :title="e.src" @click="src = e.src">{{ e.label }}</button>
+    </div>
+    <div class="preview" aria-live="polite">
+      <p v-if="result.error" class="error">{{ result.error }}</p>
+      <div v-else ref="previewEl" class="maths" aria-label="Preview" />
+    </div>
+    <label class="check"><input v-model="display" type="checkbox" /> On its own line (when the paragraph is empty)</label>
+    <p class="hint">Written as Word’s own equations (Office Math): Word edits them as its own. Equations already in a document are shown, not edited, here.</p>
+    <template #actions>
+      <button type="submit" class="confirm" :disabled="!!result.error">Insert</button>
+    </template>
+  </ModalDialog>
+</template>
+
+<script setup>
+// Insert Equation: the equation typed as LaTeX (see editor/mathInput.js), shown as it will look,
+// and put at the caret as Word's Office Math.
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import ModalDialog from './ModalDialog.vue';
+import { latexToOmml } from '../editor/mathInput.js';
+import { ommlToMathml, MATH_NS } from '../docx/omml.js';
+import { NS, parseXml } from '../docx/xml.js';
+
+// insert({ xml, display }): the equation's OMML.
+const emit = defineEmits(['close', 'insert']);
+const EXAMPLES = [
+  { label: 'x²', src: 'x^2' },
+  { label: 'a/b', src: '\\frac{a}{b}' },
+  { label: '√x', src: '\\sqrt{x}' },
+  { label: 'Σ', src: '\\sum_{i=1}^{n} x_i' },
+  { label: '∫', src: '\\int_{0}^{1} f(x)\\,dx' },
+  { label: 'Quadratic', src: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' },
+  { label: 'α β π', src: '\\alpha + \\beta = \\pi' },
+];
+const src = ref('');
+const display = ref(false);
+const input = ref(null);
+const previewEl = ref(null);
+const result = computed(() => latexToOmml(src.value, { display: display.value }));
+
+function drawPreview() {
+  const el = previewEl.value;
+  if (!el || result.value.error) return;
+  try {
+    const node = parseXml(`<w:p xmlns:w="${NS.w}" xmlns:m="${MATH_NS}">${result.value.xml}</w:p>`).documentElement.firstElementChild;
+    el.replaceChildren(...ommlToMathml(node));
+  } catch {
+    el.textContent = '';
+  }
+}
+watch(result, () => nextTick(drawPreview));
+
+function insert() {
+  if (result.value.error) return;
+  emit('insert', { xml: result.value.xml, display: display.value });
+}
+onMounted(() => nextTick(() => input.value?.focus()));
+</script>
+
+<style scoped>
+textarea { font-family: Consolas, 'Courier New', monospace !important; resize: vertical; }
+.examples { display: flex; flex-wrap: wrap; gap: 4px; }
+.examples button { padding: 3px 9px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.examples button:hover { border-color: var(--accent); }
+.preview { min-height: 56px; margin: 10px 0; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: #1a1a1a; display: flex; align-items: center; justify-content: center; }
+.maths { font-size: 20px; font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', serif; }
+</style>

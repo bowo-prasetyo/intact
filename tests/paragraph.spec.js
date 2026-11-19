@@ -97,7 +97,8 @@ test('the Paragraph dialog shows the paragraph\'s spacing and writes only what i
   await expect(dialog.getByLabel('Before (pt)')).toHaveValue('12');
   await expect(dialog.getByLabel('After (pt)')).toHaveValue('6');
   await expect(dialog.getByLabel('Line spacing')).toHaveValue('single');
-  await dialog.getByLabel('Left (cm)').fill('2.54');
+  // As in Word: with a hanging indent, Left is where the first line starts (w:left less the hanging).
+  await dialog.getByLabel('Left (cm)').fill('1.27');
   await dialog.getByLabel('Special').selectOption('hanging');
   await dialog.getByLabel('By (cm)').fill('1.27');
   await dialog.getByLabel('After (pt)').fill('9');
@@ -167,10 +168,40 @@ test('a list item set in from the dialog keeps its indentation, also after its l
   await openMenu(page);
   await menu(page).getByRole('menuitem', { name: 'Paragraph…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Paragraph' });
-  await expect(dialog.getByLabel('Left (cm)')).toHaveValue('2.54'); // ...to level 2's indentation
+  // ...to level 2's indentation (w:left 1440, hanging 360), shown as Word shows it: Left is the
+  // number's position, 1080 twips.
+  await expect(dialog.getByLabel('Left (cm)')).toHaveValue('1.91');
   await dialog.getByLabel('Left (cm)').fill('3');
   await dialog.getByRole('button', { name: 'OK' }).click();
-  await expect(page.locator('.docx-page p', { hasText: 'Two' })).toHaveCSS('padding-left', /^113\.[34]/);
+  await expect(page.locator('.docx-page p', { hasText: 'Two' })).toHaveCSS('padding-left', /^137\.\d/);
   const { xml } = await download(page);
-  expect(savedParagraph(xml, 'Two')).toBe(`<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr><w:ind w:left="1701"/></w:pPr>${run('Two')}</w:p>`);
+  // The number at 3 cm (1701), the text the level's hanging (360) further in.
+  expect(savedParagraph(xml, 'Two')).toBe(`<w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr><w:ind w:left="2061"/></w:pPr>${run('Two')}</w:p>`);
+});
+
+test('a hanging indent as Word\'s dialog shows it: Left is the first line\'s, so Left 0 and Hanging 1.27 cm is the usual one', async ({ page }) => {
+  await openInEditor(page, await buildDocx('<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr><w:r><w:t>Smith, Jane. A Book. Press, 2020.</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:t>Lee, Kim. Another Book. Press, 2021.</w:t></w:r></w:p>'));
+  // A works-cited entry Word made: shown as Left 0, Hanging 1.27 cm.
+  await caretIn(page, 'Smith');
+  await openMenu(page);
+  await menu(page).getByRole('menuitem', { name: 'Paragraph…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Paragraph' });
+  await expect(dialog.getByLabel('Left (cm)')).toHaveValue('0');
+  await expect(dialog.getByLabel('Special')).toHaveValue('hanging');
+  await expect(dialog.getByLabel('By (cm)')).toHaveValue('1.27');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  // The next one made the same way: its first line stays at the margin, the others go in.
+  await caretIn(page, 'Lee');
+  await openMenu(page);
+  await menu(page).getByRole('menuitem', { name: 'Paragraph…' }).click();
+  await dialog.getByLabel('Special').selectOption('hanging');
+  await dialog.getByLabel('By (cm)').fill('1.27');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  const lee = page.locator('.docx-page p', { hasText: 'Lee' });
+  await expect(lee).toHaveCSS('padding-left', '48px');
+  await expect(lee).toHaveCSS('text-indent', '-48px');
+  const { xml } = await download(page);
+  expect(savedParagraph(xml, 'Lee, Kim. Another Book. Press, 2021.')).toBe(`<w:p><w:pPr><w:ind w:left="720" w:hanging="720"/></w:pPr>${run('Lee, Kim. Another Book. Press, 2021.')}</w:p>`);
+  expect(savedParagraph(xml, 'Smith, Jane. A Book. Press, 2020.')).toContain('<w:ind w:left="720" w:hanging="720"/>');
 });

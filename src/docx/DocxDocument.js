@@ -38,7 +38,11 @@ import {
   setGeometry, set3D, applyPictureStyle, setArtistic, clearArtistic, blipOf,
 } from './pictures.js';
 import { drawPicture } from './pictureView.js';
-import { ommlToMathml, isEquation } from './omml.js';
+import { ommlToMathml, isEquation, MATH_NS } from './omml.js';
+import {
+  bodyXml, isSourcesPart, readSources, sourcesXml, sourcesPropsXml, newGuid, newTag,
+  CUSTOM_XML_REL, CUSTOM_XML_PROPS_REL, CUSTOM_XML_PROPS_CT,
+} from './references.js';
 import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
 import { formFieldInfo, formFieldTitle, setFormCheck, setFormDropdown } from './formFields.js';
@@ -192,7 +196,9 @@ export class DocxDocument {
   static async createBlank(name = 'Untitled.docx') {
     const zip = new JSZip();
     for (const [path, content] of Object.entries(blankDocxFiles())) zip.file(path, content);
-    return DocxDocument.open(await zip.generateAsync({ type: 'arraybuffer' }), name);
+    const doc = await DocxDocument.open(await zip.generateAsync({ type: 'arraybuffer' }), name);
+    doc.startedHere = true; // a new document: nobody has seen it, so its edits needn't be tracked
+    return doc;
   }
 
   constructor(zip, name) {
@@ -312,6 +318,18 @@ export class DocxDocument {
     };
     this.headers = await loadVariants('headerReference');
     this.footers = await loadVariants('footerReference');
+    // The document's sources, as Word's Source Manager keeps them (a b:Sources part in customXml),
+    // for citations and a bibliography; written back only when a source or the style is changed.
+    this.sources = { path: null, style: 'APA', list: [], changed: false };
+    for (const path of Object.keys(this.zip.files).filter((f) => /^customXml\/item\d+\.xml$/i.test(f)).sort()) {
+      try {
+        const xml = parseXml(await this.text(path));
+        if (!isSourcesPart(xml)) continue;
+        const { style, sources } = readSources(xml);
+        this.sources = { path, style, list: sources, changed: false };
+        break;
+      } catch { /* not XML this editor reads: kept as it is */ }
+    }
     this.newNotes = new Map(); // 'footnote:7' -> the <w:footnote> of a note added this session
     // Paper size, orientation and margins set here for the whole document (see setPageSetup), and
     // the final section's own, to apply them to afresh at each save.
@@ -707,6 +725,79 @@ export class DocxDocument {
       if (heading) return Number(heading[1]) - 1;
     }
     return null;
+  }
+
+  /** Paragraphs given as XML (strings in the w namespace), rendered for the page. */
+  renderXmlParagraphs(paras) {
+    const body = parseXml(bodyXml(paras)).documentElement;
+    return elementChildren(body).map((p) => this.renderParagraph(this.xml.importNode(p, true)));
+  }
+
+  /** Runs given as XML (an equation's m:oMath too), rendered as nodes to put in a paragraph. */
+  renderXmlRuns(runs) {
+    const p = parseXml(`<w:p xmlns:w="${W}" xmlns:m="${MATH_NS}">${runs}</w:p>`).documentElement;
+    const holder = document.createElement('span');
+    this.renderInlines(this.xml.importNode(p, true), holder);
+    return [...holder.childNodes];
+  }
+
+  /** Adds `source` to the document's sources (with a new tag), returning it as kept. */
+  addSource(source) {
+    const kept = { ...source, tag: newTag(source, new Set(this.sources.list.map((s) => s.tag))), guid: newGuid() };
+    this.sources.list.push(kept);
+    this.sources.changed = true;
+    return kept;
+  }
+
+  /** Sets the citation style (APA or MLA) the document's sources part records. */
+  setCitationStyle(style) {
+    if (this.sources.style === style) return;
+    this.sources.style = style;
+    this.sources.changed = true;
+  }
+
+  /**
+   * Writes the sources part when a source or the style was changed: in place of the one the file
+   * had, or as a new one (customXml/itemN.xml, its properties part and relationships, and the
+   * main part's relationship to it), as Word adds one.
+   */
+  async writeSources() {
+    const src = this.sources;
+    if (!src?.changed) return;
+    const xml = sourcesXml(src.style, src.list);
+    if (src.path) {
+      this.zip.file(src.path, xml);
+      return;
+    }
+    let n = 1;
+    while (this.zip.file(`customXml/item${n}.xml`) || this.zip.file(`customXml/itemProps${n}.xml`)) n++;
+    const path = `customXml/item${n}.xml`;
+    this.zip.file(path, xml);
+    this.zip.file(`customXml/itemProps${n}.xml`, sourcesPropsXml(newGuid()));
+    this.zip.file(`customXml/_rels/item${n}.xml.rels`, `${XML_HEADER}<Relationships xmlns="${NS.pr}"><Relationship Id="rId1" Type="${CUSTOM_XML_PROPS_REL}" Target="itemProps${n}.xml"/></Relationships>`);
+    const rels = parseXml((await this.text(this.relsPath)) || `<Relationships xmlns="${NS.pr}"/>`);
+    let id = 1;
+    while ([...rels.documentElement.children].some((r) => r.getAttribute('Id') === `rIdSources${id}`)) id++;
+    const rel = rels.createElementNS(NS.pr, 'Relationship');
+    rel.setAttribute('Id', `rIdSources${id}`);
+    rel.setAttribute('Type', CUSTOM_XML_REL);
+    rel.setAttribute('Target', `${this.mainDir ? '../' : ''}${path}`);
+    rels.documentElement.appendChild(rel);
+    this.zip.file(this.relsPath, serializeXml(rels));
+    const ct = parseXml(await this.text('[Content_Types].xml'));
+    const kids = [...ct.documentElement.children];
+    if (!kids.some((d) => d.localName === 'Default' && d.getAttribute('Extension')?.toLowerCase() === 'xml')) {
+      const d = ct.createElementNS(NS.ct, 'Default');
+      d.setAttribute('Extension', 'xml');
+      d.setAttribute('ContentType', 'application/xml');
+      ct.documentElement.insertBefore(d, ct.documentElement.firstChild);
+    }
+    const ov = ct.createElementNS(NS.ct, 'Override');
+    ov.setAttribute('PartName', `/customXml/itemProps${n}.xml`);
+    ov.setAttribute('ContentType', CUSTOM_XML_PROPS_CT);
+    ct.documentElement.appendChild(ov);
+    this.zip.file('[Content_Types].xml', serializeXml(ct));
+    src.path = path;
   }
 
   /** A new bookmark called `name`: its start and end markers, hidden in the page as a file's are. */
@@ -3757,6 +3848,7 @@ export class DocxDocument {
     this.writeNotes();
     this.writeParts();
     await this.writeNewParts();
+    await this.writeSources();
     this.writeStories();
     await this.writeSettings();
     await this.restorePersonal();

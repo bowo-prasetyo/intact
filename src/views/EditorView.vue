@@ -146,7 +146,7 @@
       <button ref="linkButton" type="button" title="Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here" @click="openLinkDialog">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.6 2.6 0 0 1 3.7 3.7l-1.1 1.1M8.8 11.4l-1.1 1.1a2.6 2.6 0 0 1-3.7-3.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date" aria-label="Insert a check box or date" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
+      <button ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date, or a reference: a table of contents, caption, cross-reference, equation, citation or bibliography" aria-label="Insert a check box or date, or a reference" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">Insert</span>
       </button>
       <button type="button" title="Insert a symbol: ©, €, ✓, →, ½ and others, by group or name" aria-label="Insert symbol" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
@@ -245,6 +245,7 @@
     <FillInDialog v-if="fillIn.open" ref="fillInDialog" :style="{ left: `${fillIn.x}px`, top: `${fillIn.y}px` }" :roots="() => [page]" :edit="applyEdit" :tracked="trackedBy" @close="closeFillIn" @reveal="revealRange" @filled="onFilled" />
 
     <div class="workspace">
+      <NavigationPane v-if="navOpen" :headings="navHeadings" :current="navCurrent" @close="toggleNav" @go="goToHeading" />
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
           <div v-if="watermark.text" class="watermark-layer" aria-hidden="true">
@@ -792,6 +793,13 @@
       <p class="menu-label" role="presentation">Today’s date</p>
       <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
       <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" title="As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
+      <p class="menu-label" role="presentation">References</p>
+      <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">From the headings</span></button>
+      <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">Figure 1, Table 1</span></button>
+      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">To a heading or caption</span></button>
+      <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">Typed as in LaTeX</span></button>
+      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">APA or MLA</span></button>
+      <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ doc.sources?.style === 'MLA' ? 'Works Cited' : 'References' }}</span></button>
     </div>
 
     <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
@@ -863,9 +871,14 @@
 
     <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
     <SymbolDialog v-if="symbolOpen" @close="closeSymbols" @insert="insertSymbol" />
+    <EquationDialog v-if="refDialog === 'equation'" @close="closeRefDialog" @insert="insertEquation" />
+    <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" />
+    <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
+    <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
+      <button type="button" class="nav-toggle" :aria-pressed="navOpen" title="Headings: move around the document by its headings, as Word’s Navigation pane" @click="toggleNav">Headings</button>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }}</button>
       <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, 1. or * then a space at the start of a paragraph a list, and a web or e-mail address then a space a link – click to type them as they are' : 'Quotes, dashes, ellipses, list numbers and addresses are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
@@ -889,6 +902,12 @@ import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
 import SymbolDialog from '../components/SymbolDialog.vue';
+import EquationDialog from '../components/EquationDialog.vue';
+import CitationDialog from '../components/CitationDialog.vue';
+import CaptionDialog from '../components/CaptionDialog.vue';
+import CrossRefDialog from '../components/CrossRefDialog.vue';
+import NavigationPane from '../components/NavigationPane.vue';
+import { tocXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
 import { elementChildren } from '../docx/xml.js';
@@ -933,7 +952,7 @@ import { missingFonts } from '../docx/fonts.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
-import { updateFields } from '../docx/fieldUpdates.js';
+import { updateFields, parseInstr } from '../docx/fieldUpdates.js';
 import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -1423,6 +1442,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload);
   countWords();
   refreshChanges();
+  refreshHeadings();
   page.value.focus();
   placeCaret(bodyBlocks()[0] || page.value, true);
   doc.markPristine(page.value); // before locking: saving reads the page as it really is
@@ -1869,6 +1889,7 @@ function onSelectionChange() {
   if (!range) return;
   if (caretOutOfMarker(range)) return; // the selection changes again, and this runs again
   countSelectedWords(range);
+  updateNavCurrent();
   lastReadOnly = null;
   const pic = pictureInSelection(range);
   if (pic !== picture.el) {
@@ -2261,6 +2282,7 @@ function markDirty() {
   wordTimer = setTimeout(() => {
     countWords();
     refreshChanges();
+    refreshHeadings();
   }, 300);
 }
 
@@ -3322,8 +3344,10 @@ function dialogValues(f, unit) {
   } else {
     rule = Object.keys(LINE_PRESETS).find((k) => LINE_PRESETS[k] === f.line) || 'multiple';
   }
+  // As Word's dialog: with a hanging indent, Left is where the first line starts (w:left less the
+  // hanging), so "Left 0, Hanging 0.5 in" is the usual hanging indent, w:left="720" w:hanging="720".
   return {
-    left: len(f.left), right: len(f.right),
+    left: len(f.left - f.hanging), right: len(f.right),
     special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: len(f.hanging || f.firstLine),
     before: toPt(f.before), after: toPt(f.after), rule, at,
   };
@@ -3336,7 +3360,7 @@ function openParagraphDialog() {
   const unit = docUnit();
   const format = doc.paragraphFormat(block);
   paraInitial = dialogValues(format, unit);
-  paraTwips = { left: format.left, right: format.right, by: format.hanging || format.firstLine };
+  paraTwips = { left: format.left - format.hanging, right: format.right, by: format.hanging || format.firstLine };
   const { stops } = doc.tabStops(block);
   paraInitialTabs = JSON.stringify(stops);
   const rect = anchorRect(spacingButton.value);
@@ -3375,10 +3399,19 @@ function applyParagraphDialog() {
   paraDialog.open = false;
   const num = (v) => (Number.isFinite(Number(v)) && v !== '' ? Number(v) : 0);
   const change = {};
-  if (num(d.left) !== i.left) change.left = toTwips(num(d.left), d.unit);
+  const leftChanged = num(d.left) !== i.left;
+  const specialChanged = d.special !== i.special || (d.special !== 'none' && num(d.by) !== i.by);
+  // By as it was when it wasn't changed (exactly: what is shown is rounded).
+  const by = num(d.by) === i.by && d.special === i.special ? paraTwips.by : Math.max(0, toTwips(num(d.by), d.unit));
+  // With a hanging indent, Left is where the first line starts: w:left is Left and the hanging
+  // together, so it is written again when either changes (from its exact value when Left wasn't).
+  const hangs = (special) => special === 'hanging';
+  if (leftChanged || (specialChanged && (hangs(d.special) || hangs(i.special)))) {
+    const left = leftChanged ? toTwips(num(d.left), d.unit) : paraTwips.left;
+    change.left = left + (hangs(d.special) ? by : 0);
+  }
   if (num(d.right) !== i.right) change.right = toTwips(num(d.right), d.unit);
-  if (d.special !== i.special || (d.special !== 'none' && num(d.by) !== i.by)) {
-    const by = Math.max(0, toTwips(num(d.by), d.unit));
+  if (specialChanged) {
     if (d.special === 'hanging') change.hanging = by;
     else change.firstLine = d.special === 'firstLine' ? by : 0;
   }
@@ -3671,6 +3704,327 @@ function insertCheckbox() {
   markDirty();
   refreshChanges();
   message.value = `Check box inserted${tracked ? ' (tracked)' : ''} – click it to tick it`;
+}
+
+// ------------------------------------------------------------------ references: contents, captions, citations
+
+// The References dialogs open from the Insert menu, for the place it was opened at (insertRange).
+const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref'
+const captionInfo = reactive({ counts: {}, target: 'the paragraph', table: false });
+const xrefTargets = ref({});
+let xrefEls = {}; // what each cross-reference target is in the page: { Heading: [{ block }], Figure: [{ block, field }] }
+const capitalized = (t) => t[0].toUpperCase() + t.slice(1);
+
+function openRefDialog(kind) {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refDialog.value = kind;
+}
+
+function closeRefDialog() {
+  refDialog.value = null;
+  refocusAt(insertRange);
+}
+
+/**
+ * The caret where the Insert menu was opened, back in the page, if `what` can go there: in line
+ * with the text (not in a field), or with `block` in a paragraph of the text itself (not a table,
+ * note, header, footer or text box), and not while tracking (its paragraphs aren't tracked).
+ * Returns the range ({ range, block } with `block`), or null after saying why not.
+ */
+function insertSpot(what, { block: asBlock = false } = {}) {
+  if (textLocked.value) {
+    explainLock();
+    return null;
+  }
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  if (!range) {
+    message.value = `Click in the text where ${what} should go`;
+    return null;
+  }
+  const locked = readOnlySelection();
+  if (locked) {
+    explainReadOnly(locked, true);
+    return null;
+  }
+  if (refuseInNote(range, capitalized(what))) return null;
+  if (inField(range.startContainer) || controlAt(range.startContainer, page.value) || formTextAt(range.startContainer)) {
+    message.value = `${capitalized(what)} can’t go in a field: put the caret after it`;
+    return null;
+  }
+  if (!asBlock) return range;
+  const block = closestBlock(range.startContainer);
+  if (!block || block.parentElement !== page.value) {
+    message.value = `${capitalized(what)} goes in the text itself: not in a table, header, footer or text box`;
+    return null;
+  }
+  if (trackedBy(range.startContainer)) {
+    message.value = `${capitalized(what)} can’t be tracked here: turn off Track changes to insert it`;
+    return null;
+  }
+  return { range, block };
+}
+
+/** Puts new paragraphs where `spot` says: in place of an empty paragraph, before one at its start, else after it. */
+function placeBlocks({ range, block }, nodes) {
+  if (isEmptyBlock(block)) block.replaceWith(...nodes);
+  else if (isAtBlockStart(range, block)) block.before(...nodes);
+  else block.after(...nodes);
+  // Something to type in after them, at the end of the text.
+  const last = nodes[nodes.length - 1];
+  let next = last.nextElementSibling;
+  if (!next || next.matches('.docx-notes, .docx-hf-band')) {
+    next = doc.emptyParagraph();
+    last.after(next);
+  }
+  placeCaret(next, true);
+}
+
+/** Puts `nodes` at the caret (in place of the selection), as typing would: tracked while tracking. */
+function putInline(range, nodes) {
+  if (!range.collapsed && refuseRemoving([range])) return false;
+  const tracked = trackedBy(range.startContainer);
+  if (!range.collapsed) {
+    if (tracked) deleteTracked(range, false, tracked);
+    else deleteSelection();
+  }
+  if (tracked) insertTracked(nodes, tracked);
+  else insertAtCaret(nodes);
+  return true;
+}
+
+/** Ends an insertion: one undoable step, the page's numbering and marks up to date, and what was done said. */
+function finishInsert(said) {
+  refreshCss();
+  doc.renumber(page.value);
+  onInput();
+  undoStack.commit();
+  refreshChanges();
+  onSelectionChange();
+  message.value = said;
+}
+
+/**
+ * A table of contents, as Word's Automatic Table: "Contents" and the TOC field over headings 1–3,
+ * built here from the headings (linked to them) at once. Word fills in the page numbers.
+ */
+function insertTableOfContents() {
+  closeInsertMenu();
+  const spot = insertSpot('a table of contents', { block: true });
+  if (!spot) return;
+  undoStack.flush();
+  placeBlocks(spot, doc.renderXmlParagraphs(tocXml(doc.styles.ensureBuiltin('tocHeading'))));
+  refreshCss();
+  const t = updateFields(doc, page.value, { only: ['TOC'] });
+  doc.updateFields = true; // page numbers are Word's: it fills them in when it opens the file
+  finishInsert(t.entries
+    ? `Table of contents inserted: ${t.entries} ${t.entries === 1 ? 'heading' : 'headings'} – Word fills in the page numbers when it opens the file; Update (F9) adds headings written later`
+    : 'Table of contents inserted: no headings yet – give paragraphs a heading style, then Update (F9)');
+}
+
+/** The captions in the text, by label: { figure: [{ block, field, label }] } (label as written). */
+function captionsInText() {
+  const out = {};
+  for (const field of page.value.querySelectorAll('span.field[data-instr]')) {
+    if (field.closest('.docx-notes, .docx-hf-band, .textbox')) continue;
+    const { code, args } = parseInstr(field.dataset.instr);
+    if (code !== 'SEQ' || !args[0]) continue;
+    const block = field.closest(BLOCK_SELECTOR);
+    if (block) (out[args[0].toLowerCase()] ||= []).push({ block, field, label: args[0] });
+  }
+  return out;
+}
+
+/** What a caption at the caret would be for: a table the caret is in, the picture selected, or its paragraph. */
+function captionAnchor(range) {
+  const at = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  const table = at.closest('table');
+  if (table && table.parentElement === page.value) return { el: table, target: 'the table', table: true };
+  const pic = picture.el?.isConnected ? closestBlock(picture.el) : null;
+  const block = pic || closestBlock(range.startContainer);
+  if (!block || block.parentElement !== page.value) return null;
+  return { el: block, target: pic ? 'the picture' : 'the paragraph', table: false };
+}
+
+function openCaption() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  const anchor = range && captionAnchor(range);
+  if (!anchor) {
+    message.value = 'Click in the text, a table or a picture the caption is for';
+    return;
+  }
+  const counts = Object.fromEntries(Object.entries(captionsInText()).map(([k, v]) => [k, v.length]));
+  Object.assign(captionInfo, { counts, target: anchor.target, table: anchor.table });
+  refDialog.value = 'caption';
+}
+
+/** Insert Caption: "Figure 1: text" in Word's Caption style, above or below what it is for, numbered with the others. */
+function insertCaption({ label, text, position }) {
+  refDialog.value = null;
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  const anchor = range && captionAnchor(range);
+  if (!anchor) return;
+  if (trackedBy(range.startContainer)) {
+    message.value = 'A caption can’t be tracked here: turn off Track changes to insert it';
+    return;
+  }
+  undoStack.flush();
+  const [p] = doc.renderXmlParagraphs([captionXml(doc.styles.ensureBuiltin('caption'), label, 1, text)]);
+  if (position === 'above') anchor.el.before(p);
+  else anchor.el.after(p);
+  updateFields(doc, page.value, { only: ['SEQ'] }); // its number among the others
+  placeCaret(p);
+  const n = p.querySelector('span.field')?.textContent || '';
+  finishInsert(`Caption inserted: ${label} ${n} – Update (F9) renumbers captions after one is moved`);
+}
+
+/** The headings and captions a cross-reference can point to, for the dialog (and the page's elements, kept). */
+function openCrossRef() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  const headings = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-notes, .docx-hf-band, .textbox, table')
+    && (doc.outlineLevel(el) ?? 9) < 9 && el.textContent.trim());
+  xrefEls = { Heading: headings.map((block) => ({ block })) };
+  const targets = { Heading: headings.map((el) => ({ text: el.textContent.trim(), level: doc.outlineLevel(el) + 1 })) };
+  for (const list of Object.values(captionsInText())) {
+    const label = capitalized(list[0].label);
+    xrefEls[label] = list;
+    targets[label] = list.map((c) => ({ text: c.block.textContent.trim() }));
+  }
+  for (const l of ['Figure', 'Table']) targets[l] ||= [];
+  xrefTargets.value = targets;
+  refDialog.value = 'xref';
+}
+
+/** A new _Ref bookmark around `block`'s text, from its start to its end (or to just after `upTo`), as Word adds one to refer to. */
+function refBookmark(block, upTo = null) {
+  const name = `_Ref${Math.floor(100000000 + Math.random() * 900000000)}`;
+  const [start, end] = doc.newBookmark(name);
+  block.insertBefore(start, block.firstChild);
+  if (upTo) upTo.after(end);
+  else if (block.lastChild?.tagName === 'BR') block.insertBefore(end, block.lastChild);
+  else block.append(end);
+  return name;
+}
+
+/** Insert Cross-reference: a REF field to a bookmark on the heading or caption, showing its text now. */
+function insertCrossRef({ kind, index, as }) {
+  refDialog.value = null;
+  const target = xrefEls[kind]?.[index];
+  const range = insertSpot('a cross-reference');
+  if (!range || !target?.block.isConnected) return;
+  undoStack.flush();
+  const { block, field } = target;
+  const number = kind !== 'Heading' && as === 'number';
+  const name = refBookmark(block, number ? field : null);
+  let text = number ? `${target.label} ${field.textContent.trim()}` : block.textContent.trim();
+  let instr = ` REF ${name} \\h `;
+  if (as === 'position') {
+    text = block.compareDocumentPosition(range.startContainer) & Node.DOCUMENT_POSITION_FOLLOWING ? 'above' : 'below';
+    instr = ` REF ${name} \\p \\h `;
+  }
+  if (!putInline(selectionInPage(), doc.newField(instr, text))) return;
+  finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
+}
+
+/** Insert Equation: Word's Office Math at the caret, on its own line in an empty paragraph if asked. */
+function insertEquation({ xml, display }) {
+  refDialog.value = null;
+  const range = insertSpot('an equation');
+  if (!range) return;
+  undoStack.flush();
+  const block = closestBlock(range.startContainer);
+  const own = display && block && isEmptyBlock(block);
+  const math = own ? xml : xml.replace(/^<m:oMathPara>|<\/m:oMathPara>$/g, '');
+  if (block && isEmptyBlock(block)) for (const br of block.querySelectorAll('br')) br.remove();
+  if (!putInline(selectionInPage() || range, doc.renderXmlRuns(math))) return;
+  finishInsert(`Equation inserted${own ? ' on its own line' : ''} – Word edits it as its own`);
+}
+
+/**
+ * Insert Citation: a CITATION field for a source the document has, or a new one added to its
+ * sources. A new source, or another style, brings the citations and bibliographies up to date.
+ */
+function insertCitation({ tag, source, page: cited, style }) {
+  refDialog.value = null;
+  const range = insertSpot('a citation');
+  if (!range) return;
+  undoStack.flush();
+  const restyled = doc.sources.style !== style;
+  doc.setCitationStyle(style);
+  const src = tag ? doc.sources.list.find((x) => x.tag === tag) : doc.addSource(source);
+  if (!src || !putInline(range, doc.renderXmlRuns(citationXml(src, style, cited)))) return;
+  if (restyled || !tag) updateFields(doc, page.value, { only: ['CITATION', 'BIBLIOGRAPHY'] });
+  finishInsert(`Citation inserted: ${src.authors[0]?.last || src.corporate || src.title}${restyled ? ` – citations now in ${style} style` : ''}`);
+}
+
+/** Insert Bibliography: "References" (APA) or "Works Cited" (MLA) and the document's sources, as Word's gallery inserts it. */
+function insertBibliography() {
+  closeInsertMenu();
+  const spot = insertSpot('a bibliography', { block: true });
+  if (!spot) return;
+  undoStack.flush();
+  const style = doc.sources.style === 'MLA' ? 'MLA' : 'APA';
+  placeBlocks(spot, doc.renderXmlParagraphs(bibliographyXml({
+    sources: doc.sources.list, style, headingStyle: doc.styles.ensureBuiltin('h1'), entryStyle: doc.styles.ensureBuiltin('bibliography'),
+  })));
+  const n = doc.sources.list.length;
+  finishInsert(n
+    ? `Bibliography inserted: ${n} ${n === 1 ? 'source' : 'sources'} in ${style} style – Update (F9) adds sources cited later`
+    : 'Bibliography inserted: no sources yet – insert citations, then Update (F9)');
+}
+
+// ------------------------------------------------------------------ navigation pane
+
+// The Navigation pane's Headings, as Word's: shown or hidden (remembered in this browser).
+const NAV_KEY = 'intact.navigationPane';
+const navOpen = ref((() => { try { return localStorage.getItem(NAV_KEY) === '1'; } catch { return false; } })());
+const navHeadings = ref([]);
+const navCurrent = ref(-1);
+let navEls = [];
+
+/** The headings of the text, for the pane (not those in tables, notes, headers, footers or text boxes). */
+function refreshHeadings() {
+  if (!navOpen.value || !page.value) return;
+  navEls = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-notes, .docx-hf-band, .textbox, table')
+    && (doc.outlineLevel(el) ?? 9) < 9 && el.textContent.trim());
+  navHeadings.value = navEls.map((el, index) => ({ index, level: doc.outlineLevel(el) + 1, text: el.textContent.trim().replace(/\s+/g, ' ') }));
+  updateNavCurrent();
+}
+
+/** The heading the caret is under. */
+function updateNavCurrent() {
+  if (!navOpen.value) return;
+  const range = selectionInPage();
+  const block = range && closestBlock(range.startContainer);
+  if (!block) return;
+  let at = -1;
+  navEls.forEach((el, i) => {
+    if (el === block || el.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING) at = i;
+  });
+  navCurrent.value = at;
+}
+
+function toggleNav() {
+  navOpen.value = !navOpen.value;
+  try { localStorage.setItem(NAV_KEY, navOpen.value ? '1' : '0'); } catch { /* this session only */ }
+  nextTick(refreshHeadings);
+}
+
+/** Goes to heading `i`: in view, the caret at its start. */
+function goToHeading(i) {
+  const el = navEls[i];
+  if (!el?.isConnected) return refreshHeadings();
+  page.value.focus();
+  placeCaret(el, true);
+  el.scrollIntoView({ block: 'start' });
+  navCurrent.value = i;
 }
 
 function pickPicture() {
@@ -7043,6 +7397,7 @@ async function openReview(part = '') {
   const forDialog = (list) => list.map(({ targets, ...issue }) => ({ ...issue, count: targets.length }));
   reviewData.value = {
     ...review, signature, protection: doc.protection, overridden: unlocked.value, restored: doc.restored,
+    startedHere: !!(doc.startedHere || doc.fromTemplate),
     label: doc.properties.label, marking: doc.properties.marking, inspection: inspection(),
     properties: doc.propertiesUpdate(),
     accessibility: forDialog(issues.filter((i) => !i.id.startsWith('ats-'))),
@@ -7432,7 +7787,10 @@ async function close() {
 .toolbar select.font-choice { min-width: 0; width: 132px; }
 .toolbar select.size-choice { min-width: 0; width: 58px; }
 .toolbar select.char-style { min-width: 0; width: 124px; }
-.page-count, .smart-typing { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
+.page-count, .smart-typing, .nav-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
+.nav-toggle[aria-pressed="true"] { color: var(--accent); }
+/* The Headings pane is for a wider screen (it is hidden on a phone, and so is its button). */
+@media (max-width: 700px) { .nav-toggle { display: none; } }
 .no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
 .marks-toggle { font-size: 16px !important; }
 .track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
