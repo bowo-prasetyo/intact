@@ -155,7 +155,7 @@ test('a date follows the text’s language', async ({ page }) => {
 test.describe('on a phone', () => {
   test.use({ viewport: devices['iPhone 13'].viewport, hasTouch: true });
 
-  test('the toolbar starts with the tools a phone is used for, and messages show above the counts', async ({ page }) => {
+  test('the toolbar starts with the tools a phone is used for, and messages come first in the status bar', async ({ page }) => {
     await openInEditor(page, await buildDocx(TEXT));
     const shown = await page.evaluate(() => [...document.querySelectorAll('.toolbar button, .toolbar select')]
       .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth; })
@@ -177,8 +177,9 @@ test.describe('on a phone', () => {
     await expect(message).toContainText('Check box inserted');
     const box = await message.boundingBox();
     const words = await page.locator('.statusbar > span').first().boundingBox();
-    expect(box.y).toBeLessThan(words.y); // its own line, above
+    expect(box.x).toBeLessThan(words.x); // first in the line, in view
     expect(box.x + box.width).toBeLessThanOrEqual(390);
+    expect(await page.locator('.statusbar').evaluate((el) => el.offsetHeight)).toBeLessThan(30); // still one line
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   });
 });

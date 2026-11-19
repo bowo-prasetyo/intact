@@ -446,9 +446,9 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   On a phone it is one row that scrolls sideways, faded at the edge where more controls are, with
   touch-sized buttons. The tools a phone is used for come first (Undo, Redo, Bold, Italic,
   Underline, Highlight, the lists, Insert, Draw signature, Insert picture and New comment), the rest a
-  swipe away, and the arrow keys follow that order. What just happened ("Check box inserted",
-  "Shared letter.docx") gets a line of its own in the status bar, above the counts, rather than being
-  out of sight; zoom is left to the phone's pinch. Nothing makes the document scroll sideways
+  swipe away, and the arrow keys follow that order. The status bar is one line, and what just happened
+  ("Check box inserted", "Shared letter.docx") comes first in it, rather than out of sight at its
+  end; zoom is left to the phone's pinch. Nothing makes the document scroll sideways
   there: a picture wider than the screen is shown smaller (its size in the file unchanged), and what
   lies past the page's edge is cut off at it, as on paper
 - Help (Ctrl+/, or the toolbar's Help button) lists the keyboard shortcuts and opens the review's

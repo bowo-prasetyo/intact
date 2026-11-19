@@ -689,7 +689,7 @@
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
       <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
-      <span role="status" aria-live="polite">{{ message }}</span>
+      <span role="status" aria-live="polite" :title="message || null">{{ message }}</span>
       <span class="zoom" role="group" aria-label="Zoom">
         <button type="button" title="Zoom out (Ctrl+mouse wheel)" aria-label="Zoom out" :disabled="zoomLevel <= ZOOMS[0]" @click="zoomBy(-1)">−</button>
         <button type="button" class="zoom-level" :title="zoomLevel === 100 ? 'Zoom: the page at its size' : 'Back to 100%'" :aria-label="`Zoom ${zoomLevel}%${zoomLevel === 100 ? '' : ', back to 100%'}`" @click="setZoom(100)">{{ zoomLevel }}%</button>
@@ -6014,11 +6014,12 @@ async function close() {
   .toolbar[data-more="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .toolbar[data-more="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
   .toolbar[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
-  .statusbar { gap: 4px 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex-wrap: wrap; }
+  .statusbar { gap: 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
   .statusbar > * { flex: none; }
-  /* What just happened ("Signature inserted", "Shared letter.docx") gets a line of its own, above
-     the counts, rather than being pushed out of sight to the right. */
-  .statusbar [role="status"] { order: -1; flex-basis: 100%; white-space: normal; color: var(--text); }
+  /* What just happened ("Signature inserted", "Shared letter.docx") comes first in the one line,
+     rather than out of sight to the right; a long message ends in "…" (its tooltip, and screen
+     readers, have all of it), and the counts follow, a swipe away. */
+  .statusbar [role="status"] { order: -1; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; color: var(--text); }
   .statusbar [role="status"]:empty { display: none; }
   /* The page already fits the screen's width, and the phone pinches to zoom. */
   .statusbar > span.zoom { display: none; }
