@@ -21,6 +21,7 @@ import { textboxInfo, setTextboxText, textboxContents, syncCopies } from './text
 import { loadEmbeddedFonts } from './fonts.js';
 import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
+import { STARTERS, starterFiles } from './starters.js';
 import {
   loadPart, parseComments, parseNotes, headerFooterVariants, fieldTitle, describe,
 } from './annotations.js';
@@ -193,11 +194,19 @@ export class DocxDocument {
     return doc;
   }
 
-  static async createBlank(name = 'Untitled.docx') {
+  static async createBlank(name = 'Untitled.docx', files = blankDocxFiles()) {
     const zip = new JSZip();
-    for (const [path, content] of Object.entries(blankDocxFiles())) zip.file(path, content);
+    for (const [path, content] of Object.entries(files)) zip.file(path, content);
     const doc = await DocxDocument.open(await zip.generateAsync({ type: 'arraybuffer' }), name);
     doc.startedHere = true; // a new document: nobody has seen it, so its edits needn't be tracked
+    return doc;
+  }
+
+  /** A new document from starter `id` (a letter, a memo…, see starters.js), on the paper used here. */
+  static async createStarter(id) {
+    const starter = STARTERS.find((s) => s.id === id);
+    const doc = await DocxDocument.createBlank(`${starter.file}.docx`, starterFiles(id));
+    doc.starter = id; // the editor opens Fill in for its placeholders
     return doc;
   }
 

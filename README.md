@@ -28,6 +28,16 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   document" makes it download as a `.docx` instead (a `.dotm` as a `.docm`, macros kept), only the
   main part's content type changed, so the quote, letter or invoice written from it never replaces
   the template. "Edit the template instead" goes back. The template file opened is never changed
+- Start from a template, on the start page: a letter, a memo, meeting minutes, a quote, an invoice,
+  a CV and a report, each a new Word document made in the browser (nothing is fetched), in Word's
+  own styles (Title, Heading 1 and 2, Table Grid with a shaded heading row that repeats on each page,
+  List Paragraph with Word's bullets, Footer with a page number), with lines such as "To:" and
+  "Date:" lined up at a tab stop, and placeholders that say what to type ("[Recipient name]",
+  "[Quote number]"). Fill in opens with them, so each is typed once for every place it appears. On
+  Letter paper where the browser's language is of a country that uses it (the United States,
+  Canada, Mexico, the Philippines and others in the Americas), else A4, with 2.54 cm margins. The CV
+  keeps contact details in the text, where screening software reads them, and the report numbers
+  its pages. Edits to it aren't tracked, as in a blank document
 - Right-to-left text, as Word shows it: paragraphs (`w:bidi`, directly or from their style) are laid
   out and edited right to left; Word's left and right alignment in them are logical (start and end),
   as Word and LibreOffice read them, and the alignment buttons align as shown; runs marked
@@ -889,6 +899,8 @@ The About page shows the version.
   macros and calculations aren't applied; Word applies them when the form is next filled in there.
   Filling in fields isn't tracked. A signature is a picture of a signature, not a digital signature:
   it doesn't prove who signed (Word's signature lines and digital signatures are kept, not made here)
+- The starter templates are in English; their text is placeholders to type over (or Fill in), not
+  a design to choose from
 - Placeholders are found in the page (its headers, text, notes and footers), not in comments, and
   only on one line and within one paragraph; a placeholder written as underscores (`________`)
   or as "XXX" isn't recognised. A new document made from a template doesn't record which template
