@@ -38,6 +38,19 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Canada, Mexico, the Philippines and others in the Americas), else A4, with 2.54 cm margins. The CV
   keeps contact details in the text, where screening software reads them, and the report numbers
   its pages. Edits to it aren't tracked, as in a blank document
+- Mail merge from a list, as Word's Mailings tab does it (Download ▾ > Mail merge…, or From a list…
+  in Fill in): choose a CSV saved from Excel or Google Sheets (its first row names the columns;
+  commas, semicolons or tabs between fields, quoted fields with commas and line breaks, UTF-8 or
+  Excel's Windows-1252), and each row fills the document's placeholders. Each placeholder is matched
+  to the column of its name (whatever the case, spaces, underscores or accents) and can be given
+  another, or left as it is; a row at a time is previewed. It makes either one document, a copy for
+  each row, each starting on a new page (`w:pageBreakBefore`), or a .zip of a document for each
+  row, named by a column. The document as it would be downloaded is merged, in its XML: a value goes
+  into the run where its placeholder starts (so it takes its formatting, also across runs), with
+  Word's line breaks for an address's lines; in one document, the ids that must be unique
+  (bookmarks, tracked changes, drawings) are moved up for each copy, bookmarks' names made its own,
+  and comments stay with the first copy. Up to 1,000 rows. The list is read on this device, and
+  the document itself isn't changed
 - Right-to-left text, as Word shows it: paragraphs (`w:bidi`, directly or from their style) are laid
   out and edited right to left; Word's left and right alignment in them are logical (start and end),
   as Word and LibreOffice read them, and the alignment buttons align as shown; runs marked
@@ -899,6 +912,11 @@ The About page shows the version.
   macros and calculations aren't applied; Word applies them when the form is next filled in there.
   Filling in fields isn't tracked. A signature is a picture of a signature, not a digital signature:
   it doesn't prove who signed (Word's signature lines and digital signatures are kept, not made here)
+- Mail merge: in one document, headers and footers are shared by every copy, so a placeholder in
+  them is filled in only when every row has the same value for it (the status bar says when one is
+  left); a document with footnotes or endnotes is merged into separate documents only. Rows don't
+  skip or filter (merge the rows wanted), and values are text as the CSV has it (dates and numbers
+  as Excel saved them)
 - The starter templates are in English; their text is placeholders to type over (or Fill in), not
   a design to choose from
 - Placeholders are found in the page (its headers, text, notes and footers), not in comments, and
