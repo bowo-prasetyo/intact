@@ -185,11 +185,11 @@ Saying no to these keeps the product small enough to keep its promises:
   the order Word's schema requires, its parts related and typed ✔
 - Mail merge from a CSV: one letter (or one document of them) for each row, through the
   placeholders ✔
-- Page setup for one section: a landscape page in a portrait document, its own margins
+- Page setup for one section: a landscape page in a portrait document, its own margins ✔
 - Change a style's definition (Heading 1 in another font or colour, Normal's spacing), as Word's
-  Modify Style
-- Design headers and footers: a different first page, different odd and even pages
-- Tests that save a new document of each kind and check it as Word reads it
+  Modify Style ✔
+- Design headers and footers: a different first page, different odd and even pages ✔
+- Tests that save a new document of each kind and check it as Word reads it ✔ (starters)
 
 ## How we'll know it's working
 

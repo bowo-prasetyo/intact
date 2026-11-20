@@ -16,7 +16,8 @@
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F) or an endnote (Ctrl+Alt+D)</li>
         <li>Update fields (F9): the table of contents, cross-references, caption and note numbers; Word updates page numbers when it opens the file</li>
         <li>References: a table of contents, captions, cross-references, equations typed as LaTeX, and citations with a bibliography in APA or MLA style, as Word writes them; a Headings pane to move around by the headings</li>
-        <li>Page numbers in a header or footer, at the top or bottom of the page (left, centre or right), or a new header or footer for them or for text on every page; page setup (paper size, orientation, margins, in centimetres or inches) for the whole document</li>
+        <li>Page numbers in a header or footer, at the top or bottom of the page (left, centre or right), or a new header or footer for them or for text on every page; page setup (paper size, orientation, margins, in centimetres or inches) for the whole document, one section, from a point forward or the selected text (a landscape page for a wide table); a different first page, and different odd and even pages</li>
+        <li>Modify Style: change a paragraph style's font, size, colour, alignment and spacing, and every paragraph in it follows</li>
         <li>Headers and footers, in the page's margins: the first page's, other pages', even pages' and each section's, chosen with the tabs above and below the page</li>
         <li>The text in text boxes and shapes, shown where Word puts them with their fill and outline</li>
         <li>Insert tables and pictures (from the toolbar, or paste or drop a picture)</li>

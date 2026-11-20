@@ -78,7 +78,7 @@ export function parseNotes(part, local) {
  * where the section has a different first page; "even pages" only with odd/even headers on.
  * The first entry is what page 1 shows.
  */
-export function headerFooterVariants(body, local, evenAndOdd) {
+export function headerFooterVariants(body, local, evenAndOdd, all = false) {
   const sections = [...body.getElementsByTagNameNS(W, 'sectPr')];
   const inherited = {};
   const out = [];
@@ -86,18 +86,33 @@ export function headerFooterVariants(body, local, evenAndOdd) {
     for (const ref of wChildren(sect, local)) inherited[wAttr(ref, 'type') || 'default'] = ref.getAttributeNS(NS.r, 'id');
     const titlePg = onOff(wChild(sect, 'titlePg')) === true;
     const used = [];
-    if (titlePg && inherited.first) used.push(['first', 'First page']);
-    if (inherited.default) used.push(['default', evenAndOdd ? 'Odd pages' : titlePg ? 'Other pages' : 'All pages']);
-    if (evenAndOdd && inherited.even) used.push(['even', 'Even pages']);
-    for (const [type, label] of used) {
+    // `all`: the first-page and even-page ones too where the section or settings don't use them
+    // (shown: false), so they can be switched on (Page setup) and edited.
+    if ((titlePg || all) && inherited.first) used.push(['first', titlePg]);
+    if (inherited.default) used.push(['default', true]);
+    if ((evenAndOdd || all) && inherited.even) used.push(['even', evenAndOdd]);
+    for (const [type, shown] of used) {
       const rid = inherited[type];
       if (out.some((v) => v.rid === rid)) continue;
-      out.push({ rid, type, label, section: i + 1 });
+      out.push({ rid, type, section: i + 1, titlePgInFile: titlePg, shownInFile: shown });
     }
   });
-  const multi = out.some((v) => v.section > 1);
-  for (const v of out) if (multi) v.label = `Section ${v.section}: ${v.label.toLowerCase()}`;
+  labelVariants(out, { titlePg: (v) => v.titlePgInFile, evenAndOdd });
   return out;
+}
+
+/**
+ * Names header (or footer) variants as Word's tabs do: "First page", "Other pages" (or "All pages",
+ * or "Odd pages" with odd and even pages different), "Even pages", with "Section n:" before them in
+ * a document of several sections. `titlePg(v)`: whether v's section has a different first page.
+ */
+export function labelVariants(variants, { titlePg, evenAndOdd }) {
+  const multi = variants.some((v) => v.section > 1);
+  for (const v of variants) {
+    const label = v.type === 'first' ? 'First page' : v.type === 'even' ? 'Even pages'
+      : evenAndOdd ? 'Odd pages' : titlePg(v) ? 'Other pages' : 'All pages';
+    v.label = multi ? `Section ${v.section}: ${label.toLowerCase()}` : label;
+  }
 }
 
 // ------------------------------------------------------------------ plain-language names
