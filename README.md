@@ -146,6 +146,34 @@ Compare documents (Review > Compare) says the same of a version it can't read.
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
+- Hidden text, for a test's answer key, as Word's Font > Hidden: the Hidden text button or
+  Ctrl+Shift+H hides the selected text (`w:vanish`), or shows it again when all of it is hidden. It is
+  shown faintly here with Word's dotted line under it, and left out when printing (and in the PDF),
+  as Word leaves it out, unless Print hidden text is chosen in the PDF dialog: the test prints
+  without its answers, its key with them
+- Read Aloud, as Word's Review > Read Aloud (Ctrl+Alt+Space): from the caret's paragraph, or the
+  selected text, paragraph by paragraph, in the text's language, the paragraph and the word being
+  read highlighted (with the CSS Custom Highlight API, so the page is never changed), with Pause,
+  Resume, and Esc or Stop. Only voices on the device are used (the Web Speech API's local voices):
+  online voices, which send the text to a server to be spoken, never are, and where there is no
+  voice on the device for the text's language, it says so. Hidden text (a test's answers) isn't read
+- Tabs where Word puts them: a tab alone in its run (as Word writes a table of contents' tabs and
+  Insert answer line writes one) or alone in its paragraph ends at its stop as Word lines it up,
+  left, right, centred or at the decimal point of the text after it, measured on the page and laid
+  out again as the text changes; its leader (dots, hyphens, a line) or its underline is drawn across
+  it, and prints (`src/editor/tabLayout.js`). Only the page's styles change, never the text saved
+- Insert > Answer line: a line from the caret to the paragraph's right edge, to write a name or an
+  answer on ("Name: ______"), as teachers make one in Word: an underlined tab (a run of its own) to a
+  right tab stop at the margin, added to the paragraph if it hasn't one there; what is typed after
+  it isn't underlined
+- Insert > Line, Arrow and Text box, as Word's Insert > Shapes writes them: a line or an arrow (a
+  DrawingML shape, `wps:wsp`, `prst` line or straightConnector1 with an arrowhead) in front of the
+  text where the caret is, anchored to its paragraph, selected to be dragged into place, resized
+  and turned with the picture tools (Layout Options without a picture's crop, effects and styles),
+  to label a diagram or a picture; a text box (5 × 1.5 cm, with a thin border) in line with the
+  text, to type in. Lines, arrows, rectangles and ellipses already in a document are drawn as Word
+  draws them (their outline, fill and arrowheads) and laid out as pictures are, instead of a
+  placeholder
 - Lists started by typing, as Word's AutoFormat: "1. ", "1) " or "(1) ", "a. ", "A) ", "(i) " and the
   like, "* " or "- " typed at the start of a paragraph make it a numbered list in that style (starting
   from the number typed: "3. " starts at 3) or a bulleted list (Word's bullet, or a dash), written as
@@ -383,9 +411,15 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   - Cross-reference…: to a heading (its text) or a caption (its label and number, or all of it), or
     "above"/"below", as a `REF` field to a `_Ref` bookmark added on it, as Word adds one
   - Equation…: typed as in LaTeX (fractions, scripts, roots, sums and integrals with limits,
-    brackets that grow, Greek letters, the usual symbols, functions upright), previewed, and written
-    as Word's own equations (Office Math, `m:oMath`; on its own line, `m:oMathPara`, in an empty
-    paragraph) that Word edits as its own (`src/editor/mathInput.js`)
+    brackets that grow, Greek letters, the usual symbols, functions upright; matrices in their
+    brackets, `\begin{pmatrix} a & b \\ c & d \end{pmatrix}` and bmatrix, Bmatrix, vmatrix, Vmatrix
+    and matrix; cases; working lined up at its = signs, `\begin{aligned} x &= 1 \\ &= 2
+    \end{aligned}`; accents, `\hat`, `\bar`, `\vec`, `\dot`, `\tilde`, and `\overline`,
+    `\underline`), previewed, and written as Word's own equations (Office Math, `m:oMath`; on its own
+    line, `m:oMathPara`, in an empty paragraph) that Word edits as its own: a matrix as `m:m` in a
+    delimiter (`m:d`), lines of working as an equation array (`m:eqArr`) whose alignment points are
+    the `&`s in its text, as Word writes them (`src/editor/mathInput.js`). An equation array, typed
+    here or written by Word, is shown lined up at those points
   - Citation…: a source the document has, or a new one (a book, a journal article or a website), in
     APA (7th edition) or MLA (9th edition) style, with the page cited if wanted, as Word's `CITATION`
     field. Sources are kept as Word keeps them, in its Source Manager's part (`customXml/itemN.xml`,
@@ -1053,9 +1087,9 @@ The About page shows the version.
   the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
   the browser's: use the Paragraph dialog. Indents are set in centimetres or inches and spacing in points
 - Lists that define only one level (such as Word's built-in "List Bullet" style) can't be indented
-- Tab stops on the page: only a paragraph's first stop, if it is a left one, and evenly spaced stops
-  after it are where Word puts them; tabs to a right, centre or decimal stop, and leaders, show at
-  the default stops (they are kept, and Word lays them out)
+- Tab stops on the page: a tab sharing its run with other tabs or text (in a paragraph of several
+  tabs) is put at the paragraph's first stop, if it is a left one, and evenly spaced stops after it,
+  else at the default stops, and its leader isn't drawn (they are kept, and Word lays them out)
 - A watermark is text only (Word's picture watermarks are kept, not made or shown here), in Word's
   silver, the same in every header; it isn't tracked. It is drawn in the middle of each page as
   the page count works them out, so it may sit a little higher or lower than in Word
@@ -1094,9 +1128,8 @@ The About page shows the version.
   from its numbering, as in Word, so a list paragraph keeps them); it isn't tracked
   (Word doesn't track style changes either)
 - Equations already in a document are shown, not edited (new ones are typed as LaTeX, a part of it:
-  no matrices, accents or equation arrays); they need a math font to look as in Word (Windows and macOS have
-  one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation
-  arrays are not aligned at their `&` points
+  environments with their own column settings, such as `array`, aren't); they need a math font to look as in Word (Windows and macOS have one: Cambria Math, STIX
+  Two Math; on Linux install one such as Latin Modern Math)
 - Fields are preserved; their instructions can't be edited (their results can, until they are
   updated). Update fields doesn't work out page numbers (`PAGE`, `PAGEREF`, `NUMPAGES`: Word does
   when it opens the file), nor dates, document properties or mail-merge fields, nor citations whose
@@ -1117,9 +1150,15 @@ The About page shows the version.
   their style, width and colour are set in Word. Borders and shading go on cells, not on the whole
   table or on paragraphs
 - A text box's size, position and look are kept, not changed here, and it grows to show all its text
-  where Word would cut it off; text wrapping around it follows its rectangle. Groups of shapes,
-  canvases, shapes without text, charts and SmartArt stay as they are. A text box laid out on the page
-  (rather than beside its paragraph) is shown near its paragraph
+  where Word would cut it off; text wrapping around it follows its rectangle. A text box made here is
+  in line with the text. Lines, arrows, rectangles and ellipses are drawn and laid out; other shapes
+  without text (stars, callouts, freeforms), groups of shapes, canvases, charts and SmartArt stay as
+  they are. A shape's colour, line style and arrowheads are set in Word. A text box laid out on the
+  page (rather than beside its paragraph) is shown near its paragraph
+- Read Aloud reads with the voices the device has (the system's speech settings add more); a
+  browser that lists only online voices reads nothing, by design. Words are highlighted where the
+  voice says where it is (not every voice does). Hidden text is printed or left out for the whole
+  document
 - With no pages, columns are balanced (as Word balances them before a continuous section break), each
   header and footer is shown once, and adjacent paragraphs with the same borders get a border each
   (Word draws one box around them); a drop cap in the margin is shown like one in the text

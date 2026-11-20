@@ -122,9 +122,6 @@
       <button data-tab="home" type="button" :title="t('Strikethrough')" :aria-label="t('Strikethrough')" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
       <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
       <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
-      <button data-tab="home" type="button" :title="t('Hidden text (Ctrl+Shift+H): for a test’s answers, shown here and printed only when asked')" :aria-label="t('Hidden text')" :class="{ on: state.hidden }" :aria-pressed="state.hidden" @click="toggleHidden">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.2" fill="none" /><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.2" fill="none" /><path d="M2.5 14L13.5 2" stroke="currentColor" stroke-width="1.3" /></svg>
-      </button>
       <span data-tab="home" class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
@@ -257,6 +254,10 @@
         <option value="original">{{ t('Original') }}</option>
       </select>
       <span class="sep" data-tab="review" />
+      <!-- Hidden text, for a test's answer key: as Word, a font setting; here beside the review of what the file carries. -->
+      <button data-tab="review" type="button" :title="t('Hidden text (Ctrl+Shift+H): for a test’s answers, shown here and printed only when asked')" :aria-label="t('Hidden text')" :class="{ on: state.hidden }" :aria-pressed="state.hidden" @click="toggleHidden">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.2" fill="none" /><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.2" fill="none" /><path d="M2.5 14L13.5 2" stroke="currentColor" stroke-width="1.3" /></svg>
+      </button>
       <button data-tab="review" type="button" class="review-toggle" :title="t('Review your changes, what the file carries and its accessibility – any time, not only when you download')" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">{{ t('Review') }}</span>
@@ -1090,6 +1091,7 @@
       </template>
       <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">{{ t('Ctrl+Alt+M') }}</span></button>
       <template v-if="!ctxMenu.locked">
+        <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(toggleHidden)">{{ t('Hidden text') }}<span class="key">{{ t('Ctrl+Shift+H') }}</span></button>
         <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">{{ t('Paragraph…') }}</button>
         <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">{{ t('Modify style…') }}</button>
         <template v-if="ctxMenu.table">
