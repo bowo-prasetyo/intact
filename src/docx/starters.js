@@ -1,5 +1,5 @@
-// Starter documents for the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV
-// and a report, each a Word document written as Word writes one, in Word's own styles (Title,
+// Starter documents for the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV,
+// a report and a manuscript, each a Word document written as Word writes one, in Word's own styles (Title,
 // Heading 1 and 2, Table Grid, List Paragraph, Footer), with placeholders such as [Your name] that
 // Fill in fills in once for every place they appear. Nothing here is fetched: each is built in the
 // browser from the blank document's parts (see blank.js).
@@ -15,8 +15,9 @@ function run(text, f = {}) {
 }
 
 /**
- * A paragraph of `content` (text, or runs made with run()): { style, jc, before, after, tabs
- * ([twips]), keepNext, border ('bottom'), bullet, ind (left twips) }.
+ * A paragraph of `content` (text, or runs made with run()): { style, jc, before, after, line
+ * (240ths of a line), tabs ([twips]), keepNext, border ('bottom'), bullet, ind (left twips), first
+ * (first-line indent, twips: 0 takes a style's off) }.
  */
 function p(content = '', o = {}) {
   const runs = typeof content === 'string' ? run(content, o.run) : content.join('');
@@ -26,8 +27,9 @@ function p(content = '', o = {}) {
     o.bullet ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>' : '',
     o.border ? '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="auto"/></w:pBdr>' : '',
     o.tabs ? `<w:tabs>${o.tabs.map((t) => (typeof t === 'number' ? `<w:tab w:val="left" w:pos="${t}"/>` : `<w:tab w:val="${t.align}" w:pos="${t.pos}"/>`)).join('')}</w:tabs>` : '',
-    o.before != null || o.after != null ? `<w:spacing${o.before != null ? ` w:before="${o.before}"` : ''}${o.after != null ? ` w:after="${o.after}"` : ''}/>` : '',
-    o.ind != null ? `<w:ind w:left="${o.ind}"/>` : '',
+    o.before != null || o.after != null || o.line != null
+      ? `<w:spacing${o.before != null ? ` w:before="${o.before}"` : ''}${o.after != null ? ` w:after="${o.after}"` : ''}${o.line != null ? ` w:line="${o.line}" w:lineRule="auto"` : ''}/>` : '',
+    o.ind != null || o.first != null ? `<w:ind${o.ind != null ? ` w:left="${o.ind}"` : ''}${o.first != null ? ` w:firstLine="${o.first}"` : ''}/>` : '',
     o.jc ? `<w:jc w:val="${o.jc}"/>` : '',
   ].join('');
   return `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${runs}</w:p>`;
@@ -258,7 +260,59 @@ export const STARTERS = [
       ].join(''),
     }),
   },
+  {
+    id: 'manuscript',
+    title: 'Manuscript',
+    description: 'A novel in standard manuscript format: title page, chapters, double-spaced',
+    file: 'Manuscript',
+    build: () => manuscript(), // defined below, with what it is made of
+  },
 ];
+
+// A novel's manuscript as agents and publishers ask for it (standard manuscript format): Times New
+// Roman 12 pt, double-spaced, every paragraph's first line indented half an inch (Normal's, so
+// paragraphs typed or pasted follow), no space between paragraphs, 2.54 cm margins. A title page
+// with the author's contact details and the word count, the title halfway down; a header on the
+// other pages with the author's surname, a short title and the page number; each chapter a Heading 1
+// (in the Headings pane) that starts a new page a third of the way down, and a scene break as a
+// centred #.
+const SINGLE = { line: 240, first: 0, after: 0 };
+const manuscript = () => {
+  const pageField = '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+  const chapter = (title) => p(title, { style: 'Heading1' });
+  const text = (t) => p(t);
+  return {
+    font: { name: 'Times New Roman', sz: 24 },
+    normal: '<w:spacing w:after="0" w:line="480" w:lineRule="auto"/><w:ind w:firstLine="720"/>',
+    // A chapter starts a new page, a third of the way down, its title centred in the text's own size.
+    heading1: {
+      pPr: '<w:keepNext/><w:keepLines/><w:pageBreakBefore/><w:spacing w:before="3600" w:after="480"/><w:ind w:firstLine="0"/><w:jc w:val="center"/><w:outlineLvl w:val="0"/>',
+      rPr: '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/>',
+    },
+    header: `<w:p><w:pPr><w:pStyle w:val="Header"/><w:jc w:val="right"/></w:pPr>${run('[Surname] / [Short title] / ')}${pageField}</w:p>`,
+    titlePg: true,
+    body: [
+      // The word count at the top right, on a line of its own (Intact shows a right tab stop's text at
+      // Word's default stops, so a line of its own, aligned right, looks the same in both).
+      p('about [Word count, rounded] words', { ...SINGLE, jc: 'right' }),
+      p('[Your legal name]', SINGLE),
+      p('[Street address]', SINGLE),
+      p('[City, region and postcode]', SINGLE),
+      p('[Phone number]', SINGLE),
+      p('[Email address]', SINGLE),
+      p('[Novel title]', { ...SINGLE, before: 4320, after: 240, jc: 'center', run: { caps: true } }),
+      p('by [Pen name]', { ...SINGLE, jc: 'center' }),
+      chapter('Chapter One'),
+      text('[The first paragraph of your story. Every paragraph starts half an inch in and is double-spaced, as the style Normal has it: just type, or paste your text.]'),
+      text('[The next paragraph.]'),
+      p('#', { first: 0, jc: 'center' }),
+      text('[A new scene, after a scene break: a # on a line of its own, centred.]'),
+      chapter('Chapter Two'),
+      text('[Each chapter is a Heading 1: it starts a new page, and the Headings pane lists it.]'),
+      p('THE END', { first: 0, jc: 'center', before: 480 }),
+    ].join(''),
+  };
+};
 
 // Countries that use Letter paper rather than A4 (the United States, Canada, Mexico, the
 // Philippines and others in the Americas), by the region of the browser's language.

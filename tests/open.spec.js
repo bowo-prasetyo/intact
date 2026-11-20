@@ -31,6 +31,9 @@ function dropFile(page, selector, { name, type, bytes }) {
 }
 
 test('the Open tile is a button: Tab reaches it and Enter opens the file picker', async ({ page }) => {
+  // The file input, as where the browser has no picker that gives a handle to save back to (Firefox,
+  // Safari, phones); the picker that does is in save-in-place.spec.js.
+  await page.addInitScript(() => { delete window.showOpenFilePicker; });
   // Listening before the page loads, so the picker can't open before Playwright is watching for it.
   const picker = page.waitForEvent('filechooser');
   await page.goto('./');

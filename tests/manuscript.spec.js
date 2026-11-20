@@ -157,6 +157,32 @@ test('Simple markup draws a red line beside each changed paragraph, and your own
   expect(xml).toMatch(/<w:del [^>]*>.*lamps.*<\/w:del>/s);
 });
 
+test('Original shows the text before the changes, read-only; All markup makes it editable again', async ({ page }) => {
+  await openInEditor(page, await buildDocx(EDITED));
+  const view = page.getByRole('combobox', { name: 'Show markup' });
+  await view.selectOption('original');
+  await expect(status(page)).toContainText('Original: the text before the changes, read-only – 2 tracked changes kept in the file');
+  const inserted = page.locator('.docx-page .inserted', { hasText: 'slowly' });
+  const deleted = page.locator('.docx-page .deleted', { hasText: 'dark' });
+  await expect(inserted).toBeHidden();
+  await expect(deleted).toBeVisible();
+  await expect(deleted).toHaveCSS('text-decoration-line', 'none');
+  expect(await p(page, 'She walked').innerText()).toBe('She walked along the dark river.');
+
+  // Typing changes nothing, and says why.
+  await p(page, 'The lamps').click();
+  await page.keyboard.type('xyz');
+  await page.keyboard.press('Enter');
+  await expect(status(page)).toContainText('Showing the original, before the tracked changes: choose All markup (Review) to edit');
+  expect(await p(page, 'The lamps').innerText()).toBe('The lamps flickered.');
+  await expect(page.locator('.docx-page > p')).toHaveCount(2);
+
+  await view.selectOption('all');
+  await caretAt(page, 'flickered', 0);
+  await page.keyboard.type('gently ');
+  await expect(p(page, 'The lamps')).toHaveText('The lamps gently flickered.');
+});
+
 // ------------------------------------------------------------------ Previous and Next comment
 
 const comment = (id, text) => `<w:comment w:id="${id}" w:author="Editor" w:date="2026-01-01T00:00:00Z"><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:comment>`;

@@ -194,7 +194,9 @@ Saying no to these keeps the product small enough to keep its promises:
   one toolbar still a choice ✔
 - Long manuscripts and their editing rounds: indents in Modify Style (Normal with a first-line
   indent) ✔; Show markup, simple or none, to read an edited draft clean ✔; Previous and Next
-  comment ✔
+  comment ✔; a manuscript starter in standard manuscript format ✔; the original (before the
+  changes) ✔; move a chapter with its text from the Headings pane ✔; save back to the file opened,
+  where the browser can ✔
 
 ## How we'll know it's working
 

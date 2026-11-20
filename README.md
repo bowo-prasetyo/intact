@@ -29,7 +29,7 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   main part's content type changed, so the quote, letter or invoice written from it never replaces
   the template. "Edit the template instead" goes back. The template file opened is never changed
 - Start from a template, on the start page: a letter, a memo, meeting minutes, a quote, an invoice,
-  a CV and a report, each a new Word document made in the browser (nothing is fetched), in Word's
+  a CV, a report and a novel's manuscript, each a new Word document made in the browser (nothing is fetched), in Word's
   own styles (Title, Heading 1 and 2, Table Grid with a shaded heading row that repeats on each page,
   List Paragraph with Word's bullets, Footer with a page number), with lines such as "To:" and
   "Date:" lined up at a tab stop, and placeholders that say what to type ("[Recipient name]",
@@ -37,7 +37,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Letter paper where the browser's language is of a country that uses it (the United States,
   Canada, Mexico, the Philippines and others in the Americas), else A4, with 2.54 cm margins. The CV
   keeps contact details in the text, where screening software reads them, and the report numbers
-  its pages. Edits to it aren't tracked, as in a blank document
+  its pages. The manuscript is in standard manuscript format, as agents and publishers ask for it:
+  Times New Roman 12 pt, double-spaced, each paragraph's first line indented half an inch and no
+  space between paragraphs (all Normal's, so text typed or pasted follows); a title page with the
+  author's contact details, "about [Word count, rounded] words" and the title halfway down; a header
+  on the other pages with "[Surname] / [Short title] /" and the page number (a different first
+  page); each chapter a Heading 1 that starts a new page a third of the way down (and is listed,
+  and can be moved, in the Headings pane); and a scene break as a centred #. Edits to a starter
+  aren't tracked, as in a blank document
 - Mail merge from a list, as Word's Mailings tab does it (Download ▾ > Mail merge…, or From a list…
   in Fill in): choose a CSV saved from Excel or Google Sheets (its first row names the columns;
   commas, semicolons or tabs between fields, quoted fields with commas and line breaks, UTF-8 or
@@ -299,7 +306,12 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
     style brings the citations and bibliographies up to date at once
 - Headings (the status bar's button), as Word's Navigation pane: the document's headings by level,
   the one the caret is under marked; a click goes to a heading. Kept up to date as you type, and
-  shown or hidden as last time in this browser
+  shown or hidden as last time in this browser. A heading moves with everything under it (a chapter
+  with its scenes), as in Word's pane: dragged onto another heading it goes before that one, and ▲ ▼
+  beside it (or Alt+Shift+↑ ↓ with it focused) move it past the heading of its level before or
+  after it, under the same heading (a scene stays in its chapter). The paragraphs, tables and the
+  like are moved as they are, so the file keeps them exactly; list and note numbers and comments
+  follow, and Ctrl+Z puts it back
 - Update fields (the toolbar, or F9, as Word's for the whole text): caption numbers (`SEQ`, with
   Word's number formats, \c repeat, \r reset and \s per chapter) are renumbered in the text's
   order; cross-references (`REF`) show the bookmarked text again, or its paragraph's number
@@ -538,10 +550,12 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   cells and merges), and the piece stays locked or linked
 - Show markup, as Word's Display for Review (the Review tab): All markup (as above), Simple markup
   (the text as it will be once the changes are accepted, with a red line in the margin beside each
-  paragraph that has a change) or No markup (that text alone, comments' highlights too), to read a
-  heavily edited draft clean. Only how the page shows: the changes stay in the page and the file,
-  edits go on being tracked (and show as the view has them), print and PDF follow the view, and
-  every document opens with all markup. Previous and Next change, Accept and Reject show all markup
+  paragraph that has a change), No markup (that text alone, comments' highlights too), to read a
+  heavily edited draft clean, or Original (the text before the changes: insertions hidden, deleted
+  text as ordinary text), read-only, as typing there would edit text that is no longer there. Only
+  how the page shows: the changes stay in the page and the file, edits go on being tracked in
+  simple and no markup (and show as the view has them), print and PDF follow the view, and every
+  document opens with all markup. Previous and Next change, Accept and Reject show all markup
   again, so the change they go to can be seen
 - Review your changes before downloading: for a document started here (a blank one, or a new one
   from a template) it doesn't ask for the edits to be tracked, and the CV screening check shows only
@@ -556,6 +570,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   a bibliography lists them, it says the bibliography needs refreshing (`src/docx/fields.js`). The
   review can be skipped, and opened any time from the toolbar
 - Download the result as `.docx` (Ctrl/Cmd+S), or save a PDF (see above)
+- Save back to the file opened, as Word's Save, where the browser can (Chrome and Edge on a
+  computer, with the File System Access API): a file opened from the start page's Open tile (the
+  browser's own file picker) or dropped on it is saved into itself by Save (Ctrl+S) in the header,
+  through the review as Download is; the browser asks once whether Intact may save changes to it.
+  Download's menu (▾) still has Download a copy, and Save as… picks a file on this device to save to
+  (a new manuscript, say), which later Saves write to. A file renamed in the header is saved as a
+  new one. The file is written where it is, by the browser: nothing is uploaded. Elsewhere (Firefox,
+  Safari, phones), Open and Download work as before
 - Share… from Download's menu (▾), where the browser can share files (Safari on iPhone and iPad,
   among others): after "Review your changes", the saved file goes to the device's share sheet, to
   send it back by mail or a messaging app without looking for it in Downloads. It goes from the page
@@ -871,8 +893,18 @@ The About page shows the version.
   what changed since restoring. A draft is kept per browser: another browser or device doesn't see it
 - Simple and no markup hide deleted text, but a deleted paragraph break still shows its two
   paragraphs apart, and a paragraph whose text was all deleted still takes its line; insertions in
-  content kept as it is show as plain text. Word's "Original" view (the text before the changes) isn't
-  offered
+  content kept as it is show as plain text. The original likewise keeps an inserted paragraph break
+  (and so the paragraphs it made) and shows text with its new formatting where the formatting was
+  changed while tracking (the old is in the file, and Reject brings it back)
+- Moving a heading with its text (the Headings pane) isn't tracked, so it isn't offered while
+  tracking (cut and paste is tracked); it moves only headings of the text itself (not in a table or a
+  content control), and not a part that holds a section break, or that a bookmark, comment, field
+  (a table of contents, an index) or editing permission starts in and ends outside of, as moving it
+  would cut that in two. Word renumbers its own fields (captions, cross-references) when it updates
+  them
+- Saving back to the file opened needs the File System Access API (Chrome and Edge on a computer);
+  a document restored from a draft, brought over from another tab or opened from a phone is
+  downloaded instead, and Save as… picks a file again
 - Tracked changes inside locked content are accepted or rejected together, not one by one; edits
   inside form fields and text moved by dragging aren't tracked (cut and paste is), nor is ending a list
   with Enter on an empty item, or a picture's layout
@@ -977,7 +1009,7 @@ The About page shows the version.
   left); a document with footnotes or endnotes is merged into separate documents only. Rows don't
   skip or filter (merge the rows wanted), and values are text as the CSV has it (dates and numbers
   as Excel saved them)
-- The starter templates are in English; their text is placeholders to type over (or Fill in), not
+- The starter templates are in English (the manuscript's chapters are "Chapter One", "Chapter Two"); their text is placeholders to type over (or Fill in), not
   a design to choose from
 - Placeholders are found in the page (its headers, text, notes and footers), not in comments, and
   only on one line and within one paragraph; a placeholder written as underscores (`________`)

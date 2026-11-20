@@ -10,8 +10,14 @@ export function setDocument(doc) {
   currentDoc.value = doc;
 }
 
-export async function openFile(file) {
-  setDocument(await DocxDocument.open(await file.arrayBuffer(), file.name));
+/**
+ * Opens `file`. `handle`, where the browser gave one (see editor/fileHandles.js), is the file on
+ * the device that Save writes back to.
+ */
+export async function openFile(file, handle = null) {
+  const doc = await DocxDocument.open(await file.arrayBuffer(), file.name);
+  doc.fileHandle = handle;
+  setDocument(doc);
 }
 
 export async function newDocument() {

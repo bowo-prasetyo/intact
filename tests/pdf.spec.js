@@ -48,7 +48,9 @@ test('Download\'s menu saves a PDF from the print window, saying how and what it
   await page.evaluate(() => { window.printed = 0; window.print = () => { window.printed++; }; });
   await page.getByRole('button', { name: 'More ways to save' }).click();
   const menu = page.getByRole('menu', { name: 'Save' });
-  await expect(menu.getByRole('menuitem')).toHaveText([/Word document \(\.docx\)/, /PDF…/, /Mail merge…/]);
+  // Save as… where the browser can pick a file to save to (Chrome and Edge: see save-in-place.spec.js).
+  const saveAs = await page.evaluate(() => typeof window.showSaveFilePicker === 'function');
+  await expect(menu.getByRole('menuitem')).toHaveText([/Word document \(\.docx\)/, ...(saveAs ? [/Save as…/] : []), /PDF…/, /Mail merge…/]);
   await menu.getByRole('menuitem', { name: /PDF/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Save as PDF' });
   await expect(dialog).toContainText('Save as PDF');
