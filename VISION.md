@@ -207,7 +207,10 @@ Saying no to these keeps the product small enough to keep its promises:
   as Word's Columns, with continuous section breaks for part of a page ✔; templates for a test or
   lembar soal (multiple choice in two columns, numbered 1. and A. by Word, ruled answer lines), a
   worksheet, a rubric, a lesson plan or modul ajar, a kisi-kisi soal and a letter to parents ready
-  for Mail merge from a class list ✔; table rows shown as tall as Word makes them ✔
+  for Mail merge from a class list ✔; table rows shown as tall as Word makes them ✔; equations with
+  matrices, cases and working lined up at its = signs ✔; hidden text for answer keys, printed only
+  when asked ✔; Read Aloud with voices on the device only ✔; tabs at Word's right, centre and
+  decimal stops with their leaders, and Insert answer line ✔; lines, arrows and text boxes ✔
 
 ## How we'll know it's working
 

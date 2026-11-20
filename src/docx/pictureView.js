@@ -186,3 +186,64 @@ export function drawPicture(span, { w, h, look, url, alt, inline }) {
     span.append(reflect);
   }
 }
+
+
+let markerIds = 0;
+const SVG = 'http://www.w3.org/2000/svg';
+const svgEl = (name, attrs = {}) => {
+  const e = document.createElementNS(SVG, name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+  return e;
+};
+
+/**
+ * Draws a shape without text (see pictures.js shapeOf): a line or arrow from its box's top left to
+ * its bottom right (turned and flipped as Word records it, as pictures are), or a rectangle or an
+ * ellipse, in an SVG over its box. The box keeps the shape's size (a straight line's is a few
+ * pixels deep, so it can be seen and clicked); the drawing reaches past it by `pad`.
+ */
+export function drawShape(span, { w, h, look, shape, inline }) {
+  const st = span.style;
+  if (!st.position) st.position = 'relative';
+  st.display = inline ? 'inline-block' : st.display;
+  st.width = `${w}px`;
+  st.height = `${h}px`;
+  st.verticalAlign = inline ? 'middle' : '';
+  const turns = [look?.rot && `rotate(${look.rot}deg)`, look?.flipH && 'scaleX(-1)', look?.flipV && 'scaleY(-1)'].filter(Boolean).join(' ');
+  st.transform = turns;
+  span.dataset.turn = turns;
+  span.replaceChildren();
+  if (!shape) return;
+  const pad = 8;
+  const lineW = shape.line?.width || 0;
+  const color = shape.line ? `#${shape.line.color}` : 'none';
+  const svg = svgEl('svg', { width: w + 2 * pad, height: h + 2 * pad, viewBox: `${-pad} ${-pad} ${w + 2 * pad} ${h + 2 * pad}`, 'aria-hidden': 'true' });
+  svg.style.cssText = `position:absolute;left:${-pad}px;top:${-pad}px;overflow:visible;pointer-events:none`;
+  if (shape.prst === 'line' || shape.prst === 'straightConnector1') {
+    const defs = svgEl('defs');
+    const marker = (type) => {
+      const id = `shape-arrow-${++markerIds}`;
+      const m = svgEl('marker', { id, viewBox: '0 0 10 10', refX: type === 'triangle' ? 8 : 5, refY: 5, markerWidth: 4, markerHeight: 4, orient: 'auto-start-reverse', markerUnits: 'strokeWidth' });
+      m.append(type === 'oval' ? svgEl('circle', { cx: 5, cy: 5, r: 4, fill: color }) : svgEl('path', { d: type === 'arrow' ? 'M1 1L9 5L1 9' : 'M0 0L10 5L0 10z', fill: type === 'arrow' ? 'none' : color, stroke: color, 'stroke-width': type === 'arrow' ? 1.5 : 0 }));
+      defs.append(m);
+      return `url(#${id})`;
+    };
+    const ends = {};
+    if (shape.tail) ends['marker-end'] = marker(shape.tail);
+    if (shape.head) ends['marker-start'] = marker(shape.head);
+    svg.append(defs);
+    // A wide, unseen line under it, so a thin line is easy to click.
+    const hit = svgEl('line', { x1: 0, y1: 0, x2: w, y2: h, stroke: 'transparent', 'stroke-width': Math.max(10, lineW + 6) });
+    hit.style.pointerEvents = 'stroke';
+    svg.append(hit, svgEl('line', { x1: 0, y1: 0, x2: w, y2: h, stroke: color, 'stroke-width': lineW, ...ends }));
+  } else {
+    const fill = shape.fill ? `#${shape.fill}` : 'none';
+    const inset = lineW / 2;
+    const body = shape.prst === 'ellipse'
+      ? svgEl('ellipse', { cx: w / 2, cy: h / 2, rx: Math.max(0, w / 2 - inset), ry: Math.max(0, h / 2 - inset), fill, stroke: color, 'stroke-width': lineW })
+      : svgEl('rect', { x: inset, y: inset, width: Math.max(0, w - lineW), height: Math.max(0, h - lineW), rx: shape.prst === 'roundRect' ? Math.min(w, h) / 6 : 0, fill, stroke: color, 'stroke-width': lineW });
+    body.style.pointerEvents = 'visiblePainted';
+    svg.append(body);
+  }
+  span.append(svg);
+}

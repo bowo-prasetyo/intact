@@ -3,6 +3,10 @@
 // superscripts and subscripts (x^2, x_{i}), roots (\sqrt{x}, \sqrt[3]{x}), sums, products and
 // integrals with limits (\sum_{i=1}^{n}), brackets that grow (\left( … \right)), Greek letters and
 // the usual symbols (\alpha, \pi, \times, \le, \infty …), and functions (\sin, \log …) upright.
+// Matrices (\begin{pmatrix} a & b \\ c & d \end{pmatrix}, and matrix, bmatrix, Bmatrix, vmatrix,
+// Vmatrix), cases, and working lined up at its = signs (\begin{aligned} x &= 1 \\ &= 2 \end{aligned},
+// as Word's equation arrays, its alignment points the &s in the text); accents (\hat, \bar, \vec,
+// \dot, \ddot, \tilde) and lines over and under (\overline, \underline).
 
 const SYMBOLS = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ',
@@ -19,6 +23,12 @@ const SYMBOLS = {
 // Large operators, with where their limits go (under and over, or beside), as Word places them.
 const NARY = { sum: ['∑', 'undOvr'], prod: ['∏', 'undOvr'], coprod: ['∐', 'undOvr'], bigcup: ['⋃', 'undOvr'], bigcap: ['⋂', 'undOvr'], int: ['∫', 'subSup'], iint: ['∬', 'subSup'], iiint: ['∭', 'subSup'], oint: ['∮', 'subSup'] };
 const FUNCTIONS = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'tanh', 'log', 'ln', 'exp', 'lim', 'max', 'min', 'det', 'gcd']);
+// Accents, as Word's (m:acc with its character; a hat is Word's default).
+const ACCENTS = { hat: '\u0302', widehat: '\u0302', bar: '\u0305', vec: '\u20d7', dot: '\u0307', ddot: '\u0308', tilde: '\u0303', widetilde: '\u0303', check: '\u030c', acute: '\u0301', grave: '\u0300', breve: '\u0306' };
+// Matrices and the brackets around them (none for matrix), as Word puts a matrix in a delimiter.
+const MATRICES = { matrix: null, pmatrix: ['(', ')'], bmatrix: ['[', ']'], Bmatrix: ['{', '}'], vmatrix: ['|', '|'], Vmatrix: ['‖', '‖'] };
+// Lines of working, each its own row of an equation array, lined up at their &s.
+const ARRAYS = new Set(['aligned', 'align', 'align*', 'gathered', 'gather', 'gather*', 'split', 'eqnarray', 'eqnarray*']);
 const DELIMS = { '(': '(', ')': ')', '[': '[', ']': ']', '|': '|', '.': '', '\\{': '{', '\\}': '}', '\\langle': '⟨', '\\rangle': '⟩', '\\lvert': '|', '\\rvert': '|' };
 
 class Parser {
@@ -50,6 +60,7 @@ class Parser {
     for (;;) {
       const c = this.peek();
       if (c === undefined) {
+        if (stop === 'cell') this.error(`A \\begin{${this.env}} has no \\end{${this.env}} to close it`);
         if (stop === '}') this.error('A { has no } to close it');
         if (stop === 'right') this.error('A \\left has no \\right to close it');
         if (stop === ']') this.error('A [ has no ] to close it');
@@ -58,6 +69,12 @@ class Parser {
       if (stop === '}' && c === '}') { this.i++; return out; }
       if (stop === ']' && c === ']') { this.i++; return out; }
       if (stop === 'right' && this.src.startsWith('\\right', this.i)) { this.i += 6; return out; }
+      if (stop === 'cell') {
+        // A cell of a matrix or a line of working ends at &, at \\ (a new row) or at \end.
+        if (c === '&') { this.i++; this.ended = '&'; return out; }
+        if (this.src.startsWith('\\\\', this.i)) { this.i += 2; this.ended = 'row'; return out; }
+        if (this.src.startsWith('\\end', this.i)) { this.ended = 'end'; return out; }
+      }
       if (c === '}') this.error('A } has no { before it');
       if (c === '^' || c === '_') {
         this.i++;
@@ -134,6 +151,10 @@ class Parser {
       return { t: 'delim', open, close, e };
     }
     if (name === 'right') this.error('A \\right has no \\left before it');
+    if (name === 'begin') return this.environment();
+    if (name === 'end') this.error('An \\end has no \\begin before it');
+    if (ACCENTS[name]) return { t: 'acc', chr: ACCENTS[name], e: this.argument() };
+    if (name === 'overline' || name === 'underline') return { t: 'bar', pos: name === 'overline' ? 'top' : 'bot', e: this.argument() };
     if (NARY[name]) {
       const [chr, limLoc] = NARY[name];
       const node = { t: 'nary', chr, limLoc, sub: null, sup: null, e: [] };
@@ -169,6 +190,49 @@ class Parser {
     if (SYMBOLS[name] !== undefined) return { t: 'run', text: SYMBOLS[name], op: /[^\p{L}\p{N}]/u.test(SYMBOLS[name]) };
     this.error(`\\${name} isn’t one this editor knows: try \\frac, \\sqrt, \\sum, \\alpha or ^ and _`);
     return null;
+  }
+
+  /** The name in braces after \begin or \end. */
+  envName() {
+    if (this.peek() !== '{') this.error('\\begin and \\end need a name in braces, such as {pmatrix}');
+    const end = this.src.indexOf('}', this.i);
+    if (end < 0) this.error('A { has no } to close it');
+    const name = this.src.slice(this.i + 1, end).trim();
+    this.i = end + 1;
+    return name;
+  }
+
+  /**
+   * \begin{name} … \end{name}: its rows (split at \\) of cells (split at &), as a matrix in its
+   * brackets, cases (a brace on the left, the conditions lined up), or lines of working.
+   */
+  environment() {
+    const name = this.envName();
+    const known = name in MATRICES || name === 'cases' || ARRAYS.has(name);
+    if (!known) this.error(`{${name}} isn’t one this editor knows: try pmatrix, bmatrix, cases or aligned`);
+    const outer = this.env;
+    this.env = name;
+    const rows = [[]];
+    for (;;) {
+      const cell = this.list('cell');
+      rows[rows.length - 1].push(cell);
+      if (this.ended === 'row') rows.push([]);
+      if (this.ended === 'end') break;
+    }
+    this.i += 4; // \end
+    const closing = this.envName();
+    if (closing !== name) this.error(`\\begin{${name}} is closed by \\end{${closing}}`);
+    this.env = outer;
+    // A last \\ before \end makes no row.
+    const last = rows[rows.length - 1];
+    if (rows.length > 1 && last.length === 1 && !last[0].length) rows.pop();
+    if (name in MATRICES) {
+      const m = { t: 'matrix', rows };
+      const brackets = MATRICES[name];
+      return brackets ? { t: 'delim', open: brackets[0], close: brackets[1], e: [m] } : m;
+    }
+    const array = { t: 'eqArr', rows };
+    return name === 'cases' ? { t: 'delim', open: '{', close: '', e: [array] } : array;
   }
 
   delimiter() {
@@ -210,6 +274,18 @@ function omml(nodes) {
         : `<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>${omml(n.e)}</m:e></m:rad>`;
       case 'nary': return `<m:nary><m:naryPr><m:chr m:val="${n.chr}"/><m:limLoc m:val="${n.limLoc}"/>${n.sub ? '' : '<m:subHide m:val="1"/>'}${n.sup ? '' : '<m:supHide m:val="1"/>'}</m:naryPr>`
         + `<m:sub>${omml(n.sub || [])}</m:sub><m:sup>${omml(n.sup || [])}</m:sup><m:e>${omml(n.e)}</m:e></m:nary>`;
+      case 'acc': return `<m:acc>${n.chr === '\u0302' ? '' : `<m:accPr><m:chr m:val="${n.chr}"/></m:accPr>`}<m:e>${omml(n.e)}</m:e></m:acc>`;
+      case 'bar': return `<m:bar><m:barPr><m:pos m:val="${n.pos}"/></m:barPr><m:e>${omml(n.e)}</m:e></m:bar>`;
+      case 'matrix': {
+        // Every column centred, as Word's matrices are; as many columns as the longest row.
+        const cols = Math.max(...n.rows.map((r) => r.length));
+        const rows = n.rows.map((r) => `<m:mr>${Array.from({ length: cols }, (_, i) => `<m:e>${omml(r[i] || [])}</m:e>`).join('')}</m:mr>`).join('');
+        return `<m:m><m:mPr><m:mcs><m:mc><m:mcPr><m:count m:val="${cols}"/><m:mcJc m:val="center"/></m:mcPr></m:mc></m:mcs></m:mPr>${rows}</m:m>`;
+      }
+      case 'eqArr':
+        // Each line a row; where a & was typed, Word's alignment point: an & in the text, in a run of
+        // its own, which Word lines up from row to row (and doesn't show).
+        return `<m:eqArr>${n.rows.map((r) => `<m:e>${r.map((cell, i) => (i ? `<m:r>${FONT}<m:t>&amp;</m:t></m:r>` : '') + omml(cell)).join('')}</m:e>`).join('')}</m:eqArr>`;
       case 'delim': {
         const pr = n.open === '(' && n.close === ')' ? '' : `<m:dPr><m:begChr m:val="${esc(n.open)}"/><m:endChr m:val="${esc(n.close)}"/></m:dPr>`;
         return `<m:d>${pr}<m:e>${omml(n.e)}</m:e></m:d>`;

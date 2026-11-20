@@ -156,8 +156,14 @@ class Converter {
   /** A run's text as identifiers (letters), numbers and operators, in the run's style. */
   run(r) {
     const rPr = mChild(r, 'rPr');
-    let text = mChildren(r, 't').map((t) => t.textContent).join('');
-    if (this.inArray) text = text.replace(/&/g, ''); // alignment marks in equation arrays
+    const text = mChildren(r, 't').map((t) => t.textContent).join('');
+    if (!this.inArray || !text.includes('&')) return this.runText(text, rPr);
+    // In an equation array, an & is an alignment point: a mark the array lines its rows up at.
+    return text.split('&').flatMap((part, i) => [...(i ? [this.el('mspace', [], { 'data-align': '' })] : []), ...this.runText(part, rPr)]);
+  }
+
+  /** A run's text (`rPr` its properties) as MathML: numbers, identifiers, operators and spaces. */
+  runText(text, rPr) {
     if (!text) return [];
     if (on(prop(rPr, 'nor')) || prop(rPr, 'lit') === '1') return [this.el('mtext', [text])];
     const sty = prop(rPr, 'sty');
@@ -242,11 +248,30 @@ class Converter {
     return this.el(top ? 'mover' : 'munder', [this.arg(mChild(g, 'e')), this.op(chr, { stretchy: 'true' })]);
   }
 
+  /**
+   * An equation array: a row for each line, lined up at its alignment points (the &s Word puts in
+   * the text) as Word lines them up: the parts between them in columns, right-aligned then
+   * left-aligned in turn (x | = 2 + 3 / | = 5), as LaTeX's aligned does. Without any, centred.
+   */
   equationArray(arr) {
     this.inArray++;
     try {
-      const rows = mChildren(arr, 'e').map((e) => this.el('mtr', [this.el('mtd', [this.arg(e)])]));
-      return this.el('mtable', rows, { displaystyle: 'true' });
+      const isMark = (n) => n.localName === 'mspace' && n.hasAttribute('data-align');
+      const cells = mChildren(arr, 'e').map((e) => {
+        const parts = [[]];
+        for (const n of this.all(e)) {
+          if (isMark(n)) parts.push([]);
+          else parts[parts.length - 1].push(n);
+        }
+        return parts;
+      });
+      const cols = Math.max(1, ...cells.map((c) => c.length));
+      const rows = cells.map((parts) => this.el('mtr', Array.from({ length: cols }, (_, i) => this.el('mtd', [this.row(parts[i] || [])]))));
+      const align = cols > 1 ? Array.from({ length: cols }, (_, i) => (i % 2 ? 'left' : 'right')).join(' ') : null;
+      const table = this.el('mtable', rows, { displaystyle: 'true', columnalign: align, columnspacing: cols > 1 ? '0' : null });
+      // MathML Core lays out columns but not columnalign: each cell aligned itself, too.
+      if (align) for (const tr of rows) [...tr.children].forEach((td, i) => { td.style.textAlign = i % 2 ? 'left' : 'right'; td.style.paddingInline = '0'; });
+      return table;
     } finally {
       this.inArray--;
     }

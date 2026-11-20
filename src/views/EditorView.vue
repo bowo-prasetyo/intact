@@ -254,6 +254,10 @@
         <option value="original">{{ t('Original') }}</option>
       </select>
       <span class="sep" data-tab="review" />
+      <!-- Hidden text, for a test's answer key: as Word, a font setting; here beside the review of what the file carries. -->
+      <button data-tab="review" type="button" :title="t('Hidden text (Ctrl+Shift+H): for a test’s answers, shown here and printed only when asked')" :aria-label="t('Hidden text')" :class="{ on: state.hidden }" :aria-pressed="state.hidden" @click="toggleHidden">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.2" fill="none" /><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.2" fill="none" /><path d="M2.5 14L13.5 2" stroke="currentColor" stroke-width="1.3" /></svg>
+      </button>
       <button data-tab="review" type="button" class="review-toggle" :title="t('Review your changes, what the file carries and its accessibility – any time, not only when you download')" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">{{ t('Review') }}</span>
@@ -263,6 +267,13 @@
       </button>
       <button data-tab="review" type="button" :title="t('Compare documents: this document against another version of it, on this device – what changed in the text')" :aria-label="t('Compare documents')" @click="startCompare">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 2.5h5v11H2zM9 2.5h5v11H9z" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.5 5h2M3.5 7.5h2M10.5 5h2M10.5 7.5h2M10.5 10h2" stroke="currentColor" stroke-width="1.1" /></svg><span class="short-label">{{ t('Compare') }}</span>
+      </button>
+      <button data-tab="review" type="button" :title="reading.on ? t('Stop reading aloud') : t('Read aloud (Ctrl+Alt+Space): from the caret, or the selected text, with a voice on this device – nothing is sent anywhere')" :aria-label="reading.on ? t('Stop reading aloud') : t('Read aloud')" :class="{ on: reading.on }" :aria-pressed="reading.on" @click="toggleReadAloud">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 6h2.5L8 3v10L4.5 10H2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ reading.on ? t('Stop') : t('Read aloud') }}</span>
+      </button>
+      <button v-if="reading.on" data-tab="review" type="button" :aria-label="reading.paused ? t('Resume reading') : t('Pause reading')" :title="reading.paused ? t('Resume reading') : t('Pause reading')" @click="pauseReadAloud">
+        <svg v-if="reading.paused" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 3l8 5-8 5z" fill="currentColor" /></svg>
+        <svg v-else viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 3h2.5v10H4.5zM9 3h2.5v10H9z" fill="currentColor" /></svg>
       </button>
       <span data-tab="review" v-if="threads.length" class="comment-nav" role="group" :aria-label="t('Go to a comment')">
         <button type="button" :title="t('Previous comment')" :aria-label="t('Previous comment')" @click="gotoComment(-1)">
@@ -404,9 +415,10 @@
           <label>{{ t('Height') }} ({{ picturePanel.unit }}) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
         </div>
         <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> {{ t('Keep proportions') }}</label>
-        <button type="button" @click="resetPictureSize">{{ t('Reset size') }}</button>
+        <button v-if="!picture.shape" type="button" @click="resetPictureSize">{{ t('Reset size') }}</button>
       </fieldset>
-      <details>
+      <!-- A line, arrow or shape: its wrapping, position, size and rotation, not a picture's crop or effects. -->
+      <details v-if="!picture.shape">
         <summary>{{ t('Crop') }}</summary>
         <div class="size-row">
           <label>Left (%) <input v-model.number="picturePanel.cropL" type="number" step="1" @change="applyCrop" /></label>
@@ -426,7 +438,7 @@
         </div>
         <label>Rotation (°) <input v-model.number="picturePanel.rot" type="number" step="1" @change="applyRotation" /></label>
       </details>
-      <details>
+      <details v-if="!picture.shape">
         <summary>{{ t('Effects') }}</summary>
         <div class="size-row">
           <label>{{ t('Border') }}
@@ -454,7 +466,7 @@
           <label>Contrast (%) <input v-model.number="picturePanel.contrast" type="number" min="-100" max="100" step="5" @change="applyEffects" /></label>
         </div>
       </details>
-      <details>
+      <details v-if="!picture.shape">
         <summary>{{ t('Style and 3-D') }}</summary>
         <label>{{ t('Picture style') }}
           <select v-model="picturePanel.style" @change="applyStyle">
@@ -549,6 +561,7 @@
         <li v-if="pdfBands.once">The {{ pdfBands.once }} {{ pdfBands.once.includes(' and ') ? 'print' : 'prints' }} once, {{ pdfBands.onceWhere }}, as {{ pdfBands.once.includes(' and ') ? 'they show' : 'it shows' }} here: {{ pdfBands.why }}</li>
         <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
+        <li v-if="hasHidden"><label class="check"><input v-model="printHidden" type="checkbox" /> {{ t('Print hidden text (a test’s answers, for its answer key)') }}</label></li>
         <li>Comments and the marks drawn over the page here aren’t in the PDF.</li>
       </ul>
       <p class="pdf-word">{{ t('The Word file isn’t saved by this: download it as well to keep your changes.') }}</p>
@@ -939,6 +952,11 @@
       <p class="menu-label" role="presentation">{{ t('Today’s date') }}</p>
       <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
       <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" :title="t('As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is')" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
+      <p class="menu-label" role="presentation">{{ t('Lines and shapes') }}</p>
+      <button type="button" role="menuitem" @click="insertAnswerLine">{{ t('Answer line') }}<span class="hint">{{ t('Name: ______ to the margin') }}</span></button>
+      <button type="button" role="menuitem" @click="insertShape('line')">{{ t('Line') }}<span class="hint">{{ t('In front of the text: drag it into place') }}</span></button>
+      <button type="button" role="menuitem" @click="insertShape('arrow')">{{ t('Arrow') }}<span class="hint">{{ t('To label a diagram or a picture') }}</span></button>
+      <button type="button" role="menuitem" @click="insertShape('textbox')">{{ t('Text box') }}<span class="hint">{{ t('In line with the text, to type in') }}</span></button>
       <p class="menu-label" role="presentation">{{ t('References') }}</p>
       <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">{{ t('From the headings') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
@@ -1073,6 +1091,7 @@
       </template>
       <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">{{ t('Ctrl+Alt+M') }}</span></button>
       <template v-if="!ctxMenu.locked">
+        <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(toggleHidden)">{{ t('Hidden text') }}<span class="key">{{ t('Ctrl+Shift+H') }}</span></button>
         <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">{{ t('Paragraph…') }}</button>
         <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">{{ t('Modify style…') }}</button>
         <template v-if="ctxMenu.table">
@@ -1190,7 +1209,8 @@ import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
-import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
+import { createReader } from '../editor/readAloud.js';
+import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import { updateFields, parseInstr } from '../docx/fieldUpdates.js';
@@ -1220,7 +1240,7 @@ const extTitle = computed(() => ({ docx: 'Word document', dotx: 'Word template',
 const styleChoices = ref([]);
 const knownBlock = computed(() => ['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)
   || styleChoices.value.some((c) => `style:${c.id}` === state.block));
-const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null, table: false, font: '', size: 0, charStyle: '' });
+const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, hidden: false, highlight: null, block: 'normal', align: 'left', list: null, table: false, font: '', size: 0, charStyle: '' });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
 const threads = ref([]);
@@ -1962,6 +1982,32 @@ onMounted(() => {
   document.fonts?.ready.then(scheduleMarks); // web fonts change where the text is
 });
 
+// ------------------------------------------------------------------ tabs where Word puts them
+
+// Each tab ends where Word ends it, with its leader (editor/tabLayout.js): laid out again when the
+// text changes (the text before a right tab moves it), once a frame. Only the page's styles change,
+// so watching the text (not attributes) can't loop.
+let tabsFrame = 0;
+let tabsObserver = null;
+function scheduleTabs() {
+  if (tabsFrame) return;
+  tabsFrame = requestAnimationFrame(() => {
+    tabsFrame = 0;
+    if (page.value?.textContent.includes('\t')) doc.applyTabStops(page.value);
+  });
+}
+onMounted(() => {
+  if (!page.value) return;
+  tabsObserver = new MutationObserver(scheduleTabs);
+  tabsObserver.observe(page.value, { childList: true, subtree: true, characterData: true });
+  scheduleTabs();
+  document.fonts?.ready.then(scheduleTabs);
+});
+onBeforeUnmount(() => {
+  tabsObserver?.disconnect();
+  cancelAnimationFrame(tabsFrame);
+});
+
 onBeforeUnmount(() => {
   variantStyle?.remove();
   printStyle?.remove();
@@ -2230,6 +2276,7 @@ function onSelectionChange() {
   state.underline = document.queryCommandState('underline');
   state.strike = document.queryCommandState('strikeThrough');
   Object.assign(state, (({ superscript, subscript, highlight }) => ({ sup: superscript, sub: subscript, highlight }))(formatState(range)));
+  state.hidden = !!(range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('[data-hidden]');
   const block = startBlock(range);
   state.block = block ? doc.blockValue(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
@@ -2768,7 +2815,7 @@ function addRow(cell) {
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const PX = 9525; // EMU per pixel
-const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false });
+const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false, shape: false });
 const picturePanel = reactive({
   unit: 'cm', // lengths in centimetres or inches (see editor/units.js)
   open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '',
@@ -2813,8 +2860,9 @@ function showPicture(span) {
     picture.cropping = false;
   }
   picture.el = span;
+  picture.shape = span?.dataset.shape != null;
   updatePictureFrame();
-  if (span) message.value = 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
+  if (span) message.value = picture.shape ? 'Shape: drag it to move it, a handle to resize it, or open Layout Options to turn it' : 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
 }
 
 /** Puts the frame over the selected picture (in the sheet's coordinates). */
@@ -2842,7 +2890,8 @@ function changePicture(change, done) {
   nextTick(() => {
     if (span.isConnected) selectPicture(span);
     fillPicturePanel();
-    if (done) message.value = done;
+    // A line, arrow or shape is changed as a picture is, and called what it is.
+    if (done) message.value = picture.shape ? done.replace(/^Picture\b/, 'Shape') : done;
   });
 }
 
@@ -4994,6 +5043,208 @@ function runShortcut(name) {
   if (name === 'endnote') return insertEndnote();
   if (name === 'copyFormat') return startPainter(false, true);
   if (name === 'pasteFormat') return paintSelection();
+  if (name === 'hidden') return toggleHidden();
+  if (name === 'readAloud') return toggleReadAloud();
+}
+
+// ------------------------------------------------------------------ answer lines
+
+/**
+ * Insert > Answer line: a line from the caret to the paragraph's right edge, to write an answer or a
+ * name on ("Name: ________"), as teachers make one in Word: an underlined tab to a right tab stop at
+ * the margin (added to the paragraph if it hasn't one there). The tab is a run of its own, so Word
+ * and Intact draw the line alike and print it (see editor/tabLayout.js).
+ */
+function insertAnswerLine() {
+  closeInsertMenu();
+  refocusAt(insertRange);
+  let range = selectionInPage();
+  if (!range) {
+    message.value = t('Click in the text where the answer line should go');
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  const block = closestBlock(range.startContainer);
+  if (!block || !page.value.contains(block)) return;
+  // The right edge of the paragraph's text, from the margin, in twips.
+  const cs = getComputedStyle(block);
+  const width = block.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const { left } = doc.paragraphFormat(block);
+  const pos = Math.max(left + 720, left + Math.floor(width * 15) - 15);
+  const { stops } = doc.tabStops(block);
+  if (!stops.some((s) => s.align === 'right' && Math.abs(s.pos - pos) <= 60)) {
+    formatParagraphs(() => ({ tabs: [...stops.filter((s) => Math.abs(s.pos - pos) > 60), { pos, align: 'right', leader: 'none' }].sort((a, b) => a.pos - b.pos) }));
+  }
+  range = selectionInPage() || range;
+  if (!range.collapsed) {
+    range.collapse(false);
+    selectRange(range);
+  }
+  typeText('\t');
+  // The tab just typed, underlined: a run of its own.
+  const sel = window.getSelection();
+  const node = sel.focusNode;
+  const at = sel.focusOffset;
+  if (node?.nodeType !== 3 || node.data[at - 1] !== '\t') return;
+  const tab = document.createRange();
+  tab.setStart(node, at - 1);
+  tab.setEnd(node, at);
+  selectRange(tab);
+  restyleSelection(setUnderline);
+  // The caret after the line's run, so what is typed next isn't underlined.
+  const after = window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null;
+  let runEl = after?.endContainer.nodeType === 3 ? after.endContainer.parentElement : after?.endContainer;
+  while (runEl && runEl.parentElement && runEl.parentElement !== block && !runEl.parentElement.matches('[contenteditable], td, th')) runEl = runEl.parentElement;
+  if (runEl && runEl !== block && block.contains(runEl)) {
+    const caret = document.createRange();
+    caret.setStartAfter(runEl);
+    caret.collapse(true);
+    selectRange(caret);
+  } else window.getSelection().collapseToEnd();
+  // As Word's Ctrl+U, Tab, Ctrl+U: underline off for what is typed next.
+  if (document.queryCommandState('underline')) document.execCommand('underline');
+  scheduleTabs();
+  message.value = t('Answer line added: an underlined tab to a right tab stop at the margin, as Word makes one');
+}
+
+// ------------------------------------------------------------------ lines, arrows and text boxes
+
+const SHAPE_NAMES = { line: 'Line', arrow: 'Arrow', textbox: 'Text box' };
+
+/**
+ * Insert > Line, Arrow or Text box, as Word's Insert > Shapes makes them. A line or an arrow, 4 cm
+ * long, goes in front of the text where the caret is (anchored to its paragraph), selected, to be
+ * dragged into place, resized and turned as a picture is; a text box (5 × 1.5 cm, with a thin
+ * border) goes in line with the text at the caret, to type in.
+ */
+async function insertShape(kind) {
+  closeInsertMenu();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  if (!range) {
+    message.value = t('Click in the text where it should go');
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (noteAt(range.startContainer)) {
+    message.value = t('{what} goes in the text itself, not in a header, footer, note or text box', { what: t(SHAPE_NAMES[kind]) });
+    return;
+  }
+  if (controlAt(range.startContainer, page.value) || formTextAt(range.startContainer)) {
+    message.value = t('{what} can’t go in a field: put the caret after it', { what: t(SHAPE_NAMES[kind]) });
+    return;
+  }
+  const where = range.cloneRange();
+  where.collapse(false);
+  let opts;
+  if (kind === 'textbox') opts = { cx: 1800000, cy: 540000 };
+  else {
+    // At the caret, from where its paragraph's text starts (EMU), halfway down its line.
+    const block = closestBlock(where.startContainer);
+    const caret = where.getClientRects()[0] || where.startContainer.parentElement?.getBoundingClientRect();
+    const box = block?.getBoundingClientRect();
+    const zoom = sheetZoom.value || 1;
+    const x = caret && box ? Math.max(0, (caret.left - box.left - parseFloat(getComputedStyle(block).paddingLeft) * zoom) / zoom) : 0;
+    const y = caret && box ? Math.max(0, (caret.top + caret.height / 2 - box.top) / zoom) : 0;
+    // In whole pixels, as a picture dropped somewhere is placed.
+    opts = { cx: 1440000, cy: 0, offset: { x: Math.round(x) * 9525, y: Math.round(y) * 9525 } };
+  }
+  const span = await doc.addShape(kind, opts);
+  page.value.focus();
+  selectRange(where);
+  undoStack.flush();
+  const tracked = trackedBy(where.startContainer);
+  if (tracked) insertTracked([span], tracked);
+  else insertAtCaret([span]);
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  if (kind === 'textbox') {
+    // In it, ready to type.
+    // Its paragraph (not the box around it, which a selector list would find first).
+    const p = span.querySelector('.textbox-content p') || span.querySelector('.textbox-content');
+    const caret = document.createRange();
+    caret.selectNodeContents(p);
+    caret.collapse(true);
+    p.closest('[contenteditable="true"]')?.focus();
+    selectRange(caret);
+    message.value = t('Text box inserted: type in it{tracked}', { tracked: tracked ? t(' (tracked)') : '' });
+  } else {
+    selectPicture(span);
+    message.value = t('{what} inserted{tracked}: drag it into place, a handle to make it longer, or Layout Options to turn it', { what: t(SHAPE_NAMES[kind]), tracked: tracked ? t(' (tracked)') : '' });
+  }
+  onSelectionChange();
+}
+
+// ------------------------------------------------------------------ read aloud
+
+// Read Aloud, as Word's (Review > Read Aloud, Ctrl+Alt+Space), with voices on this device only: see
+// editor/readAloud.js. The paragraph and the word being read are highlighted, never changed.
+const reading = reactive({ on: false, paused: false });
+let reader = null;
+
+/** The language a paragraph is read in: its text's, else the document's. */
+const langOf = (block) => block.querySelector('[lang]')?.lang || block.closest('[lang]')?.lang || doc.styles.language() || navigator.language || 'en';
+
+/** A language's name for messages ("Indonesian", not its region: any voice of the language reads it), or its tag. */
+function languageName(tag) {
+  const primary = tag.split(/[-_]/)[0];
+  try { return new Intl.DisplayNames([lang.value === 'id' ? 'id' : 'en'], { type: 'language' }).of(primary) || tag; } catch { return tag; }
+}
+
+function readerState({ reading: on, paused, error }) {
+  reading.on = on;
+  reading.paused = !!paused;
+  if (!error) return;
+  if (error === 'unsupported') message.value = t('This browser can’t read aloud');
+  else if (error === 'no-local-voices') message.value = t('No voice on this device to read with: add one in the system’s speech settings. Intact reads only with voices on this device, so the text isn’t sent anywhere');
+  else if (error.startsWith('no-voice:')) message.value = t('No voice on this device reads {language}: add one in the system’s speech settings. Intact reads only with voices on this device, so the text isn’t sent anywhere', { language: languageName(error.slice(9) || 'en') });
+  else message.value = t('Reading aloud stopped: the browser’s speech failed');
+}
+
+/** Reads aloud from the caret's paragraph to the end, or the selected paragraphs; stops if reading. */
+function toggleReadAloud() {
+  reader ||= createReader(page.value, { onState: readerState, langOf });
+  if (reading.on) {
+    reader.stop();
+    message.value = t('Reading aloud stopped');
+    return;
+  }
+  const range = selectionInPage() || savedRange;
+  const from = range ? closestBlock(range.startContainer) : null;
+  const only = range && !range.collapsed ? [...page.value.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li')].filter((b) => range.intersectsNode(b)) : null;
+  message.value = only ? t('Reading the selected text aloud: Esc or Stop to stop') : t('Reading aloud from the caret: Esc or Stop to stop');
+  reader.start(from, only);
+}
+
+// Closing the document stops reading it.
+onBeforeUnmount(() => reader?.stop());
+
+function pauseReadAloud() {
+  if (!reader) return;
+  if (reading.paused) reader.resume();
+  else reader.pause();
+}
+
+/**
+ * Hidden text on or off for the selected text, as Word's Ctrl+Shift+H: hidden unless all of it is
+ * already. A test's answers, hidden, make its answer key: shown here, printed only when asked.
+ */
+function toggleHidden() {
+  const range = selectionInPage() || savedRange;
+  if (!range || range.collapsed) {
+    message.value = t('Select the text to hide first, such as a test’s answers');
+    page.value.focus();
+    return;
+  }
+  const texts = portions(range).map((p) => p.node);
+  const allHidden = texts.length > 0 && texts.every((n) => n.parentElement?.closest('[data-hidden]'));
+  restyleSelection(setHidden(!allHidden));
+  state.hidden = !allHidden;
+  message.value = allHidden ? t('Hidden text shown again: it prints') : t('Hidden text: shown here with a dotted line, and printed only when Print hidden text is chosen');
 }
 
 /**
@@ -7487,6 +7738,13 @@ function onKeydown(e) {
     stopPainter();
     return;
   }
+  // Esc stops reading aloud, as Word's Read Aloud.
+  if (e.key === 'Escape' && reading.on) {
+    e.preventDefault();
+    reader?.stop();
+    message.value = t('Reading aloud stopped');
+    return;
+  }
   const shortcut = shortcutFor(e);
   // Ctrl+Shift+V pastes formatting once some was copied (Ctrl+Shift+C); before, it is the browser's
   // paste as plain text.
@@ -8614,6 +8872,10 @@ const saveMenuButton = ref(null);
 const pdfDialog = reactive({ open: false, x: 0, y: 0 });
 const pdfDialogEl = ref(null);
 const hasHighlight = ref(false);
+// Hidden text (w:vanish) isn't printed unless asked, as in Word: a test prints without its answers,
+// its answer key with them.
+const hasHidden = ref(false);
+const printHidden = ref(false);
 const pdfBands = ref({}); // what the dialog says about the header and footer
 
 /** The header and footer in the PDF, in words: on every page, or once (and why). */
@@ -8710,6 +8972,7 @@ function downloadBlob(blob, name) {
 function openPdfDialog() {
   updatePages();
   hasHighlight.value = !!page.value.querySelector('mark');
+  hasHidden.value = !!page.value.querySelector('[data-hidden]');
   pdfBands.value = describeBands();
   const rect = saveMenuButton.value?.getBoundingClientRect();
   Object.assign(pdfDialog, { open: true, x: Math.max(8, Math.min((rect?.right ?? window.innerWidth) - 360, window.innerWidth - 368)), y: (rect?.bottom ?? 48) + 4 });
@@ -8723,6 +8986,9 @@ function closePdfDialog() {
 function printToPdf() {
   pdfDialog.open = false;
   // After the dialog has gone from the screen, so the print window opens on the page alone.
+  // Hidden text printed only when asked (see the print styles), for this print only.
+  document.documentElement.classList.toggle('print-hidden-text', hasHidden.value && printHidden.value);
+  window.addEventListener('afterprint', () => document.documentElement.classList.remove('print-hidden-text'), { once: true });
   nextTick(() => requestAnimationFrame(() => window.print()));
 }
 
@@ -9416,6 +9682,9 @@ async function close() {
   .docx-sheet .docx-hf-part::after { display: none !important; }
   .docx-sheet .raw-inline.page-break { border: 0 !important; margin: 0 !important; break-after: page; }
   .docx-sheet [data-page-break-before] { break-before: page; }
+  /* Hidden text (w:vanish) isn't printed, as in Word, unless Print hidden text is chosen. */
+  .docx-sheet [data-hidden] { display: none !important; }
+  .print-hidden-text .docx-sheet [data-hidden] { display: inline !important; opacity: 1 !important; text-decoration: none !important; }
   .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
 }
 .docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
@@ -9468,6 +9737,8 @@ async function close() {
   user-select: none; pointer-events: none;
 }
 @media print { .docx-sheet .docx-page [data-section-note]::after { content: none; } }
+/* Hidden text (w:vanish): shown faintly (see styles.rPrCss), with Word's dotted line under it. */
+.docx-sheet [data-hidden] { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: currentColor; }
 .docx-sheet .watermark-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
 .docx-sheet .watermark-mark {
   position: absolute; left: 50%; transform: translate(-50%, -50%); font-weight: 700; line-height: 1; opacity: .5;
@@ -9614,6 +9885,9 @@ async function close() {
   .docx-sheet .field.page-field[data-show]::after { content: none; }
 }
 ::highlight(comment) { background-color: #fbe3dc; }
+/* Read aloud: the paragraph being read, and its word. */
+::highlight(read-aloud) { background-color: var(--sheet-tint); }
+::highlight(read-aloud-word) { background-color: var(--sheet-line); color: #000; }
 ::highlight(field-near) { background-color: var(--sheet-tint); }
 ::highlight(comment-active) { background-color: #f6b9a8; }
 .docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }

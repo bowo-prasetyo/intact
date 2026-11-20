@@ -24,6 +24,8 @@ export function shortcutFor(e) {
     if (e.code === 'Comma') return 'shrinkFont';
   }
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
+  // Ctrl+Alt+Space: Read Aloud, as Word's.
+  if (e.altKey && !e.shiftKey && !altGr && space) return 'readAloud';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyM') return 'comment';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyF') return 'footnote';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyD') return 'endnote';
@@ -37,6 +39,8 @@ export function shortcutFor(e) {
     // Ctrl+Shift+C and Ctrl+Shift+V: copy formatting and paint it on, as Word's Format Painter.
     if (e.code === 'KeyC') return 'copyFormat';
     if (e.code === 'KeyV') return 'pasteFormat';
+    // Ctrl+Shift+H: hidden text, as Word's (an answer key's answers).
+    if (e.code === 'KeyH') return 'hidden';
     return { n: 'normal', l: 'bullets', m: 'outdent' }[key] || (space ? 'nonBreakingSpace' : null);
   }
   // Ctrl+Alt+digit; not AltGr (Ctrl+Alt on some layouts), which types characters.
@@ -52,10 +56,12 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+>, Ctrl+Shift+<', 'Grow or shrink the font (Word\'s steps: 10, 11, 12, 14…)'],
   ['Ctrl+], Ctrl+[', 'Font 1 pt bigger or smaller'],
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
+  ['Ctrl+Shift+H', 'Hidden text, such as a test’s answers: shown here, printed only when asked'],
   ['Shift+F3', 'Change case: UPPERCASE, lowercase, Capitalize Each Word in turn'],
   ['Ctrl+Shift+C, Ctrl+Shift+V', 'Copy formatting, and paint it on the selected text (Format Painter)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+Alt+M', 'New comment'],
+  ['Ctrl+Alt+Space', 'Read aloud from the caret (or the selected text), with a voice on this device; again to stop'],
   ['Ctrl+K', 'Insert a link, or change the one at the caret'],
   ['Tab in the last cell of a table', 'New row'],
   ['Tab, Shift+Tab in a form protected for filling in', 'Next or previous field'],

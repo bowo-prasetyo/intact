@@ -71,6 +71,20 @@ export const setColor = (color) => (rPr) => {
   if (color?.theme) set(c, 'themeColor', color.theme);
 };
 
+/**
+ * Hidden text (w:vanish) on or off, as Word's Font > Hidden (Ctrl+Shift+H): what a test's answer key
+ * holds, shown here (faintly, with a dotted line under it) and printed only when asked.
+ */
+export const setHidden = (on) => (rPr) => {
+  removeW(rPr, 'vanish');
+  if (on) ensureOrdered(rPr, 'vanish', RPR_ORDER);
+};
+
+/** A single underline (w:u), as the U button gives: an answer line's tab is one. */
+export const setUnderline = (rPr) => {
+  set(ensureOrdered(rPr, 'u', RPR_ORDER), 'val', 'single');
+};
+
 /** A character style by id, or none (null). */
 export const setCharacterStyle = (id) => (rPr) => {
   if (id) set(ensureOrdered(rPr, 'rStyle', RPR_ORDER), 'val', id);

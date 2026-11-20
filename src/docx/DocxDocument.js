@@ -12,6 +12,7 @@
 //    their author and date survive and the reviewer can still accept or reject them in Word.
 //  * Tables keep their structure (read-only) while each cell's content is editable.
 import JSZip from 'jszip';
+import { layoutTabs } from '../editor/tabLayout.js';
 import {
   NS, parseXml, serializeXml, wChild, wChildren, wAttr, onOff, createW, ensureOrdered, removeW,
   RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren, XML_HEADER,
@@ -36,9 +37,9 @@ import { reviewParagraphs, tableSummary } from './review.js';
 import { resolveRevisionsIn, countRevisions, revisionAuthors } from './resolveAll.js';
 import {
   pictureInfo, resizePicture, setWrap, setPosition, setDescription, EMU_PER_PX, pictureLook, setCrop, setRotation, setEffects, wrapPolygon, setWrapPolygon,
-  setGeometry, set3D, applyPictureStyle, setArtistic, clearArtistic, blipOf,
+  setGeometry, set3D, applyPictureStyle, setArtistic, clearArtistic, blipOf, shapeOf, newShapeRun,
 } from './pictures.js';
-import { drawPicture } from './pictureView.js';
+import { drawPicture, drawShape } from './pictureView.js';
 import { ommlToMathml, isEquation, MATH_NS } from './omml.js';
 import {
   bodyXml, isSourcesPart, readSources, sourcesXml, sourcesPropsXml, newGuid, newTag,
@@ -2342,6 +2343,15 @@ export class DocxDocument {
     span.className = 'raw-inline';
     // Images (DrawingML or legacy VML)
     const blips = [...node.getElementsByTagNameNS(NS.a, 'blip'), ...node.getElementsByTagNameNS(NS.v, 'imagedata')];
+    // A line, an arrow, a rectangle or an ellipse without text: drawn, and laid out as a picture is.
+    const shape = local === 'r' && !blips.length && pictureInfo(node) && shapeOf(node, this.styles.themeColors);
+    if (shape) {
+      span.classList.add('picture', 'shape');
+      span.dataset.shape = shape.prst;
+      span.title = `${/line|Connector/i.test(shape.prst) ? (shape.head || shape.tail ? 'Arrow' : 'Line') : 'Shape'} – click to select it: drag it to move it, a handle to resize it, or use Layout Options`;
+      this.stylePicture(span);
+      return span;
+    }
     if (blips.length) {
       const extent = node.getElementsByTagNameNS(NS.wp, 'extent')[0];
       for (const blip of blips) {
@@ -2908,6 +2918,17 @@ export class DocxDocument {
     return (rel && this.mediaUrls.get(rel.path)) || null;
   }
 
+  /**
+   * A new line, arrow or text box (see pictures.js newShapeRun), rendered: a line or arrow in front of
+   * the text, laid out as a picture is; a text box in line with the text, its text edited here.
+   */
+  async addShape(kind, opts) {
+    const id = await this.nextDocPrId();
+    const r = this.xml.importNode(parseXml(newShapeRun(kind, { id, ...opts })).documentElement, true);
+    for (const a of [...r.attributes]) if (a.name.startsWith('xmlns')) r.removeAttributeNode(a); // declared where needed when saved
+    return this.rawInline(r);
+  }
+
   /** A drawing id no other drawing in the package has (Word wants them unique). */
   async nextDocPrId() {
     if (this.docPrId == null) {
@@ -2998,6 +3019,10 @@ export class DocxDocument {
     span.dataset.wrap = info.wrap;
     span.removeAttribute('style');
     this.placePicture(span, info, w, h);
+    if (span.dataset.shape != null) {
+      drawShape(span, { w, h, look, shape: shapeOf(this.raw[Number(span.dataset.raw)], this.styles.themeColors), inline: info.wrap === 'inline' });
+      return;
+    }
     drawPicture(span, { w, h, look, alt: info.descr, url: this.mediaUrl(blipOf(this.raw[Number(span.dataset.raw)]), span), inline: info.wrap === 'inline' });
   }
 
@@ -4861,15 +4886,20 @@ export class DocxDocument {
     return `${width / 20}pt`;
   }
 
-  /** Lays out the tabs of the paragraphs under `root` that have any (see tabSize). */
+  /**
+   * Lays out the tabs of the paragraphs under `root` that have any: the paragraph's tab-size (see
+   * tabSize), then, in the page, each tab where Word puts it, with its leader (editor/tabLayout.js).
+   */
   applyTabStops(root) {
     for (const el of root.querySelectorAll('p, h1, h2, h3, h4, h5, h6')) {
       if (!el.textContent.includes('\t')) {
         if (el.style.tabSize) el.style.removeProperty('tab-size');
+        if (el.dataset.tabLaid != null || el.querySelector('[data-tab-laid]')) layoutTabs(el, { stops: [], left: 0, defaultTab: this.defaultTabStop });
         continue;
       }
       const size = this.tabSize(el);
       if (el.style.tabSize !== size) el.style.tabSize = size;
+      if (el.isConnected) layoutTabs(el, { stops: this.tabStops(el).stops, left: this.paragraphFormat(el).left, defaultTab: this.defaultTabStop });
     }
   }
 

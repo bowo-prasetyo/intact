@@ -8,6 +8,10 @@ import { NS } from './xml.js';
 const WP = NS.wp;
 const A = NS.a;
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+const WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
+// Shapes without text laid out here as pictures are (moved, resized, wrapped, turned) and drawn:
+// lines and arrows, rectangles and ellipses. Others (and groups, canvases, charts) stay Word's.
+const SHAPES_DRAWN = new Set(['line', 'straightConnector1', 'rect', 'roundRect', 'ellipse']);
 export const EMU_PER_PX = 9525;
 export const EMU_PER_CM = 360000;
 
@@ -36,8 +40,12 @@ function frameOf(r) {
   const frames = [...drawing.children].filter((c) => c.namespaceURI === WP && (c.localName === 'inline' || c.localName === 'anchor'));
   if (frames.length !== 1) return null;
   const data = child(child(frames[0], A, 'graphic'), A, 'graphicData');
-  if (data?.getAttribute('uri') !== PIC || !child(data, PIC, 'pic')) return null; // charts, shapes, groups: Word's
-  return frames[0];
+  if (data?.getAttribute('uri') === PIC && child(data, PIC, 'pic')) return frames[0];
+  // A shape without text that is drawn here (see SHAPES_DRAWN); text boxes are textboxes.js's.
+  const wsp = data?.getAttribute('uri') === WPS ? child(data, WPS, 'wsp') : null;
+  const prst = child(child(wsp, WPS, 'spPr'), A, 'prstGeom')?.getAttribute('prst');
+  if (wsp && !child(wsp, WPS, 'txbx') && SHAPES_DRAWN.has(prst)) return frames[0];
+  return null; // charts, other shapes, groups: Word's
 }
 
 function position(el) {
@@ -92,7 +100,7 @@ export function resizePicture(r, cx, cy) {
   const extent = child(frame, WP, 'extent');
   extent.setAttribute('cx', String(cx));
   extent.setAttribute('cy', String(cy));
-  const xfrm = child(child(child(child(child(frame, A, 'graphic'), A, 'graphicData'), PIC, 'pic'), PIC, 'spPr'), A, 'xfrm');
+  const xfrm = child(shapeSpPr(r), A, 'xfrm');
   const ext = child(xfrm, A, 'ext');
   if (ext) {
     ext.setAttribute('cx', String(cx));
@@ -206,13 +214,21 @@ export const isLayoutPicture = (r) => !!frameOf(r);
 
 // ---------------------------------------------------------------- crop, rotation, effects
 
-const picOf = (r) => child(child(child(frameOf(r), A, 'graphic'), A, 'graphicData'), PIC, 'pic');
+// The picture (pic:pic) or shape (wps:wsp) in a run's frame, and its shape properties (spPr).
+const picOf = (r) => {
+  const data = child(child(frameOf(r), A, 'graphic'), A, 'graphicData');
+  return child(data, PIC, 'pic') || child(data, WPS, 'wsp');
+};
+const shapeSpPr = (r) => {
+  const pic = picOf(r);
+  return pic ? child(pic, pic.namespaceURI, 'spPr') : null;
+};
 const blipFillOf = (r) => child(picOf(r), PIC, 'blipFill');
 const spPrOf = (r) => {
   const pic = picOf(r);
-  let spPr = child(pic, PIC, 'spPr');
+  let spPr = child(pic, pic.namespaceURI, 'spPr');
   if (!spPr) {
-    spPr = r.ownerDocument.createElementNS(PIC, 'pic:spPr');
+    spPr = r.ownerDocument.createElementNS(pic.namespaceURI, `${pic.prefix || 'pic'}:spPr`);
     pic.appendChild(spPr);
   }
   return spPr;
@@ -273,7 +289,7 @@ const ORIGINAL_EXT = '{6E8D1F2A-7B3C-4D5E-9F60-A1B2C3D4E5F6}';
  */
 export function pictureLook(r) {
   const src = child(blipFillOf(r), A, 'srcRect');
-  const spPr = child(picOf(r), PIC, 'spPr');
+  const spPr = shapeSpPr(r);
   const xfrm = child(spPr, A, 'xfrm');
   const ln = child(spPr, A, 'ln');
   const effects = child(spPr, A, 'effectLst');
@@ -686,4 +702,78 @@ export function turnedRoom(w, h, deg) {
   const bw = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
   const bh = Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a));
   return { dx: Math.max(0, (bw - w) / 2), dy: Math.max(0, (bh - h) / 2) };
+}
+
+
+// ---------------------------------------------------------------- lines, arrows and shapes
+
+/** The colour in `el` (a fill, or a style reference): its RGB, or its theme colour's; null if none. */
+const shapeColorIn = (el, theme) => {
+  const srgb = child(el, A, 'srgbClr');
+  if (srgb) return srgb.getAttribute('val');
+  const scheme = child(el, A, 'schemeClr');
+  if (scheme) return theme[scheme.getAttribute('val')] || '000000';
+  return null;
+};
+/** The solid fill's colour of `el` (spPr or ln). */
+const hexOf = (el, theme) => shapeColorIn(child(el, A, 'solidFill'), theme);
+
+/**
+ * A run's shape without text that is drawn here (a line, an arrow, a rectangle or an ellipse), or
+ * null: { prst, line: { color, width (px) } or null, fill (hex) or null, head, tail (arrowhead
+ * types at the line's start and end, or null) }. Its layout is pictureInfo's.
+ */
+export function shapeOf(r, theme = {}) {
+  const pic = picOf(r);
+  if (pic?.namespaceURI !== WPS) return null;
+  const spPr = child(pic, WPS, 'spPr');
+  const style = child(pic, WPS, 'style');
+  const prst = child(spPr, A, 'prstGeom')?.getAttribute('prst');
+  const ln = child(spPr, A, 'ln');
+  const noLine = !!child(ln, A, 'noFill');
+  const lnRef = child(style, A, 'lnRef');
+  const lineColor = noLine ? null : hexOf(ln, theme) || (lnRef && lnRef.getAttribute('idx') !== '0' ? shapeColorIn(lnRef, theme) || '000000' : null);
+  const fillRef = child(style, A, 'fillRef');
+  const isLine = prst === 'line' || prst === 'straightConnector1';
+  const fill = isLine || child(spPr, A, 'noFill') ? null : hexOf(spPr, theme) || (fillRef && fillRef.getAttribute('idx') !== '0' ? (theme.accent1 || '4472C4') : null);
+  const end = (local) => {
+    const type = child(ln, A, local)?.getAttribute('type');
+    return type && type !== 'none' ? type : null;
+  };
+  return {
+    prst,
+    line: lineColor ? { color: lineColor, width: Math.max(1, (Number(ln?.getAttribute('w')) || 12700) / EMU_PER_PX) } : null,
+    fill,
+    head: end('headEnd'),
+    tail: end('tailEnd'),
+  };
+}
+
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+
+/**
+ * A new line, arrow or text box, as Word's Insert > Shapes writes one: the run's XML (namespaces
+ * declared on it). `kind` 'line' or 'arrow' (in front of the text, at `offset` EMU from the column
+ * and paragraph, `cx` long), or 'textbox' (in line with the text, `cx` × `cy`, its text the
+ * paragraphs `content`). `id` is the drawing's unique id; `name` Word's name for it.
+ */
+export function newShapeRun(kind, { id, cx, cy = 0, offset = { x: 0, y: 0 }, content = '<w:p/>' }) {
+  const ns = `xmlns:w="${W_NS}" xmlns:wp="${WP_NS}" xmlns:a="${A}" xmlns:wps="${WPS}"`;
+  const line = '<a:ln w="19050"><a:solidFill><a:srgbClr val="000000"/></a:solidFill>' + (kind === 'arrow' ? '<a:tailEnd type="triangle"/>' : '') + '</a:ln>';
+  const graphic = (wsp) => `<a:graphic><a:graphicData uri="${WPS}"><wps:wsp>${wsp}</wps:wsp></a:graphicData></a:graphic>`;
+  if (kind === 'textbox') {
+    const name = `Text Box ${id}`;
+    return `<w:r ${ns}><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="${name}"/><wp:cNvGraphicFramePr/>`
+      + graphic(`<wps:cNvSpPr txBox="1"/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln w="6350"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></wps:spPr>`
+        + `<wps:txbx><w:txbxContent>${content}</w:txbxContent></wps:txbx><wps:bodyPr rot="0" vert="horz" wrap="square" lIns="91440" tIns="45720" rIns="91440" bIns="45720" anchor="t" anchorCtr="0"><a:noAutofit/></wps:bodyPr>`)
+      + '</wp:inline></w:drawing></w:r>';
+  }
+  const prst = kind === 'arrow' ? 'straightConnector1' : 'line';
+  const name = kind === 'arrow' ? `Straight Arrow Connector ${id}` : `Straight Connector ${id}`;
+  return `<w:r ${ns}><w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="${251659264 + id}" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">`
+    + `<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>${Math.round(offset.x)}</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>${Math.round(offset.y)}</wp:posOffset></wp:positionV>`
+    + `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${id}" name="${name}"/><wp:cNvGraphicFramePr/>`
+    + graphic(`<wps:cNvCnPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="${prst}"><a:avLst/></a:prstGeom>${line}</wps:spPr><wps:bodyPr/>`)
+    + '</wp:anchor></w:drawing></w:r>';
 }
