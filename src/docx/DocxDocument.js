@@ -82,6 +82,8 @@ const FOOTNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/rel
 const FOOTNOTES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml';
 const ENDNOTES_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes';
 const ENDNOTES_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml';
+// The final section's properties Page setup sets: kept as opened, and written afresh at each save.
+const PAGE_SETUP_PARTS = ['type', 'pgSz', 'pgMar', 'pgNumType', 'cols'];
 // The order of a section's properties (CT_SectPr), for adding page size and margins.
 const SECTPR_ORDER = [
   'headerReference', 'footerReference', 'footnotePr', 'endnotePr', 'type', 'pgSz', 'pgMar', 'paperSrc',
@@ -184,6 +186,26 @@ function applySetup(sect, set) {
     }
     for (const k of ['top', 'right', 'bottom', 'left']) put(mar, k, set[k]);
   }
+  // How the section starts (w:type): on a new page, or continuous (on the same page, as a section
+  // break made for columns is). Written as Word writes the kind of break.
+  if (set.type !== undefined) {
+    removeW(sect, 'type');
+    if (set.type) ensureOrdered(sect, 'type', SECTPR_ORDER).setAttributeNS(W, 'w:val', set.type);
+  }
+  // Columns, as Word's Columns presets write them: a number of equal columns (w:num), the space
+  // between them (w:space) and a line between them (w:sep). Columns of their own widths (w:col)
+  // give way to equal ones; one column is w:cols with its space alone, as Word writes it.
+  if (set.cols !== undefined || set.colSpace !== undefined || set.colSep !== undefined) {
+    const cols = ensureOrdered(sect, 'cols', SECTPR_ORDER);
+    const count = Math.max(1, Math.round(set.cols ?? columnCount(cols)));
+    const space = set.colSpace ?? (Number(wAttr(cols, 'space')) || 720);
+    while (cols.firstChild) cols.removeChild(cols.firstChild);
+    for (const a of ['num', 'space', 'equalWidth', 'sep']) cols.removeAttributeNS(W, a);
+    // In the order Word writes them.
+    if (count > 1) cols.setAttributeNS(W, 'w:num', String(count));
+    put(cols, 'space', space);
+    if (count > 1 && set.colSep) cols.setAttributeNS(W, 'w:sep', '1');
+  }
   // Page numbering, as Word's Format Page Numbers: the number format (w:fmt; Arabic numerals,
   // decimal, are Word's default and written as no format) and where it starts (w:start; none
   // continues from the section before). The element's other attributes (chapter numbers) are kept.
@@ -205,6 +227,27 @@ function applySetup(sect, set) {
 function numberingOf(pgNumType) {
   const start = wAttr(pgNumType, 'start');
   return { numFmt: wAttr(pgNumType, 'fmt') || 'decimal', numStart: start != null && /^\d+$/.test(start) ? Number(start) : null };
+}
+
+/** How many columns a section's w:cols sets: its number, or its own columns (w:col); 1 without it. */
+function columnCount(cols) {
+  return cols ? Number(wAttr(cols, 'num')) || wChildren(cols, 'col').length || 1 : 1;
+}
+
+/**
+ * A section's columns and start, for Page setup: { cols (how many), colSpace (twips between them),
+ * colSep (a line between them), colUnequal (columns of their own widths), type (how it starts) }.
+ */
+function columnsSetupOf(sectPr) {
+  const cols = wChild(sectPr, 'cols');
+  const space = wAttr(cols, 'space');
+  return {
+    cols: columnCount(cols),
+    colSpace: space != null && /^\d+$/.test(space) ? Number(space) : 720,
+    colSep: ['1', 'true', 'on'].includes(wAttr(cols, 'sep') || ''),
+    colUnequal: ['0', 'false', 'off'].includes(wAttr(cols, 'equalWidth') || '') && wChildren(cols, 'col').length > 1,
+    type: wAttr(wChild(sectPr, 'type'), 'val') || 'nextPage',
+  };
 }
 
 /** "Header", "First page header", "Even pages footer": a header or footer host's name. */
@@ -413,7 +456,7 @@ export class DocxDocument {
     // the final section's own, to apply them to afresh at each save.
     this.pageSetup = null;
     const finalSect = wChild(this.body, 'sectPr');
-    this.originalPage = { pgSz: wChild(finalSect, 'pgSz')?.cloneNode(true) || null, pgMar: wChild(finalSect, 'pgMar')?.cloneNode(true) || null, pgNumType: wChild(finalSect, 'pgNumType')?.cloneNode(true) || null };
+    this.originalPage = Object.fromEntries(PAGE_SETUP_PARTS.map((local) => [local, wChild(finalSect, local)?.cloneNode(true) || null]));
     this.numberingPath = numPath || null;
     this.numberingChanged = false;
     this.listDefs = {}; // list definitions added this session: kind -> abstractNumId, plus the bullet numId
@@ -616,14 +659,10 @@ export class DocxDocument {
    * page numbering: { numFmt, numStart } (see numberingOf).
    */
   pageSetupNow() {
-    const { pgSz, pgMar, pgNumType } = this.originalPage; // as opened: a save writes the setup into the section
-    const num = (el, attr, d) => Number(wAttr(el === 'pgSz' ? pgSz : pgMar, attr) ?? d);
-    const now = {
-      w: num('pgSz', 'w', 12240), h: num('pgSz', 'h', 15840), orient: wAttr(pgSz, 'orient') || 'portrait',
-      top: num('pgMar', 'top', 1440), right: num('pgMar', 'right', 1440), bottom: num('pgMar', 'bottom', 1440), left: num('pgMar', 'left', 1440),
-      ...numberingOf(pgNumType),
-    };
-    return { ...now, ...this.pageSetup };
+    // As opened: a save writes the setup into the section.
+    const sect = createW(this.xml, 'sectPr');
+    for (const local of PAGE_SETUP_PARTS) if (this.originalPage[local]) sect.append(this.originalPage[local].cloneNode(true));
+    return { ...this.sectionSetupOf(sect), ...this.pageSetup };
   }
 
   /**
@@ -639,7 +678,10 @@ export class DocxDocument {
 
   // ---------------------------------------------------------------- sections
 
-  /** The section setup a sectPr gives: { w, h, orient, top, right, bottom, left } in twips, { numFmt, numStart }. */
+  /**
+   * The section setup a sectPr gives: { w, h, orient, top, right, bottom, left } in twips, { numFmt,
+   * numStart }, and its columns and start ({ cols, colSpace, colSep, colUnequal, type }).
+   */
   sectionSetupOf(sectPr) {
     const sz = wChild(sectPr, 'pgSz');
     const mar = wChild(sectPr, 'pgMar');
@@ -648,7 +690,16 @@ export class DocxDocument {
       w: num(sz, 'w', 12240), h: num(sz, 'h', 15840), orient: wAttr(sz, 'orient') || 'portrait',
       top: num(mar, 'top', 1440), right: num(mar, 'right', 1440), bottom: num(mar, 'bottom', 1440), left: num(mar, 'left', 1440),
       ...numberingOf(wChild(sectPr, 'pgNumType')),
+      ...columnsSetupOf(sectPr),
     };
+  }
+
+  /**
+   * The columns of the section that section-end paragraph `el` ends, or of the final section (el
+   * null), as they are now, for showing them: { count, gap (px), rule } or null for one column.
+   */
+  sectionColumns(el) {
+    return columnsOf(el ? this.sectionBreakOf(el) : this.finalSectPr());
   }
 
   /** The section break a section-end paragraph holds (its w:sectPr), as it is now. */
@@ -675,31 +726,37 @@ export class DocxDocument {
   }
 
   /**
-   * Makes paragraph `el` end a section, as Word's Insert > Section break (next page) does: it
-   * holds a copy of `sectPr` (the section it was in: its paper, margins, headers and footers), so
-   * the text up to it keeps them, and what follows begins a new section on a new page.
+   * Makes paragraph `el` end a section, as Word's Insert > Section break does: it holds a copy of
+   * `sectPr` (the section it was in: its paper, margins, columns, headers and footers), so the text
+   * up to it keeps them, and what follows begins a new section. A section's w:type says how that
+   * section starts, so the copy keeps the type the section had; the section after the break is
+   * the one to start on a new page or, for `type` 'continuous' (a break made for columns), on the
+   * same page: the caller sets that on it (setSectionSetup or setPageSetup with { type }). A new
+   * page's break, made before there was a choice, says so on the copy too, as before.
    */
-  addSectionBreak(el, sectPr) {
+  addSectionBreak(el, sectPr, type = 'nextPage') {
     const pPr = el.dataset.ppr != null ? this.rawClone(el.dataset.ppr) : createW(this.xml, 'pPr');
     removeW(pPr, 'sectPr');
     const copy = this.xml.importNode(sectPr, true);
     removeW(copy, 'sectPrChange');
-    removeW(copy, 'type');
-    ensureOrdered(copy, 'type', SECTPR_ORDER).setAttributeNS(W, 'w:val', 'nextPage');
+    if (type === 'nextPage') {
+      removeW(copy, 'type');
+      ensureOrdered(copy, 'type', SECTPR_ORDER).setAttributeNS(W, 'w:val', 'nextPage');
+    }
     const before = elementChildren(pPr).find((c) => c.localName === 'pPrChange');
     pPr.insertBefore(copy, before || null);
     el.dataset.ppr = this.keep(pPr);
-    el.dataset.sectionEnd = 'nextPage';
+    el.dataset.sectionEnd = type;
   }
 
   /** The final section's properties as they would be saved now (the page setup set here applied). */
   finalSectPr() {
     const sect = (wChild(this.body, 'sectPr') || createW(this.xml, 'sectPr')).cloneNode(true);
-    for (const local of ['pgSz', 'pgMar', 'pgNumType']) {
+    for (const local of PAGE_SETUP_PARTS) {
       const orig = this.originalPage[local];
       const now = wChild(sect, local);
       if (orig) (now || ensureOrdered(sect, local, SECTPR_ORDER)).replaceWith(orig.cloneNode(true));
-      else if (now && local === 'pgNumType') sect.removeChild(now);
+      else if (now && local !== 'pgSz' && local !== 'pgMar') sect.removeChild(now);
     }
     applySetup(sect, this.pageSetup || {});
     if (this.hfFlags.titlePg != null) setTitlePage(sect, this.hfFlags.titlePg);
@@ -712,7 +769,7 @@ export class DocxDocument {
     // The final section's properties persist between saves: start again from them as opened.
     if (finalSect) {
       // Replaced where they are, so a section's own order is kept.
-      for (const local of ['pgSz', 'pgMar', 'pgNumType']) {
+      for (const local of PAGE_SETUP_PARTS) {
         const orig = this.originalPage[local];
         const now = wChild(finalSect, local);
         if (orig) (now || ensureOrdered(finalSect, local, SECTPR_ORDER)).replaceWith(orig.cloneNode(true));
@@ -1212,15 +1269,15 @@ export class DocxDocument {
    */
   renderBody(frag) {
     let section = document.createDocumentFragment();
+    let lastEnd = null; // the paragraph ending the section before
     const close = (sectPr) => {
+      // The break before this section is the kind this section starts with (its w:type): a new
+      // page unless it says otherwise, as Word reads it.
+      if (lastEnd) lastEnd.dataset.sectionEnd = wAttr(wChild(sectPr, 'type'), 'val') || 'nextPage';
+      lastEnd = [...section.querySelectorAll('[data-section-end]')].pop() || null;
       const cols = columnsOf(sectPr);
       if (cols && section.firstChild) {
-        const div = document.createElement('div');
-        div.className = 'docx-columns';
-        div.dataset.cols = String(cols.count);
-        div.style.columnCount = String(cols.count);
-        div.style.columnGap = `${cols.gap}px`;
-        if (cols.rule) div.style.columnRule = '1px solid #000';
+        const div = columnsWrapper(cols);
         div.append(section);
         frag.append(div);
       } else {
@@ -1234,7 +1291,7 @@ export class DocxDocument {
       const sectPr = child.namespaceURI === W && child.localName === 'p' && wChild(wChild(child, 'pPr'), 'sectPr');
       if (sectPr) close(sectPr); // the paragraph holding a section break ends its section
     }
-    close(wChild(this.body, 'sectPr'));
+    close(wChild(this.body, 'sectPr') || createW(this.xml, 'sectPr'));
   }
 
   // ---------------------------------------------------------------- headers and footers
@@ -2516,6 +2573,11 @@ export class DocxDocument {
       row.title = controlTitle(controlInfo(rowWrappers[rowWrappers.length - 1]));
     }
     for (const { el: tc, wrappers: cellWrappers } of tableParts(tr, 'tc')) row.append(this.renderCell(tc, rowWrappers, cellWrappers));
+    // The row's height (w:trHeight, twips): at least that high, as Word lays it out (an exact
+    // height is shown as a least one: the text is never cut off here). Only shown; the row's
+    // properties are kept as they are.
+    const height = Number(wAttr(wChild(wChild(tr, 'trPr'), 'trHeight'), 'val'));
+    if (height > 0 && wAttr(wChild(wChild(tr, 'trPr'), 'trHeight'), 'hRule') !== 'auto') row.style.height = `${height / 15}px`;
     this.applyRowProps(row, tr, rowWrappers);
     return row;
   }
@@ -5138,6 +5200,17 @@ function columnsOf(sectPr) {
   if (count < 2) return null;
   const space = wAttr(cols, 'space');
   return { count: Math.min(count, 45), gap: (space != null ? Number(space) || 0 : 720) / 15, rule: ['1', 'true', 'on'].includes(wAttr(cols, 'sep') || '') };
+}
+
+/** The page's wrapper for a section in columns `cols` (see columnsOf): only for the page, never saved. */
+export function columnsWrapper(cols) {
+  const div = document.createElement('div');
+  div.className = 'docx-columns';
+  div.dataset.cols = String(cols.count);
+  div.style.columnCount = String(cols.count);
+  div.style.columnGap = `${cols.gap}px`;
+  if (cols.rule) div.style.columnRule = '1px solid #000';
+  return div;
 }
 
 const FORMAT_TAGS = new Set(['SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'INS', 'S', 'STRIKE', 'DEL', 'SUP', 'SUB', 'MARK', 'FONT']);
