@@ -14,6 +14,7 @@ const BODY = para('Intro.') + para('Wide table.') + para('More wide table.') + p
 const dialog = (page) => page.getByRole('dialog', { name: 'Page setup' });
 const status = (page) => page.locator('.statusbar [role=status]');
 const sections = (xml) => xml.match(/<w:sectPr\b.*?<\/w:sectPr>/gs);
+const fontPt = (loc) => loc.evaluate((el) => parseFloat(getComputedStyle(el).fontSize) * 0.75);
 const p = (page, text) => page.locator('.docx-page > p', { hasText: text });
 
 async function selectParagraphs(page, from, to) {
@@ -183,7 +184,8 @@ test('Modify Style changes the style itself: every paragraph in it follows, and 
   await d.getByLabel('Style alignment').selectOption('center');
   await d.getByRole('button', { name: 'OK' }).click();
   const heading = page.locator('.docx-page > :first-child');
-  await expect(heading).toHaveCSS('font-size', '26.6667px'); // 20 pt
+  // In points: browsers round a font's size in px differently (Firefox to 1/64 px).
+  await expect.poll(() => fontPt(heading)).toBeCloseTo(20, 1);
   await expect(heading).toHaveCSS('text-align', 'center');
   await expect(status(page)).toContainText('changed: every paragraph in it follows');
 
@@ -199,7 +201,7 @@ test('Modify Style changes the style itself: every paragraph in it follows, and 
 
   await page.locator('.docx-page').focus();
   await page.keyboard.press('Control+z');
-  await expect(heading).toHaveCSS('font-size', '21.3333px'); // 16 pt again
+  await expect.poll(() => fontPt(heading)).toBeCloseTo(16, 1); // as it was
 });
 
 test('Modify style… from the right-click menu changes Normal, the body text’s style', async ({ page }) => {
