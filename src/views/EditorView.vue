@@ -5148,7 +5148,8 @@ async function insertShape(kind) {
     const zoom = sheetZoom.value || 1;
     const x = caret && box ? Math.max(0, (caret.left - box.left - parseFloat(getComputedStyle(block).paddingLeft) * zoom) / zoom) : 0;
     const y = caret && box ? Math.max(0, (caret.top + caret.height / 2 - box.top) / zoom) : 0;
-    opts = { cx: 1440000, cy: 0, offset: { x: x * 9525, y: y * 9525 } };
+    // In whole pixels, as a picture dropped somewhere is placed.
+    opts = { cx: 1440000, cy: 0, offset: { x: Math.round(x) * 9525, y: Math.round(y) * 9525 } };
   }
   const span = await doc.addShape(kind, opts);
   page.value.focus();
@@ -5163,7 +5164,8 @@ async function insertShape(kind) {
   refreshChanges();
   if (kind === 'textbox') {
     // In it, ready to type.
-    const p = span.querySelector('.textbox-content p, .textbox-content');
+    // Its paragraph (not the box around it, which a selector list would find first).
+    const p = span.querySelector('.textbox-content p') || span.querySelector('.textbox-content');
     const caret = document.createRange();
     caret.selectNodeContents(p);
     caret.collapse(true);

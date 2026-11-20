@@ -63,6 +63,11 @@ test('a text box: in line with the text, typed in, written with its text', async
   await page.keyboard.press('End');
   await insert(page, 'Text box');
   await expect(status(page)).toHaveText('Text box inserted: type in it');
+  // The caret in the box's paragraph, not before it (where a browser would start another).
+  expect(await page.evaluate(() => {
+    const n = getSelection().anchorNode;
+    return !!(n.nodeType === 1 ? n : n.parentElement).closest('.textbox-content p');
+  })).toBe(true);
   await page.keyboard.type('cat, dog, bird');
   await expect(page.locator('.docx-page .textbox')).toContainText('cat, dog, bird');
   const { xml } = await download(page);
