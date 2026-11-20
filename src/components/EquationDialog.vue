@@ -11,7 +11,7 @@
       <div v-else ref="previewEl" class="maths" aria-label="Preview" />
     </div>
     <label class="check"><input v-model="display" type="checkbox" /> On its own line (when the paragraph is empty)</label>
-    <p class="hint">Written as Word’s own equations (Office Math): Word edits them as its own. Equations already in a document are shown, not edited, here.</p>
+    <p class="hint">In a matrix, cases or lines of working, &amp; separates cells (in working, the point the lines are lined up at) and \\ starts a new row. Written as Word’s own equations (Office Math): Word edits them as its own. Equations already in a document are shown, not edited, here.</p>
     <template #actions>
       <button type="submit" class="confirm" :disabled="!!result.error">Insert</button>
     </template>
@@ -37,6 +37,11 @@ const EXAMPLES = [
   { label: '∫', src: '\\int_{0}^{1} f(x)\\,dx' },
   { label: 'Quadratic', src: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' },
   { label: 'α β π', src: '\\alpha + \\beta = \\pi' },
+  // Matrices, cases and working lined up at its = signs: & between cells, \\ between rows.
+  { label: 'Matrix', src: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}' },
+  { label: 'Cases', src: '|x| = \\begin{cases} x & x \\ge 0 \\\\ -x & x < 0 \\end{cases}' },
+  { label: 'Working', src: '\\begin{aligned} 2x + 3 &= 11 \\\\ 2x &= 8 \\\\ x &= 4 \\end{aligned}' },
+  { label: 'Vector', src: '\\vec{v} = \\overline{AB}' },
 ];
 const src = ref('');
 const display = ref(false);
