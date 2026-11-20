@@ -9329,7 +9329,9 @@ async function close() {
   text-indent: 0; white-space: nowrap;
 }
 /* A list level centred on its own line ("Pasal 1", "BAB I"): its number in the line. */
-.docx-sheet .list[data-marker-inline]::before { position: static; transform: none; margin-right: .3em; }
+/* Clicks go through it to the paragraph: Firefox puts no caret where generated text is clicked, and
+   an empty "Pasal 1" line is all number. */
+.docx-sheet .list[data-marker-inline]::before { position: static; transform: none; margin-right: .3em; pointer-events: none; }
 .docx-sheet a { color: #0563c1; }
 .docx-sheet img { max-width: 100%; vertical-align: bottom; }
 /* Hidden markers (comment ranges, bookmarks, field codes) are empty: shown inline, not display:none,
