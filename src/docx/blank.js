@@ -13,17 +13,45 @@ const TABLE_GRID = '<w:style w:type="table" w:styleId="TableGrid"><w:name w:val=
   + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((side) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="auto"/>`).join('')
   + '</w:tblBorders></w:tblPr></w:style>';
 const LIST_PARAGRAPH = '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="34"/><w:qFormat/><w:pPr><w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>';
-const NUMBERING = `<w:numbering ${W_NS}><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>`
+const BULLET_LIST = '<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>'
   + '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="\uf0b7"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/></w:rPr></w:lvl>'
   + '<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="o"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New" w:hint="default"/></w:rPr></w:lvl>'
-  + '</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+  + '</w:abstractNum>';
+// Questions and their answer choices, as a test paper numbers them: 1., 2., 3. and under each A., B.,
+// C., D. (Word's numbered list with its second level in capital letters), hanging, so the text lines up.
+const QUESTION_LIST = '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="hybridMultilevel"/>'
+  + '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="397" w:hanging="397"/></w:pPr></w:lvl>'
+  + '<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="upperLetter"/><w:lvlText w:val="%2."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="794" w:hanging="397"/></w:pPr></w:lvl>'
+  + '</w:abstractNum>';
+/**
+ * The numbering part: the bulleted list (numId 1) and, for a test paper, `questions` lists of
+ * questions (numIds 2, 3…), each starting again at 1, as each part of a test numbers its own.
+ */
+const numberingXml = (questions = 0) => `<w:numbering ${W_NS}>${BULLET_LIST}${questions ? QUESTION_LIST : ''}`
+  + '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+  + Array.from({ length: questions }, (_, i) => `<w:num w:numId="${i + 2}"><w:abstractNumId w:val="1"/>${i ? '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>' : ''}</w:num>`).join('')
+  + '</w:numbering>';
 const FOOTER = `<w:ftr ${W_NS}><w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr>`
   + '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'
   + '<w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>';
 const PAPERS = { A4: { w: 11906, h: 16838 }, Letter: { w: 12240, h: 15840 } };
 
-/** The width between the margins, in twips, of a starter on `paper` (2.54 cm margins). */
-export const textWidth = (paper = 'A4') => PAPERS[paper].w - 2 * 1440;
+/** The width between the margins, in twips, of a starter on `paper` (2.54 cm margins), turned for `landscape`. */
+export const textWidth = (paper = 'A4', landscape = false) => (landscape ? PAPERS[paper].h : PAPERS[paper].w) - 2 * 1440;
+
+/**
+ * A section's page and columns, as Word writes them in a w:sectPr (without its header and footer
+ * references): on `paper`, turned for `landscape`, with `margins` (twips), starting as `type` says
+ * ('continuous' for a section on the same page; none, a new page), in `cols` equal columns with a
+ * line between them (`sep`).
+ */
+export function sectionXml({ paper = 'A4', landscape = false, margins = null, type = null, cols = 1, sep = false } = {}) {
+  const { w, h } = PAPERS[paper] || PAPERS.A4;
+  const m = { top: 1440, right: 1440, bottom: 1440, left: 1440, ...margins };
+  const size = landscape ? `<w:pgSz w:w="${h}" w:h="${w}" w:orient="landscape"/>` : `<w:pgSz w:w="${w}" w:h="${h}"/>`;
+  return `${type ? `<w:type w:val="${type}"/>` : ''}${size}<w:pgMar w:top="${m.top}" w:right="${m.right}" w:bottom="${m.bottom}" w:left="${m.left}" w:header="708" w:footer="708" w:gutter="0"/>`
+    + `<w:cols${cols > 1 ? ` w:num="${cols}"` : ''} w:space="708"${cols > 1 && sep ? ' w:sep="1"' : ''}/>`;
+}
 
 /**
  * The files of a new document: blank, or with `body` (the body's XML, without its sectPr), the
@@ -34,8 +62,12 @@ export const textWidth = (paper = 'A4') => PAPERS[paper].w - 2 * 1440;
  * and w:rPr, in place of Word's), `header` (the paragraphs of a header on every page) and `titlePg`
  * (a different first page, its header left empty, as a title page has it). `margins` ({ top, right,
  * bottom, left } in twips) are 2.54 cm unless given; `language` is the text's (w:lang), en-US unless given.
+ * A test paper also gives `questions` (how many numbered lists of questions it has, see
+ * numberingXml) and `section` (sectionXml's options for the final section: a page turned
+ * `landscape`, or a section that starts on the same page, after others in the body in columns).
  */
-export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, footer = false, paper = 'A4', title = '', font = null, normal = '', heading1 = null, header = '', titlePg = false, margins = null, language = 'en-US' } = {}) {
+export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, questions = 0, footer = false, paper = 'A4', title = '', font = null, normal = '', heading1 = null, header = '', titlePg = false, margins = null, language = 'en-US', section = {} } = {}) {
+  const numbered = bullets || questions > 0;
   const builtin = (k) => BUILTIN_STYLES[k].xml('<w:basedOn w:val="Normal"/>').replace('__NORMAL__', 'Normal');
   const h1 = heading1
     ? builtin('h1').replace(/<w:pPr>.*?<\/w:pPr>\s*<w:rPr>.*?<\/w:rPr>/s, `<w:pPr>${heading1.pPr}</w:pPr><w:rPr>${heading1.rPr}</w:rPr>`)
@@ -47,8 +79,6 @@ export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, 
     + (header ? builtin('header') : '');
   const fontName = font?.name || 'Calibri';
   const fontSize = font?.sz || 22;
-  const { w, h } = PAPERS[paper] || PAPERS.A4;
-  const m = { top: 1440, right: 1440, bottom: 1440, left: 1440, ...margins };
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const files = {
@@ -62,7 +92,7 @@ export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, 
 <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
 <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
 <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-${bullets ? '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>\n' : ''}${footer ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>\n' : ''}${header ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>\n' : ''}</Types>`,
+${numbered ? '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>\n' : ''}${footer ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>\n' : ''}${header ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>\n' : ''}</Types>`,
     '_rels/.rels': XML_HEADER + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
@@ -77,10 +107,10 @@ ${bullets ? '<Override PartName="/word/numbering.xml" ContentType="application/v
     'word/_rels/document.xml.rels': XML_HEADER + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-${bullets ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n' : ''}${footer ? '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>\n' : ''}${header ? '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>\n' : ''}</Relationships>`,
+${numbered ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n' : ''}${footer ? '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>\n' : ''}${header ? '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>\n' : ''}</Relationships>`,
     'word/settings.xml': XML_HEADER + `<w:settings ${W_NS}><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
     'word/document.xml': XML_HEADER + `<w:document ${W_NS}><w:body>${body}
-<w:sectPr>${header ? '<w:headerReference w:type="default" r:id="rId5"/>' : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="${w}" w:h="${h}"/><w:pgMar w:top="${m.top}" w:right="${m.right}" w:bottom="${m.bottom}" w:left="${m.left}" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="708"/>${titlePg ? '<w:titlePg/>' : ''}</w:sectPr>
+<w:sectPr>${header ? '<w:headerReference w:type="default" r:id="rId5"/>' : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}${sectionXml({ paper, margins, ...section })}${titlePg ? '<w:titlePg/>' : ''}</w:sectPr>
 </w:body></w:document>`,
     'word/styles.xml': XML_HEADER + `<w:styles ${W_NS}>
 <w:docDefaults>
@@ -93,7 +123,7 @@ ${bullets ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/off
 ${builtins.replace(/w:asciiTheme="majorHAnsi" w:hAnsiTheme="majorHAnsi" w:eastAsiaTheme="majorEastAsia" w:cstheme="majorBidi"/g, font ? `w:ascii="${fontName}" w:hAnsi="${fontName}"` : 'w:ascii="Calibri Light" w:hAnsi="Calibri Light"')}
 </w:styles>`,
   };
-  if (bullets) files['word/numbering.xml'] = XML_HEADER + NUMBERING;
+  if (numbered) files['word/numbering.xml'] = XML_HEADER + numberingXml(questions);
   if (footer) files['word/footer1.xml'] = XML_HEADER + FOOTER;
   if (header) files['word/header1.xml'] = XML_HEADER + `<w:hdr ${W_NS}>${header}</w:hdr>`;
   return files;

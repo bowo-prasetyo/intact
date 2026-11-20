@@ -3,7 +3,7 @@
 // Heading 1 and 2, Table Grid, List Paragraph, Footer), with placeholders such as [Your name] that
 // Fill in fills in once for every place they appear. Nothing here is fetched: each is built in the
 // browser from the blank document's parts (see blank.js).
-import { blankDocxFiles, textWidth } from './blank.js';
+import { blankDocxFiles, textWidth, sectionXml } from './blank.js';
 
 const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -16,8 +16,9 @@ function run(text, f = {}) {
 
 /**
  * A paragraph of `content` (text, or runs made with run()): { style, jc, before, after, line
- * (240ths of a line), tabs ([twips]), keepNext, border ('bottom'), bullet, ind (left twips), first
- * (first-line indent, twips: 0 takes a style's off) }.
+ * (240ths of a line), tabs ([twips]), keepNext, border ('bottom'), bullet, num ([numId, level]: a
+ * numbered list's item), ind (left twips), first (first-line indent, twips: 0 takes a style's off),
+ * section (sectionXml's options: the paragraph ends a section, as Word keeps a section break) }.
  */
 function p(content = '', o = {}) {
   const runs = typeof content === 'string' ? run(content, o.run) : content.join('');
@@ -25,6 +26,7 @@ function p(content = '', o = {}) {
     o.style ? `<w:pStyle w:val="${o.style}"/>` : '',
     o.keepNext ? '<w:keepNext/>' : '',
     o.bullet ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>' : '',
+    o.num ? `<w:numPr><w:ilvl w:val="${o.num[1] || 0}"/><w:numId w:val="${o.num[0]}"/></w:numPr>` : '',
     o.border === 'thickThin' ? '<w:pBdr><w:bottom w:val="thickThinSmallGap" w:sz="24" w:space="1" w:color="auto"/></w:pBdr>' : o.border ? '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="auto"/></w:pBdr>' : '',
     o.tabs ? `<w:tabs>${o.tabs.map((t) => (typeof t === 'number' ? `<w:tab w:val="left" w:pos="${t}"/>` : `<w:tab w:val="${t.align}" w:pos="${t.pos}"/>`)).join('')}</w:tabs>` : '',
     o.before != null || o.after != null || o.line != null
@@ -32,6 +34,7 @@ function p(content = '', o = {}) {
     o.ind != null || o.first != null || o.hanging != null
       ? `<w:ind${o.ind != null ? ` w:left="${o.ind}"` : ''}${o.hanging != null ? ` w:hanging="${o.hanging}"` : o.first != null ? ` w:firstLine="${o.first}"` : ''}/>` : '',
     o.jc ? `<w:jc w:val="${o.jc}"/>` : '',
+    o.section ? `<w:sectPr>${sectionXml(o.section)}</w:sectPr>` : '',
   ].join('');
   return `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${runs}</w:p>`;
 }
@@ -42,15 +45,17 @@ const NO_BORDERS = `<w:tcBorders>${['top', 'left', 'bottom', 'right'].map((side)
 /**
  * A table across the page in Table Grid: `widths` (shares of the text width), `rows` (arrays of
  * cell texts), the first row a heading row (bold, shaded, repeated on each page) unless `heading`
- * is false, and cells in columns `right` aligned right (amounts).
+ * is false, and cells in columns `right` aligned right (amounts); rows other than the heading at
+ * least `rowHeight` twips high (room to write in a rubric's cells), but for a `totalRow` at the end.
  */
-function table(paper, widths, rows, { heading = true, right = [], shade = 'D9E2F3', borders = true, center = false, width = null } = {}) {
+function table(paper, widths, rows, { heading = true, right = [], shade = 'D9E2F3', borders = true, center = false, width = null, rowHeight = 0, totalRow = false } = {}) {
   const total = widths.reduce((a, b) => a + b, 0);
   const tw = widths.map((x) => Math.floor(((width ?? textWidth(paper)) * x) / total));
   const grid = tw.map((x) => `<w:gridCol w:w="${x}"/>`).join('');
   const body = rows.map((cells, r) => {
     const head = heading && r === 0;
-    const trPr = head ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
+    const tall = rowHeight && !(totalRow && r === rows.length - 1);
+    const trPr = head ? '<w:trPr><w:tblHeader/></w:trPr>' : tall ? `<w:trPr><w:trHeight w:val="${rowHeight}"/></w:trPr>` : '';
     const tcs = cells.map((text, c) => {
       const shd = head ? `<w:shd w:val="clear" w:color="auto" w:fill="${shade}"/>` : '';
       const jc = right.includes(c) ? 'right' : center ? 'center' : null;
@@ -225,7 +230,8 @@ const idTable = (widths, rows) => table(null, widths, rows, { heading: false, bo
 
 /**
  * The starters: { id, title, description, file, build(paper) → blankDocxFiles options, and for those
- * in another language than English its `lang` ('id') and `paper` }. Their placeholders name what to
+ * in another language than English its `lang` ('id') and `paper`; for teachers' ones, `group`
+ * 'teach' (the start page shows them as a group of their own) }. Their placeholders name what to
  * type, in brackets, so Fill in lists them.
  */
 export const STARTERS = [
@@ -478,6 +484,420 @@ const manuscript = () => {
     ].join(''),
   };
 };
+
+// ------------------------------------------------------------------ for teachers
+
+// A test paper's questions and answer choices, numbered by Word (1., 2. and A., B., C., D. under
+// each: see blank.js's question lists), so a question or a choice added with Enter, or moved with
+// Tab and Shift+Tab, is numbered as Word numbers it. `list` is the list's numId (2, 3…), each
+// part of a test that numbers its questions from 1 having its own.
+const question = (text, list = 2, o = {}) => p(text, { num: [list, 0], before: 160, after: 60, keepNext: true, ...o });
+const choice = (text, list = 2, o = {}) => p(text, { num: [list, 1], after: 0, ...o });
+/** A question with four answer choices; the last can end a section (`section`). */
+const multipleChoice = (text, choices, list, section) => [
+  question(text, list),
+  ...choices.map((c, i) => choice(c, list, { keepNext: i < choices.length - 1, ...(i === choices.length - 1 && section ? { section } : {}) })),
+];
+
+/**
+ * Ruled lines to write an answer on: a table of `n` rows, `width` twips wide, indented `indent`,
+ * each cell with a line under it and no other borders (cell borders, as Word's Borders button
+ * writes them), so Word and Intact draw the same lines.
+ */
+function answerLines(width, n = 3, indent = 397) {
+  const none = (side) => `<w:${side} w:val="nil"/>`;
+  const borders = `<w:tcBorders>${none('top')}${none('left')}<w:bottom w:val="single" w:sz="4" w:space="0" w:color="808080"/>${none('right')}</w:tcBorders>`;
+  const w = width - indent;
+  const row = `<w:tr><w:trPr><w:trHeight w:val="454"/></w:trPr><w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${borders}</w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p></w:tc></w:tr>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="${w}" w:type="dxa"/><w:tblInd w:w="${indent}" w:type="dxa"/><w:tblLook w:val="04A0" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/></w:tblPr>`
+    + `<w:tblGrid><w:gridCol w:w="${w}"/></w:tblGrid>${row.repeat(n)}</w:tbl>`;
+}
+
+/** A student's details in a table (Name, Class…), the labels bold: `rows` of [label, value] pairs. */
+const details = (paper, widths, rows, o = {}) => table(paper, widths, rows.map((r) => r.map((c, i) => (i % 2 ? c : `**${c}**`))), { heading: false, ...o });
+
+/** The English teachers' templates: a test, a worksheet, a rubric, a lesson plan and a letter to parents. */
+function forTeachers() {
+  return [
+    {
+      id: 'test',
+      title: 'Test',
+      description: 'Multiple choice in two columns, then questions with lines to answer on',
+      file: 'Test',
+      group: 'teach',
+      build: (paper) => ({
+        questions: 1,
+        styles: ['tableGrid'],
+        // The questions after Part A are in one column again, on the same page.
+        section: { type: 'continuous' },
+        body: [
+          p('[School name]', { jc: 'center', after: 0, run: { b: true, sz: 28 } }),
+          p('[Subject] test: [Topic]', { jc: 'center', after: 240, run: { b: true, sz: 32 } }),
+          details(paper, [1.2, 4, 1.1, 2], [['Name', '', 'Class', ''], ['Date', '', 'Score', '      / [Total marks]']]),
+          p([run('Instructions: ', { b: true }), run('Answer all the questions. You have [Time allowed]. Write clearly, in pen.')], { before: 240 }),
+          p('Part A: Multiple choice', { style: 'Heading2' }),
+          // The end of the first section (one column): Part A's questions are in two, on the same page.
+          p('Circle the letter of the best answer.', { run: { i: true }, section: { paper } }),
+          ...[1, 2, 3, 4].flatMap((n) => multipleChoice(`[Question ${n}]`, ['Answer A', 'Answer B', 'Answer C', 'Answer D'], 2,
+            n === 4 ? { paper, type: 'continuous', cols: 2, sep: true } : null)),
+          p('Part B: Short answers', { style: 'Heading2' }),
+          p('Write your answers on the lines.', { run: { i: true } }),
+          question('[Question 5]'),
+          answerLines(textWidth(paper), 3),
+          question('[Question 6]'),
+          answerLines(textWidth(paper), 4),
+          p('End of the test. Check your answers.', { jc: 'center', before: 360, run: { i: true } }),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'worksheet',
+      title: 'Worksheet',
+      description: 'A goal, activities to match, fill in and write, and a self-check',
+      file: 'Worksheet',
+      group: 'teach',
+      build: (paper) => ({
+        questions: 1,
+        styles: ['tableGrid'],
+        body: [
+          p('[School name]', { after: 0, run: { color: '595959' } }),
+          p('[Worksheet title]', { style: 'Title', after: 160 }),
+          details(paper, [1, 3, 0.9, 1.6, 0.8, 1.6], [['Name', '', 'Class', '', 'Date', '']]),
+          p([run('Learning goal: ', { b: true }), run('[What students will be able to do]')], { before: 240 }),
+          p('1. Match each word to its meaning', { style: 'Heading2' }),
+          p('Write the letter of the meaning next to each word.', { run: { i: true } }),
+          table(paper, [3, 1, 6], [['Word', 'Letter', 'Meaning'], ['', '', 'A. '], ['', '', 'B. '], ['', '', 'C. '], ['', '', 'D. ']]),
+          p('2. Fill in the blanks', { style: 'Heading2', before: 240 }),
+          p([run('Use these words: ', { i: true }), run('[Words for the blanks]')]),
+          question('[First sentence, with a blank] __________'),
+          question('[Second sentence, with a blank] __________'),
+          question('[Third sentence, with a blank] __________'),
+          p('3. Think and write', { style: 'Heading2', before: 240 }),
+          p('[An open question for students to answer in their own words]'),
+          answerLines(textWidth(paper), 5, 0),
+          p('How did I do?', { style: 'Heading2', before: 240 }),
+          p('☐ I can do this on my own     ☐ I need a little help     ☐ I need more practice'),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'rubric',
+      title: 'Rubric',
+      description: 'Criteria against four levels, with a score for each, on a landscape page',
+      file: 'Rubric',
+      group: 'teach',
+      build: (paper) => ({
+        styles: ['tableGrid'],
+        section: { landscape: true },
+        body: [
+          p('[Assignment name] rubric', { style: 'Title', after: 160 }),
+          label('Class', '[Class]'),
+          label('Teacher', '[Teacher name]'),
+          label('Student', ''),
+          p('', { after: 120 }),
+          table(null, [2.4, 2.2, 2.2, 2.2, 2.2, 1], [
+            ['Criteria', 'Excellent (4)', 'Good (3)', 'Fair (2)', 'Needs work (1)', 'Score'],
+            ['**[First criterion]**', '', '', '', '', ''],
+            ['**[Second criterion]**', '', '', '', '', ''],
+            ['**[Third criterion]**', '', '', '', '', ''],
+            ['**[Fourth criterion]**', '', '', '', '', ''],
+            ['**Total**', '', '', '', '', '/ 16'],
+          ], { width: textWidth(paper, true), right: [5], rowHeight: 1134, totalRow: true }),
+          p('Comments', { style: 'Heading2', before: 240 }),
+          answerLines(textWidth(paper, true), 3, 0),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'lesson-plan',
+      title: 'Lesson plan',
+      description: 'Objectives, materials, the lesson’s stages, support and assessment',
+      file: 'Lesson plan',
+      group: 'teach',
+      build: (paper) => ({
+        bullets: true,
+        styles: ['tableGrid'],
+        body: [
+          p('Lesson plan', { style: 'Title', after: 160 }),
+          details(paper, [1, 2.4, 1, 2.4], [['Subject', '[Subject]', 'Class', '[Class]'], ['Topic', '[Topic]', 'Date', '[Date]'], ['Teacher', '[Teacher name]', 'Duration', '[Duration]']]),
+          p('Learning objectives', { style: 'Heading1' }),
+          p('By the end of the lesson, students will be able to:'),
+          p('[First objective]', { style: 'ListParagraph', bullet: true }),
+          p('[Second objective]', { style: 'ListParagraph', bullet: true }),
+          p('Materials', { style: 'Heading1' }),
+          p('[Books, equipment, worksheets and links the lesson needs]', { style: 'ListParagraph', bullet: true }),
+          p('Lesson', { style: 'Heading1', keepNext: true }),
+          table(paper, [1.6, 5.4, 1.1], [
+            ['Stage', 'What the teacher and students do', 'Time'],
+            ['**Starter**', '[How the lesson begins: a question, a recap or a hook]', ''],
+            ['**Main activity**', '[What students do, alone, in pairs or in groups]', ''],
+            ['**Plenary**', '[How the lesson ends: what was learned, and what comes next]', ''],
+          ]),
+          p('Differentiation', { style: 'Heading1', before: 360 }),
+          p([run('Support: ', { b: true }), run('[How you will help students who need it]')], { style: 'ListParagraph', bullet: true }),
+          p([run('Challenge: ', { b: true }), run('[How you will stretch students who are ready]')], { style: 'ListParagraph', bullet: true }),
+          p('Assessment', { style: 'Heading1' }),
+          p('[How you will check what students have learned]'),
+          p('Reflection', { style: 'Heading1' }),
+          p('[After the lesson: what went well, and what to change next time]'),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'parent-letter',
+      title: 'Letter to parents',
+      description: 'To each student’s family, ready for mail merge from a class list',
+      file: 'Letter to parents',
+      group: 'teach',
+      build: () => ({
+        body: [
+          p('[School name]', { after: 0, run: { b: true, sz: 32 } }),
+          p('[School address] · [School phone] · [School email]', { after: 360, run: { color: '595959' } }),
+          p('[Date]', { after: 360 }),
+          // [Parent name], [Student name] and [Class] are the columns of a class list, for mail merge.
+          p('Dear [Parent name],'),
+          p('I am writing to you about [Student name], in [Class].'),
+          p('[What you are writing about: an event, a trip, progress or a concern, and what it means for your child.]'),
+          p('[What you would like the family to do, and by when.]'),
+          p('If you have any questions, please contact me at [Teacher email].'),
+          p('Yours sincerely,', { after: 960 }),
+          p('[Teacher name]', { after: 0 }),
+          p('[Class] teacher', { after: 480 }),
+          p('', { border: 'bottom', after: 240 }),
+          p('Reply slip', { style: 'Heading2' }),
+          p('Please return this slip to school by [Reply date].'),
+          p('Student: [Student name], [Class]'),
+          p('Parent’s name: ______________________     Signature: ______________________'),
+        ].join(''),
+      }),
+    },
+  ];
+}
+
+// Teachers in Indonesia (untuk guru): a test paper (lembar soal), a test blueprint (kisi-kisi), a
+// lesson module (modul ajar, as Kurikulum Merdeka sets it out), a rubric and a letter to parents,
+// in Indonesian, on A4 in Times New Roman 12 pt with 2 cm margins (the letter as an official
+// letter: Arial, 3 cm on the left, see naskahDinas), each headed by the school's letterhead (kop).
+const SCHOOL_MARGINS = { top: 1134, right: 1134, bottom: 1134, left: 1134 };
+const SCHOOL_WIDTH = 11906 - 2 * 1134; // A4 between those margins
+const SCHOOL_WIDE = 16838 - 2 * 1134; // A4 landscape
+const SCHOOL = { paper: 'A4', margins: SCHOOL_MARGINS };
+
+/** The school's letterhead (kop sekolah): its name, address and NPSN, over a thick-and-thin line. */
+const kopSekolah = () => [
+  p('[NAMA SEKOLAH]', { jc: 'center', after: 0, run: { b: true, sz: 32 } }),
+  p('[Alamat sekolah] Telepon [Nomor telepon sekolah]', { jc: 'center', after: 0, run: { sz: 20 } }),
+  p('NPSN [NPSN] · Pos-el [Alamat pos-el sekolah]', { jc: 'center', border: 'thickThin', after: 240, run: { sz: 20 } }),
+];
+/** "Mata pelajaran<tab>: [Mata pelajaran]", lined up at `at`. */
+const schoolLabel = (name, value, at = 2835, o = {}) => p(`${name}\t: ${value}`, { tabs: [at], after: 0, ...o });
+/** The head of school's and the teacher's signatures, side by side, without borders. */
+// Each side's lines in step, so the names line up.
+const schoolSignatures = (width, right = '[Kota], [Tanggal]\nGuru mata pelajaran,\n\n\n\n_[Nama guru]_\nNIP [NIP guru]') => table(null, [1, 1], [[
+  'Mengetahui,\nKepala [Nama sekolah],\n\n\n\n_[Nama kepala sekolah]_\nNIP [NIP kepala sekolah]',
+  right,
+]], { heading: false, borders: false, center: true, width });
+
+function untukGuru() {
+  const common = { lang: 'id', group: 'teach', paper: 'A4', language: 'id-ID' };
+  const school = { ...common, margins: SCHOOL_MARGINS, font: { name: 'Times New Roman', sz: 24 }, normal: '<w:spacing w:after="0" w:line="264" w:lineRule="auto"/>' };
+  return [
+    {
+      id: 'soal',
+      title: 'Lembar soal',
+      description: 'Pilihan ganda A–D dalam dua kolom, isian, dan uraian dengan garis jawaban',
+      file: 'Lembar soal',
+      ...school,
+      build: () => ({
+        ...school,
+        questions: 3, // pilihan ganda, isian, uraian: each numbered from 1
+        styles: ['tableGrid'],
+        section: { type: 'continuous' },
+        body: [
+          ...kopSekolah(),
+          p('PENILAIAN SUMATIF [AKHIR SEMESTER GANJIL/GENAP]', { jc: 'center', run: { b: true } }),
+          p('TAHUN PELAJARAN [TAHUN PELAJARAN]', { jc: 'center', after: 240, run: { b: true } }),
+          table(null, [1.4, 2.6, 1.1, 2], [
+            ['Mata pelajaran', ': [Mata pelajaran]', 'Nama', ': '],
+            ['Kelas/Fase', ': [Kelas/Fase]', 'No. absen', ': '],
+            ['Hari, tanggal', ': [Hari, tanggal ujian]', 'Nilai', ': '],
+            ['Waktu', ': [Waktu pengerjaan]', 'Paraf guru', ': '],
+          ], { heading: false, borders: false, width: SCHOOL_WIDTH }),
+          p('Petunjuk umum', { before: 240, run: { b: true } }),
+          ...['Berdoalah sebelum mengerjakan soal.', 'Tulislah nama dan nomor absen pada tempat yang tersedia.', 'Bacalah setiap soal dengan teliti sebelum menjawab.', 'Periksalah kembali jawaban sebelum diserahkan kepada pengawas.']
+            .map((t, i) => p(`${i + 1}.\t${t}`, { ind: 397, hanging: 397, tabs: [397] })),
+          p('I. Pilihan ganda', { before: 240, keepNext: true, run: { b: true } }),
+          // The end of the first section (one column): the multiple choice is in two, on the same page.
+          p('Berilah tanda silang (X) pada huruf A, B, C, atau D di depan jawaban yang paling tepat!', { run: { i: true }, section: SCHOOL }),
+          ...[1, 2, 3, 4].flatMap((n) => multipleChoice(`[Soal pilihan ganda ${n}]`, ['Jawaban A', 'Jawaban B', 'Jawaban C', 'Jawaban D'], 2,
+            n === 4 ? { ...SCHOOL, type: 'continuous', cols: 2, sep: true } : null)),
+          p('II. Isian', { before: 240, keepNext: true, run: { b: true } }),
+          p('Isilah titik-titik di bawah ini dengan jawaban yang tepat!', { run: { i: true } }),
+          question('[Soal isian 1] ....................', 3),
+          question('[Soal isian 2] ....................', 3),
+          p('III. Uraian', { before: 240, keepNext: true, run: { b: true } }),
+          p('Jawablah pertanyaan-pertanyaan berikut dengan jelas dan tepat!', { run: { i: true } }),
+          question('[Soal uraian 1]', 4),
+          answerLines(SCHOOL_WIDTH, 3),
+          question('[Soal uraian 2]', 4),
+          answerLines(SCHOOL_WIDTH, 3),
+          p('Selamat mengerjakan', { jc: 'center', before: 360, run: { i: true } }),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'kisi-kisi',
+      title: 'Kisi-kisi soal',
+      description: 'Tujuan pembelajaran, indikator, level kognitif, dan nomor soal, pada halaman mendatar',
+      file: 'Kisi-kisi soal',
+      ...school,
+      build: () => ({
+        ...school,
+        styles: ['tableGrid'],
+        section: { landscape: true },
+        body: [
+          p('KISI-KISI PENILAIAN SUMATIF [AKHIR SEMESTER GANJIL/GENAP]', { jc: 'center', run: { b: true } }),
+          p('TAHUN PELAJARAN [TAHUN PELAJARAN]', { jc: 'center', after: 240, run: { b: true } }),
+          schoolLabel('Satuan pendidikan', '[Nama sekolah]', 3402),
+          schoolLabel('Mata pelajaran', '[Mata pelajaran]', 3402),
+          schoolLabel('Kelas/Fase/Semester', '[Kelas/Fase] / [Semester]', 3402),
+          schoolLabel('Kurikulum', 'Kurikulum Merdeka', 3402),
+          schoolLabel('Jumlah dan bentuk soal', '[Jumlah soal] soal; [Bentuk soal]', 3402, { after: 240 }),
+          table(null, [0.6, 3, 3, 2, 3.4, 1.3, 1.3, 1.1], [
+            ['No.', 'Capaian pembelajaran', 'Tujuan pembelajaran', 'Materi', 'Indikator soal', 'Level kognitif', 'Bentuk soal', 'Nomor soal'],
+            ['1.', '', '', '', '', '', '', ''],
+            ['2.', '', '', '', '', '', '', ''],
+            ['3.', '', '', '', '', '', '', ''],
+          ], { width: SCHOOL_WIDE, rowHeight: 1134 }),
+          p('', { after: 240 }),
+          schoolSignatures(SCHOOL_WIDE),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'modul-ajar',
+      title: 'Modul ajar',
+      description: 'Informasi umum, komponen inti, dan lampiran, sesuai Kurikulum Merdeka',
+      file: 'Modul ajar',
+      ...school,
+      build: () => ({
+        ...school,
+        bullets: true,
+        styles: ['tableGrid'],
+        body: [
+          p('MODUL AJAR', { jc: 'center', after: 0, run: { b: true, sz: 28 } }),
+          p('[MATA PELAJARAN]: [TOPIK]', { jc: 'center', after: 240, run: { b: true } }),
+          p('A. Informasi umum', { style: 'Heading1' }),
+          p('1. Identitas modul', { style: 'Heading2' }),
+          details(null, [1, 2], [['Penyusun', '[Nama guru]'], ['Satuan pendidikan', '[Nama sekolah]'], ['Fase/Kelas', '[Fase/Kelas]'], ['Mata pelajaran', '[Mata pelajaran]'], ['Alokasi waktu', '[Jumlah JP] JP'], ['Tahun pelajaran', '[Tahun pelajaran]']], { width: SCHOOL_WIDTH }),
+          p('2. Kompetensi awal', { style: 'Heading2' }),
+          p('[Pengetahuan dan keterampilan yang perlu dimiliki peserta didik sebelum mempelajari topik ini.]'),
+          p('3. Dimensi profil lulusan', { style: 'Heading2' }),
+          p('[Dimensi yang dikembangkan, misalnya penalaran kritis, kreativitas, kolaborasi, atau komunikasi.]'),
+          p('4. Sarana dan prasarana', { style: 'Heading2' }),
+          p('[Media, alat, bahan, dan sumber belajar.]'),
+          p('5. Target peserta didik', { style: 'Heading2' }),
+          p('[Peserta didik reguler, yang mengalami kesulitan belajar, atau yang berprestasi tinggi.]'),
+          p('6. Model pembelajaran', { style: 'Heading2' }),
+          p('[Misalnya pembelajaran berbasis masalah, berbasis proyek, atau inkuiri.]'),
+          p('B. Komponen inti', { style: 'Heading1' }),
+          p('1. Tujuan pembelajaran', { style: 'Heading2' }),
+          p('[Tujuan pembelajaran pertama]', { style: 'ListParagraph', bullet: true }),
+          p('[Tujuan pembelajaran kedua]', { style: 'ListParagraph', bullet: true }),
+          p('2. Pemahaman bermakna', { style: 'Heading2' }),
+          p('[Manfaat pembelajaran ini bagi peserta didik dalam kehidupan sehari-hari.]'),
+          p('3. Pertanyaan pemantik', { style: 'Heading2' }),
+          p('[Pertanyaan yang memantik rasa ingin tahu peserta didik]', { style: 'ListParagraph', bullet: true }),
+          p('4. Kegiatan pembelajaran', { style: 'Heading2', keepNext: true }),
+          table(null, [1.4, 5, 1.1], [
+            ['Tahap', 'Kegiatan', 'Waktu'],
+            ['**Pendahuluan**', '[Salam, doa, apersepsi, dan penyampaian tujuan pembelajaran]', ''],
+            ['**Inti**', '[Kegiatan peserta didik sesuai model pembelajaran]', ''],
+            ['**Penutup**', '[Refleksi, kesimpulan, dan rencana pertemuan berikutnya]', ''],
+          ], { width: SCHOOL_WIDTH }),
+          p('5. Asesmen', { style: 'Heading2', before: 240 }),
+          p([run('Diagnostik: ', { b: true }), run('[Asesmen diagnostik]')], { style: 'ListParagraph', bullet: true }),
+          p([run('Formatif: ', { b: true }), run('[Asesmen formatif]')], { style: 'ListParagraph', bullet: true }),
+          p([run('Sumatif: ', { b: true }), run('[Asesmen sumatif]')], { style: 'ListParagraph', bullet: true }),
+          p('6. Pengayaan dan remedial', { style: 'Heading2' }),
+          p([run('Pengayaan: ', { b: true }), run('[Kegiatan pengayaan]')], { style: 'ListParagraph', bullet: true }),
+          p([run('Remedial: ', { b: true }), run('[Kegiatan remedial]')], { style: 'ListParagraph', bullet: true }),
+          p('7. Refleksi guru dan peserta didik', { style: 'Heading2' }),
+          p('[Pertanyaan refleksi untuk guru dan peserta didik.]'),
+          p('C. Lampiran', { style: 'Heading1' }),
+          ...['Lembar kerja peserta didik (LKPD)', 'Bahan bacaan guru dan peserta didik', 'Glosarium', 'Daftar pustaka'].map((t) => p(t, { style: 'ListParagraph', bullet: true })),
+          p('', { after: 240 }),
+          schoolSignatures(SCHOOL_WIDTH),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'rubrik',
+      title: 'Rubrik penilaian',
+      description: 'Kriteria dengan empat tingkat capaian dan skor, pada halaman mendatar',
+      file: 'Rubrik penilaian',
+      ...school,
+      build: () => ({
+        ...school,
+        styles: ['tableGrid'],
+        section: { landscape: true },
+        body: [
+          p('RUBRIK PENILAIAN', { jc: 'center', after: 0, run: { b: true, sz: 28 } }),
+          p('[Nama tugas atau proyek]', { jc: 'center', after: 240, run: { b: true } }),
+          schoolLabel('Mata pelajaran', '[Mata pelajaran]'),
+          schoolLabel('Kelas', '[Kelas]'),
+          schoolLabel('Nama peserta didik', '', 2835, { after: 240 }),
+          table(null, [2.4, 2.2, 2.2, 2.2, 2.2, 1], [
+            ['Kriteria', 'Sangat baik (4)', 'Baik (3)', 'Cukup (2)', 'Perlu bimbingan (1)', 'Skor'],
+            ['**[Kriteria 1]**', '', '', '', '', ''],
+            ['**[Kriteria 2]**', '', '', '', '', ''],
+            ['**[Kriteria 3]**', '', '', '', '', ''],
+            ['**[Kriteria 4]**', '', '', '', '', ''],
+            ['**Jumlah skor**', '', '', '', '', ''],
+          ], { width: SCHOOL_WIDE, right: [5], rowHeight: 1134, totalRow: true }),
+          p('Nilai = (jumlah skor ÷ 16) × 100', { before: 240 }),
+          p('Catatan guru', { before: 240, run: { b: true } }),
+          answerLines(SCHOOL_WIDE, 3, 0),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'surat-orang-tua',
+      title: 'Surat untuk orang tua',
+      description: 'Pemberitahuan kepada orang tua/wali tiap siswa, siap untuk gabung surat dari daftar kelas',
+      file: 'Surat untuk orang tua',
+      ...common,
+      margins: ID_MARGINS,
+      font: { name: 'Arial', sz: 24 },
+      normal: ID_SINGLE,
+      build: () => ({
+        ...common,
+        margins: ID_MARGINS,
+        font: { name: 'Arial', sz: 24 },
+        normal: ID_SINGLE,
+        styles: ['tableGrid'], // the signatures' table
+        body: [
+          ...kopSekolah(),
+          p('[Kota], [Tanggal surat]', { jc: 'right', after: 240 }),
+          idLabel('Nomor', '[Nomor surat]'),
+          idLabel('Lampiran', '[Jumlah lampiran]'),
+          idLabel('Hal', '[Hal surat]', { after: 240 }),
+          // [Nama orang tua], [Nama siswa] and [Kelas] are the columns of a class list, for mail merge.
+          p('Yth. Bapak/Ibu [Nama orang tua]'),
+          p('Orang tua/wali dari [Nama siswa], kelas [Kelas]'),
+          p('di tempat', { after: 240 }),
+          p('Dengan hormat,', { after: 120 }),
+          p('[Isi surat: kegiatan, informasi, atau hal yang perlu diketahui orang tua/wali.]', { jc: 'both', first: 709, after: 120 }),
+          p('[Hal yang diminta dari orang tua/wali, dan batas waktunya.]', { jc: 'both', first: 709, after: 120 }),
+          p('Atas perhatian dan kerja sama Bapak/Ibu, kami ucapkan terima kasih.', { jc: 'both', first: 709, after: 360 }),
+          schoolSignatures(ID_WIDTH, '\nWali kelas [Kelas],\n\n\n\n_[Nama wali kelas]_\nNIP [NIP wali kelas]'),
+        ].join(''),
+      }),
+    },
+  ];
+}
+// Added here, after what they are made of (constants above), as the start page's teachers' group.
+STARTERS.push(...forTeachers(), ...untukGuru());
 
 // Countries that use Letter paper rather than A4 (the United States, Canada, Mexico, the
 // Philippines and others in the Americas), by the region of the browser's language.
