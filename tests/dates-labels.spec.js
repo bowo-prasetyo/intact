@@ -143,12 +143,13 @@ const labelled = (page) => page.locator('.toolbar button.with-label .short-label
 test('icon buttons get text labels where there is room, without the toolbar growing', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 800 });
   await openInEditor(page, await buildDocx(BODY));
-  await expect.poll(() => labelled(page)).toEqual(['Insert', 'Symbol', 'Picture', 'Sign', 'Table', 'Layout', 'Footnote', 'Endnote', 'Update', 'Page no.', 'Page setup', 'Find', 'Fill in']);
+  await expect.poll(() => labelled(page)).toEqual(['Insert', 'Symbol', 'Picture', 'Sign', 'Table', 'Layout', 'Footnote', 'Endnote', 'Update', 'Page no.', 'Page setup', 'Find', 'Fill in', 'Compare']);
   // Its name stays what it was, with the label shown or not.
   await expect(page.getByRole('button', { name: 'Insert picture' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Find and replace' })).toBeVisible();
 
-  for (const width of [1280, 1440]) {
+  // Common laptop widths (1366 the most common); at 1280 the toolbar is full, with no room for labels.
+  for (const width of [1366, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     // The labels are fitted again once the toolbar has its new width (a ResizeObserver, a moment
     // after the resize): wait for that, then check that as many fit as leave it as tall as without.

@@ -418,7 +418,7 @@ export default {
   'Greyscale': 'Skala abu-abu',
   // ---------------------------------------------------------------- numbering library, sort, formula, compare
   'Numbering library': 'Pustaka penomoran',
-  'Numbering library: Pasal, ayat and huruf; BAB and Pasal; 1.1.1': 'Pustaka penomoran: Pasal, ayat, dan huruf; BAB dan Pasal; 1.1.1',
+  'Multilevel lists: Pasal, ayat and huruf; BAB and Pasal; 1.1.1': 'Daftar bertingkat: Pasal, ayat, dan huruf; BAB dan Pasal; 1.1.1',
   'Pasal 1 → (1) → a. → 1.': 'Pasal 1 → (1) → a. → 1.',
   'Articles of a regulation: Pasal, ayat, huruf, angka': 'Batang tubuh peraturan: Pasal, ayat, huruf, angka',
   'BAB I → Pasal 1 → (1) → a.': 'BAB I → Pasal 1 → (1) → a.',

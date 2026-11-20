@@ -158,7 +158,7 @@
         <button type="button" :title="t('Numbering')" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
-        <button ref="listLibraryButton" type="button" class="arrow" :title="t('Numbering library: Pasal, ayat and huruf; BAB and Pasal; 1.1.1')" :aria-label="t('Numbering library')" aria-haspopup="menu" :aria-expanded="listLibrary.open" @click="toggleListLibrary">▾</button>
+        <button ref="listLibraryButton" type="button" class="arrow" :title="t('Multilevel lists: Pasal, ayat and huruf; BAB and Pasal; 1.1.1')" :aria-label="t('Numbering library')" aria-haspopup="menu" :aria-expanded="listLibrary.open" @click="toggleListLibrary">▾</button>
       </span>
       <button data-tab="home" type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" :aria-label="t('Decrease indent')" @click="indentBlocks(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
