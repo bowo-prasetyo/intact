@@ -38,6 +38,9 @@
         <li>A watermark (DRAFT, CONFIDENTIAL or your own text), in Page setup, as Word puts one in the header</li>
         <li>Paper sizes A4, Letter, Legal, A5, A3, Executive, F4 and Folio, or a custom size, in Page setup; page numbers in 1, 2, 3, i, ii, iii and other formats, or from any number, per section (Page number ▾ &gt; Format page numbers…)</li>
         <li>The interface in English or Indonesian (Bahasa Indonesia), chosen on the start page; in Indonesian, starters for official documents (surat dinas, nota dinas, surat undangan, berita acara)</li>
+        <li>Numbering library (Numbering ▾): Indonesia's legal numbering (Pasal 1 → (1) → a. → 1.; BAB I → Pasal 1), 1. → 1.1. → 1.1.1., and Word's own</li>
+        <li>Sort a table's rows by a column (text, numbers or dates), and table formulas such as =SUM(ABOVE) with a number format, from the Table layout menu; Update fields (F9) works them out again</li>
+        <li>Compare documents (Review): what changed in the text between another version of the document and this one, word by word, read on this device</li>
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page</li>
         <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
         <li>Save back to the file opened, and Save as…, where the browser can (Chrome and Edge on a computer): the browser writes the file where it is</li>
@@ -117,7 +120,7 @@
         <li>The page isn't split into pages: columns are balanced, and each header and footer is shown once. The page count is worked out from the paper and margins, so Word may break a line or two differently.</li>
         <li>Headers and footers print once, at the start and the end, where they can't go on the right pages: sections with their own, or a page number beside a picture or table, or in a browser without page-margin boxes (Firefox, Safari).</li>
         <li>Equations need a math font to look as in Word (Windows and macOS have one).</li>
-        <li>Legacy <code>.doc</code> files are not supported.</li>
+        <li>Legacy <code>.doc</code> files are not supported: open one in Word or LibreOffice and save it as a Word Document (.docx). A file encrypted with a password opens here once whoever knows the password removes it in Word (File &gt; Info &gt; Protect Document &gt; Encrypt with Password) and saves it.</li>
       </ul>
       <h2>Keyboard shortcuts</h2>
       <p>The ones from Word for what you can do here (Cmd for Ctrl on a Mac):</p>

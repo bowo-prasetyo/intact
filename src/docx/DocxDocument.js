@@ -19,7 +19,7 @@ import {
 import { StyleSheet, jcToCss, borderCss } from './styles.js';
 import { textboxInfo, setTextboxText, textboxContents, syncCopies } from './textboxes.js';
 import { loadEmbeddedFonts } from './fonts.js';
-import { Numbering, addList, MAX_LEVEL } from './numbering.js';
+import { Numbering, addList, addPresetList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import { STARTERS, starterFiles } from './starters.js';
 import {
@@ -3573,6 +3573,10 @@ export class DocxDocument {
         // Out of the list: back to the paragraph's own indentation (none once its list was edited).
         el.classList.remove('list');
         delete el.dataset.marker;
+        if (el.dataset.markerInline != null) {
+          delete el.dataset.markerInline;
+          el.style.textAlign = '';
+        }
         const pPr = el.dataset.ppr != null && !edited ? this.raw[Number(el.dataset.ppr)] : null;
         const css = this.styles.pPrCss(pPr);
         el.style.paddingLeft = css['padding-left'] || '';
@@ -3608,6 +3612,16 @@ export class DocxDocument {
     const { 'padding-left': pl } = num.pPr ? this.styles.pPrCss(num.pPr) : {};
     el.style.paddingLeft = pl || `${36 * (ilvl + 1)}pt`;
     el.style.textIndent = '';
+    // A level centred on its own line ("Pasal 1", "BAB I"): its number in the line, not hanging.
+    const jc = wAttr(wChild(num.pPr, 'jc'), 'val');
+    if (jc === 'center' && !wChild(this.raw[Number(el.dataset.ppr)], 'jc')) {
+      el.dataset.markerInline = '';
+      el.style.textAlign = 'center';
+      el.style.paddingLeft = '0px';
+    } else if (el.dataset.markerInline != null) {
+      delete el.dataset.markerInline;
+      el.style.textAlign = '';
+    }
   }
 
   // ---------------------------------------------------------------- lists
@@ -3694,6 +3708,15 @@ export class DocxDocument {
    * A numId for a new list of `kind` ('bullet' or 'number'); bullets share one list. `first`, for a
    * list started by typing ("a) ", "- "): its first level's look and start (see numbering.addList).
    */
+  /** A numId for a new list of a ready-made multilevel kind (numbering.LIST_PRESETS: 'pasal', 'bab', 'outline'). */
+  newPresetList(preset) {
+    if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);
+    const numId = addPresetList(this.numberingXml, preset, this.listDefs);
+    this.numberingChanged = true;
+    this.kinds = null;
+    return numId;
+  }
+
   newList(kind, first = null) {
     if (kind === 'bullet' && !first && this.listDefs.bulletNumId) return this.listDefs.bulletNumId;
     if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);

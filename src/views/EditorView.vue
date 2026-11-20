@@ -154,9 +154,12 @@
       <button data-tab="home" type="button" :title="t('Bullets (Ctrl+Shift+L)')" :class="{ on: state.list === 'bullet', ph: true }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button data-tab="home" type="button" :title="t('Numbering')" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
+      <span data-tab="home" class="split ph">
+        <button type="button" :title="t('Numbering')" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
+        <button ref="listLibraryButton" type="button" class="arrow" :title="t('Numbering library: Pasal, ayat and huruf; BAB and Pasal; 1.1.1')" :aria-label="t('Numbering library')" aria-haspopup="menu" :aria-expanded="listLibrary.open" @click="toggleListLibrary">▾</button>
+      </span>
       <button data-tab="home" type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" :aria-label="t('Decrease indent')" @click="indentBlocks(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
@@ -257,6 +260,9 @@
       </button>
       <button data-tab="review" type="button" class="new-comment ph" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+      </button>
+      <button data-tab="review" type="button" :title="t('Compare documents: this document against another version of it, on this device – what changed in the text')" :aria-label="t('Compare documents')" @click="startCompare">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 2.5h5v11H2zM9 2.5h5v11H9z" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.5 5h2M3.5 7.5h2M10.5 5h2M10.5 7.5h2M10.5 10h2" stroke="currentColor" stroke-width="1.1" /></svg><span class="short-label">{{ t('Compare') }}</span>
       </button>
       <span data-tab="review" v-if="threads.length" class="comment-nav" role="group" :aria-label="t('Go to a comment')">
         <button type="button" :title="t('Previous comment')" :aria-label="t('Previous comment')" @click="gotoComment(-1)">
@@ -562,6 +568,9 @@
       <button type="button" role="menuitem" @click="openSplitDialog">{{ t('Split cells…') }}</button>
       <hr />
       <button type="button" role="menuitem" aria-haspopup="dialog" @click="openCellFormat">{{ t('Shading and borders…') }}</button>
+      <hr />
+      <button type="button" role="menuitem" aria-haspopup="dialog" @click="openSortDialog">{{ t('Sort…') }}</button>
+      <button type="button" role="menuitem" aria-haspopup="dialog" @click="openFormulaDialog">{{ t('Formula…') }}</button>
       <hr />
       <button type="button" role="menuitem" @click="tableAction('deleteRows')">{{ tableMenu.rows > 1 ? `Delete ${tableMenu.rows} rows` : 'Delete row' }}</button>
       <button type="button" role="menuitem" @click="tableAction('deleteColumns')">{{ tableMenu.cols > 1 ? `Delete ${tableMenu.cols} columns` : 'Delete column' }}</button>
@@ -966,6 +975,60 @@
       </div>
     </form>
 
+    <!-- Word's Numbering Library and Multilevel List, with Indonesia's legal numbering (Pasal, ayat, huruf). -->
+    <div v-if="listLibrary.open" ref="listLibraryEl" class="change-menu insert-menu list-library" role="menu" :aria-label="t('Numbering library')" :style="{ left: `${listLibrary.x}px`, top: `${listLibrary.y}px` }" @mousedown.prevent @keydown.esc="closeListLibrary(true)" @keydown="onMenuArrows">
+      <button v-for="p in LIST_LIBRARY" :key="p.id" type="button" role="menuitem" @click="applyListPreset(p.id)">{{ t(p.label) }}<span class="hint">{{ t(p.hint) }}</span></button>
+    </div>
+
+    <!-- Word's Sort (Table Layout > Sort): the rows below the heading row, by a column's text, number or date. -->
+    <form v-if="sortDialog.open" ref="sortDialogEl" class="chooser author-dialog para-dialog" role="dialog" :aria-label="t('Sort')" :style="{ left: `${sortDialog.x}px`, top: `${sortDialog.y}px` }" novalidate @submit.prevent="sortTable" @keydown.esc="closeSortDialog">
+      <label>{{ t('Sort by') }}
+        <select v-model.number="sortDialog.col" :aria-label="t('Sort by')">
+          <option v-for="c in sortDialog.columns" :key="c.value" :value="c.value">{{ c.label }}</option>
+        </select>
+      </label>
+      <label>{{ t('Type') }}
+        <select v-model="sortDialog.type" :aria-label="t('Type')">
+          <option value="text">{{ t('Text') }}</option>
+          <option value="number">{{ t('Number') }}</option>
+          <option value="date">{{ t('Date') }}</option>
+        </select>
+      </label>
+      <label class="check"><input v-model="sortDialog.desc" type="radio" name="sort-order" :value="false" /> {{ t('Ascending') }}</label>
+      <label class="check"><input v-model="sortDialog.desc" type="radio" name="sort-order" :value="true" /> {{ t('Descending') }}</label>
+      <label class="check"><input v-model="sortDialog.header" type="checkbox" @change="refreshSortColumns" /> {{ t('My table has a header row') }}</label>
+      <div class="actions">
+        <button type="submit" class="confirm">{{ t('OK') }}</button>
+        <button type="button" @click="closeSortDialog">{{ t('Cancel') }}</button>
+      </div>
+    </form>
+
+    <!-- Word's Formula (Table Layout > Formula): an = field in the cell, worked out now and on F9. -->
+    <form v-if="formulaDialog.open" ref="formulaDialogEl" class="chooser author-dialog para-dialog formula-dialog" role="dialog" :aria-label="t('Formula')" :style="{ left: `${formulaDialog.x}px`, top: `${formulaDialog.y}px` }" novalidate @submit.prevent="insertFormula" @keydown.esc="closeFormulaDialog">
+      <label>{{ t('Formula') }} <input v-model="formulaDialog.formula" type="text" spellcheck="false" autocomplete="off" :aria-label="t('Formula')" /></label>
+      <label>{{ t('Number format') }}
+        <select v-model="formulaDialog.picture" :aria-label="t('Number format')">
+          <option value="">{{ t('As worked out') }}</option>
+          <option v-for="f in formulaPictures" :key="f" :value="f">{{ f }}</option>
+        </select>
+      </label>
+      <label>{{ t('Paste function') }}
+        <select :aria-label="t('Paste function')" @change="pasteFunction($event)">
+          <option value="" />
+          <option v-for="f in FORMULA_FUNCTIONS" :key="f" :value="f">{{ f }}</option>
+        </select>
+      </label>
+      <p class="note" :class="{ error: formulaPreview.error }" role="status">{{ formulaPreview.text }}</p>
+      <p class="note">{{ t('ABOVE, LEFT, BELOW and RIGHT take the numbers beside the cell, up to the first cell that isn’t one; cells are A1, B2… Update fields (F9) works it out again.') }}</p>
+      <div class="actions">
+        <button type="submit" class="confirm" :disabled="formulaPreview.error">{{ t('OK') }}</button>
+        <button type="button" @click="closeFormulaDialog">{{ t('Cancel') }}</button>
+      </div>
+    </form>
+
+    <CompareDialog v-if="compare.result" :result="compare.result" :other="compare.other" @close="closeCompare" @go="goToChange" />
+    <input ref="compareInput" type="file" hidden accept=".docx,.dotx,.docm,.dotm,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onCompareFile" />
+
     <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" :aria-label="t('Change case')" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
       <button v-for="c in CASES" :key="c.id" type="button" role="menuitem" @click="changeCaseTo(c.id)">{{ c.label }}</button>
     </div>
@@ -1069,6 +1132,9 @@ import CrossRefDialog from '../components/CrossRefDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
+import CompareDialog from '../components/CompareDialog.vue';
+import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
+import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
 import { elementChildren } from '../docx/xml.js';
@@ -1091,7 +1157,7 @@ import {
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
-import { PROTECTION_LABELS } from '../docx/package.js';
+import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
 import { checkAccessibility } from '../editor/accessibility.js';
 import { drawLineNumbers } from '../editor/lineNumbers.js';
 import { estimatePages, drawPageBreaks, UNIT_SELECTOR } from '../editor/pages.js';
@@ -5821,6 +5887,350 @@ function editHeaderFooter(which) {
   message.value = `A ${which} for every page: type its text (Undo takes it away)`;
 }
 
+// ------------------------------------------------------------------ numbering library
+
+// Word's Numbering Library and Multilevel List gallery: its own numbering, and ready-made multilevel
+// lists (numbering.js LIST_PRESETS), Indonesia's legal numbering first.
+const LIST_LIBRARY = [
+  { id: 'pasal', label: 'Pasal 1 → (1) → a. → 1.', hint: 'Articles of a regulation: Pasal, ayat, huruf, angka' },
+  { id: 'bab', label: 'BAB I → Pasal 1 → (1) → a.', hint: 'Chapters, with Pasal numbered on through them' },
+  { id: 'outline', label: '1. → 1.1. → 1.1.1.', hint: 'Numbered headings and paragraphs, as a report has them' },
+  { id: 'number', label: '1. → a. → i.', hint: 'Word’s numbering' },
+];
+const listLibrary = reactive({ open: false, x: 0, y: 0 });
+const listLibraryEl = ref(null);
+const listLibraryButton = ref(null);
+
+function toggleListLibrary() {
+  if (listLibrary.open) return closeListLibrary();
+  restoreSelection();
+  const rect = listLibraryButton.value.getBoundingClientRect();
+  Object.assign(listLibrary, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  nextTick(() => {
+    keepInView(listLibrary, listLibraryEl.value);
+    listLibraryEl.value?.querySelector('button')?.focus();
+  });
+}
+
+function closeListLibrary(refocusText = false) {
+  listLibrary.open = false;
+  if (refocusText) refocus();
+}
+
+/**
+ * Makes the selected paragraphs a new list of a kind from the library: each keeps its level (a
+ * paragraph not in a list takes the first), and Tab and Shift+Tab move it between Pasal, ayat and huruf.
+ */
+function applyListPreset(id) {
+  listLibrary.open = false;
+  page.value.focus();
+  if (textLocked.value) return explainLock();
+  let made = false;
+  changeLists((blocks) => {
+    if (!blocks.length) return false;
+    const numId = id === 'number' ? doc.newList('number') : doc.newPresetList(id);
+    blocks.forEach((b) => {
+      const list = doc.listOf(b);
+      doc.setList(b, numId, list && doc.hasListLevel(numId, list.ilvl) ? list.ilvl : 0);
+    });
+    made = true;
+    return true;
+  });
+  if (made) message.value = t('Numbered {list}: Tab and Shift+Tab change the level', { list: t(LIST_LIBRARY.find((p) => p.id === id).label) });
+}
+
+// ------------------------------------------------------------------ sorting a table
+
+// Word's Sort for a table: the rows below the heading row, by one column's text (as the document's
+// language orders it), number (as it writes them) or date; empty cells last. One undoable step.
+const sortDialog = reactive({ open: false, x: 0, y: 0, col: 0, type: 'text', desc: false, header: true, columns: [] });
+const sortDialogEl = ref(null);
+let sortTarget = null;
+
+/** The cell of grid column `col` in row `tr` (a merged cell for each column it spans), or null. */
+function cellInColumn(tr, col) {
+  for (const td of tr.cells) {
+    const pos = doc.cellPosition(td);
+    if (pos && col >= pos.start && col < pos.start + pos.span) return td;
+  }
+  return null;
+}
+
+function refreshSortColumns() {
+  const rows = sortTarget ? doc.tableRows(sortTarget.table) : [];
+  const count = Math.max(0, ...rows.map((r) => [...r.cells].reduce((n, td) => n + (doc.cellPosition(td)?.span || 1), 0)));
+  sortDialog.columns = Array.from({ length: count }, (_, c) => {
+    const head = sortDialog.header && rows[0] ? cellInColumn(rows[0], c)?.textContent.trim() : '';
+    return { value: c, label: head ? head.slice(0, 40) : t('Column {n}', { n: c + 1 }) };
+  });
+  if (sortDialog.col >= count) sortDialog.col = 0;
+}
+
+function openSortDialog() {
+  tableMenu.open = false;
+  const sel = tableSelection();
+  if (!sel) {
+    message.value = t('Click in a table first');
+    return;
+  }
+  sortTarget = { table: sel.table };
+  const rect = anchorRect(layoutButton.value);
+  const rows = doc.tableRows(sel.table);
+  // A heading row: a row Word repeats on each page, or a first row that doesn't hold numbers where the next does.
+  const pos = doc.cellPosition(sel.cell);
+  Object.assign(sortDialog, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4, col: pos?.start ?? 0, type: 'text', desc: false, header: rows.length > 1 });
+  refreshSortColumns();
+  // Numbers in the column: sort them as numbers.
+  const seps = separators(doc.styles.language() || navigator.language);
+  const values = rows.slice(sortDialog.header ? 1 : 0).map((r) => cellInColumn(r, sortDialog.col)?.textContent.trim()).filter(Boolean);
+  if (values.length && values.every((v) => parseCellNumber(v, seps) != null)) sortDialog.type = 'number';
+  nextTick(() => {
+    keepInView(sortDialog, sortDialogEl.value);
+    sortDialogEl.value?.querySelector('select')?.focus();
+  });
+}
+
+function closeSortDialog() {
+  sortDialog.open = false;
+  refocus();
+}
+
+/** A date written in a cell ("17/08/1945", "17 Agustus 1945", "2026-11-20"), as a time, or null. */
+function cellDate(text) {
+  const s = text.trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/.exec(s);
+  if (m) {
+    const lang = doc.styles.language() || navigator.language || 'en';
+    const us = /^en-US$/i.test(lang);
+    const [d, mo] = us ? [+m[2], +m[1]] : [+m[1], +m[2]];
+    const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    return Date.UTC(y, mo - 1, d);
+  }
+  // Month names in the document's language or English.
+  const lang = doc.styles.language() || navigator.language || 'en';
+  for (const l of [lang, 'en']) {
+    for (let mo = 0; mo < 12; mo++) {
+      for (const width of ['long', 'short']) {
+        const name = new Intl.DateTimeFormat(l, { month: width }).format(new Date(2001, mo, 1)).replace('.', '').toLowerCase();
+        const re = new RegExp(`(\\d{1,2})\\s+${name}\\.?\\s+(\\d{4})|${name}\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})`, 'i');
+        m = re.exec(s);
+        if (m) return m[1] ? Date.UTC(+m[2], mo, +m[1]) : Date.UTC(+m[4], mo, +m[3]);
+      }
+    }
+  }
+  const t2 = Date.parse(s);
+  return Number.isNaN(t2) ? null : t2;
+}
+
+function sortTable() {
+  const d = { ...sortDialog };
+  sortDialog.open = false;
+  refocus();
+  const table = sortTarget?.table;
+  if (!table?.isConnected) return;
+  const why = doc.tableLocked(table);
+  if (why) {
+    message.value = why;
+    return;
+  }
+  const locked = readOnlyAt(table, page.value);
+  if (locked) return explainReadOnly(locked, true);
+  if (tracking.value) {
+    message.value = t('Sorting isn’t tracked: turn Track Changes off to sort the table, or move the rows by hand');
+    return;
+  }
+  const rows = doc.tableRows(table);
+  const body = rows.filter((r, i) => !(d.header && i === 0));
+  if (body.some((r) => r.dataset.revRow || [...r.cells].some((td) => td.classList.contains('vmerge') || td.dataset.revCell || td.dataset.revMerge))) {
+    message.value = t('Rows with cells merged down, or with tracked changes to their rows or cells, can’t be sorted: split those cells, or accept or reject the changes first');
+    return;
+  }
+  if (body.length < 2) return;
+  const lang = doc.styles.language() || navigator.language || 'en';
+  const seps = separators(lang);
+  const collator = new Intl.Collator(lang, { numeric: true, sensitivity: 'base' });
+  const keyed = body.map((tr, i) => {
+    const text = cellInColumn(tr, d.col)?.textContent.trim() || '';
+    const key = d.type === 'number' ? parseCellNumber(text, seps) : d.type === 'date' ? cellDate(text) : text || null;
+    return { tr, i, key };
+  });
+  const order = [...keyed].sort((a, b) => {
+    if (a.key == null || b.key == null) return a.key == null && b.key == null ? a.i - b.i : a.key == null ? 1 : -1; // empty last
+    const c = d.type === 'text' ? collator.compare(a.key, b.key) : a.key - b.key;
+    return (d.desc ? -c : c) || a.i - b.i;
+  });
+  if (order.every((o, i) => o.i === i)) {
+    message.value = t('The rows are already in that order');
+    return;
+  }
+  undoStack.flush();
+  // Moved as they are, in their new order after the heading row (rows are kept whole, with their cells' properties).
+  const after = body[body.length - 1].nextElementSibling;
+  const parent = body[0].parentElement;
+  for (const { tr } of order) parent.insertBefore(tr, after);
+  doc.renumber(page.value);
+  onInput();
+  undoStack.commit();
+  markDirty();
+  message.value = t('Sorted {n} rows by {column}, {order}', { n: body.length, column: d.columns[d.col]?.label || '', order: t(d.desc ? 'descending' : 'ascending') });
+}
+
+// ------------------------------------------------------------------ table formulas
+
+const formulaDialog = reactive({ open: false, x: 0, y: 0, formula: '=SUM(ABOVE)', picture: '' });
+const formulaDialogEl = ref(null);
+let formulaRange = null;
+const formulaLang = () => doc.styles.language() || navigator.language || 'en';
+/** Word's number formats for a formula, written with the document's separators ("#.##0,00" in Indonesian). */
+const formulaPictures = computed(() => {
+  void formulaDialog.open;
+  const { group, decimal } = separators(formulaLang());
+  const pic = (s) => s.replace(/[,.]/g, (c) => (c === ',' ? group : decimal));
+  const list = ['#,##0', '#,##0.00', '0%', '0.00%'].map(pic);
+  return /^id\b/i.test(formulaLang()) ? [...list.slice(0, 2), pic('Rp #,##0'), pic('Rp #,##0.00'), ...list.slice(2)] : [...list.slice(0, 2), pic('$#,##0.00'), ...list.slice(2)];
+});
+const formulaCell = () => (formulaRange?.startContainer.nodeType === 1 ? formulaRange.startContainer : formulaRange?.startContainer.parentElement)?.closest('td');
+const formulaPreview = computed(() => {
+  if (!formulaDialog.open) return { text: '', error: false };
+  try {
+    const value = evaluateFormula(formulaDialog.formula, formulaCell(), formulaLang());
+    return { text: t('Result: {value}', { value: formatResult(value, formulaDialog.picture, formulaLang()) }), error: false };
+  } catch (e) {
+    return { text: e.message === 'zero' ? t('Division by zero') : t('Word wouldn’t understand this formula: start with = and use SUM(ABOVE), B2*C2 and the like'), error: true };
+  }
+});
+
+function openFormulaDialog() {
+  tableMenu.open = false;
+  restoreSelection();
+  const range = selectionInPage() || savedRange;
+  const td = range && cellOf(range.startContainer);
+  if (!td || !page.value.contains(td)) {
+    message.value = t('Click in the table cell the formula goes in');
+    return;
+  }
+  formulaRange = range.cloneRange();
+  formulaRange.collapse(false);
+  // As Word's dialog: the numbers above, or else those to the left.
+  let formula = '=SUM(ABOVE)';
+  try {
+    if (!evaluateFormula('=COUNT(ABOVE)', td, formulaLang()) && evaluateFormula('=COUNT(LEFT)', td, formulaLang())) formula = '=SUM(LEFT)';
+  } catch { /* the default */ }
+  const rect = anchorRect(layoutButton.value);
+  Object.assign(formulaDialog, { open: true, formula, picture: '', x: Math.max(8, Math.min(rect.left, window.innerWidth - 340)), y: rect.bottom + 4 });
+  nextTick(() => {
+    keepInView(formulaDialog, formulaDialogEl.value);
+    formulaDialogEl.value?.querySelector('input')?.focus();
+  });
+}
+
+function closeFormulaDialog() {
+  formulaDialog.open = false;
+  refocusAt(formulaRange);
+}
+
+/** Paste function: the function, with its brackets, at the end of the formula. */
+function pasteFunction(e) {
+  const f = e.target.value;
+  e.target.value = '';
+  if (!f) return;
+  formulaDialog.formula = `${formulaDialog.formula.replace(/\s+$/, '') || '='}${f}()`;
+  nextTick(() => {
+    const input = formulaDialogEl.value?.querySelector('input');
+    input?.focus();
+    input?.setSelectionRange(input.value.length - 1, input.value.length - 1);
+  });
+}
+
+/** Inserts the formula as Word's = field at the caret in the cell, its result worked out now. */
+function insertFormula() {
+  if (formulaPreview.value.error) return;
+  const { formula, picture } = formulaDialog;
+  formulaDialog.open = false;
+  refocusAt(formulaRange);
+  const range = selectionInPage();
+  if (!range) return;
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (inField(range.startContainer)) {
+    message.value = t('A formula can’t go inside a field: put the caret after it');
+    return;
+  }
+  const value = formatResult(evaluateFormula(formula, cellOf(range.startContainer), formulaLang()), picture, formulaLang());
+  undoStack.flush();
+  insertNodes(doc.newField(formulaInstr(formula, picture), value), range);
+  onInput();
+  undoStack.commit();
+  markDirty();
+  message.value = t('Formula {formula}: {value} – Update fields (F9) works it out again', { formula, value });
+}
+
+// ------------------------------------------------------------------ comparing documents
+
+const compare = reactive({ result: null, other: '', blocks: [] });
+const compareInput = ref(null);
+
+function startCompare() {
+  compareInput.value.value = '';
+  compareInput.value.click();
+}
+
+/** The page's paragraphs (not headers, footers or notes), and their text as the other version's is read. */
+function pageParagraphs() {
+  const blocks = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-hf-band, .docx-notes, .textbox') && !el.parentElement.closest(BLOCK_SELECTOR));
+  const texts = blocks.map((el) => {
+    const copy = el.cloneNode(true);
+    for (const x of copy.querySelectorAll('[data-tc="del"], .raw-hidden, .note-ref')) x.remove();
+    for (const x of copy.querySelectorAll('.raw-inline[data-raw]')) {
+      if (['del', 'moveFrom'].includes(doc.raw[Number(x.dataset.raw)]?.localName)) x.remove();
+    }
+    return copy.textContent;
+  });
+  const kept = texts.map((tx, i) => [tx, blocks[i]]).filter(([tx]) => tx.replace(/[\s\u00a0]+/g, ''));
+  return { texts: kept.map(([tx]) => tx), blocks: kept.map(([, b]) => b) };
+}
+
+async function onCompareFile(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // A .doc, or a file encrypted with a password or by rights management: say which, as opening one does.
+    const unreadable = sniffFile(bytes);
+    if (unreadable) throw new Error(t('{name} can’t be compared: {why}', { name: file.name, why: unreadable.message }));
+    const zip = await JSZip.loadAsync(bytes);
+    const main = Object.keys(zip.files).find((f) => /^word\/document\d*\.xml$/i.test(f));
+    if (!main) throw new Error(t('{name} isn’t a Word document (.docx)', { name: file.name }));
+    const before = paragraphsOfXml(await zip.file(main).async('string'));
+    const { texts, blocks } = pageParagraphs();
+    compare.blocks = blocks;
+    compare.other = file.name;
+    compare.result = compareParagraphs(before, texts);
+  } catch (err) {
+    message.value = /zip|central directory|End of data/i.test(err.message)
+      ? t('{name} can’t be compared: it isn’t a .docx (an older .doc, or a file protected with a password, can’t be read here)', { name: file.name })
+      : err.message;
+  }
+}
+
+function closeCompare() {
+  compare.result = null;
+  refocus();
+}
+
+/** Goes to a change in this document: its paragraph (or, for text taken out, where it was). */
+function goToChange(change) {
+  const block = compare.blocks[Math.min(change.at, compare.blocks.length - 1)];
+  compare.result = null;
+  if (!block?.isConnected) return;
+  page.value.focus();
+  placeCaret(block, change.at < compare.blocks.length);
+  block.scrollIntoView({ block: 'center' });
+  message.value = change.kind === 'removed' ? t('Text taken out was here') : change.kind === 'added' ? t('Added in this document') : t('Changed in this document');
+}
+
 // ------------------------------------------------------------------ page number format
 
 // Word's page number formats (Format Page Numbers' Number format), as w:pgNumType's w:fmt.
@@ -5931,6 +6341,7 @@ function updateAllFields() {
     t.toc && (t.toc === 1 ? `the table of contents (${count(t.entries, 'entry', 'entries')})` : `${t.toc} tables of contents`),
     t.ref && count(t.ref, 'cross-reference'),
     t.seq && count(t.seq, 'caption number'),
+    t.formula && count(t.formula, 'formula', 'formulas'),
     t.noteref && count(t.noteref, 'note number'),
   ].filter(Boolean);
   const notes = [];
@@ -7611,6 +8022,9 @@ function onDocumentMousedown(e) {
   if (caseMenu.open && !caseMenuEl.value?.contains(e.target) && !caseButton.value?.contains(e.target)) caseMenu.open = false;
   if (pageNumberMenu.open && !pageNumberMenuEl.value?.contains(e.target) && !pageNumberButton.value?.contains(e.target)) pageNumberMenu.open = false;
   if (numDialog.open && !numDialogEl.value?.contains(e.target) && !pageNumberButton.value?.contains(e.target)) numDialog.open = false;
+  if (listLibrary.open && !listLibraryEl.value?.contains(e.target) && !listLibraryButton.value?.contains(e.target)) listLibrary.open = false;
+  if (sortDialog.open && !sortDialogEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) sortDialog.open = false;
+  if (formulaDialog.open && !formulaDialogEl.value?.contains(e.target) && !layoutButton.value?.contains(e.target)) formulaDialog.open = false;
   if (ctxMenu.open && !ctxMenuEl.value?.contains(e.target)) ctxMenu.open = false;
   if (shareReady.file && !shareReadyEl.value?.contains(e.target)) shareReady.file = null;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
@@ -8546,6 +8960,11 @@ async function close() {
 .insert-menu { min-width: 220px; }
 .insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
 .insert-menu .hint { color: var(--muted); font-size: 12px; }
+.list-library { width: min(460px, calc(100vw - 16px)); }
+.list-library button > :first-child, .list-library button { white-space: nowrap; }
+.list-library .hint { white-space: normal; text-align: right; }
+.formula-dialog input[type="text"] { font-family: ui-monospace, Consolas, monospace; min-width: 14em; }
+.formula-dialog .note.error { color: var(--danger); }
 .insert-menu .auto-date { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
 .insert-menu .auto-date .hint { flex-basis: 100%; padding-left: 20px; }
 .page-number-menu { min-width: 260px; }
@@ -8909,6 +9328,8 @@ async function close() {
   content: attr(data-marker); position: absolute; transform: translateX(calc(-100% - 0.5em));
   text-indent: 0; white-space: nowrap;
 }
+/* A list level centred on its own line ("Pasal 1", "BAB I"): its number in the line. */
+.docx-sheet .list[data-marker-inline]::before { position: static; transform: none; margin-right: .3em; }
 .docx-sheet a { color: #0563c1; }
 .docx-sheet img { max-width: 100%; vertical-align: bottom; }
 /* Hidden markers (comment ranges, bookmarks, field codes) are empty: shown inline, not display:none,
