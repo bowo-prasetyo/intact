@@ -10,10 +10,12 @@ const BODY = '<w:p><w:pPr><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:
 const dialog = (page) => page.getByRole('dialog', { name: 'Page setup' });
 const sections = (xml) => xml.match(/<w:sectPr>.*?<\/w:sectPr>/g);
 
+/** Opens Page setup with the caret in the final section, for the whole document. */
 async function openSetup(page) {
-  await page.locator('.docx-page p').first().click();
+  await page.locator('.docx-page p', { hasText: 'Section two.' }).click();
   await page.getByRole('button', { name: 'Page setup' }).click();
   await expect(dialog(page)).toBeVisible();
+  await dialog(page).getByRole('combobox', { name: 'Apply paper and margins to' }).selectOption('whole');
 }
 
 test('the dialog shows the paper and margins; changed margins go to every section, nothing else', async ({ page }) => {

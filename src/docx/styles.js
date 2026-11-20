@@ -1,8 +1,11 @@
 // Reads styles.xml / theme1.xml to (a) find heading styles and (b) produce CSS that makes
 // the editor look roughly like Word. Also injects built-in heading styles that are missing.
-import { NS, wChild, wChildren, wAttr, onOff, parseXml } from './xml.js';
+import { NS, wChild, wChildren, wAttr, onOff, parseXml, serializeXml, ensureOrdered, removeW, RPR_ORDER, PPR_ORDER } from './xml.js';
 
 const twipsToPt = (v) => Number(v) / 20;
+// The order of a style's children (CT_Style), for adding its run and paragraph properties.
+const STYLE_ORDER = ['name', 'aliases', 'basedOn', 'next', 'link', 'autoRedefine', 'hidden', 'uiPriority', 'semiHidden',
+  'unhideWhenUsed', 'qFormat', 'locked', 'personal', 'personalCompose', 'personalReply', 'rsid', 'pPr', 'rPr', 'tblPr', 'trPr', 'tcPr', 'tblStylePr'];
 
 export const BUILTIN_STYLES = {
   title: { name: 'title', id: 'Title', xml: (basedOn) => `
@@ -371,6 +374,143 @@ export class StyleSheet {
   }
 
   /** A stylesheet for the editor page, scoped under `scope`. */
+  // ---------------------------------------------------------------- Modify Style
+
+  /** The <w:style> element of style `id`. */
+  styleEl(id) {
+    return wChildren(this.doc.documentElement, 'style').find((s) => wAttr(s, 'styleId') === id) || null;
+  }
+
+  /**
+   * What paragraph style `id` looks like, from its base styles and the document's defaults, as
+   * Word's Modify Style shows it: { font, size (pt), bold, italic, color (RRGGBB or null for
+   * automatic), align ('left', 'center', 'right', 'both'), before, after (twips), line (240ths of a
+   * line, or null for a fixed or minimum height) }.
+   */
+  styleFormat(id) {
+    const chain = this.chain(id);
+    const rPrs = [this.defaultRPr, ...chain.map((st) => st.rPr)];
+    const pPrs = [this.defaultPPr, ...chain.map((st) => st.pPr)];
+    const last = (list, local, attr = 'val') => {
+      let v = null;
+      for (const pr of list) {
+        const el = wChild(pr, local);
+        if (el && (attr === null || wAttr(el, attr) != null)) v = attr === null ? el : wAttr(el, attr);
+      }
+      return v;
+    };
+    let font = null;
+    for (const pr of rPrs) {
+      const f = wChild(pr, 'rFonts');
+      if (!f) continue;
+      const theme = wAttr(f, 'asciiTheme');
+      if (theme) font = theme.startsWith('major') ? this.fonts.major : this.fonts.minor;
+      else if (wAttr(f, 'ascii')) font = wAttr(f, 'ascii');
+    }
+    const toggle = (local) => {
+      let on = false;
+      for (const pr of rPrs) {
+        const el = wChild(pr, local);
+        if (el) on = onOff(el) !== false;
+      }
+      return on;
+    };
+    const color = last(rPrs, 'color');
+    const lineRule = last(pPrs, 'spacing', 'lineRule');
+    const line = last(pPrs, 'spacing', 'line');
+    return {
+      font: font || this.fonts.minor,
+      size: Number(last(rPrs, 'sz') ?? 20) / 2,
+      bold: toggle('b'),
+      italic: toggle('i'),
+      color: color && /^[0-9a-f]{6}$/i.test(color) ? color.toUpperCase() : null,
+      align: ({ start: 'left', end: 'right', both: 'both', distribute: 'both' })[last(pPrs, 'jc')] || last(pPrs, 'jc') || 'left',
+      before: Number(last(pPrs, 'spacing', 'before') ?? 0),
+      after: Number(last(pPrs, 'spacing', 'after') ?? 0),
+      line: lineRule && lineRule !== 'auto' ? null : Number(line ?? 240),
+    };
+  }
+
+  /**
+   * Changes paragraph style `id`'s definition, as Word's Modify Style does: `change` has any of
+   * font, size, bold, italic, color (null: automatic), align, before, after, line (see
+   * styleFormat). Only what it names is written, in the style's own w:rPr and w:pPr, so what the
+   * style takes from its base style otherwise is kept. Every paragraph in the style (and in styles
+   * based on it) follows. Returns false if there is no such style.
+   */
+  modifyStyle(id, change) {
+    const el = this.styleEl(id);
+    if (!el) return false;
+    this.originals ||= new Map();
+    if (!this.originals.has(id)) this.originals.set(id, serializeXml(el).replace(/^<\?xml[^>]*\?>\s*/, ''));
+    const has = (k) => change[k] !== undefined;
+    const set = (parent, local, order, attrs) => {
+      const c = ensureOrdered(parent, local, order);
+      for (const a of [...c.attributes]) c.removeAttributeNode(a);
+      for (const [k, v] of Object.entries(attrs)) c.setAttributeNS(NS.w, `w:${k}`, String(v));
+      return c;
+    };
+    if (['font', 'size', 'bold', 'italic', 'color'].some(has)) {
+      const rPr = wChild(el, 'rPr') || ensureOrdered(el, 'rPr', STYLE_ORDER);
+      if (has('font')) {
+        const f = ensureOrdered(rPr, 'rFonts', RPR_ORDER);
+        for (const a of ['asciiTheme', 'hAnsiTheme', 'eastAsiaTheme', 'cstheme']) f.removeAttributeNS(NS.w, a);
+        for (const a of ['ascii', 'hAnsi', 'cs']) f.setAttributeNS(NS.w, `w:${a}`, change.font);
+      }
+      if (has('size')) {
+        const half = String(Math.round(change.size * 2));
+        set(rPr, 'sz', RPR_ORDER, { val: half });
+        set(rPr, 'szCs', RPR_ORDER, { val: half });
+      }
+      // Off is written as off (w:val="0"), so a base style's bold doesn't come through.
+      for (const [k, local] of [['bold', 'b'], ['italic', 'i']]) {
+        if (!has(k)) continue;
+        removeW(rPr, local, `${local}Cs`);
+        const c = ensureOrdered(rPr, local, RPR_ORDER);
+        if (!change[k]) c.setAttributeNS(NS.w, 'w:val', '0');
+      }
+      if (has('color')) set(rPr, 'color', RPR_ORDER, { val: change.color || 'auto' });
+    }
+    if (['align', 'before', 'after', 'line'].some(has)) {
+      const pPr = wChild(el, 'pPr') || ensureOrdered(el, 'pPr', STYLE_ORDER);
+      if (['before', 'after', 'line'].some(has)) {
+        const sp = ensureOrdered(pPr, 'spacing', PPR_ORDER);
+        for (const a of ['beforeLines', 'afterLines', 'beforeAutospacing', 'afterAutospacing']) {
+          if ((a.startsWith('before') && has('before')) || (a.startsWith('after') && has('after'))) sp.removeAttributeNS(NS.w, a);
+        }
+        if (has('before')) sp.setAttributeNS(NS.w, 'w:before', String(Math.round(change.before)));
+        if (has('after')) sp.setAttributeNS(NS.w, 'w:after', String(Math.round(change.after)));
+        if (has('line')) {
+          sp.setAttributeNS(NS.w, 'w:line', String(Math.round(change.line)));
+          sp.setAttributeNS(NS.w, 'w:lineRule', 'auto');
+        }
+      }
+      if (has('align')) set(pPr, 'jc', PPR_ORDER, { val: change.align });
+    }
+    this.changed = true;
+    this.reindex();
+    return true;
+  }
+
+  /** The styles changed with Modify Style, as they are now: a string, for Undo (see setStyleState). */
+  styleState() {
+    if (!this.originals?.size) return '';
+    return JSON.stringify([...this.originals.keys()].map((id) => [id, serializeXml(this.styleEl(id)).replace(/^<\?xml[^>]*\?>\s*/, '')]));
+  }
+
+  /** Puts the styles changed with Modify Style back as `state` (from styleState) has them, or as they were. */
+  setStyleState(state) {
+    if (!this.originals?.size) return;
+    const now = new Map(state ? JSON.parse(state) : []);
+    for (const [id, original] of this.originals) {
+      const el = this.styleEl(id);
+      const xml = now.get(id) ?? original;
+      const fresh = this.doc.importNode(parseXml(xml).documentElement, true);
+      if (el) el.replaceWith(fresh);
+    }
+    this.reindex();
+  }
+
   css(scope) {
     const rules = [];
     const base = { ...this.pPrCss(this.defaultPPr), ...this.rPrCss(this.defaultRPr) };

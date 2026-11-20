@@ -51,7 +51,7 @@
       <button type="button" class="ph" title="Undo (Ctrl+Z)" aria-label="Undo" @click="undo">↶</button>
       <button type="button" class="ph" title="Redo (Ctrl+Y)" aria-label="Redo" @click="redo">↷</button>
       <span class="sep" />
-      <select :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="applyBlockStyle($event.target.value)">
+      <select :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="onStyleMenu">
         <option value="normal">Normal</option>
         <option value="title">Title</option>
         <option value="h1">Heading 1</option>
@@ -61,6 +61,7 @@
           <option v-for="c in styleChoices" :key="c.id" :value="`style:${c.id}`">{{ c.label }}</option>
         </optgroup>
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
+        <option value="__modify">Modify style…</option>
       </select>
       <select class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts first, then Word’s usual ones" @change="applyFont($event.target.value)">
         <option v-if="!fontValue" value="" disabled hidden>{{ state.font }}</option>
@@ -261,8 +262,8 @@
           <button v-if="picture.el" ref="layoutOptionsButton" type="button" class="layout-options" title="Layout Options: wrapping, position, size and alt text" aria-haspopup="dialog" :aria-expanded="picturePanel.open" :style="{ left: `${picture.x + picture.w + 6}px`, top: `${picture.y}px` }" @mousedown.prevent @click="togglePicturePanel">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="3" width="6" height="5" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M10 4h4M10 7h4M2 11h12M2 14h12" stroke="currentColor" stroke-width="1.3" /></svg>
           </button>
-          <div v-if="doc.headers.length > 1" class="hf-tabs header" role="tablist" aria-label="Headers">
-            <button v-for="(v, i) in doc.headers" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @mousedown.prevent @click="showVariant('header', i)">{{ v.label }}</button>
+          <div v-if="variantTabs.header.length > 1" class="hf-tabs header" role="tablist" aria-label="Headers">
+            <button v-for="{ v, i } in variantTabs.header" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @mousedown.prevent @click="showVariant('header', i)">{{ v.label }}</button>
           </div>
           <div
             ref="page"
@@ -282,8 +283,8 @@
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
-          <div v-if="doc.footers.length > 1" class="hf-tabs footer" role="tablist" aria-label="Footers">
-            <button v-for="(v, i) in doc.footers" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @mousedown.prevent @click="showVariant('footer', i)">{{ v.label }}</button>
+          <div v-if="variantTabs.footer.length > 1" class="hf-tabs footer" role="tablist" aria-label="Footers">
+            <button v-for="{ v, i } in variantTabs.footer" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @mousedown.prevent @click="showVariant('footer', i)">{{ v.label }}</button>
           </div>
         </div>
       </div>
@@ -572,7 +573,16 @@
       <button type="button" role="menuitem" @click="openParagraphDialog">Paragraph…</button>
     </div>
 
-    <form v-if="pageDialog.open" ref="pageDialogEl" class="chooser author-dialog para-dialog page-dialog" role="dialog" aria-label="Page setup" :style="{ left: `${pageDialog.x}px`, top: `${pageDialog.y}px` }" novalidate @submit.prevent="applyPageSetup" @keydown.esc="closePageSetup">
+    <form v-if="pageDialog.open" ref="pageDialogEl" class="chooser author-dialog para-dialog page-dialog" role="dialog" aria-label="Page setup" :style="{ left: `${pageDialog.x}px`, top: `${pageDialog.y}px`, maxHeight: `calc(100vh - ${pageDialog.y + 8}px)` }" novalidate @submit.prevent="applyPageSetup" @keydown.esc="closePageSetup">
+      <label class="apply-to">Apply to
+        <select v-model="pageDialog.scope" aria-label="Apply paper and margins to">
+          <option value="whole">Whole document</option>
+          <option v-if="pageDialog.sections > 1" value="section">This section ({{ pageDialog.sectionNo }} of {{ pageDialog.sections }})</option>
+          <option value="forward">This point forward</option>
+          <option v-if="pageDialog.selected" value="selected">Selected text</option>
+        </select>
+      </label>
+      <p v-if="pageDialog.scope === 'forward' || pageDialog.scope === 'selected'" class="note">{{ pageDialog.scope === 'forward' ? 'A section break (next page) goes before the paragraph with the caret: from there on, the pages are set as below.' : 'Section breaks go before and after the selected paragraphs: their pages are set as below, as for a wide table on a landscape page.' }}</p>
       <fieldset>
         <legend>Paper</legend>
         <label>Size
@@ -608,6 +618,11 @@
         </label>
       </fieldset>
       <fieldset>
+        <legend>Headers and footers</legend>
+        <label class="check"><input v-model="pageDialog.titlePg" type="checkbox" /> Different first page</label>
+        <label class="check"><input v-model="pageDialog.evenAndOdd" type="checkbox" /> Different odd and even pages</label>
+      </fieldset>
+      <fieldset>
         <legend>Watermark</legend>
         <label>Text
           <select v-model="pageDialog.mark" aria-label="Watermark text">
@@ -624,7 +639,7 @@
           </select>
         </label>
       </fieldset>
-      <p class="note">For the whole document, every section</p>
+      <p class="note">Headers and footers and the watermark: for the whole document</p>
       <div class="actions">
         <button type="submit" class="confirm">OK</button>
         <button type="button" @click="closePageSetup">Cancel</button>
@@ -700,6 +715,54 @@
       <div class="actions">
         <button type="submit" class="confirm">OK</button>
         <button type="button" @click="closeParagraphDialog">Cancel</button>
+      </div>
+    </form>
+
+    <form v-if="modifyDialog.open" ref="modifyDialogEl" class="chooser author-dialog para-dialog modify-dialog" role="dialog" :aria-label="`Modify style ${modifyDialog.name}`" :style="{ left: `${modifyDialog.x}px`, top: `${modifyDialog.y}px` }" novalidate @submit.prevent="applyModifyStyle" @keydown.esc="closeModifyStyle">
+      <h2>Modify style: {{ modifyDialog.name }}</h2>
+      <fieldset>
+        <legend>Text</legend>
+        <label>Font
+          <select v-model="modifyDialog.font" aria-label="Style font">
+            <option v-for="f in modifyFonts" :key="f" :value="f">{{ f }}</option>
+          </select>
+        </label>
+        <label>Size (pt) <input v-model.number="modifyDialog.size" type="number" min="1" max="1638" step="0.5" aria-label="Style font size (pt)" /></label>
+        <div class="checks">
+          <label class="check"><input v-model="modifyDialog.bold" type="checkbox" /> <b>Bold</b></label>
+          <label class="check"><input v-model="modifyDialog.italic" type="checkbox" /> <i>Italic</i></label>
+        </div>
+        <label>Colour
+          <span class="color-pick">
+            <label class="check"><input v-model="modifyDialog.auto" type="checkbox" /> Automatic</label>
+            <input v-model="modifyDialog.color" type="color" :disabled="modifyDialog.auto" aria-label="Style colour" />
+          </span>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Paragraph</legend>
+        <label>Alignment
+          <select v-model="modifyDialog.align" aria-label="Style alignment">
+            <option value="left">Left</option>
+            <option value="center">Centred</option>
+            <option value="right">Right</option>
+            <option value="both">Justified</option>
+          </select>
+        </label>
+        <label>Before (pt) <input v-model.number="modifyDialog.before" type="number" min="0" step="6" aria-label="Style space before (pt)" /></label>
+        <label>After (pt) <input v-model.number="modifyDialog.after" type="number" min="0" step="6" aria-label="Style space after (pt)" /></label>
+        <label>Line spacing
+          <select v-model="modifyDialog.line" aria-label="Style line spacing">
+            <option v-if="!LINE_CHOICES.some(([v]) => String(v) === modifyDialog.line)" :value="modifyDialog.line">{{ modifyDialog.line ? `${Math.round(Number(modifyDialog.line) / 2.4) / 100} lines` : 'As set (exactly or at least)' }}</option>
+            <option v-for="[v, label] in LINE_CHOICES" :key="v" :value="String(v)">{{ label }}</option>
+          </select>
+        </label>
+      </fieldset>
+      <p class="preview" :style="{ fontFamily: `'${modifyDialog.font}'`, fontSize: `${Math.min(28, Number(modifyDialog.size) || 11)}pt`, fontWeight: modifyDialog.bold ? 700 : 400, fontStyle: modifyDialog.italic ? 'italic' : 'normal', color: modifyDialog.auto ? '#000' : modifyDialog.color, textAlign: modifyDialog.align === 'both' ? 'justify' : modifyDialog.align }">{{ modifyDialog.name }}: the quick brown fox</p>
+      <p class="note">Every paragraph in this style follows, here and in Word.</p>
+      <div class="actions">
+        <button type="submit" class="confirm">OK</button>
+        <button type="button" @click="closeModifyStyle">Cancel</button>
       </div>
     </form>
 
@@ -845,6 +908,7 @@
       <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">Ctrl+Alt+M</span></button>
       <template v-if="!ctxMenu.locked">
         <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">Paragraph…</button>
+        <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">Modify style…</button>
         <template v-if="ctxMenu.table">
           <hr />
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('rowsAbove'))">Insert row above</button>
@@ -1334,13 +1398,15 @@ const aligns = [
 // Word, the body starts at the top margin or below the header, whichever is lower. Headers and
 // footers are in the page itself (see doc.renderBand), placed by CSS from these sizes.
 const footerSpace = ref(0); // the footer's height, kept free below the text
+/** Whether the page has a header (footer) band: one made here and taken away again by Undo hasn't. */
+const hasBand = (which) => (page.value ? !!page.value.querySelector(`:scope > .docx-hf-band.${which}`) : !!(which === 'header' ? doc.headers : doc.footers).length);
 const pageTick = ref(0); // the page's geometry (Page setup) or its bands (a footer added) changed
 const sheetStyle = computed(() => (pageTick.value, { width: `${doc.page.width}px`, minHeight: `${doc.page.minHeight}px`, zoom: zoomLevel.value === 100 ? null : String(sheetZoom.value) }));
 const pageStyle = computed(() => {
   void pageTick.value;
   const p = doc.page;
   return {
-    padding: `${doc.headers.length ? 0 : p.top}px ${p.right}px ${doc.footers.length ? Math.max(p.bottom, footerSpace.value) : p.bottom}px ${p.left}px`,
+    padding: `${hasBand('header') ? 0 : p.top}px ${p.right}px ${hasBand('footer') ? Math.max(p.bottom, footerSpace.value) : p.bottom}px ${p.left}px`,
     '--hf-header': `${p.header}px`,
     '--hf-top': `${Math.max(0, p.top - p.header)}px`,
     '--hf-footer': `${p.footer}px`,
@@ -1390,6 +1456,24 @@ onBeforeUnmount(() => {
   window.removeEventListener('afterprint', onAfterPrint);
   if (titleBeforePrint != null) document.title = titleBeforePrint;
 })
+// The header (footer) tabs: the variants the document uses (a first page's only with a different
+// first page…) whose host is in the page, with their index (their hosts' data-variant).
+const variantTabs = computed(() => {
+  void pageTick.value;
+  const tabs = (which) => (which === 'header' ? doc.headers : doc.footers)
+    .map((v, i) => ({ v, i }))
+    .filter(({ v, i }) => doc.variantShown(v) && (!page.value || page.value.querySelector(`.docx-hf-part[data-which="${which}"][data-variant="${i}"]`)));
+  return { header: tabs('header'), footer: tabs('footer') };
+});
+
+/** Shows a header and footer the document uses, if the one shown no longer is (or none was chosen). */
+function keepVariantsShown() {
+  for (const which of ['header', 'footer']) {
+    const tabs = variantTabs.value[which];
+    if (tabs.length && !tabs.some((t) => t.i === hf[which])) hf[which] = tabs[0].i;
+  }
+}
+
 function refreshVariants() {
   if (!variantStyle) return;
   variantStyle.textContent = ['header', 'footer']
@@ -1422,6 +1506,8 @@ onMounted(() => {
   document.head.append(styleEl);
   refreshCss();
   page.value.replaceChildren(doc.render());
+  refreshSections();
+  nextTick(keepVariantsShown);
   // The document's language, so the browser checks spelling (and hyphenates) in it where it can.
   const lang = doc.styles.language();
   if (lang && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/i.test(lang)) page.value.closest('.docx-sheet').lang = lang;
@@ -1457,11 +1543,15 @@ onMounted(() => {
   // Undo also covers what isn't in the page: comments in headers, footers and notes, and Page setup.
   undoStack = createHistory(page.value, {
     state: {
-      get: () => JSON.stringify([doc.storyState(), doc.pageSetup]),
+      get: () => JSON.stringify([doc.storyState(), doc.pageSetup, doc.hfFlags, doc.styles.styleState()]),
       set: (v) => {
-        const [story, setup] = JSON.parse(v);
+        const [story, setup, flags, styles] = JSON.parse(v);
         doc.setStoryState(story);
         doc.setPageSetup(setup);
+        doc.hfFlags = { ...flags };
+        doc.relabelVariants(page.value);
+        doc.styles.setStyleState(styles);
+        refreshCss();
       },
     },
   });
@@ -1554,8 +1644,8 @@ function textHeight() {
     return part ? part.getBoundingClientRect().height / z : 0;
   };
   // A header or footer taller than its margin pushes the text away from it, as in Word.
-  const top = Math.max(p.top, doc.headers.length ? p.header + shown('header') : 0);
-  const bottom = Math.max(p.bottom, doc.footers.length ? p.footer + shown('footer') : 0);
+  const top = Math.max(p.top, hasBand('header') ? p.header + shown('header') : 0);
+  const bottom = Math.max(p.bottom, hasBand('footer') ? p.footer + shown('footer') : 0);
   return p.minHeight - top - bottom;
 }
 
@@ -5526,7 +5616,11 @@ const MARGIN_PRESETS = [
   { name: 'Wide', top: 1440, bottom: 1440, left: 2880, right: 2880 },
 ];
 const MARGINS = ['top', 'bottom', 'left', 'right'];
-const pageDialog = reactive({ open: false, x: 0, y: 0, unit: 'cm', paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal' });
+const pageDialog = reactive({
+  open: false, x: 0, y: 0, unit: 'cm', paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal',
+  scope: 'whole', sections: 1, sectionNo: 1, selected: false, titlePg: false, evenAndOdd: false,
+});
+let pageRange = null; // the text Page setup applies to, for "This section", "This point forward" and "Selected text"
 // Word's Watermark gallery's texts (Design > Watermark).
 const WATERMARKS = ['DRAFT', 'CONFIDENTIAL', 'DO NOT COPY', 'SAMPLE', 'URGENT', 'ASAP'];
 const pageDialogEl = ref(null);
@@ -5539,7 +5633,9 @@ const marginPreset = computed(() => MARGIN_PRESETS.find((m) => MARGINS.every((k)
 function pageChanged() {
   pageTick.value++;
   refreshPrintPage();
+  refreshSections();
   nextTick(() => {
+    keepVariantsShown();
     measureFooter();
     scheduleMarks();
     if (hasLineNumbers) scheduleLineNumbers();
@@ -5548,7 +5644,13 @@ function pageChanged() {
 
 function openPageSetup() {
   if (pageDialog.open) return closePageSetup();
-  const now = doc.pageSetupNow();
+  restoreSelection();
+  const range = selectionInPage() || savedRange;
+  pageRange = range && !noteAt(range.startContainer) ? range.cloneRange() : null;
+  const blocks = pageRange ? blocksIn(pageRange) : [];
+  const ends = sectionEnds();
+  const end = blocks[0] ? sectionEndOf(blocks[0]) : null;
+  const now = end ? doc.sectionSetup(end) : doc.pageSetupNow();
   const [short, long] = [Math.min(now.w, now.h), Math.max(now.w, now.h)];
   const paper = PAPERS.find((p) => Math.abs(p.w - short) <= 20 && Math.abs(p.h - long) <= 20);
   const unit = unitFor(now.w, now.h);
@@ -5558,9 +5660,14 @@ function openPageSetup() {
     paper: paper ? paper.name : 'custom', orient: now.orient === 'landscape' || now.w > now.h ? 'landscape' : 'portrait',
     top: cm(now.top), bottom: cm(now.bottom), left: cm(now.left), right: cm(now.right), w: now.w, h: now.h,
     ...watermarkNow(),
+    ...doc.headerFooterFlags(),
   };
   const rect = pageSetupButton.value.getBoundingClientRect();
-  Object.assign(pageDialog, pageInitial, { unit, open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  Object.assign(pageDialog, pageInitial, {
+    unit, open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4,
+    sections: ends.length + 1, sectionNo: end ? ends.indexOf(end) + 1 : ends.length + 1,
+    scope: ends.length ? 'section' : 'whole', selected: !!pageRange && !pageRange.collapsed && blocks.length > 0,
+  });
   nextTick(() => {
     keepInView(pageDialog, pageDialogEl.value);
     pageDialogEl.value?.querySelector('select')?.focus();
@@ -5600,9 +5707,10 @@ function applyPageSetup() {
   const markText = (d.mark === 'custom' ? d.markText : d.mark).trim();
   const markInitial = (i.mark === 'custom' ? i.markText : i.mark).trim();
   const markChanged = markText !== markInitial || (!!markText && d.markLayout !== i.markLayout);
+  const hfChanged = d.titlePg !== i.titlePg || d.evenAndOdd !== i.evenAndOdd;
   refocus();
   const paged = Object.keys(change).length > 0;
-  if (!paged && !markChanged) return;
+  if (!paged && !markChanged && !hfChanged) return;
   if (paged) {
     const width = change.w ?? i.w;
     const left = change.left ?? pageTwips.left;
@@ -5612,17 +5720,233 @@ function applyPageSetup() {
       return;
     }
   }
-  if (markChanged && textLocked.value) return explainLock();
+  if ((markChanged || hfChanged || (paged && (d.scope !== 'whole' || sectionEnds().length))) && textLocked.value) return explainLock();
   undoStack.flush();
-  if (paged) doc.setPageSetup({ ...doc.pageSetup, ...change });
+  const where = paged ? applySetupTo(d.scope, change) : null;
   if (markChanged) setWatermark(markText, d.markLayout !== 'horizontal');
+  if (hfChanged) applyHeaderFooterFlags(d.titlePg, d.evenAndOdd);
   pageChanged();
   undoStack.commit();
   markDirty();
   const said = [];
-  if (paged) said.push('Page setup changed for the whole document');
+  if (paged) said.push(`Page setup changed ${where}`);
+  if (hfChanged) said.push([d.titlePg !== i.titlePg && `${d.titlePg ? 'A' : 'No'} different first page`, d.evenAndOdd !== i.evenAndOdd && `odd and even pages ${d.evenAndOdd ? 'different' : 'alike'}`].filter(Boolean).join(', ') + (d.titlePg && !i.titlePg || d.evenAndOdd && !i.evenAndOdd ? ': their header and footer are in the tabs above and below the page' : ''));
   if (markChanged) said.push(markText ? `Watermark: ${markText}` : 'Watermark removed');
   message.value = said.join(' · ');
+}
+
+// ------------------------------------------------------------------ sections
+
+// The body's blocks, top-level: the page's children (and those of a section set in columns), not
+// the header, footer or notes. A section ends at a paragraph holding a section break
+// (data-section-end), and the final section at the end of the body.
+function topBlocks() {
+  const out = [];
+  for (const c of page.value.children) {
+    if (c.matches('.docx-hf-band, .docx-notes')) continue;
+    if (c.matches('.docx-columns')) out.push(...c.children);
+    else out.push(c);
+  }
+  return out;
+}
+
+/** The top-level blocks a range is in (the one with the caret, for a caret). */
+function blocksIn(range) {
+  const tops = topBlocks();
+  const of = (node) => tops.find((b) => b === node || b.contains(node));
+  if (range.collapsed) return [of(range.startContainer)].filter(Boolean);
+  const first = of(range.startContainer);
+  const last = of(range.endContainer);
+  if (!first || !last) return [];
+  return tops.slice(tops.indexOf(first), tops.indexOf(last) + 1);
+}
+
+/** The paragraphs that end a section, in order (the final section ends with the body). */
+function sectionEnds() {
+  return topBlocks().filter((b) => b.dataset.sectionEnd != null);
+}
+
+/** The paragraph ending the section that top-level `block` is in, or null for the final section. */
+function sectionEndOf(block) {
+  const tops = topBlocks();
+  for (let i = tops.indexOf(block); i >= 0 && i < tops.length; i++) if (tops[i].dataset.sectionEnd != null) return tops[i];
+  return null;
+}
+
+/** The section properties of the section that top-level `block` is in, as they are now. */
+const sectPrOf = (block) => {
+  const end = sectionEndOf(block);
+  return end ? doc.sectionBreakOf(end) : doc.finalSectPr();
+};
+
+/** A paragraph to hold a section break right after (`after`) or before top-level `block`: itself, or a new empty one beside a table. */
+function breakHolder(block, after) {
+  if (block.matches('p, h1, h2, h3, h4, h5, h6')) return block;
+  const p = doc.emptyParagraph();
+  if (after) block.after(p);
+  else block.before(p);
+  return p;
+}
+
+/**
+ * Applies Page setup's `change` to `scope`, as Word's "Apply to": the whole document (every
+ * section), this section, this point forward (a section break before the caret's paragraph), or
+ * the selected text (section breaks before and after it). Returns where it applied, for messages.
+ */
+function applySetupTo(scope, change) {
+  const setFor = (end) => (end ? doc.setSectionSetup(end, change) : doc.setPageSetup({ ...doc.pageSetup, ...change }));
+  const blocks = pageRange?.startContainer.isConnected ? blocksIn(pageRange) : [];
+  if (scope === 'whole' || !blocks.length) {
+    doc.setPageSetup({ ...doc.pageSetup, ...change });
+    for (const end of sectionEnds()) doc.setSectionSetup(end, change);
+    return 'for the whole document';
+  }
+  const first = blocks[0];
+  if (scope === 'section') {
+    setFor(sectionEndOf(first));
+    return `for section ${sectionEnds().indexOf(sectionEndOf(first)) + 1 || sectionEnds().length + 1}`;
+  }
+  let made = 0;
+  const tops = () => topBlocks();
+  if (scope === 'selected') {
+    const last = blocks[blocks.length - 1];
+    const all = tops();
+    // After the selection: a break, unless the selection ends its section (or the document).
+    if (last.dataset.sectionEnd == null && all.indexOf(last) < all.length - 1) {
+      const sect = sectPrOf(last);
+      doc.addSectionBreak(breakHolder(last, true), sect);
+      made++;
+    }
+  }
+  // Before it: a break, unless it starts its section (or the document).
+  const all = tops();
+  const prev = all[all.indexOf(first) - 1];
+  if (prev && prev.dataset.sectionEnd == null) {
+    const sect = sectPrOf(first);
+    doc.addSectionBreak(breakHolder(prev, true), sect); // a table before: a new paragraph after it holds the break
+    made++;
+  }
+  setFor(sectionEndOf(first));
+  doc.renumber(page.value);
+  return `${scope === 'selected' ? 'for the selected text' : 'from this point forward'}${made ? ` (${made} section ${made === 1 ? 'break' : 'breaks'} added)` : ''}`;
+}
+
+/** Names each section break on the page with its section and its paper, where there is more than one section. */
+function refreshSections() {
+  if (!page.value) return;
+  const ends = sectionEnds();
+  ends.forEach((el, n) => {
+    const s = doc.sectionSetup(el);
+    const paper = PAPERS.find((p) => Math.abs(p.w - Math.min(s.w, s.h)) <= 20 && Math.abs(p.h - Math.max(s.w, s.h)) <= 20);
+    const note = `Section ${n + 1}: ${paper ? `${paper.name} ` : ''}${s.w > s.h || s.orient === 'landscape' ? 'landscape' : 'portrait'} · section break (next page)`;
+    if (el.dataset.sectionNote !== note) el.dataset.sectionNote = note;
+  });
+  for (const el of page.value.querySelectorAll('[data-section-note]')) if (el.dataset.sectionEnd == null) delete el.dataset.sectionNote;
+}
+
+// ------------------------------------------------------------------ a different first page, odd and even pages
+
+/**
+ * A different first page and different odd and even pages, as Word's Header & Footer options:
+ * the headers and footers they use that the document hasn't got yet are made, empty, and put in
+ * the page, where the tabs above and below it choose them.
+ */
+function applyHeaderFooterFlags(titlePg, evenAndOdd) {
+  doc.setHeaderFooterFlags({ titlePg, evenAndOdd });
+  // Each one now used that isn't in the page yet (made new, or in the file but unused till now).
+  for (const which of ['header', 'footer']) {
+    const list = which === 'header' ? doc.headers : doc.footers;
+    list.forEach((variant, i) => {
+      if (!doc.variantShown(variant) || page.value.querySelector(`.docx-hf-part[data-which="${which}"][data-variant="${i}"]`)) return;
+      const band = page.value.querySelector(`:scope > .docx-hf-band.${which}`);
+      if (band) band.append(doc.renderVariantHost(which, variant, i));
+      else if (which === 'header') page.value.prepend(doc.renderBand(which, [variant]));
+      else page.value.append(doc.renderBand(which, [variant]));
+    });
+  }
+  refreshCss(); // the Header and Footer styles may be new
+  doc.relabelVariants(page.value);
+}
+
+// ------------------------------------------------------------------ Modify Style
+
+// Word's Modify Style, for a paragraph style: its font, size, bold and italic, colour, alignment
+// and spacing, changed in the style itself (styles.xml), so every paragraph in it follows.
+const modifyDialog = reactive({ open: false, x: 0, y: 0, id: '', name: '', font: '', size: 11, bold: false, italic: false, auto: true, color: '#000000', align: 'left', before: 0, after: 0, line: '' });
+const modifyDialogEl = ref(null);
+let modifyInitial = null;
+const LINE_CHOICES = [[240, 'Single'], [276, '1.15'], [360, '1.5'], [480, 'Double']];
+
+function openModifyStyle() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const [block] = selectedParagraphs();
+  const id = block?.dataset.style || doc.styles.defaultParagraph;
+  if (!id || !doc.styles.styleEl(id)) {
+    message.value = block ? 'This paragraph’s style isn’t in the document’s styles: it can’t be changed here' : 'Click in a paragraph in the style to change';
+    return;
+  }
+  const f = doc.styles.styleFormat(id);
+  modifyInitial = {
+    font: f.font, size: f.size, bold: f.bold, italic: f.italic, auto: !f.color, color: `#${f.color || '000000'}`,
+    align: f.align, before: Math.round(f.before / 2) / 10, after: Math.round(f.after / 2) / 10, line: f.line == null ? '' : String(f.line),
+  };
+  loadChoices();
+  Object.assign(modifyDialog, modifyInitial, { open: true, id, name: doc.styleLabel(id), x: Math.max(8, window.innerWidth / 2 - 170), y: 120 });
+  nextTick(() => {
+    keepInView(modifyDialog, modifyDialogEl.value);
+    modifyDialogEl.value?.querySelector('select')?.focus();
+  });
+}
+
+function closeModifyStyle() {
+  modifyDialog.open = false;
+  refocus();
+}
+
+/** The fonts Modify Style offers: the document's and Word's usual ones, by name, and the style's own. */
+const modifyFonts = computed(() => {
+  const names = [...new Set([modifyDialog.font, ...fontChoices.value.map((f) => f.name)].filter(Boolean))];
+  return names;
+});
+
+function applyModifyStyle() {
+  const d = { ...modifyDialog };
+  const i = modifyInitial;
+  modifyDialog.open = false;
+  refocus();
+  const num = (v, min, max) => Math.min(max, Math.max(min, Number(v) || 0));
+  const change = {};
+  if (d.font !== i.font) change.font = d.font;
+  if (Number(d.size) !== i.size) change.size = num(d.size, 1, 1638);
+  if (d.bold !== i.bold) change.bold = d.bold;
+  if (d.italic !== i.italic) change.italic = d.italic;
+  if (d.auto !== i.auto || (!d.auto && d.color.toLowerCase() !== i.color.toLowerCase())) change.color = d.auto ? null : d.color.slice(1).toUpperCase();
+  if (d.align !== i.align) change.align = d.align;
+  if (Number(d.before) !== i.before) change.before = num(d.before, 0, 1584) * 20;
+  if (Number(d.after) !== i.after) change.after = num(d.after, 0, 1584) * 20;
+  if (d.line !== i.line && d.line) change.line = Number(d.line);
+  if (!Object.keys(change).length) return;
+  undoStack.flush();
+  doc.styles.modifyStyle(d.id, change);
+  refreshCss();
+  doc.renumber(page.value);
+  pageChanged();
+  undoStack.commit();
+  markDirty();
+  onSelectionChange();
+  message.value = `Style ${d.name} changed: every paragraph in it follows`;
+}
+
+/** The paragraph style menu: a style, or Modify style… for the one the caret is in. */
+function onStyleMenu(e) {
+  const value = e.target.value;
+  if (value === '__modify') {
+    e.target.value = state.block;
+    openModifyStyle();
+    return;
+  }
+  applyBlockStyle(value);
 }
 
 // ------------------------------------------------------------------ watermark
@@ -7768,6 +8092,16 @@ async function close() {
 .para-dialog .tab-stops .hint { margin: 0; color: var(--muted); font-size: 12px; }
 .para-dialog .tab-add { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .para-dialog .tab-buttons { display: flex; gap: 6px; justify-content: flex-end; }
+.page-dialog .apply-to { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.para-dialog .check { justify-content: flex-start !important; gap: 6px !important; }
+.para-dialog .check input { width: auto; }
+.modify-dialog { width: 340px; }
+.modify-dialog h2 { margin: 0 0 8px; font-size: 15px; }
+.modify-dialog .note { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.modify-dialog .checks { display: flex; gap: 16px; }
+.modify-dialog .color-pick { display: flex; align-items: center; gap: 8px; }
+.modify-dialog .color-pick input[type=color] { width: 40px; height: 26px; padding: 0 2px; }
+.modify-dialog .preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: #fff; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
 .page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
 .para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -7996,6 +8330,13 @@ async function close() {
 /* Line numbers in the margin, as Word prints them: drawn over the sheet, never part of the page. */
 .docx-sheet .line-numbers-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
 /* The watermark: behind the text (the page comes after it), in the middle of each page. */
+/* A section break, named with its section's paper, where the document has several. */
+.docx-sheet .docx-page [data-section-note]::after {
+  content: attr(data-section-note); display: block; margin-top: 4px; padding-top: 2px; border-top: 1px dashed var(--sheet-line);
+  font: 600 10px/14px system-ui, sans-serif; color: var(--sheet-accent); text-indent: 0; text-align: left; letter-spacing: 0;
+  user-select: none; pointer-events: none;
+}
+@media print { .docx-sheet .docx-page [data-section-note]::after { content: none; } }
 .docx-sheet .watermark-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
 .docx-sheet .watermark-mark {
   position: absolute; left: 50%; transform: translate(-50%, -50%); font-weight: 700; line-height: 1; opacity: .5;

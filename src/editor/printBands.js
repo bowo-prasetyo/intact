@@ -149,8 +149,8 @@ function plan(page, which, variants, zoom, boxes) {
 export function printCss(page, doc, zoom = 1, boxes = hasMarginBoxes()) {
   raw = doc.raw || [];
   const p = doc.page;
-  const header = plan(page, 'header', doc.headers, zoom, boxes);
-  const footer = plan(page, 'footer', doc.footers, zoom, boxes);
+  const header = plan(page, 'header', inUse(doc, doc.headers), zoom, boxes);
+  const footer = plan(page, 'footer', inUse(doc, doc.footers), zoom, boxes);
   // The page's top: the paper's edge with a fixed header (the margin is padding then), the top of a
   // header in page-margin boxes, or the top margin. The text starts at the top margin, or below the
   // header where it is taller, as in Word.
@@ -212,7 +212,15 @@ export function printModes(page, doc, zoom = 1, boxes = hasMarginBoxes()) {
     const m = plan(page, which, variants, zoom, boxes).mode;
     return m === 'none' ? 'none' : m === 'once' ? 'once' : 'every';
   };
-  return { header: mode('header', doc.headers), footer: mode('footer', doc.footers) };
+  return { header: mode('header', inUse(doc, doc.headers)), footer: mode('footer', inUse(doc, doc.footers)) };
+}
+
+/**
+ * The variants as printing uses them: a first page's or even pages' one the document doesn't use
+ * (no different first page, or odd and even pages alike) is kept in its place, but as no type.
+ */
+function inUse(doc, variants) {
+  return variants.map((v) => (doc.variantShown && !doc.variantShown(v) ? { ...v, type: 'unused' } : v));
 }
 
 /** The plain @page rule (paper size and margins), before anything is measured. */

@@ -326,6 +326,33 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   every section's `w:pgSz` and `w:pgMar`. Only what is changed in the dialog is written; the rest of
   each section (headers and footers, columns, gutters) is kept. The page and the printout follow,
   and Ctrl+Z puts it back
+- Page setup for part of a document, as Word's "Apply to": the dialog shows the paper and margins
+  of the section the caret is in, and applies them to the whole document, this section (where there
+  are several; the default then, as in Word), this point forward or the selected text. "This point
+  forward" puts a section break (next page) before the caret's paragraph; "Selected text" puts one
+  before and one after the selected paragraphs, for a landscape page holding a wide table in a
+  portrait document. A break is written as Word writes one: in the paragraph before, a copy of the
+  section's properties (`w:sectPr` with `w:type="nextPage"`), so the text before it keeps its paper,
+  margins, headers and footers (a paragraph is added beside a table to hold it). A section's own
+  paper and margins go into its `w:sectPr`; the rest of it is kept. Where the document has several
+  sections, each break is named on the page with its section's paper ("Section 2: A4 landscape ·
+  section break (next page)"). One undoable step
+- Headers and footers, as Word's Header & Footer options (in Page setup): a different first page
+  (`w:titlePg` in every section) and different odd and even pages (`w:evenAndOddHeaders` in
+  settings.xml). Switched on, the first-page (or even-page) header and footer the document has are
+  put in the page, and those it hasn't are made, empty, as Word starts them (a new part each, in
+  Word's Header or Footer style, with the first section's reference to it); the tabs above and below
+  the page choose which one to edit ("First page", "Other pages", "Even pages"). A first-page or
+  even-page one in the file that its settings don't use isn't in the page (nor found by Find) until
+  switched on, and goes back as it was. Switched off, Word's settings say so and new ones aren't
+  saved. One undoable step
+- Modify Style, as Word's (the Paragraph style menu's last item, Modify style…, or the right-click
+  menu): a paragraph style's font, size, bold and italic, colour (or Automatic), alignment, space
+  before and after and line spacing, shown as the style has them (from its base styles and the
+  document's defaults), with a preview. Only what is changed is written, into the style's own
+  `w:rPr` and `w:pPr` in styles.xml (off as off, `w:b w:val="0"`, so a base style's bold doesn't
+  come through); every paragraph in the style, and in styles based on it, follows on the page and
+  in Word. Paragraphs keep their own formatting. Ctrl+Z puts the style back
 - A watermark, as Word's Design > Watermark, in Page setup: DRAFT, CONFIDENTIAL, DO NOT COPY,
   SAMPLE, URGENT, ASAP or your own text, diagonal or horizontal, in Word's semi-transparent silver.
   Written as Word writes one, as WordArt in every header behind the text (a VML text path named
@@ -876,8 +903,13 @@ The About page shows the version.
   so text typed there goes before the number, not into it). A
   footer made here is for all pages of the first section and those after it without their own; a
   first page set to have a different footer, and even pages where they differ, don't show it, as in
-  Word. Page setup applies to every section alike (not to one section) and isn't tracked; columns
-  and gutters stay as they are
+  Word. Page setup isn't tracked; columns and gutters stay as they are. The page shows every section
+  at the width of the document's last one (a landscape section's wide table may be cut off at the
+  page's edge here, not in Word); each break is named with its section's paper. "Different first
+  page" and "different odd and even pages" are set for the whole document, not section by section.
+  Modify Style changes paragraph styles' font, size, bold, italic, colour, alignment and spacing:
+  not their indents, borders, tab stops, numbering or what they are based on; it isn't tracked
+  (Word doesn't track style changes either)
 - Equations already in a document are shown, not edited (new ones are typed as LaTeX, a part of it:
   no matrices, accents or equation arrays); they need a math font to look as in Word (Windows and macOS have
   one: Cambria Math, STIX Two Math; on Linux install one such as Latin Modern Math). Equation

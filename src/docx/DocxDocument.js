@@ -23,7 +23,7 @@ import { Numbering, addList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import { STARTERS, starterFiles } from './starters.js';
 import {
-  loadPart, parseComments, parseNotes, headerFooterVariants, fieldTitle, describe,
+  loadPart, parseComments, parseNotes, headerFooterVariants, labelVariants, fieldTitle, describe,
 } from './annotations.js';
 import {
   controlInfo, controlTitle, controlChoices, controlDate, formatWordDate, updateControlProperties,
@@ -95,6 +95,13 @@ const SETTINGS_CT = 'application/vnd.openxmlformats-officedocument.wordprocessin
 const AFTER_UPDATE_FIELDS = new Set(['hdrShapeDefaults', 'footnotePr', 'endnotePr', 'compat', 'docVars', 'rsids', 'attachedSchema',
   'themeFontLang', 'clrSchemeMapping', 'doNotIncludeSubdocsInStats', 'doNotAutoCompressPictures', 'forceUpgrade', 'captions',
   'readModeInkLockDown', 'smartTagType', 'shapeDefaults', 'doNotEmbedSmartTags', 'decimalSymbol', 'listSeparator']);
+// The settings after evenAndOddHeaders in CT_Settings, to put it before them.
+const AFTER_EVEN_AND_ODD = new Set(['bookFoldRevPrinting', 'bookFoldPrinting', 'bookFoldPrintingSheets', 'drawingGridHorizontalSpacing',
+  'drawingGridVerticalSpacing', 'displayHorizontalDrawingGridEvery', 'displayVerticalDrawingGridEvery', 'doNotUseMarginsForDrawingGridOrigin',
+  'drawingGridHorizontalOrigin', 'drawingGridVerticalOrigin', 'doNotShadeFormData', 'noPunctuationKerning', 'characterSpacingControl',
+  'printTwoOnOne', 'strictFirstAndLastChars', 'noLineBreaksAfter', 'noLineBreaksBefore', 'savePreviewPicture', 'doNotValidateAgainstSchema',
+  'saveInvalidXml', 'ignoreMixedContent', 'alwaysShowPlaceholderText', 'doNotDemarcateInvalidXml', 'saveXmlDataOnly', 'useXSLTWhenSaving',
+  'saveThroughXslt', 'showXMLTags', 'alwaysMergeEmptyNamespace', 'updateFields', ...AFTER_UPDATE_FIELDS]);
 const BEFORE_TRACK_REVISIONS = new Set([
   'writeProtection', 'view', 'zoom', 'removePersonalInformation', 'removeDateAndTime', 'doNotDisplayPageBoundaries',
   'displayBackgroundShape', 'printPostScriptOverText', 'printFractionalCharacterWidth', 'printFormsData',
@@ -153,6 +160,43 @@ const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
 const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
+
+/**
+ * Writes paper size, orientation and margins into section properties `sect`: `set` has any of w,
+ * h, orient, top, right, bottom, left (twips); what it doesn't name is kept.
+ */
+function applySetup(sect, set) {
+  if (!sect) return;
+  const put = (el, attr, v) => { if (v !== undefined) el.setAttributeNS(W, `w:${attr}`, String(Math.round(v))); };
+  if (['w', 'h', 'orient'].some((k) => set[k] !== undefined)) {
+    const sz = ensureOrdered(sect, 'pgSz', SECTPR_ORDER);
+    put(sz, 'w', set.w);
+    put(sz, 'h', set.h);
+    if (set.orient === 'landscape') sz.setAttributeNS(W, 'w:orient', 'landscape');
+    else if (set.orient === 'portrait') sz.removeAttributeNS(W, 'orient');
+  }
+  if (['top', 'right', 'bottom', 'left'].some((k) => set[k] !== undefined)) {
+    let mar = wChild(sect, 'pgMar');
+    if (!mar) {
+      // Word requires all of them: its defaults for what isn't set.
+      mar = ensureOrdered(sect, 'pgMar', SECTPR_ORDER);
+      for (const [a, v] of [['top', 1440], ['right', 1440], ['bottom', 1440], ['left', 1440], ['header', 708], ['footer', 708], ['gutter', 0]]) put(mar, a, v);
+    }
+    for (const k of ['top', 'right', 'bottom', 'left']) put(mar, k, set[k]);
+  }
+}
+
+/** "Header", "First page header", "Even pages footer": a header or footer host's name. */
+function hostLabel(which, label) {
+  const name = !label || label === 'All pages' ? which : `${label} ${which}`;
+  return name[0].toUpperCase() + name.slice(1);
+}
+
+/** A different first page (w:titlePg) on or off in section properties `sect`. */
+function setTitlePage(sect, on) {
+  removeW(sect, 'titlePg');
+  if (on) ensureOrdered(sect, 'titlePg', SECTPR_ORDER);
+}
 
 // The namespaces of Word's VML, for a watermark (declared on a header made here).
 const VML_NS = 'xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w10="urn:schemas-microsoft-com:office:word"';
@@ -319,12 +363,16 @@ export class DocxDocument {
     this.firstNewId = this.nextId; // ids from here on are this session's
     this.newComments = []; // comments added this session (see addComment)
     const loadVariants = async (local) => {
-      const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd).map(async (v) => {
+      const variants = await Promise.all(headerFooterVariants(this.body, local, evenAndOdd, true).map(async (v) => {
         const part = await loadPart(this, this.rels.get(v.rid));
         return part && { ...v, ...part, text: await this.text(part.path) }; // edited in the page (see renderBand)
       }));
       return variants.filter(Boolean);
     };
+    // A different first page and different odd and even pages, as set here (Page setup) for the
+    // whole document: null for as the file has them.
+    this.evenAndOddInFile = evenAndOdd;
+    this.hfFlags = { titlePg: null, evenAndOdd: null };
     this.headers = await loadVariants('headerReference');
     this.footers = await loadVariants('footerReference');
     // The document's sources, as Word's Source Manager keeps them (a b:Sources part in customXml),
@@ -556,12 +604,80 @@ export class DocxDocument {
   }
 
   /**
-   * Sets the paper size, orientation and margins of every section, as Word's Page Setup does for
-   * the whole document: `setup` has any of w, h, orient, top, right, bottom, left (twips); null sets
-   * them back as they were. What it doesn't name is kept as each section has it (see applyPageSetup).
+   * Sets the paper size, orientation and margins of the final section (the whole document's, when
+   * it has one section; the editor writes the others' into their section breaks, see
+   * setSectionSetup): `setup` has any of w, h, orient, top, right, bottom, left (twips); null sets
+   * them back as they were. What it doesn't name is kept as the section has it (see applyPageSetup).
    */
   setPageSetup(setup) {
     this.pageSetup = setup && Object.keys(setup).length ? { ...setup } : null;
+  }
+
+  // ---------------------------------------------------------------- sections
+
+  /** The section setup a sectPr gives: { w, h, orient, top, right, bottom, left } in twips. */
+  sectionSetupOf(sectPr) {
+    const sz = wChild(sectPr, 'pgSz');
+    const mar = wChild(sectPr, 'pgMar');
+    const num = (el, a, d) => Number(wAttr(el, a) ?? d);
+    return {
+      w: num(sz, 'w', 12240), h: num(sz, 'h', 15840), orient: wAttr(sz, 'orient') || 'portrait',
+      top: num(mar, 'top', 1440), right: num(mar, 'right', 1440), bottom: num(mar, 'bottom', 1440), left: num(mar, 'left', 1440),
+    };
+  }
+
+  /** The section break a section-end paragraph holds (its w:sectPr), as it is now. */
+  sectionBreakOf(el) {
+    return el?.dataset.ppr != null ? wChild(this.raw[Number(el.dataset.ppr)], 'sectPr') : null;
+  }
+
+  /**
+   * The setup of the section that section-end paragraph `el` ends, or of the final section (el
+   * null), as it is now: { w, h, orient, top, right, bottom, left }.
+   */
+  sectionSetup(el) {
+    return el ? this.sectionSetupOf(this.sectionBreakOf(el)) : this.pageSetupNow();
+  }
+
+  /**
+   * Sets the paper, orientation and margins of the section that section-end paragraph `el` ends
+   * (in its own w:sectPr), as Word's Page Setup does for "This section": `set` as setPageSetup's.
+   */
+  setSectionSetup(el, set) {
+    const pPr = this.rawClone(el.dataset.ppr);
+    applySetup(wChild(pPr, 'sectPr'), set);
+    el.dataset.ppr = this.keep(pPr);
+  }
+
+  /**
+   * Makes paragraph `el` end a section, as Word's Insert > Section break (next page) does: it
+   * holds a copy of `sectPr` (the section it was in: its paper, margins, headers and footers), so
+   * the text up to it keeps them, and what follows begins a new section on a new page.
+   */
+  addSectionBreak(el, sectPr) {
+    const pPr = el.dataset.ppr != null ? this.rawClone(el.dataset.ppr) : createW(this.xml, 'pPr');
+    removeW(pPr, 'sectPr');
+    const copy = this.xml.importNode(sectPr, true);
+    removeW(copy, 'sectPrChange');
+    removeW(copy, 'type');
+    ensureOrdered(copy, 'type', SECTPR_ORDER).setAttributeNS(W, 'w:val', 'nextPage');
+    const before = elementChildren(pPr).find((c) => c.localName === 'pPrChange');
+    pPr.insertBefore(copy, before || null);
+    el.dataset.ppr = this.keep(pPr);
+    el.dataset.sectionEnd = 'nextPage';
+  }
+
+  /** The final section's properties as they would be saved now (the page setup set here applied). */
+  finalSectPr() {
+    const sect = (wChild(this.body, 'sectPr') || createW(this.xml, 'sectPr')).cloneNode(true);
+    for (const local of ['pgSz', 'pgMar']) {
+      const orig = this.originalPage[local];
+      const now = wChild(sect, local);
+      if (orig) (now || ensureOrdered(sect, local, SECTPR_ORDER)).replaceWith(orig.cloneNode(true));
+    }
+    applySetup(sect, this.pageSetup || {});
+    if (this.hfFlags.titlePg != null) setTitlePage(sect, this.hfFlags.titlePg);
+    return sect;
   }
 
   /** Writes the page setup into each section of the body as it will be saved. */
@@ -577,27 +693,10 @@ export class DocxDocument {
         else if (now) finalSect.removeChild(now);
       }
     }
-    const set = this.pageSetup;
-    if (!set) return;
-    const put = (el, attr, v) => { if (v !== undefined) el.setAttributeNS(W, `w:${attr}`, String(Math.round(v))); };
-    for (const sect of this.body.getElementsByTagNameNS(W, 'sectPr')) {
-      if (['w', 'h', 'orient'].some((k) => set[k] !== undefined)) {
-        const sz = ensureOrdered(sect, 'pgSz', SECTPR_ORDER);
-        put(sz, 'w', set.w);
-        put(sz, 'h', set.h);
-        if (set.orient === 'landscape') sz.setAttributeNS(W, 'w:orient', 'landscape');
-        else if (set.orient === 'portrait') sz.removeAttributeNS(W, 'orient');
-      }
-      if (['top', 'right', 'bottom', 'left'].some((k) => set[k] !== undefined)) {
-        let mar = wChild(sect, 'pgMar');
-        if (!mar) {
-          // Word requires all of them: its defaults for what isn't set.
-          mar = ensureOrdered(sect, 'pgMar', SECTPR_ORDER);
-          for (const [a, v] of [['top', 1440], ['right', 1440], ['bottom', 1440], ['left', 1440], ['header', 708], ['footer', 708], ['gutter', 0]]) put(mar, a, v);
-        }
-        for (const k of ['top', 'right', 'bottom', 'left']) put(mar, k, set[k]);
-      }
-    }
+    // The others' are in their section breaks, written there by the editor (see setSectionSetup).
+    if (finalSect && this.pageSetup) applySetup(finalSect, this.pageSetup);
+    // A different first page, as set here for the whole document (Page setup): in every section.
+    if (this.hfFlags.titlePg != null) for (const sect of this.body.getElementsByTagNameNS(W, 'sectPr')) setTitlePage(sect, this.hfFlags.titlePg);
   }
 
   // ---------------------------------------------------------------- inserting page numbers and footnotes
@@ -622,36 +721,108 @@ export class DocxDocument {
   }
 
   /**
-   * A footer for all pages, for a document without one: a new part, saved (with its relationship,
-   * content type and the first section's reference to it) only while its band is in the page.
-   * Returns the band to put in the page: one empty centred paragraph in Word's Footer style.
+   * A new header or footer part (`which`) of `type` ('default', 'first' or 'even') for the first
+   * section: one empty paragraph in Word's Header (Footer) style, a default footer centred (for a
+   * page number). Saved (with its relationship, content type and the section's reference to it)
+   * only while it is in the page and its type is used (see placeNewFooters). Returns the variant.
    */
-  newFooter() {
+  newPart(which, type = 'default') {
+    const list = which === 'header' ? this.headers : this.footers;
     const dir = this.mainDir ? `${this.mainDir}/` : '';
     let n = 1;
-    while (this.zip.file(`${dir}footer${n}.xml`) || this.footers.some((f) => f.path === `${dir}footer${n}.xml`)) n++;
-    let rid = 'rIdFooter1';
-    for (let i = 1; this.rels.has(rid) || this.footers.some((f) => f.rid === rid); i++) rid = `rIdFooter${i}`;
-    const style = this.styles.ensureBuiltin('footer');
-    const text = `${XML_HEADER}<w:ftr xmlns:w="${W}" xmlns:r="${NS.r}"><w:p><w:pPr><w:pStyle w:val="${style}"/><w:jc w:val="center"/></w:pPr></w:p></w:ftr>`;
-    this.footers.push({ rid, type: 'default', label: 'All pages', section: 1, path: `${dir}footer${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true });
+    while (this.zip.file(`${dir}${which}${n}.xml`) || list.some((v) => v.path === `${dir}${which}${n}.xml`)) n++;
+    const prefix = which === 'header' ? 'rIdHeader' : 'rIdFooter';
+    let rid = `${prefix}1`;
+    for (let i = 1; this.rels.has(rid) || list.some((v) => v.rid === rid); i++) rid = `${prefix}${i}`;
+    const style = this.styles.ensureBuiltin(which);
+    const jc = which === 'footer' && type === 'default' ? '<w:jc w:val="center"/>' : '';
+    const root = which === 'header' ? 'hdr' : 'ftr';
+    const text = `${XML_HEADER}<w:${root} xmlns:w="${W}" xmlns:r="${NS.r}" ${VML_NS}><w:p><w:pPr><w:pStyle w:val="${style}"/>${jc}</w:pPr></w:p></w:${root}>`;
+    const v = { rid, type, section: 1, path: `${dir}${which}${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true, titlePgInFile: false, shownInFile: true };
+    list.push(v);
+    this.relabelVariants();
+    return v;
+  }
+
+  /** A footer for all pages, for a document without one (see newPart). Returns the band. */
+  newFooter() {
+    this.newPart('footer');
     return this.renderBand('footer');
   }
 
-  /**
-   * A header for all pages, for a document without one (as newFooter): one empty paragraph in Word's
-   * Header style, saved only while its band is in the page. Returns the band.
-   */
+  /** A header for all pages, for a document without one (see newPart). Returns the band. */
   newHeader() {
-    const dir = this.mainDir ? `${this.mainDir}/` : '';
-    let n = 1;
-    while (this.zip.file(`${dir}header${n}.xml`) || this.headers.some((h) => h.path === `${dir}header${n}.xml`)) n++;
-    let rid = 'rIdHeader1';
-    for (let i = 1; this.rels.has(rid) || this.headers.some((h) => h.rid === rid); i++) rid = `rIdHeader${i}`;
-    const style = this.styles.ensureBuiltin('header');
-    const text = `${XML_HEADER}<w:hdr xmlns:w="${W}" xmlns:r="${NS.r}" ${VML_NS}><w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr></w:p></w:hdr>`;
-    this.headers.push({ rid, type: 'default', label: 'All pages', section: 1, path: `${dir}header${n}.xml`, xml: parseXml(text), rels: new Map(), text, added: true });
+    this.newPart('header');
     return this.renderBand('header');
+  }
+
+  // ---------------------------------------------------------------- a different first page, odd and even pages
+
+  /** Whether header (footer) variant `v` is used: a first page's only with a different first page, and so on. */
+  variantShown(v) {
+    if (v.type === 'first') return this.hfFlags.titlePg ?? v.titlePgInFile;
+    if (v.type === 'even') return this.hfFlags.evenAndOdd ?? this.evenAndOddInFile;
+    return true;
+  }
+
+  /** Whether the document has a different first page and different odd and even pages, as it is now. */
+  headerFooterFlags() {
+    const firstSect = this.body.getElementsByTagNameNS(W, 'sectPr')[0];
+    return {
+      titlePg: this.hfFlags.titlePg ?? onOff(wChild(firstSect, 'titlePg')) === true,
+      evenAndOdd: this.hfFlags.evenAndOdd ?? this.evenAndOddInFile,
+    };
+  }
+
+  /** Names the variants again (and their hosts under `root`) for the flags as they are now. */
+  relabelVariants(root = null) {
+    for (const [which, list] of [['header', this.headers], ['footer', this.footers]]) {
+      labelVariants(list, { titlePg: (v) => this.hfFlags.titlePg ?? v.titlePgInFile, evenAndOdd: this.hfFlags.evenAndOdd ?? this.evenAndOddInFile });
+      list.forEach((v, i) => {
+        const host = root?.querySelector(`.docx-hf-part[data-which="${which}"][data-variant="${i}"]`);
+        if (host) host.dataset.label = hostLabel(which, v.label);
+      });
+    }
+  }
+
+  /**
+   * A different first page and different odd and even pages for the whole document, as Word's
+   * Header & Footer options set them: `flags` { titlePg, evenAndOdd } (true, false, or null for as
+   * the file has it). Returns the variants (header and footer) of each type now used that the first
+   * section doesn't have yet, made new and empty, as Word starts them: [{ which, variant }].
+   */
+  setHeaderFooterFlags(flags) {
+    this.hfFlags = { titlePg: flags.titlePg ?? null, evenAndOdd: flags.evenAndOdd ?? null };
+    const made = [];
+    const now = this.headerFooterFlags();
+    for (const [type, on] of [['first', now.titlePg], ['even', now.evenAndOdd]]) {
+      if (!on) continue;
+      for (const which of ['header', 'footer']) {
+        const list = which === 'header' ? this.headers : this.footers;
+        if (list.some((v) => v.type === type && v.section === 1)) continue;
+        made.push({ which, type, variant: this.newPart(which, type) });
+      }
+    }
+    this.relabelVariants();
+    return made;
+  }
+
+  /** The host for header (footer) variant `v`, number `i` in its list: rendered, to edit in the page. */
+  renderVariantHost(which, v, i) {
+    const host = document.createElement('div');
+    host.className = 'docx-hf-part';
+    host.contentEditable = 'true';
+    host.dataset.which = which;
+    host.dataset.variant = String(i);
+    host.dataset.part = v.path;
+    host.dataset.type = v.type;
+    host.dataset.protected = `the ${which}`;
+    host.dataset.label = hostLabel(which, v.label);
+    this.inPart(v, () => this.renderBlocks(v.xml.documentElement, host));
+    if (!host.firstChild) host.append(this.emptyParagraph());
+    // Put in the page after the others (switched on): as it saves untouched, so it goes back as it was.
+    if (this.partBaseline && !this.partBaseline.has(v.path)) this.partBaseline.set(v.path, this.noteXml(host));
+    return host;
   }
 
   /**
@@ -906,10 +1077,10 @@ export class DocxDocument {
     for (const [local, v] of [...this.footers.map((f) => ['footerReference', f]), ...this.headers.map((h) => ['headerReference', h])]) {
       if (!v.added) continue;
       for (const s of sects) for (const ref of wChildren(s, local)) if (ref.getAttributeNS(NS.r, 'id') === v.rid) s.removeChild(ref);
-      v.present = !!root.querySelector(`.docx-hf-part[data-part="${CSS.escape(v.path)}"]`);
+      v.present = !!root.querySelector(`.docx-hf-part[data-part="${CSS.escape(v.path)}"]`) && this.variantShown(v);
       if (!v.present || !sects[0]) continue;
       const ref = createW(this.xml, local);
-      ref.setAttributeNS(W, 'w:type', 'default');
+      ref.setAttributeNS(W, 'w:type', v.type || 'default');
       ref.setAttributeNS(NS.r, 'r:id', v.rid);
       const refs = elementChildren(sects[0]).filter((c) => c.localName === 'headerReference' || c.localName === 'footerReference');
       sects[0].insertBefore(ref, refs.length ? refs[refs.length - 1].nextSibling : sects[0].firstChild);
@@ -1048,28 +1219,18 @@ export class DocxDocument {
    * band itself can't be edited or deleted; the view shows the variant chosen in its tabs (first
    * page, other pages, sections). Saved to their own parts by serializeParts.
    */
-  renderBand(which) {
-    const variants = which === 'header' ? this.headers : this.footers;
+  renderBand(which, only = null) {
+    const all = which === 'header' ? this.headers : this.footers;
+    // The ones the document uses: a first page's or even pages' one it doesn't use is put in the
+    // page only when switched on (see the editor's applyHeaderFooterFlags).
+    const variants = only || all.filter((v) => this.variantShown(v));
     if (!variants.length) return null;
     const band = document.createElement('section');
     band.className = `docx-hf-band ${which}`;
     band.contentEditable = 'false';
     band.dataset.protected = `the ${which}`;
     band.title = `${which === 'header' ? 'Header' : 'Footer'} – click its text to edit it`;
-    variants.forEach((v, i) => {
-      const host = document.createElement('div');
-      host.className = 'docx-hf-part';
-      host.contentEditable = 'true';
-      host.dataset.which = which;
-      host.dataset.variant = String(i);
-      host.dataset.part = v.path;
-      host.dataset.protected = `the ${which}`;
-      const name = !v.label || v.label === 'All pages' ? which : `${v.label} ${which}`;
-      host.dataset.label = name[0].toUpperCase() + name.slice(1);
-      this.inPart(v, () => this.renderBlocks(v.xml.documentElement, host));
-      if (!host.firstChild) host.append(this.emptyParagraph());
-      band.append(host);
-    });
+    variants.forEach((v) => band.append(this.renderVariantHost(which, v, all.indexOf(v))));
     return band;
   }
 
@@ -3977,7 +4138,8 @@ export class DocxDocument {
     const fields = this.updateFields && !this.updateFieldsSet;
     // Word keeps removing personal information on its own saves (w:removePersonalInformation).
     const personal = this.removePersonal && !this.removePersonalSet;
-    if (!tracking && !fields && !personal) {
+    const evenOdd = this.hfFlags.evenAndOdd != null && this.hfFlags.evenAndOdd !== this.evenAndOddInFile;
+    if (!tracking && !fields && !personal && !evenOdd) {
       if (this.settingsChanged) this.zip.file(this.settingsPath, this.settingsText);
       this.settingsChanged = false;
       return;
@@ -3998,6 +4160,13 @@ export class DocxDocument {
     if (personal) {
       const before = wChildren(root).filter((c) => ['writeProtection', 'view', 'zoom'].includes(c.localName)).pop();
       root.insertBefore(createW(doc, 'removePersonalInformation'), before ? before.nextSibling : root.firstChild);
+    }
+    if (evenOdd) {
+      removeW(root, 'evenAndOddHeaders');
+      if (this.hfFlags.evenAndOdd) {
+        const after = [...root.children].find((c) => c.namespaceURI !== W || AFTER_EVEN_AND_ODD.has(c.localName));
+        root.insertBefore(createW(doc, 'evenAndOddHeaders'), after || null);
+      }
     }
     if (fields) {
       removeW(root, 'updateFields');
