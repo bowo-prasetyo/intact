@@ -17,6 +17,24 @@ Where this is heading, and what it deliberately won't do, is in [VISION.md](VISI
 Built with [Vue 3](https://vuejs.org/), [Vue Router](https://router.vuejs.org/) (hash mode, so it
 works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](https://stuk.github.io/jszip/).
 
+### Older `.doc` files and password-protected files
+
+Intact opens `.docx` files (and `.dotx`, `.docm`, `.dotm`). It doesn't open these, and says so when
+you try, instead of failing:
+
+- **Word 97–2003 `.doc` files**, the older binary format many archives still hold. Open the file in
+  Microsoft Word (or LibreOffice, or Word for the web) and save it as a Word Document (`.docx`):
+  File > Save As > Word Document. Then open the `.docx` here.
+- **Files encrypted with a password** (Word's File > Info > Protect Document > Encrypt with Password).
+  Intact never asks for or handles passwords. Whoever knows the password opens the file in Word,
+  removes it (the same menu, with the password field left empty) and saves; or sends a copy without
+  one. A password that only restricts editing (Restrict Editing) is fine: such files open here,
+  read-only or for filling in, as Word opens them.
+- **Files protected by rights management** (a sensitivity label that encrypts, or IRM). Only the
+  label's owner or the organisation's tools can remove the protection.
+
+Compare documents (Review > Compare) says the same of a version it can't read.
+
 ## Features
 
 - Open `.docx` (file picker, by mouse or keyboard, or by dropping it anywhere on the start page; a document dropped on the editor's page opens in a new tab, and a file dropped where the editor can't take it is refused, never opened by the browser in the app's place) or start a blank document; Word templates (`.dotx`) and
@@ -98,6 +116,17 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   highlight shows and can be removed); paragraph styles (Normal, Title, Heading 1–3, and the document's own: headings 4–9 it defines, the
   styles in Word's style gallery that aren't hidden, such as Quote and Caption, and any style its text
   uses; a paragraph in another style shows that style's name); alignment
+- The Numbering library (Numbering ▾), as Word's Numbering Library and Multilevel List: Indonesia's
+  legal numbering as its regulations write it (UU No. 12/2011, Lampiran II): **Pasal 1 → (1) → a. →
+  1. → a) → 1)**, a Pasal centred on its own line with its ayat restarting in each one; **BAB I →
+  Pasal 1 → (1) → a.**, chapters in Roman numerals with the Pasal numbered on through them, as Word
+  does with `w:lvlRestart w:val="0"`; **1. → 1.1. → 1.1.1.** for a report's numbered headings and
+  paragraphs; and Word's own 1. → a. → i. The selected paragraphs become a new list of that kind, each
+  keeping its level, and Tab and Shift+Tab (or Increase and Decrease Indent) move a paragraph between
+  Pasal, ayat and huruf. Written as Word writes a multilevel list (`w:abstractNum` with nine levels,
+  `w:multiLevelType` multilevel, each level's text, format, indent and suffix; a centred level's
+  `w:jc` in its own properties), so Word and LibreOffice number it the same; lists in files that
+  restart a level only after a given one (`w:lvlRestart`) are numbered so here too
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
@@ -181,6 +210,30 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   around it, and columns beside a locked cell. A change that would alter such a field (a column
   adding a cell to a locked row, deleting the column of a linked cell) is refused, and the status
   bar names the field
+- Sort a table, as Word's Table Layout > Sort (Table layout menu, Sort…): the rows below the heading
+  row (a first row it guesses is one, as Word does, and can be told it isn't) by one column, chosen by
+  its heading, as text (in the order of the document's language, numbers in it as numbers: "Item 2"
+  before "Item 10"), numbers (as the document writes them: "Rp 1.250.000", "(2,5)", "12%") or dates
+  ("17/08/2026" day first, or month first in American English; "17 Agustus 2026"; "2026-08-17"),
+  ascending or descending, empty cells last, rows that sort the same in the order they were. Rows are
+  moved whole, with their cells' properties, as one undoable step. A column of numbers is sorted as
+  numbers without asking. Not while tracking changes (Word records a sort as moved rows; here it
+  says so instead), and not tables with cells merged down or with tracked changes to their rows or
+  cells
+- Table formulas, as Word's Table Layout > Formula (Table layout menu, Formula…): Word's `=` field in
+  the cell at the caret, such as `=SUM(ABOVE)` (the dialog offers it, or `=SUM(LEFT)` when there are
+  numbers to the left and none above, as Word's does), `=AVERAGE(LEFT)`, `=B2*C2`, `=SUM(B2:B5)*11%`,
+  `=ROUND(A1/3;2)`, with SUM, AVERAGE, MIN, MAX, COUNT, PRODUCT, ABS, ROUND and INT (Paste function
+  adds one), + − × ÷ ^ and brackets, cells as A1, B2 (Word's columns and rows of the table's grid) and
+  ABOVE, LEFT, BELOW and RIGHT, which take the numbers beside the cell up to the first cell that
+  isn't one (a heading, or an empty cell), as Word's do. The result shows as it is worked out, and a
+  number format (`\# "#,##0.00"`, "Rp #.##0", "0%") writes it with the document's own separators:
+  1.234.567,89 in an Indonesian document, 1,234,567.89 in an English one (and arguments separated by
+  ";" where "," is the decimal sign, as Word's list separator is). Written as Word writes the field
+  (` =SUM(ABOVE) \# "Rp #.##0" ` with its result), so Word updates it too; Update fields (F9) works
+  every formula out again here, in the order of the text, after a number in the table changes. A
+  formula Word wouldn't understand is refused in the dialog; one in a file shows Word's
+  "!Syntax Error" when updated (`src/docx/formulas.js`)
 - Shading and borders for table cells, from the Table layout menu (Shading and borders…), as Word's
   Shading and Borders buttons: a fill colour for the selected cells (the theme's colours, lightened
   80% and 40% as Word offers them, the colours the text uses, your colours, any colour by its code,
@@ -569,6 +622,14 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   paragraph break shown as a struck ¶ without merging). Deleting your own insertion removes it.
   Word's setting is saved too, so the recipient keeps tracking; documents saved with Track Changes
   on open with it on. Your name is remembered in this browser only
+- Compare documents, as Word's Review > Compare does for the text (Review tab, Compare): another
+  version of the document, a `.docx` chosen on this device (read in the browser, never uploaded),
+  against the one open. Each paragraph changed, added or taken out since that version is listed,
+  in the order of the text, with the words taken out struck through and those put in underlined
+  ("hari ~~Senin~~ <u>Selasa pukul 09.00</u>"), and a count of each; a click goes to the paragraph
+  (or to where one was taken out). The other version is read as its body's text: paragraphs and
+  table cells in order, with its tracked deletions left out, as it reads once its changes are
+  accepted; this document's likewise. Nothing in either document is changed (`src/editor/compare.js`)
 - Accept and reject tracked changes, anyone's and your own, as in Word's Review tab: when the
   document has tracked changes, the toolbar shows Previous, Next, Accept and Reject. Accept and
   Reject act on the change at the cursor (just click it) or every change in a selection, then go
@@ -1069,7 +1130,19 @@ The About page shows the version.
   section in columns has one column of numbers, at the left; right-to-left sections (`w:bidi` in a
   section) keep their numbers at the left and their columns in order
 - Legacy binary `.doc` files are not supported, nor files encrypted with a password or by rights
-  management (sensitivity labels that encrypt, IRM): they say so when opened
+  management (sensitivity labels that encrypt, IRM): they say so when opened, and Compare says so of
+  a version it can't read. See "Older `.doc` files and password-protected files" above for what to
+  do instead
+- Compare documents compares the text, not formatting, pictures, comments, headers, footers or notes,
+  and shows the differences rather than writing them into a new document as tracked changes, as
+  Word's Compare does; a paragraph moved elsewhere shows as taken out in one place and added in
+  another. Very long documents (tens of thousands of paragraphs that differ) are refused
+- Sorting sorts by one column (Word's Sort has up to three), and only a whole table's rows below its
+  heading row; formulas are those Word's Formula dialog writes (functions, cells, ranges, ABOVE and
+  the like, arithmetic), not bookmarks' values, IF, AND, OR, NOT, DEFINED or TRUE/FALSE, and their
+  results update with F9 rather than as you type, as in Word
+- The Numbering library's lists are new lists: Word's Define New Multilevel List (other formats,
+  linking levels to heading styles) isn't offered
 - Restrict Editing applies to the whole document: the parts Word lets everyone (or named people)
   edit in a read-only document (`w:permStart`), and sections left unprotected in a form
   (`w:formProt`), are locked here too; "Edit anyway" opens everything. Formatting restrictions

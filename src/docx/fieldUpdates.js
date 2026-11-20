@@ -1,5 +1,5 @@
-// Updating fields here, as Word's F9 does, for what doesn't need pages: caption numbers (SEQ), note
-// numbers in cross-references (NOTEREF), cross-references (REF), and tables of contents (TOC),
+// Updating fields here, as Word's F9 does, for what doesn't need pages: caption numbers (SEQ), table
+// formulas (=SUM(ABOVE)), note numbers in cross-references (NOTEREF), cross-references (REF), and tables of contents (TOC),
 // rebuilt from the headings. Page numbers are Word's: Intact doesn't lay the text out in pages, so a
 // table of contents keeps the number each entry showed (a new entry takes the one above it) and the
 // file asks Word to update them when it opens it (see EditorView updateAllFields).
@@ -9,6 +9,7 @@
 import { NS, wChild, wAttr, createW, elementChildren, plainText } from './xml.js';
 import { formatNumber } from './numbering.js';
 import { formatCitation, bibliographyXml } from './references.js';
+import { formulaResult, parseFormulaInstr } from './formulas.js';
 
 const W = NS.w;
 const BLOCKS = 'p, h1, h2, h3, h4, h5, h6';
@@ -52,7 +53,9 @@ function resultNodes(field) {
   const out = [];
   const walker = document.createTreeWalker(field, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (n.parentElement.closest('.field') === field && !n.parentElement.closest('[data-raw]')) out.push(n);
+    // Kept content inside the field is skipped; a table around the field (kept as it is too) isn't.
+    const raw = n.parentElement.closest('[data-raw]');
+    if (n.parentElement.closest('.field') === field && !(raw && field.contains(raw))) out.push(n);
   }
   return out;
 }
@@ -115,7 +118,7 @@ function blockOf({ start }) {
 export function updateFields(doc, root, { only = null } = {}) {
   // Only fields of these kinds (as inserting a table of contents updates it alone), or all.
   const want = (code) => !only || only.includes(code);
-  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0 };
+  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0, formula: 0 };
   const all = [...root.querySelectorAll('span.field[data-instr]')].filter((f) => !f.closest(OUTSIDE_TEXT));
   const parsed = new Map(all.map((f) => [f, parseInstr(f.dataset.instr)]));
   const inText = all.filter((f) => !f.closest('.sdt-locked'));
@@ -148,6 +151,15 @@ export function updateFields(doc, root, { only = null } = {}) {
     if (sw['\\h']) continue;
     const fmt = SEQ_FORMATS[typeof sw['\\*'] === 'string' ? sw['\\*'] : 'ARABIC'] || 'decimal';
     if (setResult(el, formatNumber(n, fmt))) tally.seq++;
+  }
+
+  // Table formulas (=SUM(ABOVE), =B2*C2), in the order of the text, so a total of subtotals is worked
+  // out from the subtotals as they now are; with the document's own separators (see formulas.js).
+  const lang = doc.styles?.language?.() || (typeof navigator !== 'undefined' && navigator.language) || 'en';
+  for (const el of inText) {
+    if (!want('=') || !parseFormulaInstr(el.dataset.instr)) continue;
+    const result = formulaResult(el.dataset.instr, el.closest('td'), lang);
+    if (result != null && setResult(el, result)) tally.formula++;
   }
 
   const marks = bookmarks(doc, root);

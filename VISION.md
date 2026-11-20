@@ -200,7 +200,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Public servants who write official documents (Indonesia first): F4 and Folio paper and a custom
   size ✔; page numbers in i, ii, iii or from any number, per section (Format page numbers) ✔; the
   interface in Indonesian ✔; starters for the naskah dinas (surat dinas, nota dinas, surat undangan,
-  berita acara) ✔
+  berita acara) ✔; Indonesian legal numbering (Pasal → ayat → huruf, BAB → Pasal) ✔;
+  compare two versions of a document ✔; sort a table and table formulas (=SUM(ABOVE)) ✔; say what
+  to do with older `.doc` and password-protected files ✔
 
 ## How we'll know it's working
 

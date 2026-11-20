@@ -44,6 +44,8 @@ export class Numbering {
           fmt: wAttr(wChild(lvl, 'numFmt'), 'val') || 'decimal',
           text: wAttr(wChild(lvl, 'lvlText'), 'val') ?? '',
           start: Number(wAttr(wChild(lvl, 'start'), 'val') ?? 1),
+          // w:lvlRestart: the level whose use restarts this one (1-based; 0 never), else any higher one.
+          restart: wChild(lvl, 'lvlRestart') ? Number(wAttr(wChild(lvl, 'lvlRestart'), 'val')) : null,
           pPr: wChild(lvl, 'pPr'),
         });
       }
@@ -90,7 +92,12 @@ export class Numbering {
       if (counts[i] === undefined) counts[i] = this.start(numId, i) - (i === ilvl ? 1 : 0);
     }
     counts[ilvl]++;
-    counts.length = ilvl + 1;
+    // The levels below restart, but for those whose w:lvlRestart says otherwise (Pasal numbers that
+    // run on through every BAB of a regulation: w:lvlRestart w:val="0").
+    for (let i = ilvl + 1; i < counts.length; i++) {
+      const restart = levels.get(i)?.restart ?? i;
+      if (ilvl < restart) counts[i] = undefined;
+    }
     // A dash bullet (as AutoFormat makes from "- ") shows as typed; symbol-font bullets as •, ◦, ▪.
     if (lvl.fmt === 'bullet') return { marker: DASHES.has(lvl.text) ? lvl.text : BULLETS[ilvl % 3], pPr: lvl.pPr };
     const marker = lvl.text.replace(/%(\d)/g, (_, d) => {
@@ -167,5 +174,67 @@ export function addList(doc, kind, cache, first = null) {
     importW(doc, `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractId}"/>${restart}</w:num>`),
     wChild(root, 'numIdMacAtCleanup'),
   );
+  return numId;
+}
+
+// ------------------------------------------------------------------ multilevel lists (Word's List Library)
+
+// Ready-made multilevel lists, as Word's Multilevel List gallery offers them, with Indonesia's legal
+// numbering as its regulations write it (UU No. 12/2011, its Lampiran II): a Pasal on its own line,
+// centred, its ayat (1), (2), then huruf a., b., angka 1., 2., and a), 1) below them. Each level is
+// { fmt, text, jc (the paragraph's own alignment), left, hanging (twips), restart (w:lvlRestart),
+// keepNext }. A level without its own text and number is Word's next one down, as Word fills them.
+const ID_LEGAL = [
+  { fmt: 'decimal', text: '(%L)', left: 567, hanging: 567 },
+  { fmt: 'lowerLetter', text: '%L.', left: 1134, hanging: 567 },
+  { fmt: 'decimal', text: '%L.', left: 1701, hanging: 567 },
+  { fmt: 'lowerLetter', text: '%L)', left: 2268, hanging: 567 },
+  { fmt: 'decimal', text: '%L)', left: 2835, hanging: 567 },
+];
+const PASAL = { fmt: 'decimal', text: 'Pasal %L', jc: 'center', left: 0, hanging: 0, keepNext: true, before: 240 };
+export const LIST_PRESETS = {
+  // Pasal 1 → (1) → a. → 1. → a) → 1)
+  pasal: [PASAL, ...ID_LEGAL],
+  // BAB I → Pasal 1 (numbered on through the BABs) → (1) → a. → 1. → a)
+  bab: [{ fmt: 'upperRoman', text: 'BAB %L', jc: 'center', left: 0, hanging: 0, keepNext: true, before: 240 }, { ...PASAL, restart: 0 }, ...ID_LEGAL.slice(0, 4)],
+  // 1. → 1.1. → 1.1.1. (a report's numbered headings and paragraphs)
+  outline: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+    fmt: 'decimal', text: Array.from({ length: n }, (_, i) => `%${i + 1}`).join('.') + '.', left: 432 + 144 * (n - 1) * 2, hanging: 432 + 144 * (n - 1),
+  })),
+};
+
+function presetXml(id, preset) {
+  const levels = LIST_PRESETS[preset];
+  let lvls = '';
+  for (let i = 0; i <= MAX_LEVEL; i++) {
+    const l = levels[Math.min(i, levels.length - 1)];
+    // Past the preset's levels: one more step in, as decimals.
+    const extra = i - (levels.length - 1);
+    const left = extra > 0 ? l.left + 567 * extra : l.left;
+    const text = (extra > 0 ? '%L.' : l.text).replace('%L', `%${i + 1}`);
+    const fmt = extra > 0 ? 'decimal' : l.fmt;
+    const restart = l.restart != null && extra <= 0 ? `<w:lvlRestart w:val="${l.restart}"/>` : '';
+    const ind = l.hanging ? `<w:ind w:left="${left}" w:hanging="${l.hanging}"/>` : `<w:ind w:left="${left}" w:firstLine="0"/>`;
+    const pPr = `<w:pPr>${l.keepNext && extra <= 0 ? '<w:keepNext/>' : ''}${l.before && extra <= 0 ? `<w:spacing w:before="${l.before}"/>` : ''}${ind}${l.jc && extra <= 0 ? `<w:jc w:val="${l.jc}"/>` : ''}</w:pPr>`;
+    lvls += `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="${fmt}"/>${restart}<w:suff w:val="${l.hanging ? 'tab' : 'space'}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/>${pPr}</w:lvl>`;
+  }
+  return `<w:abstractNum w:abstractNumId="${id}"><w:multiLevelType w:val="multilevel"/>${lvls}</w:abstractNum>`;
+}
+
+/**
+ * Adds a list of a ready-made multilevel kind (`preset`: a key of LIST_PRESETS) to numbering.xml and
+ * returns its numId, sharing one definition per preset per editing session.
+ */
+export function addPresetList(doc, preset, cache) {
+  const root = doc.documentElement;
+  const key = `preset:${preset}`;
+  let abstractId = cache[key];
+  if (abstractId == null) {
+    abstractId = String(nextId(wChildren(root, 'abstractNum'), 'abstractNumId'));
+    root.insertBefore(importW(doc, presetXml(abstractId, preset)), wChild(root, 'num') || wChild(root, 'numIdMacAtCleanup'));
+    cache[key] = abstractId;
+  }
+  const numId = String(Math.max(1, nextId(wChildren(root, 'num'), 'numId')));
+  root.insertBefore(importW(doc, `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractId}"/></w:num>`), wChild(root, 'numIdMacAtCleanup'));
   return numId;
 }
