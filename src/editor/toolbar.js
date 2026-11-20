@@ -73,7 +73,7 @@ export function rovingToolbar(toolbar, { onEscape } = {}) {
     if (frame) return;
     frame = requestAnimationFrame(() => { frame = 0; sync(); });
   });
-  observer.observe(toolbar, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'class', 'style'] });
+  observer.observe(toolbar, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'class', 'style', 'data-active'] });
   toolbar.addEventListener('keydown', onKeydown);
   toolbar.addEventListener('focusin', onFocusin);
   sync();

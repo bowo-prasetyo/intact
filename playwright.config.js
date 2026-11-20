@@ -12,6 +12,9 @@ export default defineConfig({
     baseURL: 'http://localhost:4173/',
     acceptDownloads: true,
     trace: 'off',
+    // The tests click the toolbar's tools wherever they are: all of them in one toolbar, as "All tools"
+    // shows them. The ribbon (the tabs, the default) is tested on its own, in tests/ribbon.spec.js.
+    storageState: { cookies: [], origins: [{ origin: 'http://localhost:4173', localStorage: [{ name: 'intact.ribbon', value: '0' }] }] },
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

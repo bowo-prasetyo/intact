@@ -45,13 +45,33 @@
     <!-- One toolbar, one Tab stop: arrow keys move along it, Esc goes back to the text, Alt+F10 comes
          back to it (see editor/toolbar.js). Its controls stay where they are: none appears, goes or
          loses its label when the document gets its first tracked change. -->
-    <div ref="toolbarEl" class="toolbar" role="toolbar" aria-label="Editing and review" @mousedown="keepFocus">
+    <!-- The ribbon, as Word's: the tools in tabs (Home, Insert, Layout, References, Review), one tab's
+         at a time, below the tabs; Undo, Redo and Help in every tab. "All tools" shows them all in
+         one toolbar instead (remembered). A phone keeps its one row of tools that scrolls. -->
+    <div v-if="ribbon" class="ribbon-tabs" role="tablist" aria-label="Toolbar tabs" @keydown="onRibbonKeys" @mousedown="keepFocus">
+      <button
+        v-for="t in RIBBON_TABS"
+        :id="`ribbon-tab-${t.id}`"
+        :key="t.id"
+        type="button"
+        role="tab"
+        :class="{ context: t.id === 'layout' && state.table && ribbonTab !== 'layout' }"
+        :aria-selected="ribbonTab === t.id"
+        :tabindex="ribbonTab === t.id ? 0 : -1"
+        aria-controls="editor-toolbar"
+        :title="t.title"
+        @click="setRibbonTab(t.id)"
+      >{{ t.label }}<span v-if="t.id === 'review' && changes.total && ribbonTab !== 'review'" class="tab-badge" :aria-label="`, ${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'}`">{{ changes.total }}</span></button>
+      <span class="ribbon-spacer" />
+      <button type="button" class="ribbon-mode" title="Show every tool at once, in one toolbar without tabs" @click="setRibbon(false)">All tools</button>
+    </div>
+    <div id="editor-toolbar" ref="toolbarEl" class="toolbar" :class="{ ribbon }" :data-active="ribbon ? ribbonTab : null" role="toolbar" :aria-label="ribbon ? `${RIBBON_TABS.find((t) => t.id === ribbonTab).label} tools` : 'Editing and review'" :aria-labelledby="ribbon ? `ribbon-tab-${ribbonTab}` : null" @mousedown="keepFocus">
       <div class="tb-group">
       <fieldset class="group" :disabled="textLocked" :title="textLocked ? lockMessage : null">
       <button type="button" class="ph" title="Undo (Ctrl+Z)" aria-label="Undo" @click="undo">↶</button>
       <button type="button" class="ph" title="Redo (Ctrl+Y)" aria-label="Redo" @click="redo">↷</button>
       <span class="sep" />
-      <select :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="onStyleMenu">
+      <select data-tab="home" :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="onStyleMenu">
         <option value="normal">Normal</option>
         <option value="title">Title</option>
         <option value="h1">Heading 1</option>
@@ -63,7 +83,7 @@
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
         <option value="__modify">Modify style…</option>
       </select>
-      <select class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts first, then Word’s usual ones" @change="applyFont($event.target.value)">
+      <select data-tab="home" class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts first, then Word’s usual ones" @change="applyFont($event.target.value)">
         <option v-if="!fontValue" value="" disabled hidden>{{ state.font }}</option>
         <optgroup label="Theme fonts">
           <option v-for="f in fontChoices.filter((x) => x.group === 'theme')" :key="f.value" :value="f.value">{{ f.label }}</option>
@@ -75,7 +95,7 @@
           <option v-for="f in fontChoices.filter((x) => x.group === 'standard')" :key="f.value" :value="f.value" :style="{ fontFamily: `'${f.name}'` }">{{ f.label }}</option>
         </optgroup>
       </select>
-      <select class="size-choice" :value="sizeValue" aria-label="Font size" title="Font size" @change="applyFontSize(Number($event.target.value))">
+      <select data-tab="home" class="size-choice" :value="sizeValue" aria-label="Font size" title="Font size" @change="applyFontSize(Number($event.target.value))">
         <option v-if="!sizeValue" value="" disabled hidden>{{ state.size }}</option>
         <optgroup v-if="sizeChoices.used.length" label="In this document">
           <option v-for="z in sizeChoices.used" :key="`u${z}`" :value="String(z)">{{ z }}</option>
@@ -84,124 +104,124 @@
           <option v-for="z in sizeChoices.others" :key="`o${z}`" :value="String(z)">{{ z }}</option>
         </optgroup>
       </select>
-      <button type="button" title="Grow font (Ctrl+Shift+>)" aria-label="Grow font" @click="growFont(1)">
+      <button data-tab="home" type="button" title="Grow font (Ctrl+Shift+>)" aria-label="Grow font" @click="growFont(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 13.5l3.5-10 3.5 10M2.7 10h4.6M11 6.5l2-2.5 2 2.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
-      <button type="button" title="Shrink font (Ctrl+Shift+<)" aria-label="Shrink font" @click="growFont(-1)">
+      <button data-tab="home" type="button" title="Shrink font (Ctrl+Shift+<)" aria-label="Shrink font" @click="growFont(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5l3-8.5 3 8.5M3.1 10.5h3.8M11 4l2 2.5 2-2.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
-      <select v-if="characterStyles.length" class="char-style" :value="state.charStyle" aria-label="Character style" title="Character style: the document’s own" @change="applyCharacterStyle($event.target.value)">
+      <select data-tab="home" v-if="characterStyles.length" class="char-style" :value="state.charStyle" aria-label="Character style" title="Character style: the document’s own" @change="applyCharacterStyle($event.target.value)">
         <option value="">No character style</option>
         <option v-for="c in characterStyles" :key="c.id" :value="c.id">{{ c.label }}</option>
         <option v-if="state.charStyle && !characterStyles.some((c) => c.id === state.charStyle)" :value="state.charStyle" disabled>{{ doc.styleLabel(state.charStyle) }}</option>
       </select>
-      <span class="sep" />
-      <button type="button" title="Bold (Ctrl+B)" aria-label="Bold" :class="{ on: state.bold, ph: true }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
-      <button type="button" title="Italic (Ctrl+I)" aria-label="Italic" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
-      <button type="button" title="Underline (Ctrl+U)" aria-label="Underline" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
-      <button type="button" title="Strikethrough" aria-label="Strikethrough" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
-      <button type="button" title="Superscript (Ctrl+Shift+=)" aria-label="Superscript" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
-      <button type="button" title="Subscript (Ctrl+=)" aria-label="Subscript" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
-      <span class="split ph">
+      <span class="sep" data-tab="home" />
+      <button data-tab="home" type="button" title="Bold (Ctrl+B)" aria-label="Bold" :class="{ on: state.bold, ph: true }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
+      <button data-tab="home" type="button" title="Italic (Ctrl+I)" aria-label="Italic" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
+      <button data-tab="home" type="button" title="Underline (Ctrl+U)" aria-label="Underline" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
+      <button data-tab="home" type="button" title="Strikethrough" aria-label="Strikethrough" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
+      <button data-tab="home" type="button" title="Superscript (Ctrl+Shift+=)" aria-label="Superscript" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
+      <button data-tab="home" type="button" title="Subscript (Ctrl+=)" aria-label="Subscript" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <span data-tab="home" class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
         <button ref="paletteButton" type="button" class="arrow" title="Highlight colour" aria-label="Highlight colour options" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
       </span>
-      <span class="split">
+      <span data-tab="home" class="split">
         <button type="button" :title="`Font colour: ${fontColor ? fontColor.label : 'Automatic'}`" @click="applyFontColor(fontColor)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 11.5l3.5-9 3.5 9M5.7 8.5h4.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="fontColor ? `#${fontColor.hex}` : '#000'" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
         <button ref="colorButton" type="button" class="arrow" title="Font colour: the document’s theme and its own colours" aria-label="Font colour options" aria-haspopup="dialog" :aria-expanded="colorPalette.open" @click="toggleColorPalette">▾</button>
       </span>
-      <button type="button" title="Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays" @click="clearCharacterFormatting">
+      <button data-tab="home" type="button" title="Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays" @click="clearCharacterFormatting">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3h8M7 3l-2.5 9M9.5 9.5l4 4M13.5 9.5l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button type="button" class="painter-toggle" :title="painter.active ? 'Format Painter is on: select (or click) the text to paint the formatting on – Esc or a click here stops it' : 'Format Painter (Ctrl+Shift+C, Ctrl+Shift+V): copies the formatting at the caret to the text you select next; double-click to paint it on several places'" aria-label="Format Painter" :class="{ on: painter.active }" :aria-pressed="painter.active" @click="togglePainter" @dblclick="startPainter(true)">
+      <button data-tab="home" type="button" class="painter-toggle" :title="painter.active ? 'Format Painter is on: select (or click) the text to paint the formatting on – Esc or a click here stops it' : 'Format Painter (Ctrl+Shift+C, Ctrl+Shift+V): copies the formatting at the caret to the text you select next; double-click to paint it on several places'" aria-label="Format Painter" :class="{ on: painter.active }" :aria-pressed="painter.active" @click="togglePainter" @dblclick="startPainter(true)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="1.8" width="10" height="4.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M12 4h1.8v3.6H7.6v2.2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="6.4" y="9.8" width="2.4" height="4.6" rx=".6" fill="currentColor" /></svg>
       </button>
-      <button ref="caseButton" type="button" title="Change case (Shift+F3): Sentence case, lowercase, UPPERCASE, Capitalize Each Word" aria-label="Change case" aria-haspopup="menu" :aria-expanded="caseMenu.open" @click="toggleCaseMenu">
+      <button data-tab="home" ref="caseButton" type="button" title="Change case (Shift+F3): Sentence case, lowercase, UPPERCASE, Capitalize Each Word" aria-label="Change case" aria-haspopup="menu" :aria-expanded="caseMenu.open" @click="toggleCaseMenu">
         <span class="case-icon" aria-hidden="true">Aa</span>
       </button>
-      <span class="sep" />
-      <button v-for="a in aligns" :key="a.value" type="button" :title="a.title" :aria-label="a.label" :class="{ on: state.align === a.value }" :aria-pressed="state.align === a.value" @click="alignBlocks(a.value)">
+      <span class="sep" data-tab="home" />
+      <button data-tab="home" v-for="a in aligns" :key="a.value" type="button" :title="a.title" :aria-label="a.label" :class="{ on: state.align === a.value }" :aria-pressed="state.align === a.value" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <button ref="spacingButton" type="button" title="Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2)" aria-label="Line and paragraph spacing" aria-haspopup="menu" :aria-expanded="spacingMenu.open" @click="toggleSpacingMenu">
+      <button data-tab="home" ref="spacingButton" type="button" title="Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2)" aria-label="Line and paragraph spacing" aria-haspopup="menu" :aria-expanded="spacingMenu.open" @click="toggleSpacingMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7.5 3.5h6.5M7.5 8h6.5M7.5 12.5h6.5M3.5 2.5v11M1.8 4.2l1.7-1.7 1.7 1.7M1.8 11.8l1.7 1.7 1.7-1.7" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
       </button>
-      <span class="sep" />
-      <button type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet', ph: true }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
+      <span class="sep" data-tab="home" />
+      <button data-tab="home" type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet', ph: true }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button type="button" title="Numbering" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
+      <button data-tab="home" type="button" title="Numbering" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
-      <button type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" aria-label="Decrease indent" @click="indentBlocks(-1)">
+      <button data-tab="home" type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" aria-label="Decrease indent" @click="indentBlocks(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <button type="button" :title="state.list ? 'Increase list level (Tab, Ctrl+M)' : 'Increase indent (Ctrl+M)'" aria-label="Increase indent" @click="indentBlocks(1)">
+      <button data-tab="home" type="button" :title="state.list ? 'Increase list level (Tab, Ctrl+M)' : 'Increase indent (Ctrl+M)'" aria-label="Increase indent" @click="indentBlocks(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <span class="sep" />
-      <button ref="linkButton" type="button" title="Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here" @click="openLinkDialog">
+      <span class="sep" data-tab="home" />
+      <button data-tab="insert" ref="linkButton" type="button" title="Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here" @click="openLinkDialog">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.6 2.6 0 0 1 3.7 3.7l-1.1 1.1M8.8 11.4l-1.1 1.1a2.6 2.6 0 0 1-3.7-3.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date, or a reference: a table of contents, caption, cross-reference, equation, citation or bibliography" aria-label="Insert a check box or date, or a reference" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
+      <button data-tab="insert" ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date, or a reference: a table of contents, caption, cross-reference, equation, citation or bibliography" aria-label="Insert a check box or date, or a reference" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">Insert</span>
       </button>
-      <button type="button" title="Insert a symbol: ©, €, ✓, →, ½ and others, by group or name" aria-label="Insert symbol" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
+      <button data-tab="insert" type="button" title="Insert a symbol: ©, €, ✓, →, ½ and others, by group or name" aria-label="Insert symbol" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
         <span class="symbol-icon" aria-hidden="true">Ω</span><span class="short-label">Symbol</span>
       </button>
-      <button type="button" class="ph" title="Insert picture" aria-label="Insert picture" @click="pickPicture">
+      <button data-tab="insert" type="button" class="ph" title="Insert picture" aria-label="Insert picture" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Picture</span>
       </button>
-      <button type="button" class="ph" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
+      <button data-tab="insert" type="button" class="ph" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Sign</span>
       </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
-      <button ref="tableButton" type="button" title="Insert table" aria-label="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
+      <button data-tab="insert" ref="tableButton" type="button" title="Insert table" aria-label="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg><span class="short-label">Table</span>
       </button>
-      <button ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-label="Table layout" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
+      <button data-tab="layout" ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-label="Table layout" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg><span class="short-label">Layout</span>
       </button>
-      <button type="button" title="Insert footnote (Ctrl+Alt+F)" aria-label="Insert footnote" @click="insertFootnote">
+      <button data-tab="references" type="button" title="Insert footnote (Ctrl+Alt+F)" aria-label="Insert footnote" @click="insertFootnote">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">Footnote</span>
       </button>
-      <button type="button" title="Insert endnote (Ctrl+Alt+D)" aria-label="Insert endnote" @click="insertEndnote">
+      <button data-tab="references" type="button" title="Insert endnote (Ctrl+Alt+D)" aria-label="Insert endnote" @click="insertEndnote">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 4h7M1.5 7.5h5M1.5 13.5h13M11.5 2.5v4.5M13.5 2.5v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">Endnote</span>
       </button>
-      <button type="button" title="Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s" aria-label="Update fields" @click="updateAllFields">
+      <button data-tab="references" type="button" title="Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s" aria-label="Update fields" @click="updateAllFields">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Update</span>
       </button>
-      <span class="split">
+      <span data-tab="layout" class="split">
         <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber()">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">Page no.</span>
         </button>
         <button ref="pageNumberButton" type="button" class="arrow" title="Page number at the top or bottom of the page; edit the header or footer" aria-label="Page number and header options" aria-haspopup="menu" :aria-expanded="pageNumberMenu.open" @click="togglePageNumberMenu">▾</button>
       </span>
-      <button ref="pageSetupButton" type="button" title="Page setup: paper size, orientation and margins" aria-label="Page setup" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
+      <button data-tab="layout" ref="pageSetupButton" type="button" title="Page setup: paper size, orientation and margins" aria-label="Page setup" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg><span class="short-label">Page setup</span>
       </button>
       </fieldset>
       </div>
       <div class="tb-group">
-      <span class="sep" />
-      <button type="button" title="Find and replace (Ctrl+F, Ctrl+H)" aria-label="Find and replace" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
+      <span class="sep" data-tab="classic" />
+      <button data-tab="home" type="button" title="Find and replace (Ctrl+F, Ctrl+H)" aria-label="Find and replace" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg><span class="short-label">Find</span>
       </button>
-      <button ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" aria-label="Fill in placeholders" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
+      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" aria-label="Fill in placeholders" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Fill in</span>
         <span v-if="placeholderCount" class="badge">{{ placeholderCount }}</span>
       </button>
-      <button type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" aria-label="Show formatting marks" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
-      <span class="sep" />
-      <button ref="trackButton" type="button" class="track-toggle" :title="lockMode ? `Track Changes: ${lockMode === 'trackedChanges' ? 'always on' : tracking ? 'on' : 'off'} – ${lockMessage}` : 'Track Changes (Ctrl+Shift+E)'" :class="{ on: tracking }" :aria-pressed="tracking" :disabled="!!lockMode" @click="toggleTracking">
+      <button data-tab="home" type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" aria-label="Show formatting marks" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
+      <span class="sep" data-tab="review" />
+      <button data-tab="review" ref="trackButton" type="button" class="track-toggle" :title="lockMode ? `Track Changes: ${lockMode === 'trackedChanges' ? 'always on' : tracking ? 'on' : 'off'} – ${lockMessage}` : 'Track Changes (Ctrl+Shift+E)'" :class="{ on: tracking }" :aria-pressed="tracking" :disabled="!!lockMode" @click="toggleTracking">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Track changes</span>
       </button>
-      <span class="changes-group" role="group" aria-label="Tracked changes">
+      <span data-tab="review" class="changes-group" role="group" aria-label="Tracked changes">
         <button type="button" title="Previous change" :disabled="!changes.total" @click="gotoChange(-1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
         </button>
@@ -224,18 +244,19 @@
         </fieldset>
         <span class="badge" :class="{ zero: !changes.total }" :title="changesTitle">{{ changes.total }}</span>
       </span>
-      <span class="sep" />
-      <button type="button" class="review-toggle" title="Review your changes, what the file carries and its accessibility – any time, not only when you download" @click="openReview()">
+      <span class="sep" data-tab="review" />
+      <button data-tab="review" type="button" class="review-toggle" title="Review your changes, what the file carries and its accessibility – any time, not only when you download" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">Review</span>
       </button>
-      <button type="button" class="new-comment ph" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
+      <button data-tab="review" type="button" class="new-comment ph" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
       </button>
-      <button v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :aria-label="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
+      <button data-tab="review" v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :aria-label="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="badge">{{ threads.length }}</span>
       </button>
+      <button v-if="!ribbon" type="button" class="ribbon-mode" data-tab="classic" title="Show the tools in tabs (Home, Insert, Layout, References, Review), as Word’s ribbon" @click="setRibbon(true)">Tabs</button>
       <button type="button" class="help-toggle" title="Help: keyboard shortcuts and checks (Ctrl+/)" aria-label="Help" aria-haspopup="dialog" @click="helpOpen = true">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.7c-.5.2-.8.6-.8 1.1v.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /><circle cx="8" cy="11.6" r=".85" fill="currentColor" /></svg>
       </button>
@@ -1814,6 +1835,48 @@ onBeforeRouteLeave(() => {
 const toolbarEl = ref(null);
 let toolbarNav = null;
 let toolbarLabels = null;
+
+// ------------------------------------------------------------------ the ribbon
+
+const RIBBON_TABS = [
+  { id: 'home', label: 'Home', title: 'Home: styles, fonts, formatting, paragraphs and lists, Find and formatting marks' },
+  { id: 'insert', label: 'Insert', title: 'Insert: a link, check box, date, reference, symbol, picture, signature or table, and filling in placeholders' },
+  { id: 'layout', label: 'Layout', title: 'Layout: page setup (paper, margins, sections, headers and footers, watermark), page numbers and table layout' },
+  { id: 'references', label: 'References', title: 'References: footnotes, endnotes and updating fields' },
+  { id: 'review', label: 'Review', title: 'Review: Track Changes, accepting and rejecting, comments and checking before you send' },
+];
+const RIBBON_KEY = 'intact.ribbon';
+const RIBBON_TAB_KEY = 'intact.ribbonTab';
+const remembered = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+const ribbon = ref(remembered(RIBBON_KEY, '1') !== '0');
+const ribbonTab = ref(RIBBON_TABS.some((t) => t.id === remembered(RIBBON_TAB_KEY, 'home')) ? remembered(RIBBON_TAB_KEY, 'home') : 'home');
+
+function setRibbonTab(id) {
+  ribbonTab.value = id;
+  try { localStorage.setItem(RIBBON_TAB_KEY, id); } catch { /* this session only */ }
+  nextTick(() => toolbarLabels?.refit());
+}
+
+/** The tools in tabs (the ribbon), or all of them in one toolbar; remembered in this browser. */
+function setRibbon(on) {
+  ribbon.value = on;
+  try { localStorage.setItem(RIBBON_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+  nextTick(() => {
+    toolbarLabels?.refit();
+    document.querySelector(on ? '.ribbon-tabs [aria-selected="true"]' : '.toolbar .ribbon-mode')?.focus();
+  });
+}
+
+/** The tabs from the keyboard, as WAI-ARIA's tabs: ← and → (Home, End) choose the next tab. */
+function onRibbonKeys(e) {
+  const at = RIBBON_TABS.findIndex((t) => t.id === ribbonTab.value);
+  const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: RIBBON_TABS.length - 1 }[e.key];
+  if (to == null || !e.target.matches('[role="tab"]')) return;
+  e.preventDefault();
+  const id = RIBBON_TABS[(to + RIBBON_TABS.length) % RIBBON_TABS.length].id;
+  setRibbonTab(id);
+  nextTick(() => document.getElementById(`ribbon-tab-${id}`)?.focus());
+}
 onMounted(() => {
   toolbarNav = rovingToolbar(toolbarEl.value, { onEscape: refocus });
   toolbarLabels = fitLabels(toolbarEl.value);
@@ -7997,6 +8060,39 @@ async function close() {
 .toolbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 12px;
   background: var(--surface); border-bottom: 1px solid var(--border);
+}
+/* The ribbon's tabs, above its tools: one tab's tools at a time (a wider screen than a phone's). */
+.ribbon-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 12px 0; background: var(--surface); }
+.ribbon-tabs [role="tab"] {
+  position: relative; padding: 6px 12px 7px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 4px 4px 0 0;
+}
+.ribbon-tabs [role="tab"]:hover { background: var(--hover); color: var(--text); }
+.ribbon-tabs [role="tab"][aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.ribbon-tabs [role="tab"]:focus-visible, .ribbon-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* In a table, the Layout tab (which has Table layout) is marked, as Word shows its table tabs. */
+.ribbon-tabs [role="tab"].context::after { content: ''; position: absolute; top: 5px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.ribbon-tabs .tab-badge { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--active); color: var(--accent); font-size: 11px; }
+.ribbon-spacer { flex: 1; }
+.ribbon-mode { margin-bottom: 4px; padding: 3px 10px; border: 1px solid var(--border) !important; border-radius: 4px; background: var(--surface); color: var(--muted); font: inherit; font-size: 12px !important; cursor: pointer; }
+.ribbon-mode:hover { background: var(--hover) !important; color: var(--text); }
+.toolbar .ribbon-mode { margin: 0 0 0 auto; height: 28px !important; }
+.toolbar.ribbon { min-height: 45px; box-sizing: border-box; }
+/* One tab's tools on one row of a laptop's width: the style and font boxes a little narrower. */
+.toolbar.ribbon select[aria-label="Paragraph style"] { min-width: 0; width: 118px; }
+.toolbar.ribbon select.font-choice { width: 120px; }
+.toolbar.ribbon .sep { margin: 0 2px; }
+@media (min-width: 721px) {
+  .toolbar.ribbon[data-active="home"] [data-tab]:not([data-tab="home"]),
+  .toolbar.ribbon[data-active="insert"] [data-tab]:not([data-tab="insert"]),
+  .toolbar.ribbon[data-active="layout"] [data-tab]:not([data-tab="layout"]),
+  .toolbar.ribbon[data-active="references"] [data-tab]:not([data-tab="references"]),
+  .toolbar.ribbon[data-active="review"] [data-tab]:not([data-tab="review"]) { display: none !important; }
+  .toolbar.ribbon .help-toggle { margin-left: auto; }
+}
+/* A phone: its one row of every tool, scrolling sideways, whatever the choice here. */
+@media (max-width: 720px) {
+  .ribbon-tabs, .toolbar .ribbon-mode { display: none; }
 }
 .toolbar button {
   min-width: 30px; height: 32px; display: inline-flex; align-items: center; justify-content: center;

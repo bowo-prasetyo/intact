@@ -190,6 +190,8 @@ Saying no to these keeps the product small enough to keep its promises:
   Modify Style ✔
 - Design headers and footers: a different first page, different odd and even pages ✔
 - Tests that save a new document of each kind and check it as Word reads it ✔ (starters)
+- The tools in tabs, as Word's ribbon (Home, Insert, Layout, References, Review), with every tool in
+  one toolbar still a choice ✔
 
 ## How we'll know it's working
 
