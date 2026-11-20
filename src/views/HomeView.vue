@@ -51,7 +51,7 @@
           :disabled="busy"
           aria-labelledby="open-title"
           aria-describedby="open-hint"
-          @click="fileInput.click()"
+          @click="browse"
         >
           <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.5 5h-6A1.5 1.5 0 0 0 3 6.5z" /><path d="M12 16.5v-6M9.5 13 12 10.5l2.5 2.5" /></svg>
           <span id="open-title" class="tile-title">{{ dragOver ? 'Drop to open' : 'Open a .docx file' }}</span>
@@ -89,6 +89,7 @@ import { openFile, newDocument, newFromStarter, openDraft } from '../store.js';
 import { STARTERS, localPaper } from '../docx/starters.js';
 import { listDrafts, deleteDraft, MAX_AGE } from '../drafts.js';
 import { receiveFile, draftsOpenElsewhere } from '../tabs.js';
+import { canOpenWithHandle, pickFileToOpen, handleOfDropped } from '../editor/fileHandles.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -177,16 +178,34 @@ async function run(task) {
   }
 }
 
-function load(file) {
+function load(file, handle = null) {
   if (!file) return;
   if (!/\.(docx|dotx|docm|dotm)$/i.test(file.name)) {
     error.value = 'Please choose a Word file: .docx, or a .dotx template, or a .docm or .dotm with macros (older .doc files are not supported).';
     return;
   }
-  run(() => openFile(file));
+  run(() => openFile(file, handle));
 }
 
 const onPick = (e) => { load(e.target.files[0]); e.target.value = ''; };
+
+/**
+ * Open a .docx file: with the browser's own file picker where it can give a handle to the file, so
+ * Save writes back to it (see editor/fileHandles.js); else the file input, and Download.
+ */
+async function browse() {
+  if (!canOpenWithHandle()) {
+    fileInput.value.click();
+    return;
+  }
+  try {
+    const picked = await pickFileToOpen();
+    if (picked) load(picked.file, picked.handle);
+  } catch (e) {
+    console.error(e);
+    fileInput.value.click(); // the picker refused (a policy, a sandbox): the input still works
+  }
+}
 
 // Dragging files over the page shows where they go: the Open tile lights up. dragenter and dragleave
 // fire for every child crossed, so count them rather than trust the last one.
@@ -212,7 +231,11 @@ function onDrop(e) {
   e.preventDefault(); // the browser would otherwise open or download the file itself
   dragDepth = 0;
   dragOver.value = false;
-  if (!busy.value) load(e.dataTransfer.files[0]);
+  if (busy.value) return;
+  const file = e.dataTransfer.files[0];
+  // Asked for now, while the drop is handled: the file's handle, so Save writes back to it.
+  const handle = handleOfDropped([...e.dataTransfer.items].find((i) => i.kind === 'file'));
+  handle.then((h) => load(file, h));
 }
 const createNew = () => run(newDocument);
 const createFrom = (id) => run(() => newFromStarter(id));
@@ -228,6 +251,7 @@ const STARTER_ICONS = {
   invoice: ['M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z', 'M9 8h6M9 11.5h6M9 15h3'],
   cv: [PAGE, 'M12 10.2a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8.5 14.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5M8 17.5h8'],
   report: [PAGE, 'M8.5 17v-3M12 17v-6M15.5 17V8.5'],
+  manuscript: [PAGE, 'M9.5 7.5h5M8 11h8M8 13.5h8M8 16h8M8 18.5h5'],
 };
 </script>
 

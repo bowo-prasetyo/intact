@@ -10,12 +10,12 @@
       </p>
       <h2>What you can edit</h2>
       <ul>
-        <li>Start from a template on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV or a report, with placeholders that Fill in fills in once for everywhere they appear</li>
+        <li>Start from a template on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV, a report or a novel's manuscript (standard manuscript format), with placeholders that Fill in fills in once for everywhere they appear</li>
         <li>Mail merge from a list (a CSV from Excel or Google Sheets): a letter for each row, in one document or a .zip of documents, from Download's menu or Fill in</li>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F) or an endnote (Ctrl+Alt+D)</li>
         <li>Update fields (F9): the table of contents, cross-references, caption and note numbers; Word updates page numbers when it opens the file</li>
-        <li>References: a table of contents, captions, cross-references, equations typed as LaTeX, and citations with a bibliography in APA or MLA style, as Word writes them; a Headings pane to move around by the headings</li>
+        <li>References: a table of contents, captions, cross-references, equations typed as LaTeX, and citations with a bibliography in APA or MLA style, as Word writes them; a Headings pane to move around by the headings, and to move a chapter with its text</li>
         <li>Page numbers in a header or footer, at the top or bottom of the page (left, centre or right), or a new header or footer for them or for text on every page; page setup (paper size, orientation, margins, in centimetres or inches) for the whole document, one section, from a point forward or the selected text (a landscape page for a wide table); a different first page, and different odd and even pages</li>
         <li>Modify Style: change a paragraph style's font, size, colour, alignment, spacing and indents (a first-line indent for every paragraph), and every paragraph in it follows</li>
         <li>Headers and footers, in the page's margins: the first page's, other pages', even pages' and each section's, chosen with the tabs above and below the page</li>
@@ -38,6 +38,7 @@
         <li>A watermark (DRAFT, CONFIDENTIAL or your own text), in Page setup, as Word puts one in the header</li>
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page</li>
         <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
+        <li>Save back to the file opened, and Save as…, where the browser can (Chrome and Edge on a computer): the browser writes the file where it is</li>
         <li>About how many pages, in the status bar, with a dashed line where each page begins</li>
         <li>Several documents at once, each in its own tab: Open (Ctrl+O) opens another beside this one, and a document dropped on the page opens in a new tab</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
@@ -47,7 +48,7 @@
         <li>The toolbar from the keyboard: Alt+F10 goes to it, the arrow keys along it, Esc back to the text</li>
         <li>Track Changes for your own edits, formatting included, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
-        <li>Accept and reject tracked changes, one at a time or all at once; show all markup, simple markup or no markup, to read an edited draft clean</li>
+        <li>Accept and reject tracked changes, one at a time or all at once; show all markup, simple markup, no markup or the original, to read an edited draft clean</li>
         <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links; tables from Excel, Google Sheets and Word paste as tables</li>
         <li>Links (Ctrl+K) to web pages, e-mail addresses and DOIs: insert, change or remove them</li>
         <li>Word and character count of the document and of the selection; spelling checked in the document's language where the browser can</li>

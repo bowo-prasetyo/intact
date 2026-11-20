@@ -1,5 +1,5 @@
-// Starter documents on the start page: a letter, a memo, minutes, a quote, an invoice, a CV and a
-// report. Each opens as a new document with Fill in showing its placeholders, is written as Word
+// Starter documents on the start page: a letter, a memo, minutes, a quote, an invoice, a CV, a
+// report and a novel's manuscript. Each opens as a new document with Fill in showing its placeholders, is written as Word
 // writes a document (its properties in the order Word's schema requires, its parts related and
 // typed), is on the paper used where the browser is, and comes back unchanged when opened again.
 import fs from 'node:fs';
@@ -8,8 +8,8 @@ import JSZip from 'jszip';
 import { downloadFile } from './helpers.js';
 import { RPR_ORDER, PPR_ORDER } from '../src/docx/xml.js';
 
-const STARTERS = ['Letter', 'Memo', 'Meeting minutes', 'Quote', 'Invoice', 'CV', 'Report'];
-const FILES = { Letter: 'Letter', Memo: 'Memo', 'Meeting minutes': 'Minutes', Quote: 'Quote', Invoice: 'Invoice', CV: 'CV', Report: 'Report' };
+const STARTERS = ['Letter', 'Memo', 'Meeting minutes', 'Quote', 'Invoice', 'CV', 'Report', 'Manuscript'];
+const FILES = { Letter: 'Letter', Memo: 'Memo', 'Meeting minutes': 'Minutes', Quote: 'Quote', Invoice: 'Invoice', CV: 'CV', Report: 'Report', Manuscript: 'Manuscript' };
 const TCPR_ORDER = ['cnfStyle', 'tcW', 'gridSpan', 'hMerge', 'vMerge', 'tcBorders', 'shd', 'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark'];
 const TBLPR_ORDER = ['tblStyle', 'tblpPr', 'tblOverlap', 'bidiVisual', 'tblStyleRowBandSize', 'tblStyleColBandSize', 'tblW', 'jc', 'tblCellSpacing', 'tblInd', 'tblBorders', 'shd', 'tblLayout', 'tblCellMar', 'tblLook'];
 
@@ -123,6 +123,35 @@ test('the report numbers its pages in the footer', async ({ page }) => {
   const { read } = await saved(page);
   expect(await read('word/footer1.xml')).toContain('<w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText>');
   expect(await read('word/document.xml')).toMatch(/<w:sectPr><w:footerReference w:type="default" r:id="rId4"\/>/);
+});
+
+test('the manuscript is in standard manuscript format: double-spaced, indented, chapters on new pages, a header after the title page', async ({ page }) => {
+  await start(page, 'Manuscript');
+  const first = page.locator('.docx-page > p', { hasText: 'The first paragraph of your story' });
+  await expect(first).toHaveCSS('font-family', /Times New Roman/);
+  await expect.poll(() => first.evaluate((el) => parseFloat(getComputedStyle(el).textIndent))).toBeCloseTo(48, 0); // half an inch
+  await expect.poll(() => first.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeCloseTo(16, 0); // 12 pt
+  // The title page's lines are single-spaced and not indented; the scene break is centred.
+  await expect(page.locator('.docx-page > p', { hasText: '[Street address]' })).toHaveCSS('text-indent', '0px');
+  await expect(page.locator('.docx-page > p', { hasText: /^#$/ })).toHaveCSS('text-align', 'center');
+  // The chapters are in the Headings pane.
+  await page.getByRole('button', { name: /Headings/ }).click();
+  const pane = page.getByRole('navigation', { name: /Headings/ });
+  await expect(pane.getByRole('button', { name: 'Chapter One' })).toBeVisible();
+  await expect(pane.getByRole('button', { name: 'Chapter Two' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: /fill in/i });
+  for (const name of ['Your legal name', 'Novel title', 'Pen name', 'Surname', 'Short title', 'Word count, rounded']) await expect(dialog.getByRole('textbox', { name, exact: true })).toBeVisible();
+
+  const { read } = await saved(page);
+  const styles = await read('word/styles.xml');
+  expect(styles).toContain('<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="0" w:line="480" w:lineRule="auto"/><w:ind w:firstLine="720"/></w:pPr></w:style>');
+  expect(styles).toContain('<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/>');
+  expect(styles.match(/<w:style [^>]*w:styleId="Heading1".*?<\/w:style>/s)[0]).toContain('<w:pageBreakBefore/>');
+  const doc = await read('word/document.xml');
+  expect(doc).toMatch(/<w:sectPr><w:headerReference w:type="default" r:id="rId5"\/>.*<w:titlePg\/><\/w:sectPr>/s);
+  const header = await read('word/header1.xml');
+  expect(header).toContain('[Surname] / [Short title] / ');
+  expect(header).toContain(' PAGE ');
 });
 
 test('a starter downloaded and opened again comes back with the same text', async ({ page }) => {

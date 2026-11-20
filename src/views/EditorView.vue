@@ -11,8 +11,8 @@
         </span>
       </div>
       <span class="save-split">
-        <button class="primary" type="button" :disabled="saving" title="Download (Ctrl+S)" @click="requestDownload">
-          {{ saving ? 'Saving…' : 'Download' }}
+        <button class="primary" type="button" :disabled="saving" :title="fileHandle ? `Save: write the changes into ${fileHandle.name}, the file opened, on this device (Ctrl+S)` : 'Download (Ctrl+S)'" @click="requestDownload()">
+          {{ saving ? 'Saving…' : fileHandle ? 'Save' : 'Download' }}
         </button>
         <button ref="saveMenuButton" class="primary arrow" type="button" :title="canShareFiles ? 'More ways to save: a PDF, or share the file' : 'More ways to save: a PDF'" aria-label="More ways to save" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
       </span>
@@ -244,10 +244,11 @@
         </fieldset>
         <span class="badge" :class="{ zero: !changes.total }" :title="changesTitle">{{ changes.total }}</span>
       </span>
-      <select data-tab="review" class="markup-choice" :value="markup" aria-label="Show markup" title="What the tracked changes look like, as Word’s Display for Review: all markup, simple markup (a line in the margin beside each change) or no markup (the text as it will be once they are accepted). Only how the page shows them: the changes stay in the file" @change="setMarkup($event.target.value)">
+      <select data-tab="review" class="markup-choice" :value="markup" aria-label="Show markup" title="What the tracked changes look like, as Word’s Display for Review: all markup, simple markup (a line in the margin beside each change), no markup (the text as it will be once they are accepted) or the original (the text before them, read-only). Only how the page shows them: the changes stay in the file" @change="setMarkup($event.target.value)">
         <option value="all">All markup</option>
         <option value="simple">Simple markup</option>
         <option value="none">No markup</option>
+        <option value="original">Original</option>
       </select>
       <span class="sep" data-tab="review" />
       <button data-tab="review" type="button" class="review-toggle" title="Review your changes, what the file carries and its accessibility – any time, not only when you download" @click="openReview()">
@@ -280,7 +281,7 @@
     <FillInDialog v-if="fillIn.open" ref="fillInDialog" :style="{ left: `${fillIn.x}px`, top: `${fillIn.y}px` }" :roots="() => [page]" :edit="applyEdit" :tracked="trackedBy" @close="closeFillIn" @reveal="revealRange" @filled="onFilled" @mailmerge="openMailMerge" />
 
     <div class="workspace">
-      <NavigationPane v-if="navOpen" :headings="navHeadings" :current="navCurrent" @close="toggleNav" @go="goToHeading" />
+      <NavigationPane v-if="navOpen" :headings="navHeadings" :current="navCurrent" :movable="!textLocked" @close="toggleNav" @go="goToHeading" @move="moveHeadingBy" @move-before="moveHeadingBefore" />
       <div class="canvas" @mousedown.self="focusEnd">
         <div class="docx-sheet" :style="sheetStyle" :data-markup="markup === 'all' ? null : markup" @mousedown.self="focusEnd">
           <div v-if="watermark.text" class="watermark-layer" aria-hidden="true">
@@ -526,7 +527,9 @@
     </form>
 
     <div v-if="saveMenu.open" ref="saveMenuEl" class="change-menu save-menu" role="menu" aria-label="Save" :style="{ left: `${saveMenu.x}px`, top: `${saveMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSaveMenu(true)" @keydown="onMenuArrows">
-      <button type="button" role="menuitem" @click="saveMenuAction('docx')">Word document (.{{ fileExt }})<span class="shortcut">Ctrl+S</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('docx')">{{ fileHandle ? `Save to ${fileHandle.name}` : `Word document (.${fileExt})` }}<span class="shortcut">Ctrl+S</span></button>
+      <button v-if="fileHandle" type="button" role="menuitem" @click="saveMenuAction('copy')">Download a copy<span class="shortcut">To Downloads</span></button>
+      <button v-if="canSaveAs" type="button" role="menuitem" @click="saveMenuAction('saveAs')">Save as…<span class="shortcut">A file on this device, saved to after</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">Ctrl+P</span></button>
       <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">Mail, messages…</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('merge')">Mail merge…<span class="shortcut">A letter for each row of a list</span></button>
@@ -877,7 +880,7 @@
 
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
 
-    <ReviewDialog v-if="reviewData" :action="pendingShare ? 'share' : 'download'" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <ReviewDialog v-if="reviewData" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">Your name on tracked changes</label>
@@ -1014,7 +1017,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, shallowRef, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { canPickSaveFile, pickFileToSave, mayWrite, writeFile } from '../editor/fileHandles.js';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import FindBar from '../components/FindBar.vue';
@@ -1180,8 +1184,11 @@ const lockMode = computed(() => {
   if (mode === 'readOnly' || doc.signatures || doc.writeProtection) return 'readOnly';
   return mode || null;
 });
-/** The text can't be changed (only comments, or only fields, at most). */
-const textLocked = computed(() => ['readOnly', 'comments', 'forms'].includes(lockMode.value));
+// How tracked changes show, as Word's Display for Review (see setMarkup): 'all', 'simple', 'none' or
+// 'original'. Declared here, as showing the original locks the text (below).
+const markup = ref('all');
+/** The text can't be changed (only comments, or only fields, at most), or the original is shown. */
+const textLocked = computed(() => ['readOnly', 'comments', 'forms'].includes(lockMode.value) || markup.value === 'original');
 const canComment = computed(() => !textLocked.value || lockMode.value === 'comments');
 const restrictions = computed(() => {
   const out = [];
@@ -1370,6 +1377,10 @@ async function setPersonalDefault(on) {
 }
 
 function explainLock() {
+  if (markup.value === 'original' && !['readOnly', 'comments', 'forms'].includes(lockMode.value)) {
+    message.value = 'Showing the original, before the tracked changes: choose All markup (Review) to edit';
+    return;
+  }
   message.value = `${{ readOnly: 'Read-only', comments: 'Only comments can be added', forms: 'Only the fields can be filled in', trackedChanges: 'Only tracked changes' }[lockMode.value]}: ${lockMessage.value}`;
 }
 
@@ -4220,6 +4231,170 @@ function goToHeading(i) {
   placeCaret(el, true);
   el.scrollIntoView({ block: 'start' });
   navCurrent.value = i;
+}
+
+// ------------------------------------------------------------------ moving a heading with its text
+
+// As Word's Navigation pane: a heading moved (dragged, or ▲ ▼, Alt+Shift+↑ ↓) takes everything under
+// it with it, up to the next heading of its level or above: a chapter with its scenes. The page's
+// own paragraphs, tables and the like are moved as they are, so the file keeps them exactly; list
+// numbers, note numbers and comments follow. Refused, with the reason, where a move would break
+// something Word relies on: while tracking (Word would record a move; Intact doesn't), across a
+// section break, or where a bookmark, comment, field or editing permission starts on one side of
+// the part's edge and ends on the other.
+
+/** Heading `i`'s part, the page's own children from it to the next heading of its level or above: { nodes } or { why }. */
+function headingPart(i) {
+  const el = navEls[i];
+  if (!el?.isConnected) return { why: 'the headings changed: try again' };
+  if (el.parentElement !== page.value) return { why: 'it is inside a field, list or other content that is kept as a whole' };
+  const level = navHeadings.value[i].level;
+  const k = navHeadings.value.findIndex((h, j) => j > i && h.level <= level);
+  const next = k >= 0 ? navEls[k] : null;
+  const nodes = [];
+  for (let n = el; n; n = n.nextElementSibling) {
+    if (n !== el && (n === next || n.matches('.docx-notes, .docx-hf-band'))) break;
+    if (next && n !== next && n.contains(next)) return { why: 'the next heading is inside content kept as a whole' };
+    nodes.push(n);
+  }
+  return { nodes, end: k };
+}
+
+/** Why `nodes` can't be moved without breaking the file, or ''. */
+function unmovable(nodes) {
+  if (nodes.some((n) => n.matches('[data-section-end]') || n.querySelector('[data-section-end]'))) {
+    return 'it holds a section break (another page setup): move the text in Word';
+  }
+  // Ranges that start and end apart (bookmarks, comments, permissions, tracked moves) and fields:
+  // each one in the part must start and end in it.
+  const open = new Map();
+  let fields = 0;
+  const pairs = { bookmarkStart: 'bookmark', bookmarkEnd: 'bookmark', commentRangeStart: 'comment', commentRangeEnd: 'comment', permStart: 'perm', permEnd: 'perm', moveFromRangeStart: 'moveFrom', moveFromRangeEnd: 'moveFrom', moveToRangeStart: 'moveTo', moveToRangeEnd: 'moveTo' };
+  const visit = (x) => {
+    const kind = pairs[x.localName];
+    if (kind) {
+      const key = `${kind}:${wAttrOf(x, 'id')}`;
+      open.set(key, (open.get(key) || 0) + (x.localName.endsWith('Start') ? 1 : -1));
+    } else if (x.localName === 'fldChar') {
+      const t = wAttrOf(x, 'fldCharType');
+      if (t === 'begin') fields += 1;
+      else if (t === 'end') fields -= 1;
+      if (fields < 0) fields = -Infinity;
+    }
+  };
+  const els = nodes.flatMap((n) => [n, ...n.querySelectorAll('[data-raw], [data-ppr]')]).filter((e) => e.dataset.raw != null);
+  for (const e of els) {
+    const raw = doc.raw[Number(e.dataset.raw)];
+    if (!raw || raw.nodeType !== 1) continue;
+    visit(raw);
+    for (const x of raw.getElementsByTagName('*')) visit(x);
+  }
+  for (const n of nodes) {
+    for (const e of [n, ...n.querySelectorAll('[data-comment-start], [data-comment-end]')]) {
+      if (e.dataset.commentStart != null && !e.dataset.raw) open.set(`comment:${e.dataset.commentStart}`, (open.get(`comment:${e.dataset.commentStart}`) || 0) + 1);
+      if (e.dataset.commentEnd != null && !e.dataset.raw) open.set(`comment:${e.dataset.commentEnd}`, (open.get(`comment:${e.dataset.commentEnd}`) || 0) - 1);
+    }
+  }
+  if (fields !== 0) return 'a field (a table of contents, an index…) starts on one side of its edge and ends on the other';
+  const split = [...open].find(([, v]) => v !== 0);
+  if (split) {
+    const what = { bookmark: 'a bookmark', comment: 'a comment', perm: 'a part others may edit', moveFrom: 'a tracked move', moveTo: 'a tracked move' }[split[0].split(':')[0]];
+    return `${what} starts on one side of its edge and ends on the other`;
+  }
+  return '';
+}
+
+/** The w: attribute `name` of XML element `x`. */
+function wAttrOf(x, name) {
+  return x.getAttributeNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', name) ?? x.getAttribute(`w:${name}`);
+}
+
+/** Moves heading `i`'s part so it comes before `before` (a page child; null: after `after`). */
+function moveHeadingPart(i, place, describe, fromKeyboard) {
+  const name = navHeadings.value[i]?.text || 'the heading';
+  if (textLocked.value) return explainLock();
+  if (tracking.value) {
+    message.value = `“${name}” wasn’t moved: moving text isn’t tracked here – turn off Track Changes to move it, or cut and paste it`;
+    return;
+  }
+  const part = headingPart(i);
+  const why = part.why || unmovable(part.nodes);
+  if (why) {
+    message.value = `“${name}” can’t be moved here: ${why}`;
+    return;
+  }
+  const { nodes } = part;
+  const anchor = place(nodes);
+  if (anchor === undefined) return; // nothing to move past: place said so
+  if (anchor && nodes.includes(anchor)) return;
+  undoStack.flush();
+  const frag = document.createDocumentFragment();
+  for (const n of nodes) frag.append(n);
+  // At the end of the text: before the notes and the footer, where the page has them.
+  const end = anchor || page.value.querySelector(':scope > .docx-notes, :scope > .docx-hf-band.footer');
+  if (end) end.before(frag);
+  else page.value.append(frag);
+  doc.renumber(page.value);
+  refreshComments();
+  onInput();
+  undoStack.commit();
+  refreshChanges();
+  pageChanged();
+  schedulePages(0);
+  refreshHeadings();
+  const at = navEls.indexOf(nodes[0]);
+  navCurrent.value = at;
+  page.value.focus({ preventScroll: true });
+  placeCaret(nodes[0], true);
+  nodes[0].scrollIntoView({ block: 'start' });
+  if (fromKeyboard) nextTick(() => document.querySelectorAll('.nav-pane li .go')[at]?.focus());
+  message.value = `Moved “${name}” ${describe}, with its text – Undo (Ctrl+Z) puts it back`;
+}
+
+/** ▲ ▼ (Alt+Shift+↑ ↓): heading `i` past the heading of its level before or after it, under the same heading. */
+function moveHeadingBy(i, dir) {
+  const fromKeyboard = document.activeElement?.closest?.('.nav-pane') != null;
+  const heads = navHeadings.value;
+  const level = heads[i]?.level;
+  // Its neighbour of the same level, not past a heading above it (its chapter's, for a scene).
+  let j = i + dir;
+  while (j >= 0 && j < heads.length && heads[j].level > level) j += dir;
+  const name = heads[i]?.text || 'the heading';
+  if (j < 0 || j >= heads.length || heads[j].level < level) {
+    message.value = `“${name}” is already the ${dir < 0 ? 'first' : 'last'}${level > 1 ? ' under its heading' : ''}`;
+    if (fromKeyboard) nextTick(() => document.querySelectorAll('.nav-pane li .go')[i]?.focus());
+    return;
+  }
+  const other = heads[j].text;
+  if (dir < 0) {
+    moveHeadingPart(i, () => navEls[j], `above “${other}”`, fromKeyboard);
+  } else {
+    moveHeadingPart(i, () => {
+      const { nodes, why } = headingPart(j);
+      if (why) {
+        message.value = `“${name}” can’t be moved past “${other}”: ${why}`;
+        return undefined;
+      }
+      return nodes[nodes.length - 1].nextElementSibling?.matches('.docx-notes, .docx-hf-band') ? null : nodes[nodes.length - 1].nextElementSibling;
+    }, `below “${other}”`, fromKeyboard);
+  }
+}
+
+/** A heading dragged onto heading `to`: it goes before it, with its text. */
+function moveHeadingBefore(from, to) {
+  const target = navEls[to];
+  const name = navHeadings.value[from]?.text || 'the heading';
+  if (!target?.isConnected || target.parentElement !== page.value) {
+    message.value = `“${name}” can’t go there: that heading is inside content kept as a whole`;
+    return;
+  }
+  moveHeadingPart(from, (nodes) => {
+    if (nodes.includes(target)) {
+      message.value = `“${name}” can’t go inside its own text`;
+      return undefined;
+    }
+    return target;
+  }, `above “${navHeadings.value[to].text}”`, false);
 }
 
 function pickPicture() {
@@ -7602,27 +7777,36 @@ function gotoComment(dir) {
 
 // ------------------------------------------------------------------ markup view
 
-// How tracked changes show, as Word's Display for Review: 'all' (all markup), 'simple' (the text as
-// it will be, with a line in the margin beside each change) or 'none' (no markup). Only the page's
-// look changes (see .docx-sheet[data-markup] in the styles); the changes and the file stay as
-// they are, and every document opens with all markup, so no change goes unseen.
-const markup = ref('all');
-const MARKUP_NAMES = { all: 'All markup', simple: 'Simple markup', none: 'No markup' };
+// How tracked changes show (`markup`, declared with the lock), as Word's Display for Review: 'all'
+// (all markup), 'simple' (the text as it will be, with a line in the margin beside each change),
+// 'none' (no markup) or 'original' (the text before the changes: insertions hidden, deletions shown
+// as ordinary text). Only the page's look changes (see .docx-sheet[data-markup] in the styles); the
+// changes and the file stay as they are, and every document opens with all markup, so no change
+// goes unseen. The original is shown read-only, as typing into it would edit text that is no
+// longer there.
+const MARKUP_NAMES = { all: 'All markup', simple: 'Simple markup', none: 'No markup', original: 'Original' };
 
 function setMarkup(value) {
   if (!MARKUP_NAMES[value] || value === markup.value) return;
+  const wasOriginal = markup.value === 'original';
   markup.value = value;
+  if (wasOriginal || value === 'original') applyLock(textLocked.value);
   const n = changes.total;
+  const kept = n ? ` – ${count(n, 'tracked change')} kept in the file` : '';
   message.value = value === 'all'
     ? 'All markup: tracked changes are shown'
-    : `${MARKUP_NAMES[value]}: the text as it will be once the changes are accepted${n ? ` – ${count(n, 'tracked change')} kept in the file` : ''}`;
+    : value === 'original'
+      ? `Original: the text before the changes, read-only${kept}`
+      : `${MARKUP_NAMES[value]}: the text as it will be once the changes are accepted${kept}`;
   nextTick(() => { pageChanged(); schedulePages(0); });
 }
 
 /** Back to all markup, to show a tracked change being gone to, accepted or rejected. */
 function showAllMarkup() {
   if (markup.value === 'all') return;
+  const wasOriginal = markup.value === 'original';
   markup.value = 'all';
+  if (wasOriginal) applyLock(textLocked.value);
   nextTick(() => { pageChanged(); schedulePages(0); });
 }
 
@@ -7806,6 +7990,7 @@ function closeSaveMenu(refocus = false) {
 function saveMenuAction(what) {
   closeSaveMenu();
   if (what === 'docx') requestDownload();
+  else if (what === 'copy' || what === 'saveAs') requestDownload(what);
   else if (what === 'share') requestShare();
   else if (what === 'merge') openMailMerge();
   else openPdfDialog();
@@ -7892,10 +8077,27 @@ const reviewData = ref(null);
 const reviewFocus = ref('');
 const skipReview = ref((() => { try { return localStorage.getItem(SKIP_REVIEW_KEY) === '1'; } catch { return false; } })());
 
-function requestDownload() {
+// Save to the file opened, where the browser gave a handle to it (see editor/fileHandles.js): the
+// header's Save (Ctrl+S) writes into it, as Word's Save does; Download a copy and Save as… (in
+// Download's menu) are still there. Without a handle, Download keeps a copy in Downloads.
+const fileHandle = shallowRef(doc.fileHandle || null);
+const canSaveAs = canPickSaveFile();
+const pendingSave = ref(''); // what the review's button does: '' (Save or Download), 'copy' or 'saveAs'
+const saveAction = computed(() => {
+  if (pendingShare.value) return 'share';
+  if (pendingSave.value === 'saveAs') return 'saveAs';
+  return fileHandle.value && pendingSave.value !== 'copy' ? 'save' : 'download';
+});
+
+/** Save (Ctrl+S), or `kind` from Download's menu ('copy', 'saveAs'): through the review, unless skipped. */
+function requestDownload(kind = '') {
   pendingShare.value = false;
-  if (skipReview.value) save();
-  else openReview();
+  pendingSave.value = kind;
+  if (skipReview.value) {
+    const action = saveAction.value;
+    pendingSave.value = '';
+    save(action);
+  } else openReview();
 }
 
 // ------------------------------------------------------------------ share
@@ -7920,6 +8122,7 @@ function detectShare() {
 }
 
 function requestShare() {
+  pendingSave.value = '';
   pendingShare.value = true;
   if (skipReview.value) {
     pendingShare.value = false;
@@ -8060,6 +8263,7 @@ async function setUpdateProperties(on) {
 function closeReview() {
   reviewData.value = null;
   pendingShare.value = false;
+  pendingSave.value = '';
   backFromReview();
 }
 
@@ -8082,9 +8286,10 @@ function backFromReview() {
 function downloadReviewed() {
   reviewData.value = null;
   backFromReview(); // carry on editing where you were
-  const share = pendingShare.value;
+  const action = saveAction.value;
   pendingShare.value = false;
-  save(share ? 'share' : 'download');
+  pendingSave.value = '';
+  save(action);
 }
 
 function setSkipReview(on) {
@@ -8092,31 +8297,52 @@ function setSkipReview(on) {
   try { localStorage.setItem(SKIP_REVIEW_KEY, on ? '1' : '0'); } catch { /* this session only */ }
 }
 
+/**
+ * Saves the document: 'download' (or 'copy') to Downloads, 'share' to the share sheet, 'save' into
+ * the file opened (its handle) and 'saveAs' into a file picked now, which later Saves write to.
+ */
 async function save(action = 'download') {
   if (saving.value) return;
   saving.value = true;
   try {
+    let name = `${baseName.value.trim() || 'document'}.${fileExt.value}`;
+    // A file renamed in the header is a new file: Save as…, where the browser can.
+    if (action === 'save' && fileHandle.value.name !== name) action = canSaveAs ? 'saveAs' : 'download';
+    // First, while the click still counts as asking: the file to write to, and leave to write it.
+    let target = null;
+    if (action === 'saveAs') {
+      target = await pickFileToSave(name, fileExt.value);
+      if (!target) {
+        message.value = 'Not saved';
+        return;
+      }
+    } else if (action === 'save') {
+      target = fileHandle.value;
+      if (!(await mayWrite(target))) {
+        message.value = `Not saved: the browser didn’t allow writing to ${target.name} – Download a copy (▾) keeps one in Downloads`;
+        return;
+      }
+    }
     await draftSettled();
-    const name = `${baseName.value.trim() || 'document'}.${fileExt.value}`;
     const blob = await withHostsUnlocked(() => doc.save(page.value));
+    if (target) {
+      await writeFile(target, blob);
+      fileHandle.value = target;
+      doc.fileHandle = target;
+      name = target.name;
+      baseName.value = name.replace(/\.(docx|dotx|docm|dotm)$/i, '');
+    }
     doc.name = name;
     if (action === 'share') {
       saving.value = false;
       await shareFile(new File([blob], name, { type: doc.format.mime || blob.type }));
       return;
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    if (!target) downloadBlob(blob, name);
     dirty.value = false;
-    discardDraft({ closing: false }); // downloaded: the file is the copy now
+    discardDraft({ closing: false }); // downloaded or written: the file is the copy now
     const n = doc.commentsRemoved.size;
-    message.value = `Saved ${name}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`
+    message.value = `Saved ${name}${target ? ' on this device' : ''}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`
       + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '');
   } catch (e) {
     console.error(e);
@@ -8628,11 +8854,13 @@ async function close() {
 .docx-sheet [data-rev-mark="del"]::after { color: #b3261e; text-decoration: line-through; }
 /* Simple and no markup (Review > Show markup), as Word's Display for Review: the text as it will be
    once the changes are accepted. Deletions are hidden, insertions look like the text around them and
-   formatting changes aren't marked; nothing in the page or the file changes, only how it shows. */
-.docx-sheet[data-markup] .tc-del, .docx-sheet[data-markup] .raw-inline.deleted,
-.docx-sheet[data-markup] tr[data-rev-row="del"] { display: none; }
-.docx-sheet[data-markup] .tc-ins { color: inherit; background-image: none; }
-.docx-sheet[data-markup] .raw-inline.inserted { color: inherit; text-decoration: none; }
+   formatting changes aren't marked; nothing in the page or the file changes, only how it shows.
+   The original is the other way round: insertions hidden, deletions as ordinary text. */
+.docx-sheet:is([data-markup="simple"], [data-markup="none"]) :is(.tc-del, .raw-inline.deleted, tr[data-rev-row="del"]),
+.docx-sheet[data-markup="original"] :is(.tc-ins, .raw-inline.inserted, tr[data-rev-row="ins"]) { display: none; }
+.docx-sheet[data-markup] .tc-ins, .docx-sheet[data-markup] .tc-del { color: inherit; background-image: none; text-decoration: none; }
+.docx-sheet[data-markup] .raw-inline.inserted, .docx-sheet[data-markup] .raw-inline.deleted { color: inherit; text-decoration: none; }
+.docx-sheet[data-markup] tr[data-rev-row="del"] > td { background-color: transparent; text-decoration: none; }
 .docx-sheet[data-markup] [data-tc-mark]::after, .docx-sheet[data-markup] [data-rev-mark]::after { content: none; }
 .docx-sheet[data-markup] [data-fmt="run"] { border-bottom: 0; }
 .docx-sheet[data-markup] [data-fmt-para], .docx-sheet[data-markup] tr[data-fmt-row] > td:first-child,
@@ -8645,7 +8873,7 @@ async function close() {
   box-shadow: -10px 0 0 0 #fff, -12px 0 0 0 #b3261e;
 }
 /* No markup hides the comments' highlights too, as Word does; the panel still lists them. */
-.docx-sheet[data-markup="none"] ::highlight(comment), .docx-sheet[data-markup="none"] ::highlight(comment-active) { background-color: transparent; }
+.docx-sheet:is([data-markup="none"], [data-markup="original"]) ::highlight(comment), .docx-sheet:is([data-markup="none"], [data-markup="original"]) ::highlight(comment-active) { background-color: transparent; }
 .docx-sheet .raw-inline.picture { cursor: pointer; }
 .docx-sheet .raw-inline.picture img { display: block; }
 .docx-sheet .raw-inline.picture::selection, .docx-sheet .raw-inline.picture img::selection { background: transparent; } /* the frame shows it is selected */
