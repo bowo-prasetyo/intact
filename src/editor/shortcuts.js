@@ -24,6 +24,8 @@ export function shortcutFor(e) {
     if (e.code === 'Comma') return 'shrinkFont';
   }
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyH') return 'highlight';
+  // Ctrl+Alt+Space: Read Aloud, as Word's.
+  if (e.altKey && !e.shiftKey && !altGr && space) return 'readAloud';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyM') return 'comment';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyF') return 'footnote';
   if (e.altKey && !e.shiftKey && !altGr && e.code === 'KeyD') return 'endnote';
@@ -59,6 +61,7 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+C, Ctrl+Shift+V', 'Copy formatting, and paint it on the selected text (Format Painter)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+Alt+M', 'New comment'],
+  ['Ctrl+Alt+Space', 'Read aloud from the caret (or the selected text), with a voice on this device; again to stop'],
   ['Ctrl+K', 'Insert a link, or change the one at the caret'],
   ['Tab in the last cell of a table', 'New row'],
   ['Tab, Shift+Tab in a form protected for filling in', 'Next or previous field'],

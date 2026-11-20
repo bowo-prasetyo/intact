@@ -267,6 +267,13 @@
       <button data-tab="review" type="button" :title="t('Compare documents: this document against another version of it, on this device – what changed in the text')" :aria-label="t('Compare documents')" @click="startCompare">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 2.5h5v11H2zM9 2.5h5v11H9z" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.5 5h2M3.5 7.5h2M10.5 5h2M10.5 7.5h2M10.5 10h2" stroke="currentColor" stroke-width="1.1" /></svg><span class="short-label">{{ t('Compare') }}</span>
       </button>
+      <button data-tab="review" type="button" :title="reading.on ? t('Stop reading aloud') : t('Read aloud (Ctrl+Alt+Space): from the caret, or the selected text, with a voice on this device – nothing is sent anywhere')" :aria-label="reading.on ? t('Stop reading aloud') : t('Read aloud')" :class="{ on: reading.on }" :aria-pressed="reading.on" @click="toggleReadAloud">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 6h2.5L8 3v10L4.5 10H2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ reading.on ? t('Stop') : t('Read aloud') }}</span>
+      </button>
+      <button v-if="reading.on" data-tab="review" type="button" :aria-label="reading.paused ? t('Resume reading') : t('Pause reading')" :title="reading.paused ? t('Resume reading') : t('Pause reading')" @click="pauseReadAloud">
+        <svg v-if="reading.paused" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 3l8 5-8 5z" fill="currentColor" /></svg>
+        <svg v-else viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 3h2.5v10H4.5zM9 3h2.5v10H9z" fill="currentColor" /></svg>
+      </button>
       <span data-tab="review" v-if="threads.length" class="comment-nav" role="group" :aria-label="t('Go to a comment')">
         <button type="button" :title="t('Previous comment')" :aria-label="t('Previous comment')" @click="gotoComment(-1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 2.5h9v6.5H9.5L7 11.5V9H5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M4 9.5L1.5 12 4 14.5" stroke="currentColor" stroke-width="1.5" fill="none" /></svg>
@@ -1194,6 +1201,7 @@ import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
+import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
@@ -5000,6 +5008,57 @@ function runShortcut(name) {
   if (name === 'copyFormat') return startPainter(false, true);
   if (name === 'pasteFormat') return paintSelection();
   if (name === 'hidden') return toggleHidden();
+  if (name === 'readAloud') return toggleReadAloud();
+}
+
+// ------------------------------------------------------------------ read aloud
+
+// Read Aloud, as Word's (Review > Read Aloud, Ctrl+Alt+Space), with voices on this device only: see
+// editor/readAloud.js. The paragraph and the word being read are highlighted, never changed.
+const reading = reactive({ on: false, paused: false });
+let reader = null;
+
+/** The language a paragraph is read in: its text's, else the document's. */
+const langOf = (block) => block.querySelector('[lang]')?.lang || block.closest('[lang]')?.lang || doc.styles.language() || navigator.language || 'en';
+
+/** A language's name for messages ("Indonesian", not its region: any voice of the language reads it), or its tag. */
+function languageName(tag) {
+  const primary = tag.split(/[-_]/)[0];
+  try { return new Intl.DisplayNames([lang.value === 'id' ? 'id' : 'en'], { type: 'language' }).of(primary) || tag; } catch { return tag; }
+}
+
+function readerState({ reading: on, paused, error }) {
+  reading.on = on;
+  reading.paused = !!paused;
+  if (!error) return;
+  if (error === 'unsupported') message.value = t('This browser can’t read aloud');
+  else if (error === 'no-local-voices') message.value = t('No voice on this device to read with: add one in the system’s speech settings. Intact reads only with voices on this device, so the text isn’t sent anywhere');
+  else if (error.startsWith('no-voice:')) message.value = t('No voice on this device reads {language}: add one in the system’s speech settings. Intact reads only with voices on this device, so the text isn’t sent anywhere', { language: languageName(error.slice(9) || 'en') });
+  else message.value = t('Reading aloud stopped: the browser’s speech failed');
+}
+
+/** Reads aloud from the caret's paragraph to the end, or the selected paragraphs; stops if reading. */
+function toggleReadAloud() {
+  reader ||= createReader(page.value, { onState: readerState, langOf });
+  if (reading.on) {
+    reader.stop();
+    message.value = t('Reading aloud stopped');
+    return;
+  }
+  const range = selectionInPage() || savedRange;
+  const from = range ? closestBlock(range.startContainer) : null;
+  const only = range && !range.collapsed ? [...page.value.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li')].filter((b) => range.intersectsNode(b)) : null;
+  message.value = only ? t('Reading the selected text aloud: Esc or Stop to stop') : t('Reading aloud from the caret: Esc or Stop to stop');
+  reader.start(from, only);
+}
+
+// Closing the document stops reading it.
+onBeforeUnmount(() => reader?.stop());
+
+function pauseReadAloud() {
+  if (!reader) return;
+  if (reading.paused) reader.resume();
+  else reader.pause();
 }
 
 /**
@@ -7511,6 +7570,13 @@ function onKeydown(e) {
     stopPainter();
     return;
   }
+  // Esc stops reading aloud, as Word's Read Aloud.
+  if (e.key === 'Escape' && reading.on) {
+    e.preventDefault();
+    reader?.stop();
+    message.value = t('Reading aloud stopped');
+    return;
+  }
   const shortcut = shortcutFor(e);
   // Ctrl+Shift+V pastes formatting once some was copied (Ctrl+Shift+C); before, it is the browser's
   // paste as plain text.
@@ -9651,6 +9717,9 @@ async function close() {
   .docx-sheet .field.page-field[data-show]::after { content: none; }
 }
 ::highlight(comment) { background-color: #fbe3dc; }
+/* Read aloud: the paragraph being read, and its word. */
+::highlight(read-aloud) { background-color: var(--sheet-tint); }
+::highlight(read-aloud-word) { background-color: var(--sheet-line); color: #000; }
 ::highlight(field-near) { background-color: var(--sheet-tint); }
 ::highlight(comment-active) { background-color: #f6b9a8; }
 .docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
