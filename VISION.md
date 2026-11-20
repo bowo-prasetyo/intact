@@ -192,6 +192,9 @@ Saying no to these keeps the product small enough to keep its promises:
 - Tests that save a new document of each kind and check it as Word reads it ✔ (starters)
 - The tools in tabs, as Word's ribbon (Home, Insert, Layout, References, Review), with every tool in
   one toolbar still a choice ✔
+- Long manuscripts and their editing rounds: indents in Modify Style (Normal with a first-line
+  indent) ✔; Show markup, simple or none, to read an edited draft clean ✔; Previous and Next
+  comment ✔
 
 ## How we'll know it's working
 
