@@ -258,6 +258,10 @@
       <button data-tab="review" type="button" :title="t('Hidden text (Ctrl+Shift+H): for a test’s answers, shown here and printed only when asked')" :aria-label="t('Hidden text')" :class="{ on: state.hidden }" :aria-pressed="state.hidden" @click="toggleHidden">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.2" fill="none" /><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.2" fill="none" /><path d="M2.5 14L13.5 2" stroke="currentColor" stroke-width="1.3" /></svg>
       </button>
+      <!-- Redact: the selected text blacked out for good, as a page is before it is released. -->
+      <button data-tab="review" type="button" :title="t('Redact: black out the selected text for good, such as a source’s name – never tracked, so it is gone from the file')" :aria-label="t('Redact')" :disabled="textLocked" @click="redactSelection">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.5" y="5.5" width="13" height="5" rx="1" fill="currentColor" /><path d="M1.5 3h13M1.5 13h7" stroke="currentColor" stroke-width="1.3" /></svg><span class="short-label">{{ t('Redact') }}</span>
+      </button>
       <button data-tab="review" type="button" class="review-toggle" :title="t('Review your changes, what the file carries and its accessibility – any time, not only when you download')" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
         <span class="label">{{ t('Review') }}</span>
@@ -918,6 +922,7 @@
     </form>
 
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
+    <WordCountDialog v-if="wordCountData" :words="words" :characters="chars" :pages="pageCount" :stats="wordCountData" :target="lengthTarget" :headline="headline" @close="closeWordCount" @save="setLengthTarget" @show-long="showLongSentence" />
 
     <ReviewDialog v-if="reviewData" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
@@ -1092,6 +1097,7 @@
       <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">{{ t('Ctrl+Alt+M') }}</span></button>
       <template v-if="!ctxMenu.locked">
         <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(toggleHidden)">{{ t('Hidden text') }}<span class="key">{{ t('Ctrl+Shift+H') }}</span></button>
+        <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(redactSelection)">{{ t('Redact') }}</button>
         <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">{{ t('Paragraph…') }}</button>
         <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">{{ t('Modify style…') }}</button>
         <template v-if="ctxMenu.table">
@@ -1128,7 +1134,8 @@
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
 
     <footer class="statusbar">
-      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</span>
+      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="t('Word count, length and readability')" @click="openWordCount">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : lengthTarget.words ? `${words} / ${lengthTarget.words}` : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</button></span>
+      <button v-if="lengthTarget.headline && headline" type="button" class="headline-count" :class="{ over: headline.chars > lengthTarget.headline }" :title="headlineTitle" @click="openWordCount">{{ t('Headline {chars} / {limit}', { chars: headline.chars, limit: lengthTarget.headline }) }}</button>
       <button type="button" class="nav-toggle" :aria-pressed="navOpen" :title="t('Headings: move around the document by its headings, as Word’s Navigation pane')" @click="toggleNav">{{ t('Headings') }}</button>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? t('page') : t('pages') }}</button>
       <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, 1. or * then a space at the start of a paragraph a list, and a web or e-mail address then a space a link – click to type them as they are' : 'Quotes, dashes, ellipses, list numbers and addresses are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
@@ -1177,6 +1184,9 @@ import CommentsPanel from '../components/CommentsPanel.vue';
 import ReviewDialog from '../components/ReviewDialog.vue';
 import SignatureDialog from '../components/SignatureDialog.vue';
 import HelpDialog from '../components/HelpDialog.vue';
+import WordCountDialog from '../components/WordCountDialog.vue';
+import { wordCount, readability, headlineOf, blockText, textRange } from '../editor/readability.js';
+import { findMatches, matchRange } from '../editor/find.js';
 import { currentDoc, setDocument } from '../store.js';
 import { saveDraft, deleteDraft, newDraftId, MAX_AGE } from '../drafts.js';
 import { openStartInNewTab, openFileInNewTab, holdDraft } from '../tabs.js';
@@ -1230,6 +1240,12 @@ const words = ref(0);
 const selectedWords = ref(null); // words in the selection, as Word's status bar counts them; null if none
 const chars = reactive({ withSpaces: 0, withoutSpaces: 0 }); // characters in the text, as Word counts them
 const selectedChars = ref(null);
+// A length to write to, as a newsroom sets one: a target in words and a limit for the headline in
+// characters (the Word count dialog). Kept with the document while it is open here, and in its draft,
+// never in the file.
+const lengthTarget = reactive({ words: doc.restoredFrom?.length?.words ?? null, headline: doc.restoredFrom?.length?.headline ?? null });
+const headline = ref(null); // { text, chars } of the text's first paragraph, when it is a heading
+const wordCountData = ref(null); // the Word count dialog's statistics, while it is open
 const baseName = ref(doc.name.replace(/\.(docx|dotx|docm|dotm)$/i, ''));
 // Templates and files with macros are saved as what they are: Word refuses a .docx holding macros.
 // A template can be made into a new document instead (see templateBar below).
@@ -1393,6 +1409,188 @@ const labelChip = computed(() => {
   return null;
 });
 
+// ------------------------------------------------------------------ word count and length
+
+const overTarget = computed(() => selectedWords.value == null && !!lengthTarget.words && words.value > lengthTarget.words);
+const headlineTitle = computed(() => {
+  const h = headline.value;
+  if (!h || !lengthTarget.headline) return '';
+  const d = lengthTarget.headline - h.chars;
+  return `${t('Headline: {chars} characters, with spaces – “{text}”', { chars: h.chars, text: h.text })}. ${d >= 0 ? t('{n} to spare', { n: d }) : t('{n} over the limit', { n: -d })}`;
+});
+let longSentences = []; // the long sentences found when Word count last opened: [{ block, start, end, words }]
+let longShown = -1; // the one shown last, to show the next each time
+
+/** Word count, as Word's (a click on the status bar's count): counts, length target and readability. */
+function openWordCount() {
+  countWords();
+  updatePages();
+  const language = doc.styles.language() || '';
+  const stats = readability(page.value, { english: !language || /^en\b/i.test(language) });
+  longSentences = stats.long; // the page's elements stay here, out of Vue's reach
+  wordCountData.value = { ...stats, long: stats.long.map(({ words: n }) => ({ words: n })) };
+}
+
+function closeWordCount() {
+  wordCountData.value = null;
+  refocus();
+}
+
+/** Sets (or clears, with null) the target in words and the headline's limit in characters. */
+function setLengthTarget({ words: target, headline: limit }) {
+  Object.assign(lengthTarget, { words: target, headline: limit });
+  wordCountData.value = null;
+  scheduleDraft();
+  refocus();
+  const parts = [target && t('a target of {n} words', { n: target }), limit && t('a headline limit of {n} characters', { n: limit })].filter(Boolean);
+  message.value = parts.length ? t('Length: {what}, shown in the status bar', { what: parts.join(t(' and ')) }) : t('No length target');
+}
+
+/** Selects the next long sentence (from Word count), so it can be cut or split. */
+function showLongSentence() {
+  wordCountData.value = null;
+  const live = longSentences.filter((s) => s.block.isConnected);
+  if (!live.length) return;
+  longShown = (longShown + 1) % live.length;
+  const s = live[longShown];
+  const range = textRange(blockText(s.block), s.start, s.end);
+  page.value.focus();
+  selectRange(range);
+  s.block.scrollIntoView({ block: 'center' });
+  message.value = t('Long sentence: {n} words ({i} of {count}) – Word count shows the next', { n: s.words, i: longShown + 1, count: live.length });
+}
+
+// ------------------------------------------------------------------ redaction
+
+// Redact: the selected text replaced with █, one for each character, as a page is blacked out before
+// it is released (a source's name, an address in a leaked document). Never tracked, even while
+// tracking: a tracked deletion keeps the text in the file, for anyone to read in Word. A link in it
+// goes, address and all (see doc.forgetLink). What was redacted is remembered in this session only
+// (never in a draft or the file), so "Before you release" can say where it still is.
+const REDACTION = '█';
+const redactedTexts = new Set();
+const DELETIONS = '[data-tc="del"], .raw-inline.deleted, [data-tracked]';
+
+/** A tracked change in `range` (anyone's), whose earlier wording would stay in the file, or null. */
+function trackedIn(range) {
+  return [...page.value.querySelectorAll(DELETIONS)].find((el) => range.intersectsNode(el)) || null;
+}
+
+/** Read-only content with text inside `range` (a field, an equation, kept content), which can't be redacted here. */
+function lockedTextIn(range) {
+  if (readOnlyAt(range.startContainer, page.value)) return readOnlyAt(range.startContainer, page.value);
+  if (readOnlyAt(range.endContainer, page.value)) return readOnlyAt(range.endContainer, page.value);
+  return [...page.value.querySelectorAll('[contenteditable="false"]')].find((el) => range.intersectsNode(el)
+    && !el.contains(range.commonAncestorContainer) && !el.matches('.note-ref, .comment-ref, .picture, .picture *')
+    && el.textContent.trim()) || null;
+}
+
+/** Blacks out the editable text of `range` (see portions); returns how many characters. */
+function redactRange(range) {
+  const pieces = portions(range);
+  const links = new Set();
+  let n = 0;
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const { node, s, e } = pieces[i];
+    node.data = node.data.slice(0, s) + node.data.slice(s, e).replace(/[^\t\n\r]/gu, REDACTION) + node.data.slice(e);
+    n += e - s;
+    const a = node.parentElement.closest('a[href]');
+    if (a && page.value.contains(a)) links.add(a);
+  }
+  for (const a of links) {
+    doc.forgetLink(a);
+    a.replaceWith(...a.childNodes);
+  }
+  return n;
+}
+
+/** Redact (Review tab, right-click menu): blacks out the selected text for good. */
+function redactSelection() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const range = selectionInPage() || savedRange;
+  if (!range || range.collapsed || !page.value.contains(range.commonAncestorContainer)) {
+    message.value = t('Select the text to redact first, such as a source’s name');
+    page.value.focus();
+    return;
+  }
+  const tracked = trackedIn(range);
+  if (tracked) {
+    message.value = t('The selection holds tracked changes: accept or reject them first (Review › Accept), so no earlier wording stays in the file');
+    flash(tracked);
+    return;
+  }
+  const locked = lockedTextIn(range);
+  if (locked) return explainReadOnly(locked, true);
+  const text = range.toString().replace(/\s+/g, ' ').trim();
+  const pictures = [...page.value.querySelectorAll('.picture')].some((el) => range.intersectsNode(el));
+  undoStack.flush();
+  const end = [range.endContainer, range.endOffset];
+  const n = redactRange(range);
+  if (!n) return;
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
+  if (text.replaceAll(REDACTION, '').trim().length >= 2) redactedTexts.add(text);
+  try { getSelection().collapse(...end); } catch { /* the end moved: the caret stays where it is */ }
+  const left = redactedLeftovers().find((l) => l.text === text);
+  const more = left ? left.redactable + left.tracked + left.locked : 0;
+  message.value = [
+    t('Redacted{tracked} – Undo (Ctrl+Z) brings it back', { tracked: tracking.value ? t(' (not tracked: a tracked deletion would keep the text in the file)') : '' }),
+    pictures && t('pictures in it stay: delete them'),
+    more && t('“{text}” is in the document {n} more times: Before you release (Review) redacts them all', { text: text.length > 40 ? `${text.slice(0, 40)}…` : text, n: more }),
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Where what was redacted this session still is: [{ text, redactable, tracked, locked, comments,
+ * properties }], counts of the places in the text (and its headers, footers and notes) that can be
+ * redacted here, in tracked changes, in read-only content; comments and properties that hold it.
+ */
+function redactedLeftovers() {
+  const comments = threads.value.flatMap((th) => [th, ...th.replies]).map((c) => (c.paragraphs || []).join('\n'));
+  const p = doc.properties || {};
+  const values = [...(p.core || []), ...(p.app || []), ...(p.custom || [])].map((x) => String(x.value ?? ''));
+  const out = [];
+  for (const text of redactedTexts) {
+    const where = { text, redactable: 0, tracked: 0, locked: 0, comments: 0, properties: 0 };
+    for (const m of findMatches(page.value, text)) {
+      const el = m.segment.nodes[0].node.parentElement;
+      if (el.closest(DELETIONS)) where.tracked++;
+      else if (m.editable && !readOnlyAt(el, page.value)) where.redactable++;
+      else where.locked++;
+    }
+    const lower = text.toLowerCase();
+    where.comments = comments.filter((c) => c.toLowerCase().includes(lower)).length;
+    where.properties = values.filter((v) => v.toLowerCase().includes(lower)).length;
+    if (where.redactable || where.tracked || where.locked || where.comments || where.properties) out.push(where);
+  }
+  return out;
+}
+
+/** Before you release › Redact them all: every place a redacted text is still in editable text. */
+function redactLeftovers() {
+  undoStack.flush();
+  let n = 0;
+  for (const text of redactedTexts) {
+    const ranges = findMatches(page.value, text)
+      .filter((m) => m.editable && !m.segment.nodes[0].node.parentElement.closest(DELETIONS) && !readOnlyAt(m.segment.nodes[0].node.parentElement, page.value))
+      .map(matchRange);
+    // From the last back, so that the earlier ones keep their offsets.
+    for (const range of ranges.reverse()) n += redactRange(range) ? 1 : 0;
+  }
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
+  countWords();
+  message.value = t('Redacted {n} more places{tracked} – Undo (Ctrl+Z) brings them back', { n, tracked: tracking.value ? t(' (not tracked)') : '' });
+}
+
+/** Redacted passages in the page: runs of █ (also from an earlier session, or another tool). */
+function redactedPassages() {
+  return (page.value.textContent.match(/█+/g) || []).length;
+}
+
 // ------------------------------------------------------------------ before you release
 
 /** Hidden text (w:vanish) in the page: passages, how many can be removed here, and the first one. */
@@ -1412,6 +1610,7 @@ function inspection() {
     ...doc.inspect(),
     comments: { count: comments.length, authors: [...new Set(comments.map((c) => c.author).filter(Boolean))] },
     hidden: { count: hidden.count, removable: hidden.removableCount, sample: hidden.sample },
+    redacted: { passages: redactedPassages(), leftovers: redactedLeftovers() },
     canChange: !textLocked.value,
   };
   return {
@@ -1460,6 +1659,7 @@ async function releaseAction(what) {
   if (what === 'comments') deleteAllComments();
   else if (what === 'changes') resolveAll(true);
   else if (what === 'hidden') removeHiddenText();
+  else if (what === 'redact') redactLeftovers();
   await openReview();
 }
 
@@ -2175,7 +2375,7 @@ async function keepDraft() {
     }
     draftKept.value = await saveDraft({
       id: draftId, name: `${baseName.value.trim() || 'document'}.${fileExt.value}`, blob,
-      firstNewId: doc.firstNewId, unlocked: unlocked.value,
+      firstNewId: doc.firstNewId, unlocked: unlocked.value, length: { ...lengthTarget },
     });
   })();
   try {
@@ -2615,7 +2815,6 @@ function onTab(e) {
 // ------------------------------------------------------------------ events
 
 let wordTimer = 0;
-const wordCount = (text) => (text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []).length;
 
 /** Counts the words in the text, its notes and text boxes, as Word does: not in headers and footers. */
 function countWords() {
@@ -2628,6 +2827,9 @@ function countWords() {
   const [hf, hfBare] = bands.map((t) => count(t)).reduce((a, b) => [a[0] + b[0], a[1] + b[1]], [0, 0]);
   chars.withSpaces = all - hf;
   chars.withoutSpaces = allBare - hfBare;
+  const head = headlineOf(page.value);
+  const text = head && blockText(head).text.replace(/\s+/g, ' ').trim();
+  headline.value = text ? { text, chars: charCount(text, true) } : null;
 }
 
 /** Characters, as Word counts them: line and paragraph breaks aren't; spaces are, unless `spaces` is false. */
@@ -9616,6 +9818,12 @@ async function close() {
   .toolbar .split .arrow { min-width: 24px !important; }
   .toolbar select { height: 40px; }
 }
+/* The word count opens Word count (a length target, readability); over the target, or the headline
+   over its limit, it says so in amber (7:1 on the surface in both themes). */
+.word-count, .headline-count { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.word-count:hover, .headline-count { text-decoration: underline dotted; }
+.word-count.over, .headline-count.over { color: #8a5300; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .word-count.over, .headline-count.over { color: #ffcf80; } }
 .tracking-status { border: 0; background: none; color: var(--own-change); font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
 .author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
 .link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }

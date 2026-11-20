@@ -329,6 +329,9 @@ export class DocxDocument {
     // Links added this session (pasted, inserted or retargeted), per relationships part:
     // rels path -> Map(address -> relationship id). The ids stay the same from one save to the next.
     this.linkIds = new Map();
+    // Links from the file taken out of the text by redaction: their addresses go from the package too
+    // (see forgetLink, writeForgottenLinks). `${part path}|${relationship id}` -> { path, rid, rel }.
+    this.forgottenLinks = new Map();
   }
 
   async text(path) {
@@ -4157,6 +4160,7 @@ export class DocxDocument {
     await this.writeSources();
     this.writeStories();
     await this.writeSettings();
+    await this.writeForgottenLinks(); // once every part is written: whether a part still uses each
     await this.restorePersonal();
     await this.writeMainType();
     // Whether the document now differs from the one opened: only then are its properties updated.
@@ -5002,6 +5006,41 @@ export class DocxDocument {
     for (const c of el.childNodes) this.serializeInline(c, into, linkCtx, block, inner);
     if (wrapRuns && !into.childNodes.length) hl.removeChild(into);
     return hl;
+  }
+
+  /**
+   * A link from the file (`a`, rendered from its <w:hyperlink>) was taken out of the text by
+   * redaction: on saving, its relationship (the address) goes from its part's relationships too,
+   * unless the part still points at it (Undo brought it back), so the address isn't left in the
+   * package for anyone to read. A link of this session needs nothing: writeLinks drops it.
+   */
+  forgetLink(a) {
+    if (a.dataset.hl == null) return;
+    const rid = this.raw[Number(a.dataset.hl)]?.getAttributeNS(NS.r, 'id');
+    const kind = a.closest('.docx-notes')?.dataset.notes;
+    const path = this.partOf(a)?.path || (kind ? this.noteParts[kind]?.path : this.mainPath);
+    if (rid && path && !this.forgottenLinks.has(`${path}|${rid}`)) this.forgottenLinks.set(`${path}|${rid}`, { path, rid, rel: null });
+  }
+
+  /** Takes forgotten links' relationships out of the package, and puts back any that are used again. */
+  async writeForgottenLinks() {
+    for (const link of this.forgottenLinks.values()) {
+      const part = await this.text(link.path);
+      const relsPath = relsPathOf(link.path);
+      const text = await this.text(relsPath);
+      if (!part || !text) continue;
+      const used = new RegExp(`:id="${link.rid}"`).test(part);
+      const rels = parseXml(text);
+      const root = rels.documentElement;
+      const rel = [...root.children].find((r) => r.getAttribute('Id') === link.rid);
+      if (rel && !used && rel.getAttribute('Type') === HYPERLINK_REL) {
+        link.rel = rel.cloneNode(true);
+        rel.remove();
+      } else if (!rel && used && link.rel) {
+        root.appendChild(rels.importNode(link.rel, true));
+      } else continue;
+      this.zip.file(relsPath, serializeXml(rels));
+    }
   }
 
   /** The relationship id for a link of this session to `href`, in the part being written. */

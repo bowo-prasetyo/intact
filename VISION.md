@@ -211,6 +211,11 @@ Saying no to these keeps the product small enough to keep its promises:
   matrices, cases and working lined up at its = signs ✔; hidden text for answer keys, printed only
   when asked ✔; Read Aloud with voices on the device only ✔; tabs at Word's right, centre and
   decimal stops with their leaders, and Insert answer line ✔; lines, arrows and text boxes ✔
+- Reporters who write to length and file stories that name confidential sources: a target in words
+  and a headline's limit in characters, in the status bar ✔; Word count with Word's readability
+  statistics and the long sentences to show ✔; Redact, never tracked, with "Before you release"
+  saying where a redacted name is still in the file ✔. Not dictation or transcription: the browsers'
+  speech recognition sends the voice to a server, which the privacy promise rules out
 
 ## How we'll know it's working
 
