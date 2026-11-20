@@ -614,6 +614,16 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   Ctrl+Shift+L (bullets), Ctrl+M / Ctrl+Shift+M (list level), Ctrl+Enter (page break), Shift+Enter
   (line break), Ctrl+Shift+Space (non-breaking space), Ctrl+Shift+E (Track Changes), Ctrl+K (link), Ctrl+F/H,
   Ctrl+Z/Y, Ctrl+S; Cmd on a Mac. Some browsers keep a few keys for themselves
+- The ribbon, as Word's: the toolbar's tools in tabs, one tab's at a time on one row of a laptop's
+  screen: Home (styles, fonts, formatting, paragraphs, lists, Find, formatting marks), Insert (link,
+  check box, date and references, symbol, picture, signature, table, Fill in), Layout (Page setup,
+  page numbers, table layout), References (footnotes, endnotes, updating fields) and Review (Track
+  Changes, accepting and rejecting, the review, comments). Undo, Redo and Help are in every tab. The
+  Review tab shows how many tracked changes are waiting, and the Layout tab is marked while the caret
+  is in a table, as Word shows its table tabs. ← and → (Home, End) choose a tab, as WAI-ARIA's tabs
+  have it; Alt+F10 goes to the tab's tools. "All tools" shows every tool at once in one toolbar
+  instead, as before ("Tabs" goes back); the tab and the choice are remembered in this browser. A
+  phone keeps its one row of every tool, which scrolls
 - The toolbar works from the keyboard, as WAI-ARIA's toolbar pattern and Word have it: Alt+F10 goes to
   it, it is one Tab stop, the arrow keys (and Home and End) move along it and Esc goes back to the text
   where the caret was. Its buttons are named and say whether they are on (bold, alignment, lists…) for
