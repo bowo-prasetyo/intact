@@ -80,6 +80,11 @@ export const setHidden = (on) => (rPr) => {
   if (on) ensureOrdered(rPr, 'vanish', RPR_ORDER);
 };
 
+/** A single underline (w:u), as the U button gives: an answer line's tab is one. */
+export const setUnderline = (rPr) => {
+  set(ensureOrdered(rPr, 'u', RPR_ORDER), 'val', 'single');
+};
+
 /** A character style by id, or none (null). */
 export const setCharacterStyle = (id) => (rPr) => {
   if (id) set(ensureOrdered(rPr, 'rStyle', RPR_ORDER), 'val', id);

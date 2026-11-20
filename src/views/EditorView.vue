@@ -947,6 +947,7 @@
 
     <div v-if="insertMenu.open" ref="insertMenuEl" class="change-menu insert-menu" role="menu" :aria-label="t('Insert')" :style="{ left: `${insertMenu.x}px`, top: `${insertMenu.y}px` }" @mousedown.prevent @keydown.esc="closeInsertMenu(true)" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="insertCheckbox">Check box<span class="hint">{{ t('☐ ticked with a click') }}</span></button>
+      <button type="button" role="menuitem" @click="insertAnswerLine">{{ t('Answer line') }}<span class="hint">{{ t('Name: ______ to the margin') }}</span></button>
       <p class="menu-label" role="presentation">{{ t('Today’s date') }}</p>
       <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
       <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" :title="t('As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is')" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
@@ -1202,7 +1203,7 @@ import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
 import { createReader } from '../editor/readAloud.js';
-import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
+import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import { updateFields, parseInstr } from '../docx/fieldUpdates.js';
@@ -1972,6 +1973,32 @@ onBeforeUnmount(() => {
 onMounted(() => {
   if (showMarks.value) watchMarks();
   document.fonts?.ready.then(scheduleMarks); // web fonts change where the text is
+});
+
+// ------------------------------------------------------------------ tabs where Word puts them
+
+// Each tab ends where Word ends it, with its leader (editor/tabLayout.js): laid out again when the
+// text changes (the text before a right tab moves it), once a frame. Only the page's styles change,
+// so watching the text (not attributes) can't loop.
+let tabsFrame = 0;
+let tabsObserver = null;
+function scheduleTabs() {
+  if (tabsFrame) return;
+  tabsFrame = requestAnimationFrame(() => {
+    tabsFrame = 0;
+    if (page.value?.textContent.includes('\t')) doc.applyTabStops(page.value);
+  });
+}
+onMounted(() => {
+  if (!page.value) return;
+  tabsObserver = new MutationObserver(scheduleTabs);
+  tabsObserver.observe(page.value, { childList: true, subtree: true, characterData: true });
+  scheduleTabs();
+  document.fonts?.ready.then(scheduleTabs);
+});
+onBeforeUnmount(() => {
+  tabsObserver?.disconnect();
+  cancelAnimationFrame(tabsFrame);
 });
 
 onBeforeUnmount(() => {
@@ -5009,6 +5036,67 @@ function runShortcut(name) {
   if (name === 'pasteFormat') return paintSelection();
   if (name === 'hidden') return toggleHidden();
   if (name === 'readAloud') return toggleReadAloud();
+}
+
+// ------------------------------------------------------------------ answer lines
+
+/**
+ * Insert > Answer line: a line from the caret to the paragraph's right edge, to write an answer or a
+ * name on ("Name: ________"), as teachers make one in Word: an underlined tab to a right tab stop at
+ * the margin (added to the paragraph if it hasn't one there). The tab is a run of its own, so Word
+ * and Intact draw the line alike and print it (see editor/tabLayout.js).
+ */
+function insertAnswerLine() {
+  closeInsertMenu();
+  refocusAt(insertRange);
+  let range = selectionInPage();
+  if (!range) {
+    message.value = t('Click in the text where the answer line should go');
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  const block = closestBlock(range.startContainer);
+  if (!block || !page.value.contains(block)) return;
+  // The right edge of the paragraph's text, from the margin, in twips.
+  const cs = getComputedStyle(block);
+  const width = block.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const { left } = doc.paragraphFormat(block);
+  const pos = Math.max(left + 720, left + Math.floor(width * 15) - 15);
+  const { stops } = doc.tabStops(block);
+  if (!stops.some((s) => s.align === 'right' && Math.abs(s.pos - pos) <= 60)) {
+    formatParagraphs(() => ({ tabs: [...stops.filter((s) => Math.abs(s.pos - pos) > 60), { pos, align: 'right', leader: 'none' }].sort((a, b) => a.pos - b.pos) }));
+  }
+  range = selectionInPage() || range;
+  if (!range.collapsed) {
+    range.collapse(false);
+    selectRange(range);
+  }
+  typeText('\t');
+  // The tab just typed, underlined: a run of its own.
+  const sel = window.getSelection();
+  const node = sel.focusNode;
+  const at = sel.focusOffset;
+  if (node?.nodeType !== 3 || node.data[at - 1] !== '\t') return;
+  const tab = document.createRange();
+  tab.setStart(node, at - 1);
+  tab.setEnd(node, at);
+  selectRange(tab);
+  restyleSelection(setUnderline);
+  // The caret after the line's run, so what is typed next isn't underlined.
+  const after = window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null;
+  let runEl = after?.endContainer.nodeType === 3 ? after.endContainer.parentElement : after?.endContainer;
+  while (runEl && runEl.parentElement && runEl.parentElement !== block && !runEl.parentElement.matches('[contenteditable], td, th')) runEl = runEl.parentElement;
+  if (runEl && runEl !== block && block.contains(runEl)) {
+    const caret = document.createRange();
+    caret.setStartAfter(runEl);
+    caret.collapse(true);
+    selectRange(caret);
+  } else window.getSelection().collapseToEnd();
+  // As Word's Ctrl+U, Tab, Ctrl+U: underline off for what is typed next.
+  if (document.queryCommandState('underline')) document.execCommand('underline');
+  scheduleTabs();
+  message.value = t('Answer line added: an underlined tab to a right tab stop at the margin, as Word makes one');
 }
 
 // ------------------------------------------------------------------ read aloud

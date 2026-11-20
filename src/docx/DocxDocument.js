@@ -12,6 +12,7 @@
 //    their author and date survive and the reviewer can still accept or reject them in Word.
 //  * Tables keep their structure (read-only) while each cell's content is editable.
 import JSZip from 'jszip';
+import { layoutTabs } from '../editor/tabLayout.js';
 import {
   NS, parseXml, serializeXml, wChild, wChildren, wAttr, onOff, createW, ensureOrdered, removeW,
   RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren, XML_HEADER,
@@ -4861,15 +4862,20 @@ export class DocxDocument {
     return `${width / 20}pt`;
   }
 
-  /** Lays out the tabs of the paragraphs under `root` that have any (see tabSize). */
+  /**
+   * Lays out the tabs of the paragraphs under `root` that have any: the paragraph's tab-size (see
+   * tabSize), then, in the page, each tab where Word puts it, with its leader (editor/tabLayout.js).
+   */
   applyTabStops(root) {
     for (const el of root.querySelectorAll('p, h1, h2, h3, h4, h5, h6')) {
       if (!el.textContent.includes('\t')) {
         if (el.style.tabSize) el.style.removeProperty('tab-size');
+        if (el.dataset.tabLaid != null || el.querySelector('[data-tab-laid]')) layoutTabs(el, { stops: [], left: 0, defaultTab: this.defaultTabStop });
         continue;
       }
       const size = this.tabSize(el);
       if (el.style.tabSize !== size) el.style.tabSize = size;
+      if (el.isConnected) layoutTabs(el, { stops: this.tabStops(el).stops, left: this.paragraphFormat(el).left, defaultTab: this.defaultTabStop });
     }
   }
 
