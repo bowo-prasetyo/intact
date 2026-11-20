@@ -28,6 +28,36 @@ const quote = (s) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 let raw = []; // the document's kept XML (doc.raw), for simple fields (w:fldSimple), kept as they are
+let numbering = { numFmt: 'decimal', numStart: null }; // the (final) section's page numbering
+
+// Word's page number formats (w:pgNumType's w:fmt, a field's \* switch) as CSS counter styles.
+const COUNTER_STYLES = {
+  decimal: 'decimal', numberInDash: 'decimal', lowerRoman: 'lower-roman', upperRoman: 'upper-roman', lowerLetter: 'lower-alpha', upperLetter: 'upper-alpha',
+  roman: 'lower-roman', Roman: 'upper-roman', ROMAN: 'upper-roman', alphabetic: 'lower-alpha', ALPHABETIC: 'upper-alpha', Arabic: 'decimal', arabic: 'decimal',
+};
+
+/**
+ * A page-number field as a CSS content value: counter(page) in the section's number format (i, ii,
+ * iii; - 1 -), or as the field's own format switch (PAGE \* roman) says; counter(pages) for NUMPAGES.
+ */
+function counterContent(field, instr) {
+  if (field !== 'page') return 'counter(pages)';
+  const own = /\\\*\s*(\w+)/.exec(instr || '')?.[1];
+  const fmt = own && COUNTER_STYLES[own] ? own : numbering.numFmt || 'decimal';
+  const style = COUNTER_STYLES[fmt] || 'decimal';
+  const counter = style === 'decimal' ? 'counter(page)' : `counter(page, ${style})`;
+  return fmt === 'numberInDash' ? `"- " ${counter} " -"` : counter;
+}
+
+/** The instruction of field `el` (a complex field's, or a simple one's kept as it is), or null. */
+function fieldInstr(el) {
+  if (el.classList?.contains('field')) return el.dataset.instr || '';
+  if (el.classList?.contains('raw-inline') && el.dataset.raw != null) {
+    const node = raw[Number(el.dataset.raw)];
+    if (node?.localName === 'fldSimple') return node.getAttributeNS(W, 'instr') || '';
+  }
+  return null;
+}
 
 /** The page-number field `el` is, or null: 'page' or 'pages'. */
 function pageField(el) {
@@ -76,7 +106,7 @@ function boxContents(host) {
           }
           const field = pageField(child);
           if (field) {
-            parts[parts.length - 1].push(`counter(${field})`);
+            parts[parts.length - 1].push(counterContent(field, fieldInstr(child)));
             styles[slots[Math.min(first + parts.length - 1, 2)]] ||= child;
           } else walk(child);
         }
@@ -148,6 +178,7 @@ function plan(page, which, variants, zoom, boxes) {
  */
 export function printCss(page, doc, zoom = 1, boxes = hasMarginBoxes()) {
   raw = doc.raw || [];
+  numbering = { numFmt: 'decimal', numStart: null, ...(doc.pageSetupNow?.() || {}) };
   const p = doc.page;
   const header = plan(page, 'header', inUse(doc, doc.headers), zoom, boxes);
   const footer = plan(page, 'footer', inUse(doc, doc.footers), zoom, boxes);
@@ -191,7 +222,12 @@ export function printCss(page, doc, zoom = 1, boxes = hasMarginBoxes()) {
     }
   }
   const pageRule = `size: ${p.width}px ${p.minHeight}px; margin: ${top.margin}px ${p.right}px ${bottom.margin}px ${p.left}px;`;
+  // Numbering that starts at another number (w:start): the first page is set to it, the next ones
+  // count on from there.
+  const reset = numbering.numStart != null && numbering.numStart !== 1 && (header.mode === 'box' || footer.mode === 'box')
+    ? ` counter-set: page ${numbering.numStart};` : '';
   const rules = [`@page { ${pageRule} ${marginBoxes.default.join(' ')} }`];
+  if (reset) rules.push(`@page :first {${reset} }`);
   if (marginBoxes.first.length) rules.push(`@page :first { ${marginBoxes.first.join(' ')} }`);
   if (marginBoxes.even.length) rules.push(`@page :left { ${marginBoxes.even.join(' ')} }`);
   const media = [];

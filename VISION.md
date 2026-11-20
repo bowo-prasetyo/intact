@@ -197,6 +197,10 @@ Saying no to these keeps the product small enough to keep its promises:
   comment ✔; a manuscript starter in standard manuscript format ✔; the original (before the
   changes) ✔; move a chapter with its text from the Headings pane ✔; save back to the file opened,
   where the browser can ✔
+- Public servants who write official documents (Indonesia first): F4 and Folio paper and a custom
+  size ✔; page numbers in i, ii, iii or from any number, per section (Format page numbers) ✔; the
+  interface in Indonesian ✔; starters for the naskah dinas (surat dinas, nota dinas, surat undangan,
+  berita acara) ✔
 
 ## How we'll know it's working
 

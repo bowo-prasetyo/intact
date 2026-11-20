@@ -8,29 +8,29 @@
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <AppHeader />
+    <AppHeader show-language />
     <main class="home-main">
-      <h1>Change what you need.<br /> Keep the rest <span class="brand-word">intact</span>.</h1>
-      <p class="lead">Open a <code>.docx</code>, fix it and download it again, or start a new one, ready for Word, right here in your browser.</p>
-      <ul class="promises" aria-label="What Intact promises">
+      <h1>{{ t('Change what you need.') }}<br /> {{ t('Keep the rest') }} <span class="brand-word">{{ t('intact') }}</span>.</h1>
+      <p class="lead">{{ t('Open a') }} <code>.docx</code>{{ t(', fix it and download it again, or start a new one, ready for Word, right here in your browser.') }}</p>
+      <ul class="promises" :aria-label="t('What Intact promises')">
         <li v-for="p in promises" :key="p.title">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg>
-          <span><strong>{{ p.title }}</strong> – {{ p.text }}</span>
+          <span><strong>{{ t(p.title) }}</strong> – {{ t(p.text) }}</span>
         </li>
       </ul>
 
       <section v-if="drafts.length" class="drafts" aria-labelledby="drafts-title">
-        <h2 id="drafts-title">Unsaved changes on this device</h2>
-        <p class="drafts-note">Kept in this browser only, until you download or close the document, or for {{ maxDays }} days.</p>
+        <h2 id="drafts-title">{{ t('Unsaved changes on this device') }}</h2>
+        <p class="drafts-note">{{ t('Kept in this browser only, until you download or close the document, or for {days} days.', { days: maxDays }) }}</p>
         <ul>
           <li v-for="d in drafts" :key="d.id">
             <span class="draft-name">{{ d.name }}</span>
             <span class="draft-when">{{ ago(d.savedAt) }}</span>
             <!-- Being edited in another tab: restoring it here would make a second copy. -->
-            <span v-if="openElsewhere.has(d.id)" class="draft-open" title="This document is open in another tab of this browser: switch to that tab to go on with it">Open in another tab</span>
+            <span v-if="openElsewhere.has(d.id)" class="draft-open" :title="t('This document is open in another tab of this browser: switch to that tab to go on with it')">{{ t('Open in another tab') }}</span>
             <template v-else>
-              <button type="button" class="restore" :disabled="busy" :aria-label="`Restore ${d.name}`" @click="restore(d)">Restore</button>
-              <button type="button" class="discard" :disabled="busy" :aria-label="`Discard the changes to ${d.name}`" @click="discard(d)">Discard</button>
+              <button type="button" class="restore" :disabled="busy" :aria-label="t('Restore {name}', { name: d.name })" @click="restore(d)">{{ t('Restore') }}</button>
+              <button type="button" class="discard" :disabled="busy" :aria-label="t('Discard the changes to {name}', { name: d.name })" @click="discard(d)">{{ t('Discard') }}</button>
             </template>
           </li>
         </ul>
@@ -39,8 +39,8 @@
       <div class="actions">
         <button class="tile" type="button" :disabled="busy" @click="createNew">
           <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M6.5 3h7l5 5v11.5A1.5 1.5 0 0 1 17 21H6.5A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z" /><path d="M13.5 3v5h5M12 11v6M9 14h6" /></svg>
-          <span class="tile-title">Blank document</span>
-          <span class="tile-sub">Write a new document</span>
+          <span class="tile-title">{{ t('Blank document') }}</span>
+          <span class="tile-sub">{{ t('Write a new document') }}</span>
         </button>
 
         <!-- A real button, so the file picker can be reached with the keyboard; the input stays hidden. -->
@@ -54,35 +54,37 @@
           @click="browse"
         >
           <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.5 5h-6A1.5 1.5 0 0 0 3 6.5z" /><path d="M12 16.5v-6M9.5 13 12 10.5l2.5 2.5" /></svg>
-          <span id="open-title" class="tile-title">{{ dragOver ? 'Drop to open' : 'Open a .docx file' }}</span>
-          <span id="open-hint" class="tile-sub">Click to browse, or drop a file anywhere here</span>
+          <span id="open-title" class="tile-title">{{ dragOver ? t('Drop to open') : t('Open a .docx file') }}</span>
+          <span id="open-hint" class="tile-sub">{{ t('Click to browse, or drop a file anywhere here') }}</span>
         </button>
         <input ref="fileInput" type="file" :accept="ACCEPT" hidden :disabled="busy" @change="onPick" />
       </div>
 
-      <!-- Starter documents: Word documents made here, with [placeholders] to fill in. -->
-      <section class="starters" aria-labelledby="starters-title">
-        <h2 id="starters-title">Or start from a template</h2>
+      <!-- Starter documents: Word documents made here, with [placeholders] to fill in. In Indonesian,
+           the official documents (naskah dinas) come first, in Indonesian; the others are in English. -->
+      <section v-for="group in starterGroups" :key="group.id" class="starters" :aria-labelledby="`starters-title-${group.id}`">
+        <h2 :id="`starters-title-${group.id}`">{{ t(group.title) }}</h2>
         <ul>
-          <li v-for="s in STARTERS" :key="s.id">
-            <button type="button" class="starter" :disabled="busy" :aria-label="`${s.title}: ${s.description}`" @click="createFrom(s.id)">
+          <li v-for="s in group.starters" :key="s.id">
+            <button type="button" class="starter" :disabled="busy" :aria-label="`${t(s.title)}: ${t(s.description)}`" @click="createFrom(s.id)">
               <svg class="starter-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path v-for="(d, i) in STARTER_ICONS[s.id]" :key="i" :d="d" /></svg>
-              <span class="starter-title">{{ s.title }}</span>
-              <span class="starter-sub">{{ s.description }}</span>
+              <span class="starter-title">{{ t(s.title) }}</span>
+              <span class="starter-sub">{{ t(s.description) }}</span>
             </button>
           </li>
         </ul>
-        <p class="starters-note">{{ paper }} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.</p>
+        <p class="starters-note">{{ group.note }}</p>
       </section>
 
-      <p v-if="busy" class="status" role="status">Opening…</p>
+      <p v-if="busy" class="status" role="status">{{ t('Opening…') }}</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { t, lang } from '../i18n.js';
 import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import { openFile, newDocument, newFromStarter, openDraft } from '../store.js';
@@ -132,17 +134,17 @@ onMounted(async () => {
   const file = await receiveFile(id);
   busy.value = false;
   if (file) load(file);
-  else error.value = 'The document couldn’t be brought over from the other tab (it may have been closed). Open it here instead.';
+  else error.value = t('The document couldn’t be brought over from the other tab (it may have been closed). Open it here instead.');
 });
 const restore = (d) => run(() => openDraft(d));
 async function discard(d) {
   await deleteDraft(d.id);
   drafts.value = drafts.value.filter((x) => x.id !== d.id);
 }
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-function ago(t) {
-  const minutes = Math.round((t - Date.now()) / 60000);
-  if (minutes > -1) return 'just now';
+function ago(at) {
+  const relative = new Intl.RelativeTimeFormat(lang.value === 'id' ? 'id' : undefined, { numeric: 'auto' });
+  const minutes = Math.round((at - Date.now()) / 60000);
+  if (minutes > -1) return t('just now');
   if (minutes > -60) return relative.format(minutes, 'minute');
   if (minutes > -60 * 24) return relative.format(Math.round(minutes / 60), 'hour');
   return relative.format(Math.round(minutes / 1440), 'day');
@@ -172,7 +174,7 @@ async function run(task) {
   } catch (e) {
     console.error(e);
     // A file Intact recognises but can't open (encrypted, rights-managed, .doc) says so as it is.
-    error.value = e.name === 'UnreadableFileError' ? e.message : `Could not open the document: ${e.message}`;
+    error.value = e.name === 'UnreadableFileError' ? e.message : t('Could not open the document: {error}', { error: e.message });
   } finally {
     busy.value = false;
   }
@@ -181,7 +183,7 @@ async function run(task) {
 function load(file, handle = null) {
   if (!file) return;
   if (!/\.(docx|dotx|docm|dotm)$/i.test(file.name)) {
-    error.value = 'Please choose a Word file: .docx, or a .dotx template, or a .docm or .dotm with macros (older .doc files are not supported).';
+    error.value = t('Please choose a Word file: .docx, or a .dotx template, or a .docm or .dotm with macros (older .doc files are not supported).');
     return;
   }
   run(() => openFile(file, handle));
@@ -240,6 +242,15 @@ function onDrop(e) {
 const createNew = () => run(newDocument);
 const createFrom = (id) => run(() => newFromStarter(id));
 const paper = localPaper();
+// The starters, in groups: in Indonesian, the official documents first; else the English ones only.
+const starterGroups = computed(() => {
+  const english = { id: 'en', title: lang.value === 'id' ? 'Other templates (in English)' : 'Or start from a template', starters: STARTERS.filter((s) => !s.lang), note: t('{paper} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.', { paper }) };
+  if (lang.value !== 'id') return [english];
+  return [
+    { id: 'id', title: 'Official documents (Tata Naskah Dinas)', starters: STARTERS.filter((s) => s.lang === 'id'), note: t('A4 paper, as the rules for official documents ask; F4 and Folio are in Page setup. Fill in the [placeholders] once, for everywhere they appear.') },
+    english,
+  ];
+});
 
 // Line drawings for the starters, on a page outline (24 × 24, stroked).
 const PAGE = 'M6.5 3h11A1.5 1.5 0 0 1 19 4.5v15a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z';
@@ -252,6 +263,11 @@ const STARTER_ICONS = {
   cv: [PAGE, 'M12 10.2a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8.5 14.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5M8 17.5h8'],
   report: [PAGE, 'M8.5 17v-3M12 17v-6M15.5 17V8.5'],
   manuscript: [PAGE, 'M9.5 7.5h5M8 11h8M8 13.5h8M8 16h8M8 18.5h5'],
+  // The naskah dinas: a letterhead's line over the text; a memo's labels; an invitation's calendar; two signatures.
+  'surat-dinas': [PAGE, 'M8 6.5h8M7.5 8.5h9M8 11h4M8 13h8M8 15h8M13 18h3'],
+  'nota-dinas': [PAGE, 'M9 6.5h6M8 9h2M11 9h5M8 11h2M11 11h5M8 13h2M11 13h5M7.5 15h9M8 17.5h6'],
+  'surat-undangan': [PAGE, 'M8 7h8M8.5 10.5h7v6h-7zM8.5 12.5h7M10.5 9.5v2M13.5 9.5v2'],
+  'berita-acara': [PAGE, 'M9 6.5h6M8 9h8M8 11h8M8 13h6M8 17h3M13 17h3'],
 };
 </script>
 

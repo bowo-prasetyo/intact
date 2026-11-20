@@ -36,6 +36,8 @@
         <li>Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2), space before and after, and indents (Ctrl+M, Ctrl+Shift+M), with Word's Paragraph dialog, and tab stops in it</li>
         <li>A right-click menu: Cut, Copy, Paste, Paste as text, links, comments, the Paragraph dialog, Accept and Reject, and a table's rows, columns and cells (Shift+right-click: the browser's menu, with spelling suggestions)</li>
         <li>A watermark (DRAFT, CONFIDENTIAL or your own text), in Page setup, as Word puts one in the header</li>
+        <li>Paper sizes A4, Letter, Legal, A5, A3, Executive, F4 and Folio, or a custom size, in Page setup; page numbers in 1, 2, 3, i, ii, iii and other formats, or from any number, per section (Page number ▾ &gt; Format page numbers…)</li>
+        <li>The interface in English or Indonesian (Bahasa Indonesia), chosen on the start page; in Indonesian, starters for official documents (surat dinas, nota dinas, surat undangan, berita acara)</li>
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page</li>
         <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
         <li>Save back to the file opened, and Save as…, where the browser can (Chrome and Edge on a computer): the browser writes the file where it is</li>

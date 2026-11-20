@@ -184,6 +184,27 @@ function applySetup(sect, set) {
     }
     for (const k of ['top', 'right', 'bottom', 'left']) put(mar, k, set[k]);
   }
+  // Page numbering, as Word's Format Page Numbers: the number format (w:fmt; Arabic numerals,
+  // decimal, are Word's default and written as no format) and where it starts (w:start; none
+  // continues from the section before). The element's other attributes (chapter numbers) are kept.
+  if (set.numFmt !== undefined || set.numStart !== undefined) {
+    const num = ensureOrdered(sect, 'pgNumType', SECTPR_ORDER);
+    if (set.numFmt !== undefined) {
+      if (!set.numFmt || set.numFmt === 'decimal') num.removeAttributeNS(W, 'fmt');
+      else num.setAttributeNS(W, 'w:fmt', set.numFmt);
+    }
+    if (set.numStart !== undefined) {
+      if (set.numStart == null) num.removeAttributeNS(W, 'start');
+      else num.setAttributeNS(W, 'w:start', String(Math.max(0, Math.round(set.numStart))));
+    }
+    if (!num.attributes.length && !num.childNodes.length) sect.removeChild(num);
+  }
+}
+
+/** A section's page numbering (w:pgNumType): { numFmt ('decimal', 'lowerRoman'…), numStart (a number, or null to continue) }. */
+function numberingOf(pgNumType) {
+  const start = wAttr(pgNumType, 'start');
+  return { numFmt: wAttr(pgNumType, 'fmt') || 'decimal', numStart: start != null && /^\d+$/.test(start) ? Number(start) : null };
 }
 
 /** "Header", "First page header", "Even pages footer": a header or footer host's name. */
@@ -392,7 +413,7 @@ export class DocxDocument {
     // the final section's own, to apply them to afresh at each save.
     this.pageSetup = null;
     const finalSect = wChild(this.body, 'sectPr');
-    this.originalPage = { pgSz: wChild(finalSect, 'pgSz')?.cloneNode(true) || null, pgMar: wChild(finalSect, 'pgMar')?.cloneNode(true) || null };
+    this.originalPage = { pgSz: wChild(finalSect, 'pgSz')?.cloneNode(true) || null, pgMar: wChild(finalSect, 'pgMar')?.cloneNode(true) || null, pgNumType: wChild(finalSect, 'pgNumType')?.cloneNode(true) || null };
     this.numberingPath = numPath || null;
     this.numberingChanged = false;
     this.listDefs = {}; // list definitions added this session: kind -> abstractNumId, plus the bullet numId
@@ -591,14 +612,16 @@ export class DocxDocument {
 
   /**
    * The paper size, orientation and margins as they are now (the final section's, with any set
-   * here), in twips: { w, h, orient ('portrait' or 'landscape'), top, right, bottom, left }.
+   * here), in twips: { w, h, orient ('portrait' or 'landscape'), top, right, bottom, left }, and its
+   * page numbering: { numFmt, numStart } (see numberingOf).
    */
   pageSetupNow() {
-    const { pgSz, pgMar } = this.originalPage; // as opened: a save writes the setup into the section
+    const { pgSz, pgMar, pgNumType } = this.originalPage; // as opened: a save writes the setup into the section
     const num = (el, attr, d) => Number(wAttr(el === 'pgSz' ? pgSz : pgMar, attr) ?? d);
     const now = {
       w: num('pgSz', 'w', 12240), h: num('pgSz', 'h', 15840), orient: wAttr(pgSz, 'orient') || 'portrait',
       top: num('pgMar', 'top', 1440), right: num('pgMar', 'right', 1440), bottom: num('pgMar', 'bottom', 1440), left: num('pgMar', 'left', 1440),
+      ...numberingOf(pgNumType),
     };
     return { ...now, ...this.pageSetup };
   }
@@ -606,7 +629,8 @@ export class DocxDocument {
   /**
    * Sets the paper size, orientation and margins of the final section (the whole document's, when
    * it has one section; the editor writes the others' into their section breaks, see
-   * setSectionSetup): `setup` has any of w, h, orient, top, right, bottom, left (twips); null sets
+   * setSectionSetup): `setup` has any of w, h, orient, top, right, bottom, left (twips), numFmt
+   * and numStart (page numbering: a format, and a start or null to continue); null sets
    * them back as they were. What it doesn't name is kept as the section has it (see applyPageSetup).
    */
   setPageSetup(setup) {
@@ -615,7 +639,7 @@ export class DocxDocument {
 
   // ---------------------------------------------------------------- sections
 
-  /** The section setup a sectPr gives: { w, h, orient, top, right, bottom, left } in twips. */
+  /** The section setup a sectPr gives: { w, h, orient, top, right, bottom, left } in twips, { numFmt, numStart }. */
   sectionSetupOf(sectPr) {
     const sz = wChild(sectPr, 'pgSz');
     const mar = wChild(sectPr, 'pgMar');
@@ -623,6 +647,7 @@ export class DocxDocument {
     return {
       w: num(sz, 'w', 12240), h: num(sz, 'h', 15840), orient: wAttr(sz, 'orient') || 'portrait',
       top: num(mar, 'top', 1440), right: num(mar, 'right', 1440), bottom: num(mar, 'bottom', 1440), left: num(mar, 'left', 1440),
+      ...numberingOf(wChild(sectPr, 'pgNumType')),
     };
   }
 
@@ -670,10 +695,11 @@ export class DocxDocument {
   /** The final section's properties as they would be saved now (the page setup set here applied). */
   finalSectPr() {
     const sect = (wChild(this.body, 'sectPr') || createW(this.xml, 'sectPr')).cloneNode(true);
-    for (const local of ['pgSz', 'pgMar']) {
+    for (const local of ['pgSz', 'pgMar', 'pgNumType']) {
       const orig = this.originalPage[local];
       const now = wChild(sect, local);
       if (orig) (now || ensureOrdered(sect, local, SECTPR_ORDER)).replaceWith(orig.cloneNode(true));
+      else if (now && local === 'pgNumType') sect.removeChild(now);
     }
     applySetup(sect, this.pageSetup || {});
     if (this.hfFlags.titlePg != null) setTitlePage(sect, this.hfFlags.titlePg);
@@ -686,7 +712,7 @@ export class DocxDocument {
     // The final section's properties persist between saves: start again from them as opened.
     if (finalSect) {
       // Replaced where they are, so a section's own order is kept.
-      for (const local of ['pgSz', 'pgMar']) {
+      for (const local of ['pgSz', 'pgMar', 'pgNumType']) {
         const orig = this.originalPage[local];
         const now = wChild(finalSect, local);
         if (orig) (now || ensureOrdered(finalSect, local, SECTPR_ORDER)).replaceWith(orig.cloneNode(true));

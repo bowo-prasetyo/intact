@@ -2,42 +2,42 @@
   <div class="editor-shell">
     <AppHeader>
       <div class="file">
-        <input v-model="baseName" class="filename" aria-label="File name" spellcheck="false" :style="{ width: `${Math.max(baseName.length, 4) + 2}ch` }" />
+        <input v-model="baseName" class="filename" :aria-label="t('File name')" spellcheck="false" :style="{ width: `${Math.max(baseName.length, 4) + 2}ch` }" />
         <span class="ext" :title="extTitle">.{{ fileExt }}</span>
-        <span v-if="dirty" class="dirty" title="Unsaved changes">●</span>
+        <span v-if="dirty" class="dirty" :title="t('Unsaved changes')">●</span>
         <span v-if="labelChip" class="label-chip" tabindex="0" role="note" :title="labelChip.title" :aria-label="labelChip.title">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2.5h6l6 6-5.5 5.5-6-6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><circle cx="5.3" cy="5.8" r="1.1" fill="currentColor" /></svg>
           <span class="text">{{ labelChip.text }}</span>
         </span>
       </div>
       <span class="save-split">
-        <button class="primary" type="button" :disabled="saving" :title="fileHandle ? `Save: write the changes into ${fileHandle.name}, the file opened, on this device (Ctrl+S)` : 'Download (Ctrl+S)'" @click="requestDownload()">
-          {{ saving ? 'Saving…' : fileHandle ? 'Save' : 'Download' }}
+        <button class="primary" type="button" :disabled="saving" :title="fileHandle ? `Save: write the changes into ${fileHandle.name}, the file opened, on this device (Ctrl+S)` : t('Download (Ctrl+S)')" @click="requestDownload()">
+          {{ saving ? t('Saving…') : fileHandle ? t('Save') : t('Download') }}
         </button>
-        <button ref="saveMenuButton" class="primary arrow" type="button" :title="canShareFiles ? 'More ways to save: a PDF, or share the file' : 'More ways to save: a PDF'" aria-label="More ways to save" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
+        <button ref="saveMenuButton" class="primary arrow" type="button" :title="canShareFiles ? t('More ways to save: a PDF, or share the file') : t('More ways to save: a PDF')" :aria-label="t('More ways to save')" aria-haspopup="menu" :aria-expanded="saveMenu.open" :disabled="saving" @click="toggleSaveMenu">▾</button>
       </span>
-      <button class="ghost open-tab" type="button" title="Open another document in a new tab, beside this one (Ctrl+O)" aria-label="Open another document in a new tab" @click="openAnother">
+      <button class="ghost open-tab" type="button" :title="t('Open another document in a new tab, beside this one (Ctrl+O)')" :aria-label="t('Open another document in a new tab')" @click="openAnother">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 8 8M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
-        <span class="label">Open</span>
+        <span class="label">{{ t('Open') }}</span>
       </button>
-      <button class="ghost" type="button" @click="close">Close</button>
+      <button class="ghost" type="button" @click="close">{{ t('Close') }}</button>
     </AppHeader>
 
-    <div v-if="restrictions.length" class="restriction-bar" :class="{ unlocked: unlocked || !lockMode }" role="region" aria-label="Restrictions on this document">
+    <div v-if="restrictions.length" class="restriction-bar" :class="{ unlocked: unlocked || !lockMode }" role="region" :aria-label="t('Restrictions on this document')">
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path v-if="unlocked" d="M5.5 7V5a2.5 2.5 0 0 1 5-.6" stroke="currentColor" stroke-width="1.4" fill="none" /><path v-else d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
       <p>
         <template v-for="(r, i) in restrictions" :key="i"><strong>{{ r.title }}</strong>{{ ` ${r.text} ` }}</template>
         <span>{{ unlocked ? unlockedText : lockText }}</span>
       </p>
-      <button v-if="lockMode" type="button" @click="editAnyway">Edit anyway</button>
+      <button v-if="lockMode" type="button" @click="editAnyway">{{ t('Edit anyway') }}</button>
     </div>
 
     <!-- A template: saved as itself, or made into a new document as Word does when one is opened
          to write with. Either way the template file opened is never changed. -->
-    <div v-if="doc.openedFormat.template" class="restriction-bar unlocked template-bar" role="region" aria-label="Template">
+    <div v-if="doc.openedFormat.template" class="restriction-bar unlocked template-bar" role="region" :aria-label="t('Template')">
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M5.8 7.5h4.4M5.8 9.7h4.4M5.8 11.9h2.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="1.4 1.1" /></svg>
-      <p v-if="fromTemplate"><strong>New document from this template.</strong> It downloads as a .{{ fileExt }}; the template ({{ baseName }}.{{ doc.openedFormat.ext }}) stays as it is, ready for the next one.</p>
-      <p v-else><strong>Word template.</strong> Downloading saves the template itself. To write a quote, letter or invoice with it, start a new document: your template stays as it is.</p>
+      <p v-if="fromTemplate"><strong>{{ t('New document from this template.') }}</strong> It downloads as a .{{ fileExt }}; the template ({{ baseName }}.{{ doc.openedFormat.ext }}) stays as it is, ready for the next one.</p>
+      <p v-else><strong>{{ t('Word template.') }}</strong> Downloading saves the template itself. To write a quote, letter or invoice with it, start a new document: your template stays as it is.</p>
       <button v-if="placeholderCount && !textLocked" type="button" @click="openFillIn()">Fill in {{ placeholderCount }} {{ placeholderCount === 1 ? 'placeholder' : 'placeholders' }}…</button>
       <button type="button" @click="setFromTemplate(!fromTemplate)">{{ fromTemplate ? 'Edit the template instead' : 'Start a new document' }}</button>
     </div>
@@ -48,221 +48,221 @@
     <!-- The ribbon, as Word's: the tools in tabs (Home, Insert, Layout, References, Review), one tab's
          at a time, below the tabs; Undo, Redo and Help in every tab. "All tools" shows them all in
          one toolbar instead (remembered). A phone keeps its one row of tools that scrolls. -->
-    <div v-if="ribbon" class="ribbon-tabs" role="tablist" aria-label="Toolbar tabs" @keydown="onRibbonKeys" @mousedown="keepFocus">
+    <div v-if="ribbon" class="ribbon-tabs" role="tablist" :aria-label="t('Toolbar tabs')" @keydown="onRibbonKeys" @mousedown="keepFocus">
       <button
-        v-for="t in RIBBON_TABS"
-        :id="`ribbon-tab-${t.id}`"
-        :key="t.id"
+        v-for="tab in RIBBON_TABS"
+        :id="`ribbon-tab-${tab.id}`"
+        :key="tab.id"
         type="button"
         role="tab"
-        :class="{ context: t.id === 'layout' && state.table && ribbonTab !== 'layout' }"
-        :aria-selected="ribbonTab === t.id"
-        :tabindex="ribbonTab === t.id ? 0 : -1"
+        :class="{ context: tab.id === 'layout' && state.table && ribbonTab !== 'layout' }"
+        :aria-selected="ribbonTab === tab.id"
+        :tabindex="ribbonTab === tab.id ? 0 : -1"
         aria-controls="editor-toolbar"
-        :title="t.title"
-        @click="setRibbonTab(t.id)"
-      >{{ t.label }}<span v-if="t.id === 'review' && changes.total && ribbonTab !== 'review'" class="tab-badge" :aria-label="`, ${changes.total} tracked ${changes.total === 1 ? 'change' : 'changes'}`">{{ changes.total }}</span></button>
+        :title="t(tab.title)"
+        @click="setRibbonTab(tab.id)"
+      >{{ t(tab.label) }}<span v-if="tab.id === 'review' && changes.total && ribbonTab !== 'review'" class="tab-badge" :aria-label="t(changes.total === 1 ? ', {n} tracked change' : ', {n} tracked changes', { n: changes.total })">{{ changes.total }}</span></button>
       <span class="ribbon-spacer" />
-      <button type="button" class="ribbon-mode" title="Show every tool at once, in one toolbar without tabs" @click="setRibbon(false)">All tools</button>
+      <button type="button" class="ribbon-mode" :title="t('Show every tool at once, in one toolbar without tabs')" @click="setRibbon(false)">{{ t('All tools') }}</button>
     </div>
-    <div id="editor-toolbar" ref="toolbarEl" class="toolbar" :class="{ ribbon }" :data-active="ribbon ? ribbonTab : null" role="toolbar" :aria-label="ribbon ? `${RIBBON_TABS.find((t) => t.id === ribbonTab).label} tools` : 'Editing and review'" :aria-labelledby="ribbon ? `ribbon-tab-${ribbonTab}` : null" @mousedown="keepFocus">
+    <div id="editor-toolbar" ref="toolbarEl" class="toolbar" :class="{ ribbon }" :data-active="ribbon ? ribbonTab : null" role="toolbar" :aria-label="ribbon ? t('{tab} tools', { tab: t(RIBBON_TABS.find((x) => x.id === ribbonTab).label) }) : t('Editing and review')" :aria-labelledby="ribbon ? `ribbon-tab-${ribbonTab}` : null" @mousedown="keepFocus">
       <div class="tb-group">
       <fieldset class="group" :disabled="textLocked" :title="textLocked ? lockMessage : null">
-      <button type="button" class="ph" title="Undo (Ctrl+Z)" aria-label="Undo" @click="undo">↶</button>
-      <button type="button" class="ph" title="Redo (Ctrl+Y)" aria-label="Redo" @click="redo">↷</button>
+      <button type="button" class="ph" :title="t('Undo (Ctrl+Z)')" :aria-label="t('Undo')" @click="undo">↶</button>
+      <button type="button" class="ph" :title="t('Redo (Ctrl+Y)')" :aria-label="t('Redo')" @click="redo">↷</button>
       <span class="sep" />
-      <select data-tab="home" :value="state.block" aria-label="Paragraph style" title="Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)" @change="onStyleMenu">
-        <option value="normal">Normal</option>
-        <option value="title">Title</option>
-        <option value="h1">Heading 1</option>
-        <option value="h2">Heading 2</option>
-        <option value="h3">Heading 3</option>
-        <optgroup v-if="styleChoices.length" label="In this document">
+      <select data-tab="home" class="style-choice" :value="state.block" :aria-label="t('Paragraph style')" :title="t('Paragraph style (Ctrl+Shift+N, Ctrl+Alt+1–3)')" @change="onStyleMenu">
+        <option value="normal">{{ t('Normal') }}</option>
+        <option value="title">{{ t('Title') }}</option>
+        <option value="h1">{{ t('Heading 1') }}</option>
+        <option value="h2">{{ t('Heading 2') }}</option>
+        <option value="h3">{{ t('Heading 3') }}</option>
+        <optgroup v-if="styleChoices.length" :label="t('In this document')">
           <option v-for="c in styleChoices" :key="c.id" :value="`style:${c.id}`">{{ c.label }}</option>
         </optgroup>
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
-        <option value="__modify">Modify style…</option>
+        <option value="__modify">{{ t('Modify style…') }}</option>
       </select>
-      <select data-tab="home" class="font-choice" :value="fontValue" aria-label="Font" title="Font: the document’s own fonts first, then Word’s usual ones" @change="applyFont($event.target.value)">
+      <select data-tab="home" class="font-choice" :value="fontValue" :aria-label="t('Font')" :title="t('Font: the document’s own fonts first, then Word’s usual ones')" @change="applyFont($event.target.value)">
         <option v-if="!fontValue" value="" disabled hidden>{{ state.font }}</option>
         <optgroup label="Theme fonts">
           <option v-for="f in fontChoices.filter((x) => x.group === 'theme')" :key="f.value" :value="f.value">{{ f.label }}</option>
         </optgroup>
-        <optgroup v-if="fontChoices.some((x) => x.group === 'document')" label="In this document">
+        <optgroup v-if="fontChoices.some((x) => x.group === 'document')" :label="t('In this document')">
           <option v-for="f in fontChoices.filter((x) => x.group === 'document')" :key="f.value" :value="f.value">{{ f.label }}</option>
         </optgroup>
         <optgroup label="Other fonts">
           <option v-for="f in fontChoices.filter((x) => x.group === 'standard')" :key="f.value" :value="f.value" :style="{ fontFamily: `'${f.name}'` }">{{ f.label }}</option>
         </optgroup>
       </select>
-      <select data-tab="home" class="size-choice" :value="sizeValue" aria-label="Font size" title="Font size" @change="applyFontSize(Number($event.target.value))">
+      <select data-tab="home" class="size-choice" :value="sizeValue" :aria-label="t('Font size')" :title="t('Font size')" @change="applyFontSize(Number($event.target.value))">
         <option v-if="!sizeValue" value="" disabled hidden>{{ state.size }}</option>
-        <optgroup v-if="sizeChoices.used.length" label="In this document">
+        <optgroup v-if="sizeChoices.used.length" :label="t('In this document')">
           <option v-for="z in sizeChoices.used" :key="`u${z}`" :value="String(z)">{{ z }}</option>
         </optgroup>
         <optgroup label="Other sizes">
           <option v-for="z in sizeChoices.others" :key="`o${z}`" :value="String(z)">{{ z }}</option>
         </optgroup>
       </select>
-      <button data-tab="home" type="button" title="Grow font (Ctrl+Shift+>)" aria-label="Grow font" @click="growFont(1)">
+      <button data-tab="home" type="button" :title="t('Grow font (Ctrl+Shift+>)')" :aria-label="t('Grow font')" @click="growFont(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 13.5l3.5-10 3.5 10M2.7 10h4.6M11 6.5l2-2.5 2 2.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
-      <button data-tab="home" type="button" title="Shrink font (Ctrl+Shift+<)" aria-label="Shrink font" @click="growFont(-1)">
+      <button data-tab="home" type="button" :title="t('Shrink font (Ctrl+Shift+<)')" :aria-label="t('Shrink font')" @click="growFont(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5l3-8.5 3 8.5M3.1 10.5h3.8M11 4l2 2.5 2-2.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg>
       </button>
-      <select data-tab="home" v-if="characterStyles.length" class="char-style" :value="state.charStyle" aria-label="Character style" title="Character style: the document’s own" @change="applyCharacterStyle($event.target.value)">
-        <option value="">No character style</option>
+      <select data-tab="home" v-if="characterStyles.length" class="char-style" :value="state.charStyle" :aria-label="t('Character style')" :title="t('Character style: the document’s own')" @change="applyCharacterStyle($event.target.value)">
+        <option value="">{{ t('No character style') }}</option>
         <option v-for="c in characterStyles" :key="c.id" :value="c.id">{{ c.label }}</option>
         <option v-if="state.charStyle && !characterStyles.some((c) => c.id === state.charStyle)" :value="state.charStyle" disabled>{{ doc.styleLabel(state.charStyle) }}</option>
       </select>
       <span class="sep" data-tab="home" />
-      <button data-tab="home" type="button" title="Bold (Ctrl+B)" aria-label="Bold" :class="{ on: state.bold, ph: true }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
-      <button data-tab="home" type="button" title="Italic (Ctrl+I)" aria-label="Italic" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
-      <button data-tab="home" type="button" title="Underline (Ctrl+U)" aria-label="Underline" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
-      <button data-tab="home" type="button" title="Strikethrough" aria-label="Strikethrough" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
-      <button data-tab="home" type="button" title="Superscript (Ctrl+Shift+=)" aria-label="Superscript" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
-      <button data-tab="home" type="button" title="Subscript (Ctrl+=)" aria-label="Subscript" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <button data-tab="home" type="button" :title="t('Bold (Ctrl+B)')" :aria-label="t('Bold')" :class="{ on: state.bold, ph: true }" :aria-pressed="state.bold" @click="exec('bold')"><b>B</b></button>
+      <button data-tab="home" type="button" :title="t('Italic (Ctrl+I)')" :aria-label="t('Italic')" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
+      <button data-tab="home" type="button" :title="t('Underline (Ctrl+U)')" :aria-label="t('Underline')" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
+      <button data-tab="home" type="button" :title="t('Strikethrough')" :aria-label="t('Strikethrough')" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
+      <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
+      <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
       <span data-tab="home" class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
-        <button ref="paletteButton" type="button" class="arrow" title="Highlight colour" aria-label="Highlight colour options" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
+        <button ref="paletteButton" type="button" class="arrow" :title="t('Highlight colour')" :aria-label="t('Highlight colour options')" aria-haspopup="dialog" :aria-expanded="palette.open" @click="togglePalette">▾</button>
       </span>
       <span data-tab="home" class="split">
         <button type="button" :title="`Font colour: ${fontColor ? fontColor.label : 'Automatic'}`" @click="applyFontColor(fontColor)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4.5 11.5l3.5-9 3.5 9M5.7 8.5h4.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="fontColor ? `#${fontColor.hex}` : '#000'" stroke="currentColor" stroke-width=".4" /></svg>
         </button>
-        <button ref="colorButton" type="button" class="arrow" title="Font colour: the document’s theme and its own colours" aria-label="Font colour options" aria-haspopup="dialog" :aria-expanded="colorPalette.open" @click="toggleColorPalette">▾</button>
+        <button ref="colorButton" type="button" class="arrow" :title="t('Font colour: the document’s theme and its own colours')" :aria-label="t('Font colour options')" aria-haspopup="dialog" :aria-expanded="colorPalette.open" @click="toggleColorPalette">▾</button>
       </span>
-      <button data-tab="home" type="button" title="Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays" @click="clearCharacterFormatting">
+      <button data-tab="home" type="button" :title="t('Clear formatting (Ctrl+Space): takes the text’s direct formatting and character style off; highlight stays')" @click="clearCharacterFormatting">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3h8M7 3l-2.5 9M9.5 9.5l4 4M13.5 9.5l-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button data-tab="home" type="button" class="painter-toggle" :title="painter.active ? 'Format Painter is on: select (or click) the text to paint the formatting on – Esc or a click here stops it' : 'Format Painter (Ctrl+Shift+C, Ctrl+Shift+V): copies the formatting at the caret to the text you select next; double-click to paint it on several places'" aria-label="Format Painter" :class="{ on: painter.active }" :aria-pressed="painter.active" @click="togglePainter" @dblclick="startPainter(true)">
+      <button data-tab="home" type="button" class="painter-toggle" :title="painter.active ? 'Format Painter is on: select (or click) the text to paint the formatting on – Esc or a click here stops it' : 'Format Painter (Ctrl+Shift+C, Ctrl+Shift+V): copies the formatting at the caret to the text you select next; double-click to paint it on several places'" :aria-label="t('Format Painter')" :class="{ on: painter.active }" :aria-pressed="painter.active" @click="togglePainter" @dblclick="startPainter(true)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="1.8" width="10" height="4.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M12 4h1.8v3.6H7.6v2.2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="6.4" y="9.8" width="2.4" height="4.6" rx=".6" fill="currentColor" /></svg>
       </button>
-      <button data-tab="home" ref="caseButton" type="button" title="Change case (Shift+F3): Sentence case, lowercase, UPPERCASE, Capitalize Each Word" aria-label="Change case" aria-haspopup="menu" :aria-expanded="caseMenu.open" @click="toggleCaseMenu">
-        <span class="case-icon" aria-hidden="true">Aa</span>
+      <button data-tab="home" ref="caseButton" type="button" :title="t('Change case (Shift+F3): Sentence case, lowercase, UPPERCASE, Capitalize Each Word')" :aria-label="t('Change case')" aria-haspopup="menu" :aria-expanded="caseMenu.open" @click="toggleCaseMenu">
+        <span class="case-icon" aria-hidden="true">{{ t('Aa') }}</span>
       </button>
       <span class="sep" data-tab="home" />
       <button data-tab="home" v-for="a in aligns" :key="a.value" type="button" :title="a.title" :aria-label="a.label" :class="{ on: state.align === a.value }" :aria-pressed="state.align === a.value" @click="alignBlocks(a.value)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path :d="a.icon" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <button data-tab="home" ref="spacingButton" type="button" title="Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2)" aria-label="Line and paragraph spacing" aria-haspopup="menu" :aria-expanded="spacingMenu.open" @click="toggleSpacingMenu">
+      <button data-tab="home" ref="spacingButton" type="button" :title="t('Line and paragraph spacing (Ctrl+1, Ctrl+5, Ctrl+2)')" :aria-label="t('Line and paragraph spacing')" aria-haspopup="menu" :aria-expanded="spacingMenu.open" @click="toggleSpacingMenu">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7.5 3.5h6.5M7.5 8h6.5M7.5 12.5h6.5M3.5 2.5v11M1.8 4.2l1.7-1.7 1.7 1.7M1.8 11.8l1.7 1.7 1.7-1.7" stroke="currentColor" stroke-width="1.4" fill="none" /></svg>
       </button>
       <span class="sep" data-tab="home" />
-      <button data-tab="home" type="button" title="Bullets (Ctrl+Shift+L)" :class="{ on: state.list === 'bullet', ph: true }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
+      <button data-tab="home" type="button" :title="t('Bullets (Ctrl+Shift+L)')" :class="{ on: state.list === 'bullet', ph: true }" :aria-pressed="state.list === 'bullet'" @click="toggleList('bullet')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button data-tab="home" type="button" title="Numbering" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
+      <button data-tab="home" type="button" :title="t('Numbering')" :class="{ on: state.list === 'number', ph: true }" :aria-pressed="state.list === 'number'" @click="toggleList('number')">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.5 4h8M6.5 8h8M6.5 12h8M2 2.5h1.2v3M1.6 5.5h2M1.6 9.6q0-1.6 1.6-1 .9.6-1.6 3h2" stroke="currentColor" stroke-width="1.1" fill="none" /></svg>
       </button>
-      <button data-tab="home" type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" aria-label="Decrease indent" @click="indentBlocks(-1)">
+      <button data-tab="home" type="button" :title="state.list ? 'Decrease list level (Shift+Tab, Ctrl+Shift+M)' : 'Decrease indent (Ctrl+Shift+M)'" :aria-label="t('Decrease indent')" @click="indentBlocks(-1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M4.5 5.5L2 8l2.5 2.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
-      <button data-tab="home" type="button" :title="state.list ? 'Increase list level (Tab, Ctrl+M)' : 'Increase indent (Ctrl+M)'" aria-label="Increase indent" @click="indentBlocks(1)">
+      <button data-tab="home" type="button" :title="state.list ? 'Increase list level (Tab, Ctrl+M)' : 'Increase indent (Ctrl+M)'" :aria-label="t('Increase indent')" @click="indentBlocks(1)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 5.5L4.5 8 2 10.5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
       </button>
       <span class="sep" data-tab="home" />
-      <button data-tab="insert" ref="linkButton" type="button" title="Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here" @click="openLinkDialog">
+      <button data-tab="insert" ref="linkButton" type="button" :title="t('Link (Ctrl+K): insert a link to a web address, e-mail address or DOI, or change the one here')" @click="openLinkDialog">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1.1-1.1a2.6 2.6 0 0 1 3.7 3.7l-1.1 1.1M8.8 11.4l-1.1 1.1a2.6 2.6 0 0 1-3.7-3.7l1.1-1.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" /></svg>
       </button>
-      <button data-tab="insert" ref="insertButton" type="button" class="ph" title="Insert a check box or today’s date, or a reference: a table of contents, caption, cross-reference, equation, citation or bibliography" aria-label="Insert a check box or date, or a reference" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">Insert</span>
+      <button data-tab="insert" ref="insertButton" type="button" class="ph" :title="t('Insert a check box or today’s date, or a reference: a table of contents, caption, cross-reference, equation, citation or bibliography')" :aria-label="t('Insert a check box or date, or a reference')" aria-haspopup="menu" :aria-expanded="insertMenu.open" @click="toggleInsertMenu">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">{{ t('Insert') }}</span>
       </button>
-      <button data-tab="insert" type="button" title="Insert a symbol: ©, €, ✓, →, ½ and others, by group or name" aria-label="Insert symbol" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
-        <span class="symbol-icon" aria-hidden="true">Ω</span><span class="short-label">Symbol</span>
+      <button data-tab="insert" type="button" :title="t('Insert a symbol: ©, €, ✓, →, ½ and others, by group or name')" :aria-label="t('Insert symbol')" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
+        <span class="symbol-icon" aria-hidden="true">Ω</span><span class="short-label">{{ t('Symbol') }}</span>
       </button>
-      <button data-tab="insert" type="button" class="ph" title="Insert picture" aria-label="Insert picture" @click="pickPicture">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Picture</span>
+      <button data-tab="insert" type="button" class="ph" :title="t('Insert picture')" :aria-label="t('Insert picture')" @click="pickPicture">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Picture') }}</span>
       </button>
-      <button data-tab="insert" type="button" class="ph" title="Draw signature: sign with your finger, a pen or the mouse, and put it at the caret" aria-label="Draw signature" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Sign</span>
+      <button data-tab="insert" type="button" class="ph" :title="t('Draw signature: sign with your finger, a pen or the mouse, and put it at the caret')" :aria-label="t('Draw signature')" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Sign') }}</span>
       </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
-      <button data-tab="insert" ref="tableButton" type="button" title="Insert table" aria-label="Insert table" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg><span class="short-label">Table</span>
+      <button data-tab="insert" ref="tableButton" type="button" :title="t('Insert table')" :aria-label="t('Insert table')" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg><span class="short-label">{{ t('Table') }}</span>
       </button>
-      <button data-tab="layout" ref="layoutButton" type="button" title="Table layout: insert or delete rows and columns" aria-label="Table layout" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg><span class="short-label">Layout</span>
+      <button data-tab="layout" ref="layoutButton" type="button" :title="t('Table layout: insert or delete rows and columns')" :aria-label="t('Table layout')" aria-haspopup="menu" :aria-expanded="tableMenu.open" :disabled="!state.table" @click="toggleTableMenu">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9 2.3H2.8a1 1 0 00-1 1v9.4a1 1 0 001 1h9.4a1 1 0 001-1V8" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 8h7M6 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /><path d="M12.5 1.5v5M10 4h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg><span class="short-label">{{ t('Layout') }}</span>
       </button>
-      <button data-tab="references" type="button" title="Insert footnote (Ctrl+Alt+F)" aria-label="Insert footnote" @click="insertFootnote">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">Footnote</span>
+      <button data-tab="references" type="button" :title="t('Insert footnote (Ctrl+Alt+F)')" :aria-label="t('Insert footnote')" @click="insertFootnote">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 9.5h7M1.5 13h9M11 2.5h1.5v4.5M10.8 7h3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Footnote') }}</span>
       </button>
-      <button data-tab="references" type="button" title="Insert endnote (Ctrl+Alt+D)" aria-label="Insert endnote" @click="insertEndnote">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 4h7M1.5 7.5h5M1.5 13.5h13M11.5 2.5v4.5M13.5 2.5v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">Endnote</span>
+      <button data-tab="references" type="button" :title="t('Insert endnote (Ctrl+Alt+D)')" :aria-label="t('Insert endnote')" @click="insertEndnote">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 4h7M1.5 7.5h5M1.5 13.5h13M11.5 2.5v4.5M13.5 2.5v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Endnote') }}</span>
       </button>
-      <button data-tab="references" type="button" title="Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s" aria-label="Update fields" @click="updateAllFields">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Update</span>
+      <button data-tab="references" type="button" :title="t('Update fields (F9): the table of contents, cross-references, caption and note numbers – page numbers are Word’s')" :aria-label="t('Update fields')" @click="updateAllFields">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 6.5A5.2 5.2 0 0 0 3.6 4.6M3 9.5a5.2 5.2 0 0 0 9.4 1.9M3.4 2v2.8h2.8M12.6 14v-2.8H9.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Update') }}</span>
       </button>
       <span data-tab="layout" class="split">
-        <button type="button" title="Page number: in the header or footer at the caret, or a footer with the page number" aria-label="Page number" @click="insertPageNumber()">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">Page no.</span>
+        <button type="button" :title="t('Page number: in the header or footer at the caret, or a footer with the page number')" :aria-label="t('Page number')" @click="insertPageNumber()">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Page no.') }}</span>
         </button>
-        <button ref="pageNumberButton" type="button" class="arrow" title="Page number at the top or bottom of the page; edit the header or footer" aria-label="Page number and header options" aria-haspopup="menu" :aria-expanded="pageNumberMenu.open" @click="togglePageNumberMenu">▾</button>
+        <button ref="pageNumberButton" type="button" class="arrow" :title="t('Page number at the top or bottom of the page; edit the header or footer')" :aria-label="t('Page number and header options')" aria-haspopup="menu" :aria-expanded="pageNumberMenu.open" @click="togglePageNumberMenu">▾</button>
       </span>
-      <button data-tab="layout" ref="pageSetupButton" type="button" title="Page setup: paper size, orientation and margins" aria-label="Page setup" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg><span class="short-label">Page setup</span>
+      <button data-tab="layout" ref="pageSetupButton" type="button" :title="t('Page setup: paper size, orientation and margins')" :aria-label="t('Page setup')" aria-haspopup="dialog" :aria-expanded="pageDialog.open" @click="openPageSetup">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="1.8" width="10" height="12.4" rx=".8" stroke="currentColor" stroke-width="1.3" fill="none" /><rect x="5.2" y="4" width="5.6" height="8" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.2 1" fill="none" /></svg><span class="short-label">{{ t('Page setup') }}</span>
       </button>
       </fieldset>
       </div>
       <div class="tb-group">
       <span class="sep" data-tab="classic" />
-      <button data-tab="home" type="button" title="Find and replace (Ctrl+F, Ctrl+H)" aria-label="Find and replace" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg><span class="short-label">Find</span>
+      <button data-tab="home" type="button" :title="t('Find and replace (Ctrl+F, Ctrl+H)')" :aria-label="t('Find and replace')" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg><span class="short-label">{{ t('Find') }}</span>
       </button>
-      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" aria-label="Fill in placeholders" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">Fill in</span>
+      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" :aria-label="t('Fill in placeholders')" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Fill in') }}</span>
         <span v-if="placeholderCount" class="badge">{{ placeholderCount }}</span>
       </button>
-      <button data-tab="home" type="button" class="marks-toggle" title="Show formatting marks (Ctrl+Shift+8)" aria-label="Show formatting marks" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
+      <button data-tab="home" type="button" class="marks-toggle" :title="t('Show formatting marks (Ctrl+Shift+8)')" :aria-label="t('Show formatting marks')" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
       <span class="sep" data-tab="review" />
       <button data-tab="review" ref="trackButton" type="button" class="track-toggle" :title="lockMode ? `Track Changes: ${lockMode === 'trackedChanges' ? 'always on' : tracking ? 'on' : 'off'} – ${lockMessage}` : 'Track Changes (Ctrl+Shift+E)'" :class="{ on: tracking }" :aria-pressed="tracking" :disabled="!!lockMode" @click="toggleTracking">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 13.5h5M2 10.5h3M10.5 2.5l3 3-6 6H4.5v-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
-        <span class="label">Track changes</span>
+        <span class="label">{{ t('Track changes') }}</span>
       </button>
-      <span data-tab="review" class="changes-group" role="group" aria-label="Tracked changes">
-        <button type="button" title="Previous change" :disabled="!changes.total" @click="gotoChange(-1)">
+      <span data-tab="review" class="changes-group" role="group" :aria-label="t('Tracked changes')">
+        <button type="button" :title="t('Previous change')" :disabled="!changes.total" @click="gotoChange(-1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
         </button>
-        <button type="button" title="Next change" :disabled="!changes.total" @click="gotoChange(1)">
+        <button type="button" :title="t('Next change')" :disabled="!changes.total" @click="gotoChange(1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" fill="none" /></svg>
         </button>
         <fieldset class="group" :disabled="!!lockMode" :title="lockMode ? 'Tracked changes can’t be accepted or rejected: ' + lockMessage : null">
         <span class="split">
-          <button type="button" class="labelled" title="Accept the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(true)">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" stroke="#2e7d32" stroke-width="1.8" fill="none" /></svg><span class="label">Accept</span>
+          <button type="button" class="labelled" :title="t('Accept the change (or the changes selected) and go to the next')" :disabled="!changes.total" @click="resolveCurrent(true)">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8" stroke="#2e7d32" stroke-width="1.8" fill="none" /></svg><span class="label">{{ t('Accept') }}</span>
           </button>
-          <button ref="acceptMenuButton" type="button" class="arrow" title="More ways to accept" aria-label="More ways to accept" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'accept'" :disabled="!changes.total" @click="openChangeMenu('accept')">▾</button>
+          <button ref="acceptMenuButton" type="button" class="arrow" :title="t('More ways to accept')" :aria-label="t('More ways to accept')" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'accept'" :disabled="!changes.total" @click="openChangeMenu('accept')">▾</button>
         </span>
         <span class="split">
-          <button type="button" class="labelled" title="Reject the change (or the changes selected) and go to the next" :disabled="!changes.total" @click="resolveCurrent(false)">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="#b3261e" stroke-width="1.8" fill="none" /></svg><span class="label">Reject</span>
+          <button type="button" class="labelled" :title="t('Reject the change (or the changes selected) and go to the next')" :disabled="!changes.total" @click="resolveCurrent(false)">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="#b3261e" stroke-width="1.8" fill="none" /></svg><span class="label">{{ t('Reject') }}</span>
           </button>
-          <button ref="rejectMenuButton" type="button" class="arrow" title="More ways to reject" aria-label="More ways to reject" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'reject'" :disabled="!changes.total" @click="openChangeMenu('reject')">▾</button>
+          <button ref="rejectMenuButton" type="button" class="arrow" :title="t('More ways to reject')" :aria-label="t('More ways to reject')" aria-haspopup="menu" :aria-expanded="changeMenu.open === 'reject'" :disabled="!changes.total" @click="openChangeMenu('reject')">▾</button>
         </span>
         </fieldset>
         <span class="badge" :class="{ zero: !changes.total }" :title="changesTitle">{{ changes.total }}</span>
       </span>
-      <select data-tab="review" class="markup-choice" :value="markup" aria-label="Show markup" title="What the tracked changes look like, as Word’s Display for Review: all markup, simple markup (a line in the margin beside each change), no markup (the text as it will be once they are accepted) or the original (the text before them, read-only). Only how the page shows them: the changes stay in the file" @change="setMarkup($event.target.value)">
-        <option value="all">All markup</option>
-        <option value="simple">Simple markup</option>
-        <option value="none">No markup</option>
-        <option value="original">Original</option>
+      <select data-tab="review" class="markup-choice" :value="markup" :aria-label="t('Show markup')" :title="t('What the tracked changes look like, as Word’s Display for Review: all markup, simple markup (a line in the margin beside each change), no markup (the text as it will be once they are accepted) or the original (the text before them, read-only). Only how the page shows them: the changes stay in the file')" @change="setMarkup($event.target.value)">
+        <option value="all">{{ t('All markup') }}</option>
+        <option value="simple">{{ t('Simple markup') }}</option>
+        <option value="none">{{ t('No markup') }}</option>
+        <option value="original">{{ t('Original') }}</option>
       </select>
       <span class="sep" data-tab="review" />
-      <button data-tab="review" type="button" class="review-toggle" title="Review your changes, what the file carries and its accessibility – any time, not only when you download" @click="openReview()">
+      <button data-tab="review" type="button" class="review-toggle" :title="t('Review your changes, what the file carries and its accessibility – any time, not only when you download')" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
-        <span class="label">Review</span>
+        <span class="label">{{ t('Review') }}</span>
       </button>
       <button data-tab="review" type="button" class="new-comment ph" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
       </button>
-      <span data-tab="review" v-if="threads.length" class="comment-nav" role="group" aria-label="Go to a comment">
-        <button type="button" title="Previous comment" aria-label="Previous comment" @click="gotoComment(-1)">
+      <span data-tab="review" v-if="threads.length" class="comment-nav" role="group" :aria-label="t('Go to a comment')">
+        <button type="button" :title="t('Previous comment')" :aria-label="t('Previous comment')" @click="gotoComment(-1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 2.5h9v6.5H9.5L7 11.5V9H5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M4 9.5L1.5 12 4 14.5" stroke="currentColor" stroke-width="1.5" fill="none" /></svg>
         </button>
-        <button type="button" title="Next comment" aria-label="Next comment" @click="gotoComment(1)">
+        <button type="button" :title="t('Next comment')" :aria-label="t('Next comment')" @click="gotoComment(1)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 2.5h9v6.5H9L6.5 11.5V9H2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M12 9.5l2.5 2.5-2.5 2.5" stroke="currentColor" stroke-width="1.5" fill="none" /></svg>
         </button>
       </span>
@@ -270,8 +270,8 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="badge">{{ threads.length }}</span>
       </button>
-      <button v-if="!ribbon" type="button" class="ribbon-mode" data-tab="classic" title="Show the tools in tabs (Home, Insert, Layout, References, Review), as Word’s ribbon" @click="setRibbon(true)">Tabs</button>
-      <button type="button" class="help-toggle" title="Help: keyboard shortcuts and checks (Ctrl+/)" aria-label="Help" aria-haspopup="dialog" @click="helpOpen = true">
+      <button v-if="!ribbon" type="button" class="ribbon-mode" data-tab="classic" :title="t('Show the tools in tabs (Home, Insert, Layout, References, Review), as Word’s ribbon')" @click="setRibbon(true)">{{ t('Tabs') }}</button>
+      <button type="button" class="help-toggle" :title="t('Help: keyboard shortcuts and checks (Ctrl+/)')" :aria-label="t('Help')" aria-haspopup="dialog" @click="helpOpen = true">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.7c-.5.2-.8.6-.8 1.1v.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none" /><circle cx="8" cy="11.6" r=".85" fill="currentColor" /></svg>
       </button>
       </div>
@@ -292,12 +292,12 @@
           <div ref="pageBreaksEl" class="page-breaks-layer" aria-hidden="true" />
           <div v-if="picture.el" class="picture-frame" :class="{ floating: picture.wrap !== 'inline', cropping: picture.cropping }" :style="{ left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.w}px`, height: `${picture.h}px` }">
             <span v-for="h in HANDLES" :key="h" class="handle" :class="h" :title="picture.cropping ? 'Drag to crop' : h.length === 2 ? 'Drag to resize' : 'Drag to stretch'" @pointerdown.prevent.stop="picture.cropping ? startCrop($event, h) : startResize($event, h)" />
-            <span v-if="!picture.cropping" class="handle rotate" title="Drag to rotate (Shift: in steps of 15°)" @pointerdown.prevent.stop="startRotate" />
+            <span v-if="!picture.cropping" class="handle rotate" :title="t('Drag to rotate (Shift: in steps of 15°)')" @pointerdown.prevent.stop="startRotate" />
           </div>
-          <button v-if="picture.el" ref="layoutOptionsButton" type="button" class="layout-options" title="Layout Options: wrapping, position, size and alt text" aria-haspopup="dialog" :aria-expanded="picturePanel.open" :style="{ left: `${picture.x + picture.w + 6}px`, top: `${picture.y}px` }" @mousedown.prevent @click="togglePicturePanel">
+          <button v-if="picture.el" ref="layoutOptionsButton" type="button" class="layout-options" :title="t('Layout Options: wrapping, position, size and alt text')" aria-haspopup="dialog" :aria-expanded="picturePanel.open" :style="{ left: `${picture.x + picture.w + 6}px`, top: `${picture.y}px` }" @mousedown.prevent @click="togglePicturePanel">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="2" y="3" width="6" height="5" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M10 4h4M10 7h4M2 11h12M2 14h12" stroke="currentColor" stroke-width="1.3" /></svg>
           </button>
-          <div v-if="variantTabs.header.length > 1" class="hf-tabs header" role="tablist" aria-label="Headers">
+          <div v-if="variantTabs.header.length > 1" class="hf-tabs header" role="tablist" :aria-label="t('Headers')">
             <button v-for="{ v, i } in variantTabs.header" :key="v.rid" type="button" role="tab" :aria-selected="hf.header === i" @mousedown.prevent @click="showVariant('header', i)">{{ v.label }}</button>
           </div>
           <div
@@ -318,7 +318,7 @@
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
-          <div v-if="variantTabs.footer.length > 1" class="hf-tabs footer" role="tablist" aria-label="Footers">
+          <div v-if="variantTabs.footer.length > 1" class="hf-tabs footer" role="tablist" :aria-label="t('Footers')">
             <button v-for="{ v, i } in variantTabs.footer" :key="v.rid" type="button" role="tab" :aria-selected="hf.footer === i" @mousedown.prevent @click="showVariant('footer', i)">{{ v.label }}</button>
           </div>
         </div>
@@ -342,66 +342,66 @@
       />
     </div>
 
-    <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" aria-label="Choose a value" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)" @keydown="onChooserKeydown">
-      <input v-if="chooser.kind === 'date'" ref="dateInput" type="date" :value="chooser.date" aria-label="Date" @keydown="onDateKeydown" @change="onDateChange" />
+    <div v-if="chooser.open" ref="chooserEl" class="chooser" :role="chooser.kind === 'date' ? 'dialog' : 'listbox'" :aria-label="t('Choose a value')" :style="{ left: `${chooser.x}px`, top: `${chooser.y}px` }" @keydown.esc="closeChooser(true)" @keydown="onChooserKeydown">
+      <input v-if="chooser.kind === 'date'" ref="dateInput" type="date" :value="chooser.date" :aria-label="t('Date')" @keydown="onDateKeydown" @change="onDateChange" />
       <template v-else>
         <button v-for="c in chooser.choices" :key="c.value" type="button" role="option" :aria-selected="c.text === chooser.current" @click="choose(c)">{{ c.text }}</button>
-        <p v-if="!chooser.choices.length" class="empty">No choices</p>
+        <p v-if="!chooser.choices.length" class="empty">{{ t('No choices') }}</p>
       </template>
     </div>
 
     <div v-if="changeMenu.open" ref="changeMenuEl" class="change-menu" role="menu" :aria-label="changeMenu.open === 'accept' ? 'Accept' : 'Reject'" :style="{ left: `${changeMenu.x}px`, top: `${changeMenu.y}px` }" @mousedown.prevent @keydown.esc="closeChangeMenu">
       <template v-if="changeMenu.open === 'accept'">
-        <button type="button" role="menuitem" @click="menuResolve(true, 'one')">Accept this change</button>
-        <button type="button" role="menuitem" @click="menuResolve(true, 'stay')">Accept, and stay here</button>
-        <button type="button" role="menuitem" @click="menuResolve(true, 'all')">Accept all changes</button>
+        <button type="button" role="menuitem" @click="menuResolve(true, 'one')">{{ t('Accept this change') }}</button>
+        <button type="button" role="menuitem" @click="menuResolve(true, 'stay')">{{ t('Accept, and stay here') }}</button>
+        <button type="button" role="menuitem" @click="menuResolve(true, 'all')">{{ t('Accept all changes') }}</button>
       </template>
       <template v-else>
-        <button type="button" role="menuitem" @click="menuResolve(false, 'one')">Reject this change</button>
-        <button type="button" role="menuitem" @click="menuResolve(false, 'stay')">Reject, and stay here</button>
-        <button type="button" role="menuitem" @click="menuResolve(false, 'all')">Reject all changes</button>
+        <button type="button" role="menuitem" @click="menuResolve(false, 'one')">{{ t('Reject this change') }}</button>
+        <button type="button" role="menuitem" @click="menuResolve(false, 'stay')">{{ t('Reject, and stay here') }}</button>
+        <button type="button" role="menuitem" @click="menuResolve(false, 'all')">{{ t('Reject all changes') }}</button>
       </template>
     </div>
 
-    <form v-if="picturePanel.open" ref="picturePanelEl" class="picture-panel" role="dialog" aria-label="Layout Options" :style="{ left: `${picturePanel.x}px`, top: `${picturePanel.y}px` }" @submit.prevent @keydown.esc="closePicturePanel">
+    <form v-if="picturePanel.open" ref="picturePanelEl" class="picture-panel" role="dialog" :aria-label="t('Layout Options')" :style="{ left: `${picturePanel.x}px`, top: `${picturePanel.y}px` }" @submit.prevent @keydown.esc="closePicturePanel">
       <fieldset class="wraps">
-        <legend>Text wrapping</legend>
+        <legend>{{ t('Text wrapping') }}</legend>
         <label v-for="[value, label] in WRAPS" :key="value"><input type="radio" name="wrap" :value="value" :checked="picturePanel.wrap === value" @change="applyWrap(value)" /> {{ label }}</label>
       </fieldset>
       <fieldset :disabled="picturePanel.wrap === 'inline'">
-        <legend>Position</legend>
-        <label>Horizontal
+        <legend>{{ t('Position') }}</legend>
+        <label>{{ t('Horizontal') }}
           <select v-model="picturePanel.hAlign" @change="applyPosition('h')">
-            <option value="left">Left of the margins</option>
-            <option value="center">Centred between the margins</option>
-            <option value="right">Right of the margins</option>
-            <option value="offset">At a distance from the left margin</option>
-            <option v-if="picturePanel.hAlign === 'word'" value="word">As set in Word</option>
+            <option value="left">{{ t('Left of the margins') }}</option>
+            <option value="center">{{ t('Centred between the margins') }}</option>
+            <option value="right">{{ t('Right of the margins') }}</option>
+            <option value="offset">{{ t('At a distance from the left margin') }}</option>
+            <option v-if="picturePanel.hAlign === 'word'" value="word">{{ t('As set in Word') }}</option>
           </select>
         </label>
-        <label v-if="picturePanel.hAlign === 'offset'">Distance from the margin ({{ picturePanel.unit }}) <input v-model.number="picturePanel.hOffset" type="number" step="0.1" @change="applyPosition('h')" /></label>
-        <label>Vertical
+        <label v-if="picturePanel.hAlign === 'offset'">{{ t('Distance from the margin') }} ({{ picturePanel.unit }}) <input v-model.number="picturePanel.hOffset" type="number" step="0.1" @change="applyPosition('h')" /></label>
+        <label>{{ t('Vertical') }}
           <select v-model="picturePanel.vAlign" @change="applyPosition('v')">
-            <option value="offset">Below its paragraph (moves with text)</option>
-            <option value="top">Top of the margins</option>
-            <option value="center">Middle of the margins</option>
-            <option value="bottom">Bottom of the margins</option>
-            <option v-if="picturePanel.vAlign === 'word'" value="word">As set in Word</option>
+            <option value="offset">{{ t('Below its paragraph (moves with text)') }}</option>
+            <option value="top">{{ t('Top of the margins') }}</option>
+            <option value="center">{{ t('Middle of the margins') }}</option>
+            <option value="bottom">{{ t('Bottom of the margins') }}</option>
+            <option v-if="picturePanel.vAlign === 'word'" value="word">{{ t('As set in Word') }}</option>
           </select>
         </label>
-        <label v-if="picturePanel.vAlign === 'offset'">Distance below the paragraph ({{ picturePanel.unit }}) <input v-model.number="picturePanel.vOffset" type="number" step="0.1" @change="applyPosition('v')" /></label>
+        <label v-if="picturePanel.vAlign === 'offset'">{{ t('Distance below the paragraph') }} ({{ picturePanel.unit }}) <input v-model.number="picturePanel.vOffset" type="number" step="0.1" @change="applyPosition('v')" /></label>
       </fieldset>
       <fieldset>
-        <legend>Size</legend>
+        <legend>{{ t('Size') }}</legend>
         <div class="size-row">
-          <label>Width ({{ picturePanel.unit }}) <input v-model.number="picturePanel.width" type="number" min="0.1" step="0.1" @change="applySize('width')" /></label>
-          <label>Height ({{ picturePanel.unit }}) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
+          <label>{{ t('Width') }} ({{ picturePanel.unit }}) <input v-model.number="picturePanel.width" type="number" min="0.1" step="0.1" @change="applySize('width')" /></label>
+          <label>{{ t('Height') }} ({{ picturePanel.unit }}) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
         </div>
-        <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> Keep proportions</label>
-        <button type="button" @click="resetPictureSize">Reset size</button>
+        <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> {{ t('Keep proportions') }}</label>
+        <button type="button" @click="resetPictureSize">{{ t('Reset size') }}</button>
       </fieldset>
       <details>
-        <summary>Crop</summary>
+        <summary>{{ t('Crop') }}</summary>
         <div class="size-row">
           <label>Left (%) <input v-model.number="picturePanel.cropL" type="number" step="1" @change="applyCrop" /></label>
           <label>Right (%) <input v-model.number="picturePanel.cropR" type="number" step="1" @change="applyCrop" /></label>
@@ -411,36 +411,36 @@
         <button type="button" :aria-pressed="picture.cropping" @click="toggleCropping">{{ picture.cropping ? 'Done cropping' : 'Crop with the handles' }}</button>
       </details>
       <details>
-        <summary>Rotate and flip</summary>
+        <summary>{{ t('Rotate and flip') }}</summary>
         <div class="buttons">
-          <button type="button" @click="rotateBy(90)">Rotate right 90°</button>
-          <button type="button" @click="rotateBy(-90)">Rotate left 90°</button>
-          <button type="button" :aria-pressed="picturePanel.flipH" @click="flip('flipH')">Flip horizontal</button>
-          <button type="button" :aria-pressed="picturePanel.flipV" @click="flip('flipV')">Flip vertical</button>
+          <button type="button" @click="rotateBy(90)">{{ t('Rotate right 90°') }}</button>
+          <button type="button" @click="rotateBy(-90)">{{ t('Rotate left 90°') }}</button>
+          <button type="button" :aria-pressed="picturePanel.flipH" @click="flip('flipH')">{{ t('Flip horizontal') }}</button>
+          <button type="button" :aria-pressed="picturePanel.flipV" @click="flip('flipV')">{{ t('Flip vertical') }}</button>
         </div>
         <label>Rotation (°) <input v-model.number="picturePanel.rot" type="number" step="1" @change="applyRotation" /></label>
       </details>
       <details>
-        <summary>Effects</summary>
+        <summary>{{ t('Effects') }}</summary>
         <div class="size-row">
-          <label>Border
+          <label>{{ t('Border') }}
             <select v-model="picturePanel.border" @change="applyEffects">
-              <option value="none">No border</option>
-              <option value="thin">Thin</option>
-              <option value="medium">Medium</option>
-              <option value="thick">Thick</option>
+              <option value="none">{{ t('No border') }}</option>
+              <option value="thin">{{ t('Thin') }}</option>
+              <option value="medium">{{ t('Medium') }}</option>
+              <option value="thick">{{ t('Thick') }}</option>
             </select>
           </label>
-          <label>Border colour <input v-model="picturePanel.borderColor" type="color" @change="applyEffects" /></label>
+          <label>{{ t('Border colour') }} <input v-model="picturePanel.borderColor" type="color" @change="applyEffects" /></label>
         </div>
-        <label class="inline"><input v-model="picturePanel.shadow" type="checkbox" @change="applyEffects" /> Shadow</label>
-        <label class="inline"><input v-model="picturePanel.glow" type="checkbox" @change="applyEffects" /> Glow</label>
-        <label class="inline"><input v-model="picturePanel.softEdge" type="checkbox" @change="applyEffects" /> Soft edges</label>
-        <label class="inline"><input v-model="picturePanel.reflection" type="checkbox" @change="applyEffects" /> Reflection</label>
-        <label>Colour
+        <label class="inline"><input v-model="picturePanel.shadow" type="checkbox" @change="applyEffects" /> {{ t('Shadow') }}</label>
+        <label class="inline"><input v-model="picturePanel.glow" type="checkbox" @change="applyEffects" /> {{ t('Glow') }}</label>
+        <label class="inline"><input v-model="picturePanel.softEdge" type="checkbox" @change="applyEffects" /> {{ t('Soft edges') }}</label>
+        <label class="inline"><input v-model="picturePanel.reflection" type="checkbox" @change="applyEffects" /> {{ t('Reflection') }}</label>
+        <label>{{ t('Colour') }}
           <select v-model="picturePanel.colour" @change="applyEffects">
-            <option value="normal">As it is</option>
-            <option value="greyscale">Greyscale</option>
+            <option value="normal">{{ t('As it is') }}</option>
+            <option value="greyscale">{{ t('Greyscale') }}</option>
           </select>
         </label>
         <div class="size-row">
@@ -449,25 +449,25 @@
         </div>
       </details>
       <details>
-        <summary>Style and 3-D</summary>
-        <label>Picture style
+        <summary>{{ t('Style and 3-D') }}</summary>
+        <label>{{ t('Picture style') }}
           <select v-model="picturePanel.style" @change="applyStyle">
-            <option value="">Choose a style…</option>
-            <option value="none">No style (plain picture)</option>
+            <option value="">{{ t('Choose a style…') }}</option>
+            <option value="none">{{ t('No style (plain picture)') }}</option>
             <option v-for="st in PICTURE_STYLES" :key="st.name" :value="st.name">{{ st.name }}</option>
           </select>
         </label>
-        <label>Shape
+        <label>{{ t('Shape') }}
           <select v-model="picturePanel.shape" @change="applyShape">
             <option v-for="[value, label] in SHAPES" :key="value" :value="value">{{ label }}</option>
             <option v-if="!SHAPES.some(([v]) => v === picturePanel.shape)" :value="picturePanel.shape" disabled>As set in Word</option>
           </select>
         </label>
         <fieldset class="sub">
-          <legend>3-D format</legend>
-          <label>Bevel
+          <legend>{{ t('3-D format') }}</legend>
+          <label>{{ t('Bevel') }}
             <select v-model="picturePanel.bevel" @change="apply3D">
-              <option value="">None</option>
+              <option value="">{{ t('None') }}</option>
               <option v-for="[value, label] in BEVELS" :key="value" :value="value">{{ label }}</option>
               <option v-if="picturePanel.bevel && !BEVELS.some(([v]) => v === picturePanel.bevel)" :value="picturePanel.bevel" disabled>As set in Word</option>
             </select>
@@ -476,14 +476,14 @@
             <label>Bevel width (pt) <input v-model.number="picturePanel.bevelW" type="number" min="0" step="0.5" :disabled="!picturePanel.bevel" @change="apply3D" /></label>
             <label>Bevel height (pt) <input v-model.number="picturePanel.bevelH" type="number" min="0" step="0.5" :disabled="!picturePanel.bevel" @change="apply3D" /></label>
           </div>
-          <label>Material
+          <label>{{ t('Material') }}
             <select v-model="picturePanel.material" @change="apply3D">
-              <option value="">As Word chooses (Warm Matte)</option>
+              <option value="">{{ t('As Word chooses (Warm Matte)') }}</option>
               <option v-for="[value, label] in MATERIALS" :key="value" :value="value">{{ label }}</option>
             </select>
           </label>
           <div class="size-row">
-            <label>Lighting
+            <label>{{ t('Lighting') }}
               <select v-model="picturePanel.lightRig" @change="apply3D">
                 <option v-for="[value, label] in LIGHTS" :key="value" :value="value">{{ label }}</option>
                 <option v-if="!LIGHTS.some(([v]) => v === picturePanel.lightRig)" :value="picturePanel.lightRig" disabled>As set in Word</option>
@@ -493,10 +493,10 @@
           </div>
         </fieldset>
         <fieldset class="sub">
-          <legend>3-D rotation</legend>
-          <label>Preset
+          <legend>{{ t('3-D rotation') }}</legend>
+          <label>{{ t('Preset') }}
             <select v-model="picturePanel.camera" @change="applyCameraPreset">
-              <option value="">None</option>
+              <option value="">{{ t('None') }}</option>
               <option v-for="[value, label] in CAMERAS" :key="value" :value="value">{{ label }}</option>
               <option v-if="picturePanel.camera && !CAMERAS.some(([v]) => v === picturePanel.camera)" :value="picturePanel.camera" disabled>As set in Word</option>
             </select>
@@ -510,34 +510,34 @@
         </fieldset>
       </details>
       <details>
-        <summary>Artistic effects</summary>
-        <label>Artistic effect
+        <summary>{{ t('Artistic effects') }}</summary>
+        <label>{{ t('Artistic effect') }}
           <select v-model="picturePanel.artistic" :disabled="picturePanel.drawing" @change="applyArtistic">
-            <option value="">None</option>
+            <option value="">{{ t('None') }}</option>
             <option v-for="[value, label] in ARTISTIC" :key="value" :value="value">{{ label }}</option>
           </select>
         </label>
-        <label>Amount <input v-model.number="picturePanel.amount" type="range" min="0" max="100" step="5" :disabled="!picturePanel.artistic || picturePanel.drawing" @change="applyArtistic" /></label>
-        <p class="note">Drawn into the picture, which Word shows as it is here; the original is kept, so the effect can be changed or taken off here.</p>
+        <label>{{ t('Amount') }} <input v-model.number="picturePanel.amount" type="range" min="0" max="100" step="5" :disabled="!picturePanel.artistic || picturePanel.drawing" @change="applyArtistic" /></label>
+        <p class="note">{{ t('Drawn into the picture, which Word shows as it is here; the original is kept, so the effect can be changed or taken off here.') }}</p>
       </details>
       <label class="alt">Alt text (describe the picture for people who can't see it)
         <textarea v-model="picturePanel.alt" rows="2" @change="applyAlt" />
       </label>
-      <div class="actions"><button type="button" @click="closePicturePanel">Close</button></div>
+      <div class="actions"><button type="button" @click="closePicturePanel">{{ t('Close') }}</button></div>
     </form>
 
-    <div v-if="saveMenu.open" ref="saveMenuEl" class="change-menu save-menu" role="menu" aria-label="Save" :style="{ left: `${saveMenu.x}px`, top: `${saveMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSaveMenu(true)" @keydown="onMenuArrows">
-      <button type="button" role="menuitem" @click="saveMenuAction('docx')">{{ fileHandle ? `Save to ${fileHandle.name}` : `Word document (.${fileExt})` }}<span class="shortcut">Ctrl+S</span></button>
-      <button v-if="fileHandle" type="button" role="menuitem" @click="saveMenuAction('copy')">Download a copy<span class="shortcut">To Downloads</span></button>
-      <button v-if="canSaveAs" type="button" role="menuitem" @click="saveMenuAction('saveAs')">Save as…<span class="shortcut">A file on this device, saved to after</span></button>
-      <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">Ctrl+P</span></button>
-      <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">Mail, messages…</span></button>
-      <button type="button" role="menuitem" @click="saveMenuAction('merge')">Mail merge…<span class="shortcut">A letter for each row of a list</span></button>
+    <div v-if="saveMenu.open" ref="saveMenuEl" class="change-menu save-menu" role="menu" :aria-label="t('Save')" :style="{ left: `${saveMenu.x}px`, top: `${saveMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSaveMenu(true)" @keydown="onMenuArrows">
+      <button type="button" role="menuitem" @click="saveMenuAction('docx')">{{ fileHandle ? `Save to ${fileHandle.name}` : `Word document (.${fileExt})` }}<span class="shortcut">{{ t('Ctrl+S') }}</span></button>
+      <button v-if="fileHandle" type="button" role="menuitem" @click="saveMenuAction('copy')">Download a copy<span class="shortcut">{{ t('To Downloads') }}</span></button>
+      <button v-if="canSaveAs" type="button" role="menuitem" @click="saveMenuAction('saveAs')">Save as…<span class="shortcut">{{ t('A file on this device, saved to after') }}</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">{{ t('Ctrl+P') }}</span></button>
+      <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">{{ t('Mail, messages…') }}</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('merge')">Mail merge…<span class="shortcut">{{ t('A letter for each row of a list') }}</span></button>
     </div>
 
-    <form v-if="pdfDialog.open" ref="pdfDialogEl" class="chooser author-dialog pdf-dialog" role="dialog" aria-label="Save as PDF" aria-describedby="pdf-how" :style="{ left: `${pdfDialog.x}px`, top: `${pdfDialog.y}px` }" @submit.prevent="printToPdf" @keydown.esc="closePdfDialog">
-      <h2>Save as PDF</h2>
-      <p id="pdf-how">Your browser makes the PDF, on this device: in the print window, choose <strong>Save as PDF</strong> (or <strong>Microsoft Print to PDF</strong>) as the printer or destination, then save. It suggests the name <strong>{{ baseName || 'document' }}.pdf</strong>.</p>
+    <form v-if="pdfDialog.open" ref="pdfDialogEl" class="chooser author-dialog pdf-dialog" role="dialog" :aria-label="t('Save as PDF')" aria-describedby="pdf-how" :style="{ left: `${pdfDialog.x}px`, top: `${pdfDialog.y}px` }" @submit.prevent="printToPdf" @keydown.esc="closePdfDialog">
+      <h2>{{ t('Save as PDF') }}</h2>
+      <p id="pdf-how">Your browser makes the PDF, on this device: in the print window, choose <strong>{{ t('Save as PDF') }}</strong> (or <strong>{{ t('Microsoft Print to PDF') }}</strong>) as the printer or destination, then save. It suggests the name <strong>{{ baseName || 'document' }}.pdf</strong>.</p>
       <ul class="pdf-notes">
         <li v-if="pageCount">About {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }} on {{ paperName() }}{{ pdfBands.every ? `, with the ${pdfBands.every} on each` : '' }}.</li>
         <li v-if="pdfBands.once">The {{ pdfBands.once }} {{ pdfBands.once.includes(' and ') ? 'print' : 'prints' }} once, {{ pdfBands.onceWhere }}, as {{ pdfBands.once.includes(' and ') ? 'they show' : 'it shows' }} here: {{ pdfBands.why }}</li>
@@ -545,45 +545,45 @@
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
         <li>Comments and the marks drawn over the page here aren’t in the PDF.</li>
       </ul>
-      <p class="pdf-word">The Word file isn’t saved by this: download it as well to keep your changes.</p>
+      <p class="pdf-word">{{ t('The Word file isn’t saved by this: download it as well to keep your changes.') }}</p>
       <div class="actions">
-        <button type="submit" class="confirm">Open print window</button>
-        <button type="button" @click="closePdfDialog">Cancel</button>
+        <button type="submit" class="confirm">{{ t('Open print window') }}</button>
+        <button type="button" @click="closePdfDialog">{{ t('Cancel') }}</button>
       </div>
     </form>
 
-    <div v-if="tableMenu.open" ref="tableMenuEl" class="change-menu" role="menu" aria-label="Table layout" :style="{ left: `${tableMenu.x}px`, top: `${tableMenu.y}px` }" @mousedown.prevent @keydown.esc="closeTableMenu" @keydown="onMenuArrows">
+    <div v-if="tableMenu.open" ref="tableMenuEl" class="change-menu" role="menu" :aria-label="t('Table layout')" :style="{ left: `${tableMenu.x}px`, top: `${tableMenu.y}px` }" @mousedown.prevent @keydown.esc="closeTableMenu" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="tableAction('rowsAbove')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows above` : 'Insert row above' }}</button>
       <button type="button" role="menuitem" @click="tableAction('rowsBelow')">{{ tableMenu.rows > 1 ? `Insert ${tableMenu.rows} rows below` : 'Insert row below' }}</button>
       <button type="button" role="menuitem" @click="tableAction('columnsLeft')">{{ tableMenu.newCols > 1 ? `Insert ${tableMenu.newCols} columns to the left` : 'Insert column to the left' }}</button>
       <button type="button" role="menuitem" @click="tableAction('columnsRight')">{{ tableMenu.newCols > 1 ? `Insert ${tableMenu.newCols} columns to the right` : 'Insert column to the right' }}</button>
       <hr />
-      <button type="button" role="menuitem" :disabled="!tableMenu.multi" :title="tableMenu.multi ? '' : 'Select the cells to merge first'" @click="tableAction('merge')">Merge cells</button>
-      <button type="button" role="menuitem" @click="openSplitDialog">Split cells…</button>
+      <button type="button" role="menuitem" :disabled="!tableMenu.multi" :title="tableMenu.multi ? '' : 'Select the cells to merge first'" @click="tableAction('merge')">{{ t('Merge cells') }}</button>
+      <button type="button" role="menuitem" @click="openSplitDialog">{{ t('Split cells…') }}</button>
       <hr />
-      <button type="button" role="menuitem" aria-haspopup="dialog" @click="openCellFormat">Shading and borders…</button>
+      <button type="button" role="menuitem" aria-haspopup="dialog" @click="openCellFormat">{{ t('Shading and borders…') }}</button>
       <hr />
       <button type="button" role="menuitem" @click="tableAction('deleteRows')">{{ tableMenu.rows > 1 ? `Delete ${tableMenu.rows} rows` : 'Delete row' }}</button>
       <button type="button" role="menuitem" @click="tableAction('deleteColumns')">{{ tableMenu.cols > 1 ? `Delete ${tableMenu.cols} columns` : 'Delete column' }}</button>
-      <button type="button" role="menuitem" @click="tableAction('deleteTable')">Delete table</button>
+      <button type="button" role="menuitem" @click="tableAction('deleteTable')">{{ t('Delete table') }}</button>
     </div>
 
     <!-- Word's Shading and Borders buttons (Table Design), for the selected cells. -->
-    <div v-if="cellFormat.open" ref="cellFormatEl" class="palette cell-format" role="dialog" aria-label="Shading and borders" :style="{ left: `${cellFormat.x}px`, top: `${cellFormat.y}px` }" @mousedown="keepSelection" @keydown.esc="closeCellFormat">
-      <p class="palette-label">Borders</p>
+    <div v-if="cellFormat.open" ref="cellFormatEl" class="palette cell-format" role="dialog" :aria-label="t('Shading and borders')" :style="{ left: `${cellFormat.x}px`, top: `${cellFormat.y}px` }" @mousedown="keepSelection" @keydown.esc="closeCellFormat">
+      <p class="palette-label">{{ t('Borders') }}</p>
       <div class="border-choices">
         <button v-for="b in BORDER_CHOICES" :key="b.value" type="button" :title="b.title" @click="formatCells('borders', b.value)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 2.5h11v11h-11zM8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width=".8" stroke-dasharray="1 1.2" fill="none" opacity=".55" /><path :d="b.icon" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" fill="none" /></svg>
           <span>{{ b.label }}</span>
         </button>
       </div>
-      <p class="palette-label">Shading</p>
-      <button type="button" class="no-color" @click="formatCells('shading', null)">No colour</button>
+      <p class="palette-label">{{ t('Shading') }}</p>
+      <button type="button" class="no-color" @click="formatCells('shading', null)">{{ t('No colour') }}</button>
       <div class="swatches">
         <button v-for="c in shadingChoices.theme" :key="c.hex + c.label" type="button" class="swatch" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="formatCells('shading', c.hex)" />
       </div>
       <template v-if="shadingChoices.used.length">
-        <p class="palette-label">In this document</p>
+        <p class="palette-label">{{ t('In this document') }}</p>
         <div class="swatches">
           <button v-for="c in shadingChoices.used" :key="c.hex" type="button" class="swatch" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="formatCells('shading', c.hex)" />
         </div>
@@ -591,238 +591,242 @@
       <MoreColors @pick="(hex) => formatCells('shading', hex)" />
     </div>
 
-    <form v-if="splitDialog.open" ref="splitDialogEl" class="chooser author-dialog split-dialog" role="dialog" aria-label="Split cells" :style="{ left: `${splitDialog.x}px`, top: `${splitDialog.y}px` }" @submit.prevent="splitCells" @keydown.esc="closeSplitDialog">
-      <label>Number of columns <input v-model.number="splitDialog.cols" type="number" min="1" max="20" required /></label>
-      <label>Number of rows <input v-model.number="splitDialog.rows" type="number" min="1" max="50" required /></label>
+    <form v-if="splitDialog.open" ref="splitDialogEl" class="chooser author-dialog split-dialog" role="dialog" :aria-label="t('Split cells')" :style="{ left: `${splitDialog.x}px`, top: `${splitDialog.y}px` }" @submit.prevent="splitCells" @keydown.esc="closeSplitDialog">
+      <label>{{ t('Number of columns') }} <input v-model.number="splitDialog.cols" type="number" min="1" max="20" required /></label>
+      <label>{{ t('Number of rows') }} <input v-model.number="splitDialog.rows" type="number" min="1" max="50" required /></label>
       <div class="actions">
-        <button type="submit" class="confirm">Split</button>
-        <button type="button" @click="closeSplitDialog">Cancel</button>
+        <button type="submit" class="confirm">{{ t('Split') }}</button>
+        <button type="button" @click="closeSplitDialog">{{ t('Cancel') }}</button>
       </div>
     </form>
 
     <!-- Word's Line and Paragraph Spacing menu, and its Paragraph dialog (indents and spacing). -->
-    <div v-if="spacingMenu.open" ref="spacingMenuEl" class="change-menu spacing-menu" role="menu" aria-label="Line and paragraph spacing" :style="{ left: `${spacingMenu.x}px`, top: `${spacingMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSpacingMenu" @keydown="onMenuArrows">
+    <div v-if="spacingMenu.open" ref="spacingMenuEl" class="change-menu spacing-menu" role="menu" :aria-label="t('Line and paragraph spacing')" :style="{ left: `${spacingMenu.x}px`, top: `${spacingMenu.y}px` }" @mousedown.prevent @keydown.esc="closeSpacingMenu" @keydown="onMenuArrows">
       <button v-for="[v, label] in LINE_SPACINGS" :key="label" type="button" role="menuitemradio" :aria-checked="spacingMenu.line === Math.round(v * 240)" @click="setLineSpacing(v)">{{ label }}</button>
       <hr />
       <button type="button" role="menuitem" @click="toggleSpace('before')">{{ spacingMenu.before ? 'Remove space before paragraph' : 'Add space before paragraph' }}</button>
       <button type="button" role="menuitem" @click="toggleSpace('after')">{{ spacingMenu.after ? 'Remove space after paragraph' : 'Add space after paragraph' }}</button>
       <hr />
-      <button type="button" role="menuitem" @click="openParagraphDialog">Paragraph…</button>
+      <button type="button" role="menuitem" @click="openParagraphDialog">{{ t('Paragraph…') }}</button>
     </div>
 
-    <form v-if="pageDialog.open" ref="pageDialogEl" class="chooser author-dialog para-dialog page-dialog" role="dialog" aria-label="Page setup" :style="{ left: `${pageDialog.x}px`, top: `${pageDialog.y}px`, maxHeight: `calc(100vh - ${pageDialog.y + 8}px)` }" novalidate @submit.prevent="applyPageSetup" @keydown.esc="closePageSetup">
-      <label class="apply-to">Apply to
-        <select v-model="pageDialog.scope" aria-label="Apply paper and margins to">
-          <option value="whole">Whole document</option>
-          <option v-if="pageDialog.sections > 1" value="section">This section ({{ pageDialog.sectionNo }} of {{ pageDialog.sections }})</option>
-          <option value="forward">This point forward</option>
-          <option v-if="pageDialog.selected" value="selected">Selected text</option>
+    <form v-if="pageDialog.open" ref="pageDialogEl" class="chooser author-dialog para-dialog page-dialog" role="dialog" :aria-label="t('Page setup')" :style="{ left: `${pageDialog.x}px`, top: `${pageDialog.y}px`, maxHeight: `calc(100vh - ${pageDialog.y + 8}px)` }" novalidate @submit.prevent="applyPageSetup" @keydown.esc="closePageSetup">
+      <label class="apply-to">{{ t('Apply to') }}
+        <select v-model="pageDialog.scope" :aria-label="t('Apply paper and margins to')">
+          <option value="whole">{{ t('Whole document') }}</option>
+          <option v-if="pageDialog.sections > 1" value="section">{{ t('This section ({n} of {total})', { n: pageDialog.sectionNo, total: pageDialog.sections }) }}</option>
+          <option value="forward">{{ t('This point forward') }}</option>
+          <option v-if="pageDialog.selected" value="selected">{{ t('Selected text') }}</option>
         </select>
       </label>
-      <p v-if="pageDialog.scope === 'forward' || pageDialog.scope === 'selected'" class="note">{{ pageDialog.scope === 'forward' ? 'A section break (next page) goes before the paragraph with the caret: from there on, the pages are set as below.' : 'Section breaks go before and after the selected paragraphs: their pages are set as below, as for a wide table on a landscape page.' }}</p>
+      <p v-if="pageDialog.scope === 'forward' || pageDialog.scope === 'selected'" class="note">{{ pageDialog.scope === 'forward' ? t('A section break (next page) goes before the paragraph with the caret: from there on, the pages are set as below.') : t('Section breaks go before and after the selected paragraphs: their pages are set as below, as for a wide table on a landscape page.') }}</p>
       <fieldset>
-        <legend>Paper</legend>
-        <label>Size
+        <legend>{{ t('Paper') }}</legend>
+        <label>{{ t('Size') }}
           <select v-model="pageDialog.paper">
             <option v-for="p in PAPERS" :key="p.name" :value="p.name">{{ p.name }} ({{ p.label }})</option>
-            <option v-if="pageDialog.paper === 'custom'" value="custom">As set in the document</option>
+            <option value="custom">{{ t('Custom size') }}</option>
           </select>
         </label>
-        <label>Orientation
+        <template v-if="pageDialog.paper === 'custom'">
+          <label>{{ t('Width') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.width" type="number" min="0" step="0.1" /></label>
+          <label>{{ t('Height') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.height" type="number" min="0" step="0.1" /></label>
+        </template>
+        <label>{{ t('Orientation') }}
           <select v-model="pageDialog.orient">
-            <option value="portrait">Portrait</option>
-            <option value="landscape">Landscape</option>
+            <option value="portrait">{{ t('Portrait') }}</option>
+            <option value="landscape">{{ t('Landscape') }}</option>
           </select>
         </label>
       </fieldset>
       <fieldset>
-        <legend>Margins</legend>
-        <label>Preset
+        <legend>{{ t('Margins') }}</legend>
+        <label>{{ t('Preset') }}
           <select :value="marginPreset" @change="pickMargins($event.target.value)">
-            <option v-for="m in MARGIN_PRESETS" :key="m.name" :value="m.name">{{ m.name }}</option>
-            <option v-if="marginPreset === 'custom'" value="custom">Custom</option>
+            <option v-for="m in MARGIN_PRESETS" :key="m.name" :value="m.name">{{ m.name === 'Normal' ? t('Normal margins') : t(m.name) }}</option>
+            <option v-if="marginPreset === 'custom'" value="custom">{{ t('Custom') }}</option>
           </select>
         </label>
-        <label>Top ({{ pageDialog.unit }}) <input v-model.number="pageDialog.top" type="number" min="0" step="0.1" /></label>
-        <label>Bottom ({{ pageDialog.unit }}) <input v-model.number="pageDialog.bottom" type="number" min="0" step="0.1" /></label>
-        <label>Left ({{ pageDialog.unit }}) <input v-model.number="pageDialog.left" type="number" min="0" step="0.1" /></label>
-        <label>Right ({{ pageDialog.unit }}) <input v-model.number="pageDialog.right" type="number" min="0" step="0.1" /></label>
-        <label>Units
-          <select :value="pageDialog.unit" aria-label="Units" title="Centimetres or inches, for the margins here and the other dialogs’ lengths (remembered in this browser)" @change="setPageUnit($event.target.value)">
-            <option value="cm">Centimetres</option>
-            <option value="in">Inches</option>
+        <label>{{ t('Top') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.top" type="number" min="0" step="0.1" /></label>
+        <label>{{ t('Bottom') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.bottom" type="number" min="0" step="0.1" /></label>
+        <label>{{ t('Left') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.left" type="number" min="0" step="0.1" /></label>
+        <label>{{ t('Right') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.right" type="number" min="0" step="0.1" /></label>
+        <label>{{ t('Units') }}
+          <select :value="pageDialog.unit" :aria-label="t('Units')" :title="t('Centimetres or inches, for the margins here and the other dialogs’ lengths (remembered in this browser)')" @change="setPageUnit($event.target.value)">
+            <option value="cm">{{ t('Centimetres') }}</option>
+            <option value="in">{{ t('Inches') }}</option>
           </select>
         </label>
       </fieldset>
       <fieldset>
-        <legend>Headers and footers</legend>
-        <label class="check"><input v-model="pageDialog.titlePg" type="checkbox" /> Different first page</label>
-        <label class="check"><input v-model="pageDialog.evenAndOdd" type="checkbox" /> Different odd and even pages</label>
+        <legend>{{ t('Headers and footers') }}</legend>
+        <label class="check"><input v-model="pageDialog.titlePg" type="checkbox" /> {{ t('Different first page') }}</label>
+        <label class="check"><input v-model="pageDialog.evenAndOdd" type="checkbox" /> {{ t('Different odd and even pages') }}</label>
       </fieldset>
       <fieldset>
-        <legend>Watermark</legend>
-        <label>Text
-          <select v-model="pageDialog.mark" aria-label="Watermark text">
-            <option value="">(none)</option>
+        <legend>{{ t('Watermark') }}</legend>
+        <label>{{ t('Text') }}
+          <select v-model="pageDialog.mark" :aria-label="t('Watermark text')">
+            <option value="">{{ t('(none)') }}</option>
             <option v-for="m in WATERMARKS" :key="m" :value="m">{{ m }}</option>
-            <option value="custom">Custom…</option>
+            <option value="custom">{{ t('Custom…') }}</option>
           </select>
         </label>
-        <label v-if="pageDialog.mark === 'custom'">Custom text <input v-model="pageDialog.markText" type="text" maxlength="60" autocomplete="off" aria-label="Watermark’s own text" /></label>
-        <label v-if="pageDialog.mark">Layout
-          <select v-model="pageDialog.markLayout" aria-label="Watermark layout">
-            <option value="diagonal">Diagonal</option>
-            <option value="horizontal">Horizontal</option>
+        <label v-if="pageDialog.mark === 'custom'">{{ t('Custom text') }} <input v-model="pageDialog.markText" type="text" maxlength="60" autocomplete="off" :aria-label="t('Watermark’s own text')" /></label>
+        <label v-if="pageDialog.mark">{{ t('Layout') }}
+          <select v-model="pageDialog.markLayout" :aria-label="t('Watermark layout')">
+            <option value="diagonal">{{ t('Diagonal') }}</option>
+            <option value="horizontal">{{ t('Horizontal') }}</option>
           </select>
         </label>
       </fieldset>
-      <p class="note">Headers and footers and the watermark: for the whole document</p>
+      <p class="note">{{ t('Headers and footers and the watermark: for the whole document') }}</p>
       <div class="actions">
-        <button type="submit" class="confirm">OK</button>
-        <button type="button" @click="closePageSetup">Cancel</button>
+        <button type="submit" class="confirm">{{ t('OK') }}</button>
+        <button type="button" @click="closePageSetup">{{ t('Cancel') }}</button>
       </div>
     </form>
 
-    <form v-if="paraDialog.open" ref="paraDialogEl" class="chooser author-dialog para-dialog" role="dialog" aria-label="Paragraph" :style="{ left: `${paraDialog.x}px`, top: `${paraDialog.y}px` }" novalidate @submit.prevent="applyParagraphDialog" @keydown.esc="closeParagraphDialog">
+    <form v-if="paraDialog.open" ref="paraDialogEl" class="chooser author-dialog para-dialog" role="dialog" :aria-label="t('Paragraph')" :style="{ left: `${paraDialog.x}px`, top: `${paraDialog.y}px` }" novalidate @submit.prevent="applyParagraphDialog" @keydown.esc="closeParagraphDialog">
       <fieldset>
-        <legend>Indentation</legend>
-        <label>Left ({{ paraDialog.unit }}) <input v-model.number="paraDialog.left" type="number" step="0.1" /></label>
-        <label>Right ({{ paraDialog.unit }}) <input v-model.number="paraDialog.right" type="number" step="0.1" /></label>
-        <label>Special
+        <legend>{{ t('Indentation') }}</legend>
+        <label>{{ t('Left') }} ({{ paraDialog.unit }}) <input v-model.number="paraDialog.left" type="number" step="0.1" /></label>
+        <label>{{ t('Right') }} ({{ paraDialog.unit }}) <input v-model.number="paraDialog.right" type="number" step="0.1" /></label>
+        <label>{{ t('Special') }}
           <select v-model="paraDialog.special">
-            <option value="none">(none)</option>
-            <option value="firstLine">First line</option>
-            <option value="hanging">Hanging</option>
+            <option value="none">{{ t('(none)') }}</option>
+            <option value="firstLine">{{ t('First line') }}</option>
+            <option value="hanging">{{ t('Hanging') }}</option>
           </select>
         </label>
-        <label>By ({{ paraDialog.unit }}) <input v-model.number="paraDialog.by" type="number" min="0" step="0.1" :disabled="paraDialog.special === 'none'" /></label>
-        <label>Units
-          <select :value="paraDialog.unit" aria-label="Units" title="Centimetres or inches, for the indents and tab stops here and the other dialogs’ lengths (remembered in this browser)" @change="setParaUnit($event.target.value)">
-            <option value="cm">Centimetres</option>
-            <option value="in">Inches</option>
+        <label>{{ t('By') }} ({{ paraDialog.unit }}) <input v-model.number="paraDialog.by" type="number" min="0" step="0.1" :disabled="paraDialog.special === 'none'" /></label>
+        <label>{{ t('Units') }}
+          <select :value="paraDialog.unit" :aria-label="t('Units')" :title="t('Centimetres or inches, for the indents and tab stops here and the other dialogs’ lengths (remembered in this browser)')" @change="setParaUnit($event.target.value)">
+            <option value="cm">{{ t('Centimetres') }}</option>
+            <option value="in">{{ t('Inches') }}</option>
           </select>
         </label>
       </fieldset>
       <fieldset>
-        <legend>Spacing</legend>
+        <legend>{{ t('Spacing') }}</legend>
         <label>Before (pt) <input v-model.number="paraDialog.before" type="number" min="0" step="6" /></label>
         <label>After (pt) <input v-model.number="paraDialog.after" type="number" min="0" step="6" /></label>
-        <label>Line spacing
+        <label>{{ t('Line spacing') }}
           <select v-model="paraDialog.rule" @change="onLineRuleChange">
-            <option value="single">Single</option>
-            <option value="1.5">1.5 lines</option>
-            <option value="double">Double</option>
-            <option value="atLeast">At least</option>
-            <option value="exact">Exactly</option>
-            <option value="multiple">Multiple</option>
+            <option value="single">{{ t('Single') }}</option>
+            <option value="1.5">{{ t('1.5 lines') }}</option>
+            <option value="double">{{ t('Double') }}</option>
+            <option value="atLeast">{{ t('At least') }}</option>
+            <option value="exact">{{ t('Exactly') }}</option>
+            <option value="multiple">{{ t('Multiple') }}</option>
           </select>
         </label>
-        <label v-if="!LINE_PRESETS[paraDialog.rule]">At ({{ paraDialog.rule === 'multiple' ? 'lines' : 'pt' }}) <input v-model.number="paraDialog.at" type="number" min="0" :step="paraDialog.rule === 'multiple' ? 0.05 : 1" /></label>
+        <label v-if="!LINE_PRESETS[paraDialog.rule]">{{ t('At') }} ({{ paraDialog.rule === 'multiple' ? 'lines' : 'pt' }}) <input v-model.number="paraDialog.at" type="number" min="0" :step="paraDialog.rule === 'multiple' ? 0.05 : 1" /></label>
       </fieldset>
       <fieldset class="tab-stops">
-        <legend>Tab stops</legend>
-        <ul v-if="paraDialog.tabs.length" aria-label="Tab stops">
-          <li v-for="t in paraDialog.tabs" :key="t.pos">
-            <span class="pos">{{ formatLength(t.pos) }} {{ paraDialog.unit }}</span>
-            <span>{{ TAB_ALIGNS[t.align] || t.align }}</span>
-            <span class="leader">{{ TAB_LEADERS[t.leader]?.label || '' }}</span>
-            <button type="button" :aria-label="`Remove the tab stop at ${formatLength(t.pos)} ${paraDialog.unit}`" title="Remove this tab stop" @click="removeTabStop(t.pos)">×</button>
+        <legend>{{ t('Tab stops') }}</legend>
+        <ul v-if="paraDialog.tabs.length" :aria-label="t('Tab stops')">
+          <li v-for="stop in paraDialog.tabs" :key="stop.pos">
+            <span class="pos">{{ formatLength(stop.pos) }} {{ paraDialog.unit }}</span>
+            <span>{{ TAB_ALIGNS[stop.align] || stop.align }}</span>
+            <span class="leader">{{ TAB_LEADERS[stop.leader]?.label || '' }}</span>
+            <button type="button" :aria-label="`Remove the tab stop at ${formatLength(stop.pos)} ${paraDialog.unit}`" :title="t('Remove this tab stop')" @click="removeTabStop(stop.pos)">×</button>
           </li>
         </ul>
         <p v-else class="hint">None: tabs go to Word’s default stops, every {{ formatLength(doc.defaultTabStop) }} {{ paraDialog.unit }}.</p>
         <div class="tab-add">
-          <label>At ({{ paraDialog.unit }}) <input v-model.number="paraDialog.tabPos" type="number" min="0" step="0.25" :aria-label="`Tab stop position (${paraDialog.unit})`" @keydown.enter.prevent="addTabStop" /></label>
-          <label>Alignment
+          <label>{{ t('At') }} ({{ paraDialog.unit }}) <input v-model.number="paraDialog.tabPos" type="number" min="0" step="0.25" :aria-label="`Tab stop position (${paraDialog.unit})`" @keydown.enter.prevent="addTabStop" /></label>
+          <label>{{ t('Alignment') }}
             <select v-model="paraDialog.tabAlign">
               <option v-for="(label, value) in TAB_ALIGNS" :key="value" :value="value">{{ label }}</option>
             </select>
           </label>
-          <label>Leader
+          <label>{{ t('Leader') }}
             <select v-model="paraDialog.tabLeader">
               <option v-for="(l, value) in TAB_LEADERS" :key="value" :value="value">{{ l.label }}</option>
             </select>
           </label>
           <div class="tab-buttons">
-            <button type="button" @click="addTabStop">Set</button>
-            <button type="button" :disabled="!paraDialog.tabs.length" @click="paraDialog.tabs = []">Clear all</button>
+            <button type="button" @click="addTabStop">{{ t('Set') }}</button>
+            <button type="button" :disabled="!paraDialog.tabs.length" @click="paraDialog.tabs = []">{{ t('Clear all') }}</button>
           </div>
         </div>
         <p v-if="paraDialog.tabError" class="error" role="alert">{{ paraDialog.tabError }}</p>
       </fieldset>
       <div class="actions">
-        <button type="submit" class="confirm">OK</button>
-        <button type="button" @click="closeParagraphDialog">Cancel</button>
+        <button type="submit" class="confirm">{{ t('OK') }}</button>
+        <button type="button" @click="closeParagraphDialog">{{ t('Cancel') }}</button>
       </div>
     </form>
 
     <form v-if="modifyDialog.open" ref="modifyDialogEl" class="chooser author-dialog para-dialog modify-dialog" role="dialog" :aria-label="`Modify style ${modifyDialog.name}`" :style="{ left: `${modifyDialog.x}px`, top: `${modifyDialog.y}px` }" novalidate @submit.prevent="applyModifyStyle" @keydown.esc="closeModifyStyle">
       <h2>Modify style: {{ modifyDialog.name }}</h2>
       <fieldset>
-        <legend>Text</legend>
-        <label>Font
-          <select v-model="modifyDialog.font" aria-label="Style font">
+        <legend>{{ t('Text') }}</legend>
+        <label>{{ t('Font') }}
+          <select v-model="modifyDialog.font" :aria-label="t('Style font')">
             <option v-for="f in modifyFonts" :key="f" :value="f">{{ f }}</option>
           </select>
         </label>
-        <label>Size (pt) <input v-model.number="modifyDialog.size" type="number" min="1" max="1638" step="0.5" aria-label="Style font size (pt)" /></label>
+        <label>Size (pt) <input v-model.number="modifyDialog.size" type="number" min="1" max="1638" step="0.5" :aria-label="t('Style font size (pt)')" /></label>
         <div class="checks">
           <label class="check"><input v-model="modifyDialog.bold" type="checkbox" /> <b>Bold</b></label>
           <label class="check"><input v-model="modifyDialog.italic" type="checkbox" /> <i>Italic</i></label>
         </div>
-        <label>Colour
+        <label>{{ t('Colour') }}
           <span class="color-pick">
-            <label class="check"><input v-model="modifyDialog.auto" type="checkbox" /> Automatic</label>
-            <input v-model="modifyDialog.color" type="color" :disabled="modifyDialog.auto" aria-label="Style colour" />
+            <label class="check"><input v-model="modifyDialog.auto" type="checkbox" /> {{ t('Automatic') }}</label>
+            <input v-model="modifyDialog.color" type="color" :disabled="modifyDialog.auto" :aria-label="t('Style colour')" />
           </span>
         </label>
       </fieldset>
       <fieldset>
-        <legend>Paragraph</legend>
-        <label>Alignment
-          <select v-model="modifyDialog.align" aria-label="Style alignment">
-            <option value="left">Left</option>
-            <option value="center">Centred</option>
-            <option value="right">Right</option>
-            <option value="both">Justified</option>
+        <legend>{{ t('Paragraph') }}</legend>
+        <label>{{ t('Alignment') }}
+          <select v-model="modifyDialog.align" :aria-label="t('Style alignment')">
+            <option value="left">{{ t('Left') }}</option>
+            <option value="center">{{ t('Centred') }}</option>
+            <option value="right">{{ t('Right') }}</option>
+            <option value="both">{{ t('Justified') }}</option>
           </select>
         </label>
-        <label>Before (pt) <input v-model.number="modifyDialog.before" type="number" min="0" step="6" aria-label="Style space before (pt)" /></label>
-        <label>After (pt) <input v-model.number="modifyDialog.after" type="number" min="0" step="6" aria-label="Style space after (pt)" /></label>
-        <label>Line spacing
-          <select v-model="modifyDialog.line" aria-label="Style line spacing">
+        <label>Before (pt) <input v-model.number="modifyDialog.before" type="number" min="0" step="6" :aria-label="t('Style space before (pt)')" /></label>
+        <label>After (pt) <input v-model.number="modifyDialog.after" type="number" min="0" step="6" :aria-label="t('Style space after (pt)')" /></label>
+        <label>{{ t('Line spacing') }}
+          <select v-model="modifyDialog.line" :aria-label="t('Style line spacing')">
             <option v-if="!LINE_CHOICES.some(([v]) => String(v) === modifyDialog.line)" :value="modifyDialog.line">{{ modifyDialog.line ? `${Math.round(Number(modifyDialog.line) / 2.4) / 100} lines` : 'As set (exactly or at least)' }}</option>
             <option v-for="[v, label] in LINE_CHOICES" :key="v" :value="String(v)">{{ label }}</option>
           </select>
         </label>
       </fieldset>
       <fieldset>
-        <legend>Indentation</legend>
-        <label>Left ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.left" type="number" step="0.1" aria-label="Style left indent" /></label>
-        <label>Right ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.right" type="number" step="0.1" aria-label="Style right indent" /></label>
-        <label>Special
-          <select v-model="modifyDialog.special" aria-label="Style special indent">
-            <option value="none">(none)</option>
-            <option value="firstLine">First line</option>
-            <option value="hanging">Hanging</option>
+        <legend>{{ t('Indentation') }}</legend>
+        <label>{{ t('Left') }} ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.left" type="number" step="0.1" :aria-label="t('Style left indent')" /></label>
+        <label>{{ t('Right') }} ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.right" type="number" step="0.1" :aria-label="t('Style right indent')" /></label>
+        <label>{{ t('Special') }}
+          <select v-model="modifyDialog.special" :aria-label="t('Style special indent')">
+            <option value="none">{{ t('(none)') }}</option>
+            <option value="firstLine">{{ t('First line') }}</option>
+            <option value="hanging">{{ t('Hanging') }}</option>
           </select>
         </label>
-        <label>By ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.by" type="number" min="0" step="0.1" :disabled="modifyDialog.special === 'none'" aria-label="Style special indent by" /></label>
-        <label>Units
-          <select :value="modifyDialog.unit" aria-label="Style units" title="Centimetres or inches, for the indents here and the other dialogs’ lengths (remembered in this browser)" @change="setModifyUnit($event.target.value)">
-            <option value="cm">Centimetres</option>
-            <option value="in">Inches</option>
+        <label>{{ t('By') }} ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.by" type="number" min="0" step="0.1" :disabled="modifyDialog.special === 'none'" :aria-label="t('Style special indent by')" /></label>
+        <label>{{ t('Units') }}
+          <select :value="modifyDialog.unit" :aria-label="t('Style units')" :title="t('Centimetres or inches, for the indents here and the other dialogs’ lengths (remembered in this browser)')" @change="setModifyUnit($event.target.value)">
+            <option value="cm">{{ t('Centimetres') }}</option>
+            <option value="in">{{ t('Inches') }}</option>
           </select>
         </label>
       </fieldset>
       <p class="preview" :style="{ fontFamily: `'${modifyDialog.font}'`, fontSize: `${Math.min(28, Number(modifyDialog.size) || 11)}pt`, fontWeight: modifyDialog.bold ? 700 : 400, fontStyle: modifyDialog.italic ? 'italic' : 'normal', color: modifyDialog.auto ? '#000' : modifyDialog.color, textAlign: modifyDialog.align === 'both' ? 'justify' : modifyDialog.align, ...modifyPreviewIndent }"><span>{{ modifyDialog.name }}: the quick brown fox jumps over the lazy dog, and the first line shows its indent</span></p>
-      <p class="note">Every paragraph in this style follows, here and in Word.</p>
+      <p class="note">{{ t('Every paragraph in this style follows, here and in Word.') }}</p>
       <div class="actions">
-        <button type="submit" class="confirm">OK</button>
-        <button type="button" @click="closeModifyStyle">Cancel</button>
+        <button type="submit" class="confirm">{{ t('OK') }}</button>
+        <button type="button" @click="closeModifyStyle">{{ t('Cancel') }}</button>
       </div>
     </form>
 
-    <div v-if="tablePicker.open" ref="tablePickerEl" class="table-picker" role="dialog" aria-label="Insert table" :style="{ left: `${tablePicker.x}px`, top: `${tablePicker.y}px` }" @keydown.esc="closeTablePicker">
+    <div v-if="tablePicker.open" ref="tablePickerEl" class="table-picker" role="dialog" :aria-label="t('Insert table')" :style="{ left: `${tablePicker.x}px`, top: `${tablePicker.y}px` }" @keydown.esc="closeTablePicker">
       <p class="size" aria-hidden="true">{{ tablePicker.cols }} × {{ tablePicker.rows }} table</p>
       <div class="grid" @mouseleave="tablePicker.cols = tablePicker.rows = 1">
         <template v-for="r in PICKER_ROWS" :key="r">
@@ -842,27 +846,27 @@
         </template>
       </div>
       <form class="custom" @submit.prevent="insertTable(tablePicker.customRows, tablePicker.customCols)">
-        <label>Columns <input v-model.number="tablePicker.customCols" type="number" min="1" :max="MAX_COLS" required /></label>
-        <label>Rows <input v-model.number="tablePicker.customRows" type="number" min="1" :max="MAX_ROWS" required /></label>
-        <button type="submit">Insert</button>
+        <label>{{ t('Columns') }} <input v-model.number="tablePicker.customCols" type="number" min="1" :max="MAX_COLS" required /></label>
+        <label>{{ t('Rows') }} <input v-model.number="tablePicker.customRows" type="number" min="1" :max="MAX_ROWS" required /></label>
+        <button type="submit">{{ t('Insert') }}</button>
       </form>
     </div>
 
-    <div v-if="palette.open" ref="paletteEl" class="palette" role="dialog" aria-label="Highlight colour" :style="{ left: `${palette.x}px`, top: `${palette.y}px` }" @mousedown.prevent @keydown.esc="closePalette">
+    <div v-if="palette.open" ref="paletteEl" class="palette" role="dialog" :aria-label="t('Highlight colour')" :style="{ left: `${palette.x}px`, top: `${palette.y}px` }" @mousedown.prevent @keydown.esc="closePalette">
       <div class="swatches">
         <button v-for="[name, label] in HIGHLIGHT_COLORS" :key="name" type="button" class="swatch" :class="{ current: name === highlightColor }" :style="{ background: HIGHLIGHT[name] }" :title="label" :aria-label="label" @click="pickHighlight(name)" />
       </div>
-      <button type="button" class="no-color" @click="pickHighlight(null)">No colour</button>
+      <button type="button" class="no-color" @click="pickHighlight(null)">{{ t('No colour') }}</button>
     </div>
 
-    <div v-if="colorPalette.open" ref="colorPaletteEl" class="palette color-palette" role="dialog" aria-label="Font colour" :style="{ left: `${colorPalette.x}px`, top: `${colorPalette.y}px` }" @mousedown="keepSelection" @keydown.esc="closeColorPalette">
-      <button type="button" class="no-color" @click="pickFontColor(null)">Automatic</button>
-      <p class="palette-label">Theme colours</p>
+    <div v-if="colorPalette.open" ref="colorPaletteEl" class="palette color-palette" role="dialog" :aria-label="t('Font colour')" :style="{ left: `${colorPalette.x}px`, top: `${colorPalette.y}px` }" @mousedown="keepSelection" @keydown.esc="closeColorPalette">
+      <button type="button" class="no-color" @click="pickFontColor(null)">{{ t('Automatic') }}</button>
+      <p class="palette-label">{{ t('Theme colours') }}</p>
       <div class="swatches">
         <button v-for="c in colorChoices.theme" :key="c.theme" type="button" class="swatch" :class="{ current: fontColor?.hex === c.hex && fontColor?.theme === c.theme }" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="pickFontColor(c)" />
       </div>
       <template v-if="colorChoices.used.length">
-        <p class="palette-label">In this document</p>
+        <p class="palette-label">{{ t('In this document') }}</p>
         <div class="swatches">
           <button v-for="c in colorChoices.used" :key="c.hex" type="button" class="swatch" :class="{ current: fontColor?.hex === c.hex && !fontColor?.theme }" :style="{ background: `#${c.hex}` }" :title="c.label" :aria-label="c.label" @click="pickFontColor(c)" />
         </div>
@@ -870,11 +874,11 @@
       <MoreColors :current="fontColor && !fontColor.theme ? fontColor.hex : null" @pick="(hex) => pickFontColor({ hex, label: `#${hex}` })" />
     </div>
 
-    <form v-if="dropOffer.file" ref="dropOfferEl" class="chooser author-dialog drop-offer" role="dialog" aria-label="Open in a new tab" @submit.prevent="openDroppedInNewTab" @keydown.esc="dropOffer.file = null">
+    <form v-if="dropOffer.file" ref="dropOfferEl" class="chooser author-dialog drop-offer" role="dialog" :aria-label="t('Open in a new tab')" @submit.prevent="openDroppedInNewTab" @keydown.esc="dropOffer.file = null">
       <p>“{{ dropOffer.file.name }}” opens in a new tab, beside this document, which stays open here.</p>
       <div class="actions">
-        <button type="submit" class="confirm">Open in a new tab</button>
-        <button type="button" @click="dropOffer.file = null">Cancel</button>
+        <button type="submit" class="confirm">{{ t('Open in a new tab') }}</button>
+        <button type="button" @click="dropOffer.file = null">{{ t('Cancel') }}</button>
       </div>
     </form>
 
@@ -882,70 +886,100 @@
 
     <ReviewDialog v-if="reviewData" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
-    <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" aria-label="Your name on tracked changes" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
-      <label for="author-name">Your name on tracked changes</label>
+    <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" :aria-label="t('Your name on tracked changes')" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
+      <label for="author-name">{{ t('Your name on tracked changes') }}</label>
       <!-- No browser autocomplete: Firefox's list of earlier entries opens over the buttons below and
            takes the click meant for them. The name is remembered by Intact itself. -->
       <input id="author-name" ref="authorInput" v-model="authorDialog.name" type="text" maxlength="100" autocomplete="off" required />
       <div class="actions">
         <button type="submit" class="confirm">{{ tracking ? 'Save' : 'Start tracking' }}</button>
-        <button type="button" @click="closeAuthorDialog">Cancel</button>
+        <button type="button" @click="closeAuthorDialog">{{ t('Cancel') }}</button>
       </div>
     </form>
 
-    <form v-if="linkDialog.open" ref="linkEl" class="chooser link-dialog" role="dialog" aria-label="Link" :style="{ left: `${linkDialog.x}px`, top: `${linkDialog.y}px` }" @submit.prevent="confirmLink" @keydown.esc="closeLinkDialog">
-      <label for="link-address">Address: web page, e-mail or DOI</label>
-      <input id="link-address" ref="linkInput" v-model="linkDialog.address" type="text" autocomplete="off" spellcheck="false" placeholder="https://… or 10.1000/xyz" :aria-invalid="!!linkDialog.error" />
+    <form v-if="linkDialog.open" ref="linkEl" class="chooser link-dialog" role="dialog" :aria-label="t('Link')" :style="{ left: `${linkDialog.x}px`, top: `${linkDialog.y}px` }" @submit.prevent="confirmLink" @keydown.esc="closeLinkDialog">
+      <label for="link-address">{{ t('Address: web page, e-mail or DOI') }}</label>
+      <input id="link-address" ref="linkInput" v-model="linkDialog.address" type="text" autocomplete="off" spellcheck="false" :placeholder="t('https://… or 10.1000/xyz')" :aria-invalid="!!linkDialog.error" />
       <template v-if="linkDialog.askText">
-        <label for="link-text">Text to show</label>
+        <label for="link-text">{{ t('Text to show') }}</label>
         <input id="link-text" v-model="linkDialog.text" type="text" autocomplete="off" :placeholder="linkDialog.address" />
       </template>
       <p v-if="linkDialog.error" class="error" role="alert">{{ linkDialog.error }}</p>
       <div class="actions">
         <button type="submit" class="confirm">{{ linkDialog.editing ? 'Update' : 'Insert' }}</button>
-        <button v-if="linkDialog.editing" type="button" @click="removeLink">Remove link</button>
-        <button type="button" @click="closeLinkDialog">Cancel</button>
+        <button v-if="linkDialog.editing" type="button" @click="removeLink">{{ t('Remove link') }}</button>
+        <button type="button" @click="closeLinkDialog">{{ t('Cancel') }}</button>
       </div>
     </form>
 
-    <div v-if="insertMenu.open" ref="insertMenuEl" class="change-menu insert-menu" role="menu" aria-label="Insert" :style="{ left: `${insertMenu.x}px`, top: `${insertMenu.y}px` }" @mousedown.prevent @keydown.esc="closeInsertMenu(true)" @keydown="onMenuArrows">
-      <button type="button" role="menuitem" @click="insertCheckbox">Check box<span class="hint">☐ ticked with a click</span></button>
-      <p class="menu-label" role="presentation">Today’s date</p>
+    <div v-if="insertMenu.open" ref="insertMenuEl" class="change-menu insert-menu" role="menu" :aria-label="t('Insert')" :style="{ left: `${insertMenu.x}px`, top: `${insertMenu.y}px` }" @mousedown.prevent @keydown.esc="closeInsertMenu(true)" @keydown="onMenuArrows">
+      <button type="button" role="menuitem" @click="insertCheckbox">Check box<span class="hint">{{ t('☐ ticked with a click') }}</span></button>
+      <p class="menu-label" role="presentation">{{ t('Today’s date') }}</p>
       <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
-      <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" title="As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
-      <p class="menu-label" role="presentation">References</p>
-      <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">From the headings</span></button>
-      <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">Figure 1, Table 1</span></button>
-      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">To a heading or caption</span></button>
-      <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">Typed as in LaTeX</span></button>
-      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">APA or MLA</span></button>
+      <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" :title="t('As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is')" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
+      <p class="menu-label" role="presentation">{{ t('References') }}</p>
+      <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">{{ t('From the headings') }}</span></button>
+      <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
+      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading or caption') }}</span></button>
+      <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
+      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA or MLA') }}</span></button>
       <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ doc.sources?.style === 'MLA' ? 'Works Cited' : 'References' }}</span></button>
     </div>
 
     <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
-    <div v-if="pageNumberMenu.open" ref="pageNumberMenuEl" class="change-menu insert-menu page-number-menu" role="menu" aria-label="Page number and header" :style="{ left: `${pageNumberMenu.x}px`, top: `${pageNumberMenu.y}px` }" @mousedown.prevent @keydown.esc="closePageNumberMenu(true)" @keydown="onMenuArrows">
-      <p class="menu-label" role="presentation">Top of page (header)</p>
-      <button v-for="a in PAGE_NUMBER_ALIGNS" :key="`header-${a.value}`" type="button" role="menuitem" :aria-label="`Page number at the top, ${a.label.toLowerCase()}`" @click="pageNumberAt('header', a.value)">{{ a.label }}<span v-if="a.value === 'right'" class="hint">Surname 1 (MLA)</span></button>
-      <p class="menu-label" role="presentation">Bottom of page (footer)</p>
-      <button v-for="a in PAGE_NUMBER_ALIGNS" :key="`footer-${a.value}`" type="button" role="menuitem" :aria-label="`Page number at the bottom, ${a.label.toLowerCase()}`" @click="pageNumberAt('footer', a.value)">{{ a.label }}</button>
-      <button type="button" role="menuitem" class="menu-sep" @click="editHeaderFooter('header')">Edit header<span class="hint">Text on every page, at the top</span></button>
-      <button type="button" role="menuitem" @click="editHeaderFooter('footer')">Edit footer<span class="hint">Text on every page, at the bottom</span></button>
+    <div v-if="pageNumberMenu.open" ref="pageNumberMenuEl" class="change-menu insert-menu page-number-menu" role="menu" :aria-label="t('Page number and header')" :style="{ left: `${pageNumberMenu.x}px`, top: `${pageNumberMenu.y}px` }" @mousedown.prevent @keydown.esc="closePageNumberMenu(true)" @keydown="onMenuArrows">
+      <p class="menu-label" role="presentation">{{ t('Top of page (header)') }}</p>
+      <button v-for="a in PAGE_NUMBER_ALIGNS" :key="`header-${a.value}`" type="button" role="menuitem" :aria-label="t('Page number at the top, {where}', { where: t(a.label).toLowerCase() })" @click="pageNumberAt('header', a.value)">{{ t(a.label) }}<span v-if="a.value === 'right'" class="hint">{{ t('Surname 1 (MLA)') }}</span></button>
+      <p class="menu-label" role="presentation">{{ t('Bottom of page (footer)') }}</p>
+      <button v-for="a in PAGE_NUMBER_ALIGNS" :key="`footer-${a.value}`" type="button" role="menuitem" :aria-label="t('Page number at the bottom, {where}', { where: t(a.label).toLowerCase() })" @click="pageNumberAt('footer', a.value)">{{ t(a.label) }}</button>
+      <button type="button" role="menuitem" class="menu-sep" @click="openPageNumberFormat">{{ t('Format page numbers…') }}<span class="hint">{{ t('Number format, and where numbering starts') }}</span></button>
+      <button type="button" role="menuitem" class="menu-sep" @click="editHeaderFooter('header')">{{ t('Edit header') }}<span class="hint">{{ t('Text on every page, at the top') }}</span></button>
+      <button type="button" role="menuitem" @click="editHeaderFooter('footer')">{{ t('Edit footer') }}<span class="hint">{{ t('Text on every page, at the bottom') }}</span></button>
     </div>
 
-    <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" aria-label="Change case" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
+    <!-- As Word's Format Page Numbers: the number format and where numbering starts, for a section
+         (or, from the caret on, a new one), written in its w:pgNumType. -->
+    <form v-if="numDialog.open" ref="numDialogEl" class="chooser author-dialog para-dialog page-dialog" role="dialog" :aria-label="t('Page number format')" :style="{ left: `${numDialog.x}px`, top: `${numDialog.y}px`, maxHeight: `calc(100vh - ${numDialog.y + 8}px)` }" novalidate @submit.prevent="applyPageNumberFormat" @keydown.esc="closePageNumberFormat">
+      <label class="apply-to">{{ t('Apply to') }}
+        <select v-model="numDialog.scope" :aria-label="t('Apply page number format to')">
+          <option v-if="numDialog.sections > 1" value="section">{{ t('This section ({n} of {total})', { n: numDialog.sectionNo, total: numDialog.sections }) }}</option>
+          <option value="whole">{{ t('Whole document') }}</option>
+          <option v-if="numDialog.canSplit" value="forward">{{ t('This point forward') }}</option>
+        </select>
+      </label>
+      <p v-if="numDialog.scope === 'forward'" class="note">{{ t('A section break (next page) goes before the paragraph with the caret: the pages from there on are numbered as below, the ones before keep theirs.') }}</p>
+      <label class="apply-to">{{ t('Number format') }}
+        <select v-model="numDialog.fmt" :aria-label="t('Number format')">
+          <option v-for="f in PAGE_NUMBER_FORMATS" :key="f.value" :value="f.value">{{ f.label }}</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>{{ t('Page numbering') }}</legend>
+        <label class="check"><input v-model="numDialog.restart" type="radio" name="page-numbering" :value="false" /> {{ t('Continue from previous section') }}</label>
+        <label class="check"><input v-model="numDialog.restart" type="radio" name="page-numbering" :value="true" /> {{ t('Start at') }}</label>
+        <label>{{ t('Start at page number') }} <input v-model.number="numDialog.start" type="number" min="0" step="1" :disabled="!numDialog.restart" /></label>
+      </fieldset>
+      <p class="note">{{ t('Page numbers in Word and when printed; here a page number shows as #.') }}</p>
+      <div class="actions">
+        <button type="submit" class="confirm">{{ t('OK') }}</button>
+        <button type="button" @click="closePageNumberFormat">{{ t('Cancel') }}</button>
+      </div>
+    </form>
+
+    <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" :aria-label="t('Change case')" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
       <button v-for="c in CASES" :key="c.id" type="button" role="menuitem" @click="changeCaseTo(c.id)">{{ c.label }}</button>
     </div>
 
     <!-- The right-click menu, as Word's: what can be done where it was opened. Shift+right-click
          gives the browser's own menu (with its spelling suggestions). -->
-    <div v-if="ctxMenu.open" ref="ctxMenuEl" class="change-menu context-menu" role="menu" aria-label="Context menu" :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }" @mousedown.prevent @contextmenu.prevent @keydown.esc="closeContextMenu(true)" @keydown="onMenuArrows">
+    <div v-if="ctxMenu.open" ref="ctxMenuEl" class="change-menu context-menu" role="menu" :aria-label="t('Context menu')" :style="{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }" @mousedown.prevent @contextmenu.prevent @keydown.esc="closeContextMenu(true)" @keydown="onMenuArrows">
       <template v-if="!ctxMenu.locked">
-        <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCut">Cut<span class="key">Ctrl+X</span></button>
+        <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCut">Cut<span class="key">{{ t('Ctrl+X') }}</span></button>
       </template>
-      <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCopy">Copy<span class="key">Ctrl+C</span></button>
+      <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCopy">Copy<span class="key">{{ t('Ctrl+C') }}</span></button>
       <template v-if="!ctxMenu.locked">
-        <button type="button" role="menuitem" @click="contextPaste(false)">Paste<span class="key">Ctrl+V</span></button>
-        <button type="button" role="menuitem" @click="contextPaste(true)">Paste as text</button>
+        <button type="button" role="menuitem" @click="contextPaste(false)">Paste<span class="key">{{ t('Ctrl+V') }}</span></button>
+        <button type="button" role="menuitem" @click="contextPaste(true)">{{ t('Paste as text') }}</button>
       </template>
       <template v-if="ctxMenu.change && !lockMode">
         <hr />
@@ -955,16 +989,16 @@
       <hr v-if="!ctxMenu.locked || canComment" />
       <template v-if="!ctxMenu.locked">
         <template v-if="ctxMenu.link">
-          <button type="button" role="menuitem" @click="contextOpenLink">Open link</button>
-          <button type="button" role="menuitem" @click="contextRun(openLinkDialog, true)">Edit link…</button>
-          <button type="button" role="menuitem" @click="contextRun(removeLinkAtCaret)">Remove link</button>
+          <button type="button" role="menuitem" @click="contextOpenLink">{{ t('Open link') }}</button>
+          <button type="button" role="menuitem" @click="contextRun(openLinkDialog, true)">{{ t('Edit link…') }}</button>
+          <button type="button" role="menuitem" @click="contextRun(removeLinkAtCaret)">{{ t('Remove link') }}</button>
         </template>
-        <button v-else type="button" role="menuitem" @click="contextRun(openLinkDialog, true)">Link…<span class="key">Ctrl+K</span></button>
+        <button v-else type="button" role="menuitem" @click="contextRun(openLinkDialog, true)">Link…<span class="key">{{ t('Ctrl+K') }}</span></button>
       </template>
-      <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">Ctrl+Alt+M</span></button>
+      <button v-if="canComment" type="button" role="menuitem" @click="contextRun(startComment)">New comment<span class="key">{{ t('Ctrl+Alt+M') }}</span></button>
       <template v-if="!ctxMenu.locked">
-        <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">Paragraph…</button>
-        <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">Modify style…</button>
+        <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">{{ t('Paragraph…') }}</button>
+        <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">{{ t('Modify style…') }}</button>
         <template v-if="ctxMenu.table">
           <hr />
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('rowsAbove'))">Insert row above</button>
@@ -972,21 +1006,21 @@
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('columnsLeft'))">Insert column to the left</button>
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('columnsRight'))">Insert column to the right</button>
           <button v-if="ctxMenu.multi" type="button" role="menuitem" @click="contextRun(() => tableAction('merge'))">Merge cells</button>
-          <button type="button" role="menuitem" @click="contextRun(openSplitDialog, true)">Split cells…</button>
-          <button type="button" role="menuitem" @click="contextRun(openCellFormat, true)">Shading and borders…</button>
+          <button type="button" role="menuitem" @click="contextRun(openSplitDialog, true)">{{ t('Split cells…') }}</button>
+          <button type="button" role="menuitem" @click="contextRun(openCellFormat, true)">{{ t('Shading and borders…') }}</button>
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('deleteRows'))">Delete row</button>
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('deleteColumns'))">Delete column</button>
           <button type="button" role="menuitem" @click="contextRun(() => tableAction('deleteTable'))">Delete table</button>
         </template>
       </template>
-      <p class="menu-note" role="presentation">Shift+right-click: the browser’s menu, with spelling suggestions</p>
+      <p class="menu-note" role="presentation">{{ t('Shift+right-click: the browser’s menu, with spelling suggestions') }}</p>
     </div>
 
-    <div v-if="shareReady.file" ref="shareReadyEl" class="chooser share-ready" role="dialog" aria-label="Share" @keydown.esc="shareReady.file = null">
+    <div v-if="shareReady.file" ref="shareReadyEl" class="chooser share-ready" role="dialog" :aria-label="t('Share')" @keydown.esc="shareReady.file = null">
       <p>{{ shareReady.file.name }} is ready.</p>
       <div class="actions">
-        <button type="button" class="confirm" @click="shareFile(shareReady.file)">Share…</button>
-        <button type="button" @click="shareReady.file = null">Cancel</button>
+        <button type="button" class="confirm" @click="shareFile(shareReady.file)">{{ t('Share…') }}</button>
+        <button type="button" @click="shareReady.file = null">{{ t('Cancel') }}</button>
       </div>
     </div>
 
@@ -999,18 +1033,18 @@
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
 
     <footer class="statusbar">
-      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ selectedWords != null ? `${selectedWords} of ${words}` : words }} words · {{ selectedChars != null ? `${selectedChars} of ${chars.withSpaces}` : chars.withSpaces }} characters</span>
-      <button type="button" class="nav-toggle" :aria-pressed="navOpen" title="Headings: move around the document by its headings, as Word’s Navigation pane" @click="toggleNav">Headings</button>
-      <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }}</button>
+      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</span>
+      <button type="button" class="nav-toggle" :aria-pressed="navOpen" :title="t('Headings: move around the document by its headings, as Word’s Navigation pane')" @click="toggleNav">{{ t('Headings') }}</button>
+      <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? t('page') : t('pages') }}</button>
       <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, 1. or * then a space at the start of a paragraph a list, and a web or e-mail address then a space a link – click to type them as they are' : 'Quotes, dashes, ellipses, list numbers and addresses are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
-      <button v-if="tracking" type="button" class="tracking-status" title="Change your name on tracked changes" @click="openAuthorDialog">Tracking changes as {{ author }}</button>
-      <span v-if="draftKept" class="draft-status" :title="draftTitle">Changes kept on this device</span>
+      <button v-if="tracking" type="button" class="tracking-status" :title="t('Change your name on tracked changes')" @click="openAuthorDialog">{{ t('Tracking changes as {name}', { name: author }) }}</button>
+      <span v-if="draftKept" class="draft-status" :title="draftTitle">{{ t('Changes kept on this device') }}</span>
       <span role="status" aria-live="polite" :title="message || null">{{ message }}</span>
-      <span class="zoom" role="group" aria-label="Zoom">
-        <button type="button" title="Zoom out (Ctrl+mouse wheel)" aria-label="Zoom out" :disabled="zoomLevel <= ZOOMS[0]" @click="zoomBy(-1)">−</button>
+      <span class="zoom" role="group" :aria-label="t('Zoom')">
+        <button type="button" :title="t('Zoom out (Ctrl+mouse wheel)')" :aria-label="t('Zoom out')" :disabled="zoomLevel <= ZOOMS[0]" @click="zoomBy(-1)">−</button>
         <button type="button" class="zoom-level" :title="zoomLevel === 100 ? 'Zoom: the page at its size' : 'Back to 100%'" :aria-label="`Zoom ${zoomLevel}%${zoomLevel === 100 ? '' : ', back to 100%'}`" @click="setZoom(100)">{{ zoomLevel }}%</button>
-        <button type="button" title="Zoom in (Ctrl+mouse wheel)" aria-label="Zoom in" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
+        <button type="button" :title="t('Zoom in (Ctrl+mouse wheel)')" :aria-label="t('Zoom in')" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
       </span>
     </footer>
   </div>
@@ -1034,6 +1068,7 @@ import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
+import { t, lang } from '../i18n.js';
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
 import { elementChildren } from '../docx/xml.js';
@@ -1803,11 +1838,11 @@ function togglePageBreaks() {
   try { localStorage.setItem(PAGES_KEY, showPageBreaks.value ? '1' : '0'); } catch { /* this session only */ }
   nextTick(updatePages);
 }
-const pageCountTitle = computed(() => `About ${pageCount.value} ${pageCount.value === 1 ? 'page' : 'pages'} on ${paperName()}, worked out from the paper size and margins. Word lays out the pages itself when it opens the file, with its own fonts, so they may break a little differently. Click to ${showPageBreaks.value ? 'hide' : 'show'} where the pages break.`);
+const pageCountTitle = computed(() => void pageTick.value || `About ${pageCount.value} ${pageCount.value === 1 ? 'page' : 'pages'} on ${paperName()}, worked out from the paper size and margins. Word lays out the pages itself when it opens the file, with its own fonts, so they may break a little differently. Click to ${showPageBreaks.value ? 'hide' : 'show'} where the pages break.`);
 function paperName() {
   const p = doc.page;
   const [w, h] = [p.width, p.minHeight].map((v) => Math.round((v * 25.4) / 96));
-  const sizes = { '210x297': 'A4', '216x279': 'Letter', '216x356': 'Legal', '148x210': 'A5', '297x420': 'A3', '184x267': 'Executive' };
+  const sizes = { '210x297': 'A4', '216x279': 'Letter', '216x356': 'Legal', '148x210': 'A5', '297x420': 'A3', '184x267': 'Executive', '215x330': 'F4', '216x330': 'Folio' };
   const name = sizes[`${Math.min(w, h)}x${Math.max(w, h)}`];
   return name ? `${name} paper` : `${w} × ${h} mm paper`;
 }
@@ -5786,6 +5821,97 @@ function editHeaderFooter(which) {
   message.value = `A ${which} for every page: type its text (Undo takes it away)`;
 }
 
+// ------------------------------------------------------------------ page number format
+
+// Word's page number formats (Format Page Numbers' Number format), as w:pgNumType's w:fmt.
+const PAGE_NUMBER_FORMATS = [
+  { value: 'decimal', label: '1, 2, 3, …' },
+  { value: 'numberInDash', label: '- 1 -, - 2 -, - 3 -, …' },
+  { value: 'lowerLetter', label: 'a, b, c, …' },
+  { value: 'upperLetter', label: 'A, B, C, …' },
+  { value: 'lowerRoman', label: 'i, ii, iii, …' },
+  { value: 'upperRoman', label: 'I, II, III, …' },
+];
+const numDialog = reactive({ open: false, x: 0, y: 0, scope: 'whole', sections: 1, sectionNo: 1, canSplit: false, fmt: 'decimal', restart: false, start: 1 });
+const numDialogEl = ref(null);
+let numInitial = null;
+
+/** "i, ii, iii" for a format, as the dialog shows it. */
+const formatLabel = (fmt) => (PAGE_NUMBER_FORMATS.find((f) => f.value === fmt) || PAGE_NUMBER_FORMATS[0]).label.replace(/, …$/, '');
+
+/**
+ * Format Page Numbers, as Word's (Insert > Page Number > Format Page Numbers): the number format
+ * and the start of the section the caret is in; or the whole document's; or a new section's from
+ * the caret on (a section break before its paragraph), for a report's front matter in i, ii, iii
+ * and its chapters from 1.
+ */
+function openPageNumberFormat() {
+  pageNumberMenu.open = false;
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const range = selectionInPage() || savedRange;
+  pageRange = range && !noteAt(range.startContainer) ? range.cloneRange() : null;
+  const blocks = pageRange ? blocksIn(pageRange) : [];
+  const ends = sectionEnds();
+  const end = blocks[0] ? sectionEndOf(blocks[0]) : null;
+  const now = end ? doc.sectionSetup(end) : doc.pageSetupNow();
+  const all = topBlocks();
+  const at = blocks[0] ? all.indexOf(blocks[0]) : -1;
+  numInitial = { fmt: now.numFmt || 'decimal', restart: now.numStart != null, start: now.numStart ?? 1 };
+  const rect = pageNumberButton.value.getBoundingClientRect();
+  Object.assign(numDialog, numInitial, {
+    open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4,
+    sections: ends.length + 1, sectionNo: end ? ends.indexOf(end) + 1 : ends.length + 1,
+    scope: ends.length ? 'section' : 'whole',
+    // A new section from the caret: only where there is text before it in its section.
+    canSplit: at > 0 && all[at - 1].dataset.sectionEnd == null,
+  });
+  nextTick(() => {
+    keepInView(numDialog, numDialogEl.value);
+    numDialogEl.value?.querySelector('select')?.focus();
+  });
+}
+
+function closePageNumberFormat() {
+  numDialog.open = false;
+  refocus();
+}
+
+/** Applies Format Page Numbers' choices to the section(s), as one undoable step. */
+function applyPageNumberFormat() {
+  const d = { ...numDialog };
+  const i = numInitial;
+  numDialog.open = false;
+  refocus();
+  const start = d.restart ? Math.max(0, Math.round(Number(d.start) || 0)) : null;
+  const change = {};
+  if (d.fmt !== i.fmt) change.numFmt = d.fmt;
+  if (start !== (i.restart ? i.start : null)) change.numStart = start;
+  // A new section from the caret is a change of its own, even with the numbering as it was.
+  if (!Object.keys(change).length && d.scope !== 'forward') return;
+  if (textLocked.value) return explainLock();
+  undoStack.flush();
+  let where;
+  if (d.scope === 'whole') {
+    // The format for every section; the start for the first (the others keep where theirs start).
+    const ends = [...sectionEnds(), null];
+    ends.forEach((end, k) => {
+      const set = k === 0 ? { ...change } : {};
+      if (change.numFmt !== undefined) set.numFmt = change.numFmt;
+      if (!Object.keys(set).length) return;
+      if (end) doc.setSectionSetup(end, set);
+      else doc.setPageSetup({ ...doc.pageSetup, ...set });
+    });
+    where = t('for the whole document');
+  } else {
+    where = applySetupTo(d.scope, { numFmt: d.fmt, numStart: start });
+  }
+  pageChanged();
+  undoStack.commit();
+  markDirty();
+  message.value = t('Page numbers: {format}{start} {where}', { format: formatLabel(d.fmt), start: start != null ? t(', starting at {n}', { n: start }) : '', where });
+}
+
 // The page as it was right after fields were updated here (for the review: "updated here").
 let fieldsUpdatedAt = null;
 
@@ -5879,7 +6005,14 @@ const PAPERS = [
   { name: 'A5', label: '14.8 × 21 cm', w: 8391, h: 11906 },
   { name: 'A3', label: '29.7 × 42 cm', w: 16838, h: 23811 },
   { name: 'Executive', label: '7.25 × 10.5 in', w: 10440, h: 15120 },
+  // Indonesia's and much of South-East Asia's office paper: F4 (215 × 330 mm) and Folio (8½ × 13 in),
+  // as Word's paper lists name them where printers offer them.
+  { name: 'F4', label: '21.5 × 33 cm', w: 12189, h: 18709 },
+  { name: 'Folio', label: '8.5 × 13 in', w: 12240, h: 18720 },
 ];
+// A custom paper size's limits, in twips, as Word's Page Setup has them: 0.1 in to 22 in.
+const PAPER_MIN = 144;
+const PAPER_MAX = 31680;
 // Word's margin presets, in twips: 1 inch, ½ inch, 1 and ¾ inch, 1 and 2 inches.
 const MARGIN_PRESETS = [
   { name: 'Normal', top: 1440, bottom: 1440, left: 1440, right: 1440 },
@@ -5889,7 +6022,7 @@ const MARGIN_PRESETS = [
 ];
 const MARGINS = ['top', 'bottom', 'left', 'right'];
 const pageDialog = reactive({
-  open: false, x: 0, y: 0, unit: 'cm', paper: 'A4', orient: 'portrait', top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal',
+  open: false, x: 0, y: 0, unit: 'cm', paper: 'A4', orient: 'portrait', width: 0, height: 0, top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal',
   scope: 'whole', sections: 1, sectionNo: 1, selected: false, titlePg: false, evenAndOdd: false,
 });
 let pageRange = null; // the text Page setup applies to, for "This section", "This point forward" and "Selected text"
@@ -5927,9 +6060,10 @@ function openPageSetup() {
   const paper = PAPERS.find((p) => Math.abs(p.w - short) <= 20 && Math.abs(p.h - long) <= 20);
   const unit = unitFor(now.w, now.h);
   const cm = (twips) => fromTwips(twips, unit);
-  pageTwips = { top: now.top, bottom: now.bottom, left: now.left, right: now.right };
+  pageTwips = { width: now.w, height: now.h, top: now.top, bottom: now.bottom, left: now.left, right: now.right };
   pageInitial = {
     paper: paper ? paper.name : 'custom', orient: now.orient === 'landscape' || now.w > now.h ? 'landscape' : 'portrait',
+    width: cm(now.w), height: cm(now.h),
     top: cm(now.top), bottom: cm(now.bottom), left: cm(now.left), right: cm(now.right), w: now.w, h: now.h,
     ...watermarkNow(),
     ...doc.headerFooterFlags(),
@@ -5959,7 +6093,7 @@ function pickMargins(name) {
 /** The Page setup dialog's margins in another unit (remembered for the next dialogs). */
 function setPageUnit(unit) {
   saveUnit(unit);
-  switchUnit(pageDialog, pageInitial, pageTwips, MARGINS, unit);
+  switchUnit(pageDialog, pageInitial, pageTwips, [...MARGINS, 'width', 'height'], unit);
 }
 
 /** Applies what was changed in the Page setup dialog to every section, as one undoable step. */
@@ -5969,9 +6103,19 @@ function applyPageSetup() {
   pageDialog.open = false;
   const num = (v) => (Number.isFinite(Number(v)) && v !== '' ? Math.max(0, Number(v)) : 0);
   const change = {};
-  if (d.paper !== i.paper || d.orient !== i.orient) {
+  // A custom size: as typed (a length left as it was keeps its exact value), turned to the orientation.
+  const custom = d.paper === 'custom';
+  const sized = custom && (num(d.width) !== i.width || num(d.height) !== i.height);
+  if (d.paper !== i.paper || d.orient !== i.orient || sized) {
     const paper = PAPERS.find((p) => p.name === d.paper);
-    const [short, long] = paper ? [paper.w, paper.h] : [Math.min(i.w, i.h), Math.max(i.w, i.h)];
+    const typed = (k, exact) => (num(d[k]) === i[k] ? exact : toTwips(num(d[k]), d.unit));
+    const [a, b] = paper ? [paper.w, paper.h] : [typed('width', i.w), typed('height', i.h)];
+    if (custom && [a, b].some((v) => v < PAPER_MIN || v > PAPER_MAX)) {
+      message.value = t('The paper’s width and height must be between {min} and {max}: nothing was changed', d.unit === 'in' ? { min: '0.1 in', max: '22 in' } : { min: '0.25 cm', max: '55.88 cm' });
+      refocus();
+      return;
+    }
+    const [short, long] = [Math.min(a, b), Math.max(a, b)];
     const landscape = d.orient === 'landscape';
     Object.assign(change, { w: landscape ? long : short, h: landscape ? short : long, orient: d.orient });
   }
@@ -5988,7 +6132,7 @@ function applyPageSetup() {
     const left = change.left ?? pageTwips.left;
     const right = change.right ?? pageTwips.right;
     if (width - left - right < 1440) {
-      message.value = `The margins leave less than ${d.unit === 'in' ? '1 in' : '2.5 cm'} for the text: nothing was changed`;
+      message.value = t('The margins leave less than {room} for the text: nothing was changed', { room: d.unit === 'in' ? '1 in' : '2.5 cm' });
       return;
     }
   }
@@ -6001,7 +6145,7 @@ function applyPageSetup() {
   undoStack.commit();
   markDirty();
   const said = [];
-  if (paged) said.push(`Page setup changed ${where}`);
+  if (paged) said.push(t('Page setup changed {where}', { where }));
   if (hfChanged) said.push([d.titlePg !== i.titlePg && `${d.titlePg ? 'A' : 'No'} different first page`, d.evenAndOdd !== i.evenAndOdd && `odd and even pages ${d.evenAndOdd ? 'different' : 'alike'}`].filter(Boolean).join(', ') + (d.titlePg && !i.titlePg || d.evenAndOdd && !i.evenAndOdd ? ': their header and footer are in the tabs above and below the page' : ''));
   if (markChanged) said.push(markText ? `Watermark: ${markText}` : 'Watermark removed');
   message.value = said.join(' · ');
@@ -6071,12 +6215,12 @@ function applySetupTo(scope, change) {
   if (scope === 'whole' || !blocks.length) {
     doc.setPageSetup({ ...doc.pageSetup, ...change });
     for (const end of sectionEnds()) doc.setSectionSetup(end, change);
-    return 'for the whole document';
+    return t('for the whole document');
   }
   const first = blocks[0];
   if (scope === 'section') {
     setFor(sectionEndOf(first));
-    return `for section ${sectionEnds().indexOf(sectionEndOf(first)) + 1 || sectionEnds().length + 1}`;
+    return t('for section {n}', { n: sectionEnds().indexOf(sectionEndOf(first)) + 1 || sectionEnds().length + 1 });
   }
   let made = 0;
   const tops = () => topBlocks();
@@ -6100,7 +6244,7 @@ function applySetupTo(scope, change) {
   }
   setFor(sectionEndOf(first));
   doc.renumber(page.value);
-  return `${scope === 'selected' ? 'for the selected text' : 'from this point forward'}${made ? ` (${made} section ${made === 1 ? 'break' : 'breaks'} added)` : ''}`;
+  return `${scope === 'selected' ? t('for the selected text') : t('from this point forward')}${made ? t(made === 1 ? ' ({n} section break added)' : ' ({n} section breaks added)', { n: made }) : ''}`;
 }
 
 /** Names each section break on the page with its section and its paper, where there is more than one section. */
@@ -6110,7 +6254,8 @@ function refreshSections() {
   ends.forEach((el, n) => {
     const s = doc.sectionSetup(el);
     const paper = PAPERS.find((p) => Math.abs(p.w - Math.min(s.w, s.h)) <= 20 && Math.abs(p.h - Math.max(s.w, s.h)) <= 20);
-    const note = `Section ${n + 1}: ${paper ? `${paper.name} ` : ''}${s.w > s.h || s.orient === 'landscape' ? 'landscape' : 'portrait'} · section break (next page)`;
+    const numbering = [s.numFmt && s.numFmt !== 'decimal' ? t('pages {format}', { format: formatLabel(s.numFmt) }) : '', s.numStart != null ? t('from {n}', { n: s.numStart }) : ''].filter(Boolean).join(' ');
+    const note = `${t('Section {n}', { n: n + 1 })}: ${paper ? `${paper.name} ` : ''}${t(s.w > s.h || s.orient === 'landscape' ? 'landscape' : 'portrait')}${numbering ? ` · ${numbering}` : ''} · ${t('section break (next page)')}`;
     if (el.dataset.sectionNote !== note) el.dataset.sectionNote = note;
   });
   for (const el of page.value.querySelectorAll('[data-section-note]')) if (el.dataset.sectionEnd == null) delete el.dataset.sectionNote;
@@ -7465,6 +7610,7 @@ function onDocumentMousedown(e) {
   if (insertMenu.open && !insertMenuEl.value?.contains(e.target) && !insertButton.value?.contains(e.target)) insertMenu.open = false;
   if (caseMenu.open && !caseMenuEl.value?.contains(e.target) && !caseButton.value?.contains(e.target)) caseMenu.open = false;
   if (pageNumberMenu.open && !pageNumberMenuEl.value?.contains(e.target) && !pageNumberButton.value?.contains(e.target)) pageNumberMenu.open = false;
+  if (numDialog.open && !numDialogEl.value?.contains(e.target) && !pageNumberButton.value?.contains(e.target)) numDialog.open = false;
   if (ctxMenu.open && !ctxMenuEl.value?.contains(e.target)) ctxMenu.open = false;
   if (shareReady.file && !shareReadyEl.value?.contains(e.target)) shareReady.file = null;
   if (pdfDialog.open && !pdfDialogEl.value?.contains(e.target)) pdfDialog.open = false;
@@ -8443,7 +8589,7 @@ async function close() {
 .toolbar .ribbon-mode { margin: 0 0 0 auto; height: 28px !important; }
 .toolbar.ribbon { min-height: 45px; box-sizing: border-box; }
 /* One tab's tools on one row of a laptop's width: the style and font boxes a little narrower. */
-.toolbar.ribbon select[aria-label="Paragraph style"] { min-width: 0; width: 118px; }
+.toolbar.ribbon select.style-choice { min-width: 0; width: 118px; }
 .toolbar.ribbon select.font-choice { width: 120px; }
 .toolbar.ribbon .sep { margin: 0 2px; }
 @media (min-width: 721px) {

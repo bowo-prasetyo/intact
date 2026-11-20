@@ -163,3 +163,81 @@ test('a starter downloaded and opened again comes back with the same text', asyn
   await expect(page.locator('.docx-page')).toBeVisible();
   expect(await page.locator('.docx-page').innerText()).toBe(text);
 });
+
+// Indonesian government documents (naskah dinas), offered first when the interface is in Indonesian:
+// in Indonesian, on A4 in Arial 12 pt with 3 cm on the left and 2 cm elsewhere, with the letterhead
+// (kop) and the signatory's name and NIP, written as Word writes a document.
+test.describe('in Indonesian', () => {
+  test.use({ locale: 'id-ID' });
+  const NASKAH = { 'Surat dinas': 'Surat dinas', 'Nota dinas': 'Nota dinas', 'Surat undangan': 'Surat undangan', 'Berita acara': 'Berita acara' };
+
+  test('the start page offers the naskah dinas first, then the others (in English)', async ({ page }) => {
+    await page.goto('./');
+    const official = page.getByRole('region', { name: 'Naskah dinas (Tata Naskah Dinas)' });
+    await expect(official.getByRole('button')).toHaveCount(4);
+    for (const name of Object.keys(NASKAH)) await expect(official.getByRole('button', { name: new RegExp(`^${name}:`) })).toBeVisible();
+    await expect(official).toContainText('Kertas A4, sesuai ketentuan tata naskah dinas; F4 dan Folio ada di Pengaturan halaman.');
+    const others = page.getByRole('region', { name: 'Templat lain (dalam bahasa Inggris)' });
+    await expect(others.getByRole('button')).toHaveCount(STARTERS.length);
+  });
+
+  /** Downloads it (Unduh, then the review's Download) and reads the saved package. */
+  async function savedHere(page) {
+    await page.locator('.app-header').getByRole('button', { name: 'Unduh' }).click();
+    const review = page.getByRole('dialog', { name: 'Review your changes' });
+    const [dl] = await Promise.all([page.waitForEvent('download'), review.getByRole('button', { name: 'Download' }).click()]);
+    const zip = await JSZip.loadAsync(fs.readFileSync(await dl.path()));
+    return { zip, read: (p) => zip.file(p)?.async('string') };
+  }
+
+  for (const [name, file] of Object.entries(NASKAH)) {
+    test(`${name}: opens with Fill in, on A4 in Arial with the official margins, in Indonesian, as Word writes a document`, async ({ page }) => {
+      await start(page, name);
+      await expect(page.getByRole('dialog', { name: 'Isi placeholder' })).toBeVisible();
+      await expect(page.getByRole('textbox', { name: 'Nama berkas' })).toHaveValue(file);
+      await expect(page.locator('.docx-page > p').first()).toHaveText('[NAMA INSTANSI]');
+      const { zip, read } = await savedHere(page);
+      const doc = await read('word/document.xml');
+      expect(doc).toContain('<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1701"');
+      expect(doc).toContain('<w:pBdr><w:bottom w:val="thickThinSmallGap" w:sz="24" w:space="1" w:color="auto"/></w:pBdr>');
+      expect(doc).toContain('NIP [NIP');
+      expect(outOfOrder(doc, 'pPr', PPR_ORDER)).toEqual([]);
+      expect(outOfOrder(doc, 'rPr', RPR_ORDER)).toEqual([]);
+      expect(outOfOrder(doc, 'tcPr', TCPR_ORDER)).toEqual([]);
+      expect(outOfOrder(doc, 'tblPr', TBLPR_ORDER)).toEqual([]);
+      const styles = await read('word/styles.xml');
+      expect(styles).toContain('<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="24"/>');
+      expect(styles).toContain('<w:lang w:val="id-ID"/>');
+      for (const [, id] of doc.matchAll(/<w:(?:pStyle|tblStyle|rStyle) w:val="([^"]+)"\/>/g)) expect(styles).toContain(`w:styleId="${id}"`);
+      const rels = await read('word/_rels/document.xml.rels');
+      const types = await read('[Content_Types].xml');
+      for (const [, target] of rels.matchAll(/Target="([^"]+\.xml)"/g)) {
+        expect(zip.file(`word/${target}`), target).toBeTruthy();
+        expect(types).toContain(`PartName="/word/${target}"`);
+      }
+    });
+  }
+
+  test('filling in the surat dinas: the office\'s name in its letterhead, the labels lined up at a tab stop', async ({ page }) => {
+    await start(page, 'Surat dinas');
+    const dialog = page.getByRole('dialog', { name: 'Isi placeholder' });
+    await expect(dialog.getByText('1 tempat').first()).toBeVisible();
+    await dialog.getByRole('textbox', { name: 'NAMA INSTANSI', exact: true }).fill('PEMERINTAH KABUPATEN CONTOH');
+    await dialog.getByRole('textbox', { name: 'Nomor surat', exact: true }).fill('800/123/2026');
+    await dialog.getByRole('button', { name: 'Isi' }).click();
+    await expect(page.locator('.docx-page > p').first()).toHaveText('PEMERINTAH KABUPATEN CONTOH');
+    const nomor = page.locator('.docx-page > p', { hasText: '800/123/2026' });
+    await expect(nomor).toHaveText(/^Nomor\s*: 800\/123\/2026$/);
+    const { read } = await savedHere(page);
+    expect(await read('word/document.xml')).toMatch(/<w:tabs><w:tab w:val="left" w:pos="1701"\/><\/w:tabs>.*?Nomor<\/w:t>(?:<\/w:r><w:r>)?<w:tab\/>(?:<\/w:r><w:r>)?<w:t xml:space="preserve">: 800\/123\/2026/s);
+  });
+
+  test('the berita acara\'s signatures sit side by side in a table without borders', async ({ page }) => {
+    await start(page, 'Berita acara');
+    const table = page.locator('.docx-page table');
+    await expect(table).toHaveCount(1);
+    await expect(table.locator('td').first()).toContainText('PIHAK KEDUA,');
+    await expect(table.locator('td').nth(1)).toContainText('PIHAK PERTAMA,');
+    await expect(table.locator('td').first()).toHaveCSS('border-top-style', 'none');
+  });
+});

@@ -7,9 +7,9 @@ import { blankDocxFiles, textWidth } from './blank.js';
 
 const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** A run: `text` with { b, i, color, sz (half-points), caps }; a tab for '\t'. */
+/** A run: `text` with { b, i, color, sz (half-points), caps, u (underline) }; a tab for '\t'. */
 function run(text, f = {}) {
-  const props = `${f.b ? '<w:b/>' : ''}${f.i ? '<w:i/>' : ''}${f.caps ? '<w:caps/>' : ''}${f.color ? `<w:color w:val="${f.color}"/>` : ''}${f.sz ? `<w:sz w:val="${f.sz}"/><w:szCs w:val="${f.sz}"/>` : ''}`;
+  const props = `${f.b ? '<w:b/>' : ''}${f.i ? '<w:i/>' : ''}${f.caps ? '<w:caps/>' : ''}${f.color ? `<w:color w:val="${f.color}"/>` : ''}${f.sz ? `<w:sz w:val="${f.sz}"/><w:szCs w:val="${f.sz}"/>` : ''}${f.u ? '<w:u w:val="single"/>' : ''}`;
   const rPr = props ? `<w:rPr>${props}</w:rPr>` : '';
   return text.split('\t').map((part, i) => `${i ? `<w:r>${rPr}<w:tab/></w:r>` : ''}${part ? `<w:r>${rPr}<w:t xml:space="preserve">${esc(part)}</w:t></w:r>` : ''}`).join('');
 }
@@ -25,34 +25,40 @@ function p(content = '', o = {}) {
     o.style ? `<w:pStyle w:val="${o.style}"/>` : '',
     o.keepNext ? '<w:keepNext/>' : '',
     o.bullet ? '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>' : '',
-    o.border ? '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="auto"/></w:pBdr>' : '',
+    o.border === 'thickThin' ? '<w:pBdr><w:bottom w:val="thickThinSmallGap" w:sz="24" w:space="1" w:color="auto"/></w:pBdr>' : o.border ? '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="auto"/></w:pBdr>' : '',
     o.tabs ? `<w:tabs>${o.tabs.map((t) => (typeof t === 'number' ? `<w:tab w:val="left" w:pos="${t}"/>` : `<w:tab w:val="${t.align}" w:pos="${t.pos}"/>`)).join('')}</w:tabs>` : '',
     o.before != null || o.after != null || o.line != null
       ? `<w:spacing${o.before != null ? ` w:before="${o.before}"` : ''}${o.after != null ? ` w:after="${o.after}"` : ''}${o.line != null ? ` w:line="${o.line}" w:lineRule="auto"` : ''}/>` : '',
-    o.ind != null || o.first != null ? `<w:ind${o.ind != null ? ` w:left="${o.ind}"` : ''}${o.first != null ? ` w:firstLine="${o.first}"` : ''}/>` : '',
+    o.ind != null || o.first != null || o.hanging != null
+      ? `<w:ind${o.ind != null ? ` w:left="${o.ind}"` : ''}${o.hanging != null ? ` w:hanging="${o.hanging}"` : o.first != null ? ` w:firstLine="${o.first}"` : ''}/>` : '',
     o.jc ? `<w:jc w:val="${o.jc}"/>` : '',
   ].join('');
   return `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${runs}</w:p>`;
 }
+
+// A cell without borders (a layout table: signatures side by side), as Word's No Border writes it.
+const NO_BORDERS = `<w:tcBorders>${['top', 'left', 'bottom', 'right'].map((side) => `<w:${side} w:val="nil"/>`).join('')}</w:tcBorders>`;
 
 /**
  * A table across the page in Table Grid: `widths` (shares of the text width), `rows` (arrays of
  * cell texts), the first row a heading row (bold, shaded, repeated on each page) unless `heading`
  * is false, and cells in columns `right` aligned right (amounts).
  */
-function table(paper, widths, rows, { heading = true, right = [], shade = 'D9E2F3' } = {}) {
+function table(paper, widths, rows, { heading = true, right = [], shade = 'D9E2F3', borders = true, center = false, width = null } = {}) {
   const total = widths.reduce((a, b) => a + b, 0);
-  const tw = widths.map((x) => Math.floor((textWidth(paper) * x) / total));
+  const tw = widths.map((x) => Math.floor(((width ?? textWidth(paper)) * x) / total));
   const grid = tw.map((x) => `<w:gridCol w:w="${x}"/>`).join('');
   const body = rows.map((cells, r) => {
     const head = heading && r === 0;
     const trPr = head ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
     const tcs = cells.map((text, c) => {
       const shd = head ? `<w:shd w:val="clear" w:color="auto" w:fill="${shade}"/>` : '';
-      const jc = right.includes(c) ? 'right' : null;
+      const jc = right.includes(c) ? 'right' : center ? 'center' : null;
       const bold = head || /^\*\*.*\*\*$/.test(text);
       const t = text.replace(/^\*\*(.*)\*\*$/, '$1');
-      return `<w:tc><w:tcPr><w:tcW w:w="${tw[c]}" w:type="dxa"/>${shd}</w:tcPr>${p(t, { jc, run: { b: bold } })}</w:tc>`;
+      // A cell of several lines (a signature: the role, room to sign, the name) is a paragraph each.
+      const lines = t.split('\n').map((line) => p(line.replace(/^_(.*)_$/, '$1'), { jc, after: 0, run: { b: bold, u: /^_.*_$/.test(line) } }));
+      return `<w:tc><w:tcPr><w:tcW w:w="${tw[c]}" w:type="dxa"/>${borders ? '' : NO_BORDERS}${shd}</w:tcPr>${lines.join('')}</w:tc>`;
     }).join('');
     return `<w:tr>${trPr}${tcs}</w:tr>`;
   }).join('');
@@ -62,9 +68,165 @@ function table(paper, widths, rows, { heading = true, right = [], shade = 'D9E2F
 const LABEL = 1701; // 3 cm: where a "Label:" line's value starts (a left tab stop)
 const label = (name, value) => p([run(`${name}:`, { b: true }), run(`\t${value}`)], { tabs: [LABEL], after: 40 });
 
+// Indonesian government documents (naskah dinas) as the rules for them (tata naskah dinas) lay them
+// out: on A4, in Arial 12 pt, single-spaced, with the margins official documents commonly use (3 cm
+// on the left, 2 cm elsewhere). Each starts with the office's letterhead (kop: its name in capitals,
+// its unit, its address and contacts, and a thick-and-thin line under them), and ends with the
+// signatory's position, name and NIP, at the right. A logo can go beside the letterhead with Insert
+// picture. Labels such as "Nomor" line up at a tab stop, with the colon after it, as offices write
+// them; the placeholders are in Indonesian, so Fill in asks for them in Indonesian.
+const ID_MARGINS = { top: 1134, right: 1134, bottom: 1134, left: 1701 };
+const ID_WIDTH = 11906 - ID_MARGINS.left - ID_MARGINS.right; // A4 between those margins
+const ID_LABEL = 1701; // 3 cm: where a label's colon and value start
+const ID_SIGN = 4820; // 8.5 cm: where the signature block starts, on the right half
+const ID_SINGLE = '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>';
+
+/** The office's letterhead (kop surat): name, unit, address and contacts, a thick-and-thin line. */
+const kop = () => [
+  p('[NAMA INSTANSI]', { jc: 'center', run: { b: true, sz: 32 } }),
+  p('[NAMA UNIT KERJA]', { jc: 'center', run: { b: true, sz: 28 } }),
+  p('[Alamat kantor] Telepon [Nomor telepon]', { jc: 'center', run: { sz: 20 } }),
+  p('Laman [Alamat laman] Pos-el [Alamat pos-el]', { jc: 'center', border: 'thickThin', after: 360, run: { sz: 20 } }),
+];
+/** "Nomor<tab>: [Nomor surat]": a label, its colon at the tab stop, the value after it. */
+const idLabel = (name, value, o = {}) => p(`${name}\t: ${value}`, { tabs: [o.at || ID_LABEL], ...o });
+/** The signature block, on the right: the position, room to sign, the name (underlined) and NIP. */
+const signature = (before = 240) => [
+  p('[Nama jabatan],', { ind: ID_SIGN, before }),
+  p('', { ind: ID_SIGN, after: 1080 }),
+  p('[Nama lengkap]', { ind: ID_SIGN, run: { b: true, u: true } }),
+  p('NIP [NIP]', { ind: ID_SIGN }),
+];
+/** Tembusan (copies to), numbered as offices type them. */
+const tembusan = () => [
+  p('Tembusan:', { before: 360 }),
+  p('1. [Tembusan pertama]'),
+  p('2. [Tembusan kedua]'),
+];
+
+function naskahDinas() {
+  const common = { lang: 'id', paper: 'A4', margins: ID_MARGINS, language: 'id-ID', font: { name: 'Arial', sz: 24 }, normal: ID_SINGLE };
+  return [
+    {
+      id: 'surat-dinas',
+      title: 'Surat dinas',
+      description: 'Surat resmi instansi, dengan kop, nomor, hal, dan tanda tangan',
+      file: 'Surat dinas',
+      ...common,
+      build: () => ({
+        ...common,
+        body: [
+          ...kop(),
+          p('[Kota], [Tanggal surat]', { jc: 'right', after: 240 }),
+          idLabel('Nomor', '[Nomor surat]'),
+          idLabel('Sifat', '[Biasa / Segera / Rahasia]'),
+          idLabel('Lampiran', '[Jumlah lampiran]'),
+          idLabel('Hal', '[Hal surat]', { after: 240 }),
+          p('Yth. [Jabatan penerima]'),
+          p('[Nama instansi penerima]'),
+          p('di [Tempat]', { after: 240 }),
+          p('[Paragraf pembuka: rujukan atau latar belakang surat.]', { jc: 'both', first: 709, after: 120 }),
+          p('[Paragraf isi: hal yang disampaikan, diminta, atau diberitahukan.]', { jc: 'both', first: 709, after: 120 }),
+          p('Demikian kami sampaikan. Atas perhatian dan kerja sama Bapak/Ibu, kami ucapkan terima kasih.', { jc: 'both', first: 709 }),
+          ...signature(),
+          ...tembusan(),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'nota-dinas',
+      title: 'Nota dinas',
+      description: 'Naskah internal antarpejabat: yth., dari, hal, dan tanggal',
+      file: 'Nota dinas',
+      ...common,
+      build: () => ({
+        ...common,
+        body: [
+          ...kop(),
+          p('NOTA DINAS', { jc: 'center', run: { b: true } }),
+          p('NOMOR [Nomor nota dinas]', { jc: 'center', after: 240 }),
+          idLabel('Yth.', '[Jabatan penerima]'),
+          idLabel('Dari', '[Jabatan pengirim]'),
+          idLabel('Tembusan', '[Jabatan tembusan]'),
+          idLabel('Sifat', '[Biasa / Segera / Rahasia]'),
+          idLabel('Lampiran', '[Jumlah lampiran]'),
+          idLabel('Hal', '[Hal nota dinas]'),
+          idLabel('Tanggal', '[Tanggal]'),
+          p('', { border: 'bottom', after: 240 }),
+          p('[Isi nota dinas: pokok persoalan, uraian, dan hal yang diminta atau diusulkan.]', { jc: 'both', first: 709, after: 120 }),
+          p('Demikian disampaikan, mohon arahan lebih lanjut.', { jc: 'both', first: 709 }),
+          ...signature(),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'surat-undangan',
+      title: 'Surat undangan',
+      description: 'Undangan rapat atau acara: hari, waktu, tempat, dan acara',
+      file: 'Surat undangan',
+      ...common,
+      build: () => ({
+        ...common,
+        body: [
+          ...kop(),
+          p('[Kota], [Tanggal surat]', { jc: 'right', after: 240 }),
+          idLabel('Nomor', '[Nomor surat]'),
+          idLabel('Sifat', '[Biasa / Segera]'),
+          idLabel('Lampiran', '[Jumlah lampiran]'),
+          idLabel('Hal', 'Undangan [Nama kegiatan]', { after: 240 }),
+          p('Yth. [Daftar undangan]'),
+          p('di [Tempat]', { after: 240 }),
+          p('Dalam rangka [maksud kegiatan], dengan hormat kami mengundang Bapak/Ibu untuk hadir pada:', { jc: 'both', first: 709, after: 120 }),
+          idLabel('hari, tanggal', '[Hari, tanggal]', { ind: 709, at: 3119 }),
+          idLabel('waktu', '[Pukul mulai] s.d. [Pukul selesai]', { ind: 709, at: 3119 }),
+          idLabel('tempat', '[Tempat kegiatan]', { ind: 709, at: 3119 }),
+          idLabel('acara', '[Acara]', { ind: 709, at: 3119, after: 120 }),
+          p('Mengingat pentingnya acara tersebut, kami mohon Bapak/Ibu hadir tepat waktu. Atas perhatian Bapak/Ibu, kami ucapkan terima kasih.', { jc: 'both', first: 709 }),
+          ...signature(),
+          ...tembusan(),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'berita-acara',
+      title: 'Berita acara',
+      description: 'Catatan resmi suatu kejadian atau serah terima, ditandatangani kedua pihak',
+      file: 'Berita acara',
+      ...common,
+      build: () => ({
+        ...common,
+        styles: ['tableGrid'],
+        body: [
+          ...kop(),
+          p('BERITA ACARA [JUDUL BERITA ACARA]', { jc: 'center', run: { b: true } }),
+          p('NOMOR [Nomor berita acara]', { jc: 'center', after: 240 }),
+          p('Pada hari ini [Hari], tanggal [Tanggal dalam huruf], bulan [Bulan], tahun [Tahun dalam huruf], bertempat di [Tempat], kami yang bertanda tangan di bawah ini:', { jc: 'both', after: 120 }),
+          idLabel('1. Nama', '[Nama pihak pertama]', { at: 2268 }),
+          idLabel('NIP', '[NIP pihak pertama]', { ind: 284, at: 2268 }),
+          idLabel('Jabatan', '[Jabatan pihak pertama]', { ind: 284, at: 2268 }),
+          p('selanjutnya disebut PIHAK PERTAMA.', { ind: 284, after: 120 }),
+          idLabel('2. Nama', '[Nama pihak kedua]', { at: 2268 }),
+          idLabel('NIP', '[NIP pihak kedua]', { ind: 284, at: 2268 }),
+          idLabel('Jabatan', '[Jabatan pihak kedua]', { ind: 284, at: 2268 }),
+          p('selanjutnya disebut PIHAK KEDUA.', { ind: 284, after: 120 }),
+          p('[Uraian: apa yang terjadi, diperiksa, atau diserahterimakan, dan dalam keadaan apa.]', { jc: 'both', first: 709, after: 120 }),
+          p('Demikian berita acara ini dibuat dengan sebenarnya untuk dipergunakan sebagaimana mestinya.', { jc: 'both', first: 709, after: 360 }),
+          idTable([1, 1], [[
+            'PIHAK KEDUA,\n\n\n\n_[Nama pihak kedua]_\nNIP [NIP pihak kedua]',
+            'PIHAK PERTAMA,\n\n\n\n_[Nama pihak pertama]_\nNIP [NIP pihak pertama]',
+          ]]),
+        ].join(''),
+      }),
+    },
+  ];
+}
+/** A table across the text between the naskah dinas' margins, with no borders: signatures side by side. */
+const idTable = (widths, rows) => table(null, widths, rows, { heading: false, borders: false, center: true, width: ID_WIDTH });
+
 /**
- * The starters: { id, title, description, file, build(paper) → blankDocxFiles options }. Their
- * placeholders name what to type, in brackets, so Fill in lists them.
+ * The starters: { id, title, description, file, build(paper) → blankDocxFiles options, and for those
+ * in another language than English its `lang` ('id') and `paper` }. Their placeholders name what to
+ * type, in brackets, so Fill in lists them.
  */
 export const STARTERS = [
   {
@@ -267,6 +429,9 @@ export const STARTERS = [
     file: 'Manuscript',
     build: () => manuscript(), // defined below, with what it is made of
   },
+  // Indonesian government documents (naskah dinas), in Indonesian, as the start page offers them
+  // when the interface is in Indonesian: defined below.
+  ...naskahDinas(),
 ];
 
 // A novel's manuscript as agents and publishers ask for it (standard manuscript format): Times New
@@ -324,9 +489,13 @@ export function localPaper(language = (typeof navigator !== 'undefined' && navig
   return region && LETTER_REGIONS.has(region) ? 'Letter' : 'A4';
 }
 
-/** The files of starter `id` on `paper`: its parts as blankDocxFiles makes them, titled as the starter. */
+/**
+ * The files of starter `id` on `paper`: its parts as blankDocxFiles makes them, titled as the starter.
+ * A starter with paper of its own (the naskah dinas, on A4 as their rules ask) keeps it.
+ */
 export function starterFiles(id, paper = localPaper()) {
   const starter = STARTERS.find((s) => s.id === id);
   if (!starter) throw new Error(`No starter called ${id}`);
-  return blankDocxFiles({ ...starter.build(paper), paper });
+  const on = starter.paper || paper;
+  return blankDocxFiles({ ...starter.build(on), paper: on });
 }

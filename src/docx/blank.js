@@ -32,9 +32,10 @@ export const textWidth = (paper = 'A4') => PAPERS[paper].w - 2 * 1440;
  * starter with a look of its own (a manuscript) also gives `font` ({ name, sz } in half-points: the
  * document's default), `normal` (Normal's w:pPr, its inner XML), `heading1` (Heading 1's own w:pPr
  * and w:rPr, in place of Word's), `header` (the paragraphs of a header on every page) and `titlePg`
- * (a different first page, its header left empty, as a title page has it).
+ * (a different first page, its header left empty, as a title page has it). `margins` ({ top, right,
+ * bottom, left } in twips) are 2.54 cm unless given; `language` is the text's (w:lang), en-US unless given.
  */
-export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, footer = false, paper = 'A4', title = '', font = null, normal = '', heading1 = null, header = '', titlePg = false } = {}) {
+export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, footer = false, paper = 'A4', title = '', font = null, normal = '', heading1 = null, header = '', titlePg = false, margins = null, language = 'en-US' } = {}) {
   const builtin = (k) => BUILTIN_STYLES[k].xml('<w:basedOn w:val="Normal"/>').replace('__NORMAL__', 'Normal');
   const h1 = heading1
     ? builtin('h1').replace(/<w:pPr>.*?<\/w:pPr>\s*<w:rPr>.*?<\/w:rPr>/s, `<w:pPr>${heading1.pPr}</w:pPr><w:rPr>${heading1.rPr}</w:rPr>`)
@@ -47,6 +48,7 @@ export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, 
   const fontName = font?.name || 'Calibri';
   const fontSize = font?.sz || 22;
   const { w, h } = PAPERS[paper] || PAPERS.A4;
+  const m = { top: 1440, right: 1440, bottom: 1440, left: 1440, ...margins };
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const files = {
@@ -78,11 +80,11 @@ ${bullets ? '<Override PartName="/word/numbering.xml" ContentType="application/v
 ${bullets ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n' : ''}${footer ? '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>\n' : ''}${header ? '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>\n' : ''}</Relationships>`,
     'word/settings.xml': XML_HEADER + `<w:settings ${W_NS}><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
     'word/document.xml': XML_HEADER + `<w:document ${W_NS}><w:body>${body}
-<w:sectPr>${header ? '<w:headerReference w:type="default" r:id="rId5"/>' : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="${w}" w:h="${h}"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="708"/>${titlePg ? '<w:titlePg/>' : ''}</w:sectPr>
+<w:sectPr>${header ? '<w:headerReference w:type="default" r:id="rId5"/>' : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="${w}" w:h="${h}"/><w:pgMar w:top="${m.top}" w:right="${m.right}" w:bottom="${m.bottom}" w:left="${m.left}" w:header="708" w:footer="708" w:gutter="0"/><w:cols w:space="708"/>${titlePg ? '<w:titlePg/>' : ''}</w:sectPr>
 </w:body></w:document>`,
     'word/styles.xml': XML_HEADER + `<w:styles ${W_NS}>
 <w:docDefaults>
-<w:rPrDefault><w:rPr><w:rFonts w:ascii="${fontName}" w:hAnsi="${fontName}" w:eastAsia="${fontName}" w:cs="${fontName}"/><w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>
+<w:rPrDefault><w:rPr><w:rFonts w:ascii="${fontName}" w:hAnsi="${fontName}" w:eastAsia="${fontName}" w:cs="${fontName}"/><w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/><w:lang w:val="${/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language) ? language : 'en-US'}"/></w:rPr></w:rPrDefault>
 <w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault>
 </w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/>${normal ? `<w:pPr>${normal}</w:pPr>` : ''}</w:style>

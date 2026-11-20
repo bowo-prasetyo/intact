@@ -28,6 +28,28 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   document" makes it download as a `.docx` instead (a `.dotm` as a `.docm`, macros kept), only the
   main part's content type changed, so the quote, letter or invoice written from it never replaces
   the template. "Edit the template instead" goes back. The template file opened is never changed
+- The interface in English or Indonesian (Bahasa Indonesia): the browser's language chooses it, and
+  the start page's Language menu changes it (remembered in this browser). The start page, the
+  header, the ribbon and its tools, the status bar, Page setup, Page number and its Format page
+  numbers, Fill in and the Paragraph dialog's labels are translated, with Word's own Indonesian
+  names (Beranda, Sisipkan, Tata Letak, Referensi, Tinjau; Pengaturan halaman, Lacak perubahan);
+  the rest is in English for now (see Limitations). Only the interface changes: a document's text,
+  styles and fields, and the file saved, are the same in both. The strings are looked up by their
+  English text (`src/i18n.js`, `src/locales/id.js`), loaded only when Indonesian is chosen. A
+  blank document started in Indonesian is in Indonesian (`w:lang` id-ID), named "Tanpa judul", so
+  the browser checks its spelling in Indonesian where it can
+- Indonesian government documents (naskah dinas), first on the start page when the interface is in
+  Indonesian: a surat dinas (an office's letter), a nota dinas (an internal memo between officials),
+  a surat undangan (an invitation to a meeting or event: day and date, time, place, agenda) and a
+  berita acara (an official record of an event or a handover, signed by both parties), in
+  Indonesian, laid out as the rules for official documents (tata naskah dinas) lay them out: on A4,
+  in Arial 12 pt, single-spaced, with 3 cm on the left and 2 cm elsewhere; the office's letterhead
+  (kop: its name in capitals, its unit, address and contacts, over a thick-and-thin line, as Word's
+  border writes it), "Nomor", "Sifat", "Lampiran" and "Hal" lined up at a tab stop with their colons,
+  the signatory's position, name and NIP at the right, "Tembusan", and in the berita acara both
+  parties' signatures side by side in a table without borders. Their placeholders are in Indonesian
+  ("[Nomor surat]", "[Nama jabatan]"), for Fill in. F4 and Folio are in Page setup, for offices
+  that print on them
 - Start from a template, on the start page: a letter, a memo, meeting minutes, a quote, an invoice,
   a CV, a report and a novel's manuscript, each a new Word document made in the browser (nothing is fetched), in Word's
   own styles (Title, Heading 1 and 2, Table Grid with a shaded heading row that repeats on each page,
@@ -336,7 +358,21 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   the caret goes there to say where. Edit header and Edit footer, in the same menu, go to the end of
   the header or footer shown, or give a document without one an empty one for all pages to type in
   (Undo takes it away)
-- Page setup for the whole document, as Word's: paper size (A4, Letter, Legal, A5, A3, Executive),
+- Format page numbers, as Word's (Page number ▾ > Format page numbers…): the number format (1, 2, 3;
+  - 1 -; a, b, c; A, B, C; i, ii, iii; I, II, III) and where numbering starts (continue from the
+  section before, or start at a number), for the section the caret is in, the whole document (the
+  format for every section, the start for the first), or from the caret on: a new section (a
+  section break, next page, before the caret's paragraph) numbered as chosen while the pages before
+  keep theirs, for a report's front matter in i, ii, iii and its chapters from 1. Written in the
+  section's `w:pgNumType` (`w:fmt`, `w:start`; Word's default, Arabic numerals that continue, as no
+  format and no start), in the order Word's schema requires, with its other settings (chapter
+  numbers) kept; a file's numbering is shown and goes back as it was when untouched. Each section
+  break says how its section is numbered ("pages i, ii, iii from 1"), printing numbers the pages so
+  (`counter(page, lower-roman)`, the first page set to the start), and Ctrl+Z puts it back
+- Page setup for the whole document, as Word's: paper size (A4, Letter, Legal, A5, A3, Executive,
+  and F4, 21.5 × 33 cm, and Folio, 8½ × 13 in, the office paper of Indonesia and much of South-East
+  Asia), or a custom size (its width and height typed in, from 0.1 in to 22 in, as Word allows, and
+  turned to the orientation chosen; a document on paper of no listed size shows its own),
   orientation and margins (in centimetres or inches, with Word's Normal, Narrow, Moderate and Wide), set in
   every section's `w:pgSz` and `w:pgMar`. Only what is changed in the dialog is written; the rest of
   each section (headers and footers, columns, gutters) is kept. The page and the printout follow,
@@ -1009,8 +1045,18 @@ The About page shows the version.
   left); a document with footnotes or endnotes is merged into separate documents only. Rows don't
   skip or filter (merge the rows wanted), and values are text as the CSV has it (dates and numbers
   as Excel saved them)
-- The starter templates are in English (the manuscript's chapters are "Chapter One", "Chapter Two"); their text is placeholders to type over (or Fill in), not
-  a design to choose from
+- The starter templates are in English (the manuscript's chapters are "Chapter One", "Chapter Two"),
+  but for the naskah dinas, in Indonesian; their text is placeholders to type over (or Fill in), not
+  a design to choose from. The naskah dinas follow the common layout of the rules for official
+  documents; an office's own rules (a logo beside the letterhead, another font, the date's place)
+  are set by typing over them, Insert picture and Page setup
+- In Indonesian, the interface is translated where it is used most (see Features); dialogs such as
+  Review your changes, Help, comments, mail merge, pictures' Layout Options and messages in the
+  status bar are still in English, as is the About page
+- Page numbers print in their section's format and from its start where the header or footer goes
+  in the page's margin boxes (Chrome and Edge; one section): where a document has several sections
+  with their own headers or footers, the header and footer print once, as before, and Word numbers
+  the pages when it opens the file
 - Placeholders are found in the page (its headers, text, notes and footers), not in comments, and
   only on one line and within one paragraph; a placeholder written as underscores (`________`)
   or as "XXX" isn't recognised. A new document made from a template doesn't record which template
