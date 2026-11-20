@@ -74,3 +74,48 @@ test('Cancel, or OK with nothing changed, changes nothing; margins leaving no ro
   await expect(page.locator('.statusbar [role=status]')).toHaveText('The margins leave less than 2.5 cm for the text: nothing was changed');
   await expect(page.locator('.app-header .dirty')).toHaveCount(0);
 });
+
+// F4 (21.5 × 33 cm) and Folio (8½ × 13 in), the office paper of Indonesia and much of South-East
+// Asia, and a custom size typed in, as Word's Page Setup has them.
+test('F4 and Folio paper; a document on F4 says so, in the dialog and the status bar', async ({ page }) => {
+  await openInEditor(page, await buildDocx(BODY));
+  await openSetup(page);
+  await dialog(page).getByLabel('Size').selectOption('F4');
+  await dialog(page).getByRole('button', { name: 'OK' }).click();
+  let { xml } = await download(page);
+  for (const s of sections(xml)) expect(s).toContain('<w:pgSz w:w="12189" w:h="18709"/>');
+  await openSetup(page);
+  await expect(dialog(page).getByLabel('Size')).toHaveValue('F4');
+  await expect(dialog(page).getByLabel('Width (cm)')).toHaveCount(0); // only for a custom size
+  await dialog(page).getByLabel('Size').selectOption('Folio');
+  await dialog(page).getByRole('button', { name: 'OK' }).click();
+  await expect(page.locator('.page-count')).toHaveAttribute('title', /on Folio paper/);
+  ({ xml } = await download(page));
+  for (const s of sections(xml)) expect(s).toContain('<w:pgSz w:w="12240" w:h="18720"/>');
+});
+
+test('a custom size: the document\'s own is shown, a typed one is written, turned to the orientation; one too small is refused', async ({ page }) => {
+  // 20 × 30 cm: no paper of the list.
+  const custom = await buildDocx(BODY.replace('w:w="12240" w:h="15840"', 'w:w="11339" w:h="17008"'));
+  await openInEditor(page, custom);
+  await page.locator('.docx-page p', { hasText: 'Section one.' }).click();
+  await page.getByRole('button', { name: 'Page setup' }).click();
+  await expect(dialog(page).getByLabel('Size')).toHaveValue('custom');
+  await expect(dialog(page).getByLabel('Width (cm)')).toHaveValue('20');
+  await expect(dialog(page).getByLabel('Height (cm)')).toHaveValue('30');
+  await dialog(page).getByLabel('Width (cm)').fill('33');
+  await dialog(page).getByLabel('Height (cm)').fill('21.5');
+  await dialog(page).getByRole('button', { name: 'OK' }).click();
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('Page setup changed for section 1');
+  let { xml } = await download(page);
+  // Portrait: the short side across, as typed sizes are turned to the orientation chosen.
+  expect(sections(xml)[0]).toContain('<w:pgSz w:w="12189" w:h="18709"/>');
+  expect(sections(xml)[1]).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+  await openSetup(page);
+  await dialog(page).getByLabel('Size').selectOption('custom');
+  await dialog(page).getByLabel('Width (cm)').fill('0.1');
+  await dialog(page).getByRole('button', { name: 'OK' }).click();
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('The paper’s width and height must be between 0.25 cm and 55.88 cm: nothing was changed');
+  ({ xml } = await download(page));
+  expect(sections(xml)[1]).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+});

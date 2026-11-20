@@ -2,6 +2,8 @@
 // trees that must not be made deeply reactive.
 import { shallowRef } from 'vue';
 import { DocxDocument } from './docx/DocxDocument.js';
+import { blankDocxFiles } from './docx/blank.js';
+import { lang, t } from './i18n.js';
 
 export const currentDoc = shallowRef(null);
 
@@ -20,8 +22,10 @@ export async function openFile(file, handle = null) {
   setDocument(doc);
 }
 
+/** A blank document: its text in the interface's language (Indonesian, or English), so spelling is checked in it. */
 export async function newDocument() {
-  setDocument(await DocxDocument.createBlank('Untitled.docx'));
+  const language = lang.value === 'id' ? 'id-ID' : 'en-US';
+  setDocument(await DocxDocument.createBlank(`${t('Untitled')}.docx`, blankDocxFiles({ language })));
 }
 
 /** A new document from a starter (see docx/starters.js): a letter, a memo, minutes, a quote… */

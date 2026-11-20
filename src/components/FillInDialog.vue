@@ -1,8 +1,8 @@
 <template>
-  <form class="fill-in" role="dialog" aria-label="Fill in placeholders" aria-describedby="fill-in-how" @submit.prevent="fill" @keydown.esc="emit('close')">
+  <form class="fill-in" role="dialog" :aria-label="t('Fill in placeholders')" aria-describedby="fill-in-how" @submit.prevent="fill" @keydown.esc="emit('close')">
     <p id="fill-in-how" class="how">
-      <template v-if="items.length">Type what goes in each placeholder: it is filled in everywhere it appears. Leave one empty to keep it.</template>
-      <template v-else>No placeholders found. Placeholders are text in brackets, such as {{ EXAMPLES }}.</template>
+      <template v-if="items.length">{{ t('Type what goes in each placeholder: it is filled in everywhere it appears. Leave one empty to keep it.') }}</template>
+      <template v-else>{{ t('No placeholders found. Placeholders are text in brackets, such as {examples}.', { examples: EXAMPLES }) }}</template>
     </p>
     <ul v-if="items.length" class="fields">
       <li v-for="item in items" :key="item.text">
@@ -22,9 +22,9 @@
     </ul>
     <p v-if="note" class="note" role="status">{{ note }}</p>
     <div class="actions">
-      <button v-if="items.length" type="submit" class="confirm" :disabled="!ready">Fill in</button>
-      <button type="button" @click="emit('close')">{{ items.length ? 'Cancel' : 'Close' }}</button>
-      <button v-if="items.length" type="button" class="merge" title="Fill them in from each row of a list (a CSV from Excel or Google Sheets): a letter for each row" @click="emit('mailmerge')">From a list…</button>
+      <button v-if="items.length" type="submit" class="confirm" :disabled="!ready">{{ t('Fill in') }}</button>
+      <button type="button" @click="emit('close')">{{ items.length ? t('Cancel') : t('Close') }}</button>
+      <button v-if="items.length" type="button" class="merge" :title="t('Fill them in from each row of a list (a CSV from Excel or Google Sheets): a letter for each row')" @click="emit('mailmerge')">{{ t('From a list…') }}</button>
     </div>
   </form>
 </template>
@@ -35,6 +35,7 @@
 // edit (tracked while tracking), as Replace all would do for each of them in turn.
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { findPlaceholders } from '../editor/placeholders.js';
+import { t } from '../i18n.js';
 import { matchRange, replaceMatch } from '../editor/find.js';
 
 const props = defineProps({
@@ -61,10 +62,10 @@ function scan() {
 
 function where(item) {
   const n = item.matches.length;
-  const places = `${n} ${n === 1 ? 'place' : 'places'}`;
+  const places = t(n === 1 ? '{n} place' : '{n} places', { n });
   const locked = n - item.editable;
-  if (!item.editable) return `${places}, read-only here`;
-  return locked ? `${places}, ${locked} read-only` : places;
+  if (!item.editable) return t('{places}, read-only here', { places });
+  return locked ? t('{places}, {n} read-only', { places, n: locked }) : places;
 }
 
 const highlights = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
