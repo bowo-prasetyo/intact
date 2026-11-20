@@ -37,6 +37,8 @@ export function shortcutFor(e) {
     // Ctrl+Shift+C and Ctrl+Shift+V: copy formatting and paint it on, as Word's Format Painter.
     if (e.code === 'KeyC') return 'copyFormat';
     if (e.code === 'KeyV') return 'pasteFormat';
+    // Ctrl+Shift+H: hidden text, as Word's (an answer key's answers).
+    if (e.code === 'KeyH') return 'hidden';
     return { n: 'normal', l: 'bullets', m: 'outdent' }[key] || (space ? 'nonBreakingSpace' : null);
   }
   // Ctrl+Alt+digit; not AltGr (Ctrl+Alt on some layouts), which types characters.
@@ -52,6 +54,7 @@ export const SHORTCUTS = [
   ['Ctrl+Shift+>, Ctrl+Shift+<', 'Grow or shrink the font (Word\'s steps: 10, 11, 12, 14…)'],
   ['Ctrl+], Ctrl+[', 'Font 1 pt bigger or smaller'],
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
+  ['Ctrl+Shift+H', 'Hidden text, such as a test’s answers: shown here, printed only when asked'],
   ['Shift+F3', 'Change case: UPPERCASE, lowercase, Capitalize Each Word in turn'],
   ['Ctrl+Shift+C, Ctrl+Shift+V', 'Copy formatting, and paint it on the selected text (Format Painter)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],

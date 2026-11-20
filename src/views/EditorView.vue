@@ -122,6 +122,9 @@
       <button data-tab="home" type="button" :title="t('Strikethrough')" :aria-label="t('Strikethrough')" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
       <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
       <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <button data-tab="home" type="button" :title="t('Hidden text (Ctrl+Shift+H): for a test’s answers, shown here and printed only when asked')" :aria-label="t('Hidden text')" :class="{ on: state.hidden }" :aria-pressed="state.hidden" @click="toggleHidden">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.2" fill="none" /><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.2" fill="none" /><path d="M2.5 14L13.5 2" stroke="currentColor" stroke-width="1.3" /></svg>
+      </button>
       <span data-tab="home" class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
@@ -549,6 +552,7 @@
         <li v-if="pdfBands.once">The {{ pdfBands.once }} {{ pdfBands.once.includes(' and ') ? 'print' : 'prints' }} once, {{ pdfBands.onceWhere }}, as {{ pdfBands.once.includes(' and ') ? 'they show' : 'it shows' }} here: {{ pdfBands.why }}</li>
         <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
+        <li v-if="hasHidden"><label class="check"><input v-model="printHidden" type="checkbox" /> {{ t('Print hidden text (a test’s answers, for its answer key)') }}</label></li>
         <li>Comments and the marks drawn over the page here aren’t in the PDF.</li>
       </ul>
       <p class="pdf-word">{{ t('The Word file isn’t saved by this: download it as well to keep your changes.') }}</p>
@@ -1190,7 +1194,7 @@ import { CAMERA_ANGLES } from '../docx/lighting.js';
 import { renderArtistic } from '../editor/artistic.js';
 import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
-import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
+import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import { updateFields, parseInstr } from '../docx/fieldUpdates.js';
@@ -1220,7 +1224,7 @@ const extTitle = computed(() => ({ docx: 'Word document', dotx: 'Word template',
 const styleChoices = ref([]);
 const knownBlock = computed(() => ['normal', 'title', 'h1', 'h2', 'h3'].includes(state.block)
   || styleChoices.value.some((c) => `style:${c.id}` === state.block));
-const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, highlight: null, block: 'normal', align: 'left', list: null, table: false, font: '', size: 0, charStyle: '' });
+const state = reactive({ bold: false, italic: false, underline: false, strike: false, sup: false, sub: false, hidden: false, highlight: null, block: 'normal', align: 'left', list: null, table: false, font: '', size: 0, charStyle: '' });
 const chooser = reactive({ open: false, kind: '', x: 0, y: 0, choices: [], current: '', date: '' });
 const chooserEl = ref(null);
 const threads = ref([]);
@@ -2230,6 +2234,7 @@ function onSelectionChange() {
   state.underline = document.queryCommandState('underline');
   state.strike = document.queryCommandState('strikeThrough');
   Object.assign(state, (({ superscript, subscript, highlight }) => ({ sup: superscript, sub: subscript, highlight }))(formatState(range)));
+  state.hidden = !!(range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('[data-hidden]');
   const block = startBlock(range);
   state.block = block ? doc.blockValue(block.dataset.style) : 'normal';
   const align = block ? getComputedStyle(block).textAlign : 'left';
@@ -4994,6 +4999,25 @@ function runShortcut(name) {
   if (name === 'endnote') return insertEndnote();
   if (name === 'copyFormat') return startPainter(false, true);
   if (name === 'pasteFormat') return paintSelection();
+  if (name === 'hidden') return toggleHidden();
+}
+
+/**
+ * Hidden text on or off for the selected text, as Word's Ctrl+Shift+H: hidden unless all of it is
+ * already. A test's answers, hidden, make its answer key: shown here, printed only when asked.
+ */
+function toggleHidden() {
+  const range = selectionInPage() || savedRange;
+  if (!range || range.collapsed) {
+    message.value = t('Select the text to hide first, such as a test’s answers');
+    page.value.focus();
+    return;
+  }
+  const texts = portions(range).map((p) => p.node);
+  const allHidden = texts.length > 0 && texts.every((n) => n.parentElement?.closest('[data-hidden]'));
+  restyleSelection(setHidden(!allHidden));
+  state.hidden = !allHidden;
+  message.value = allHidden ? t('Hidden text shown again: it prints') : t('Hidden text: shown here with a dotted line, and printed only when Print hidden text is chosen');
 }
 
 /**
@@ -8614,6 +8638,10 @@ const saveMenuButton = ref(null);
 const pdfDialog = reactive({ open: false, x: 0, y: 0 });
 const pdfDialogEl = ref(null);
 const hasHighlight = ref(false);
+// Hidden text (w:vanish) isn't printed unless asked, as in Word: a test prints without its answers,
+// its answer key with them.
+const hasHidden = ref(false);
+const printHidden = ref(false);
 const pdfBands = ref({}); // what the dialog says about the header and footer
 
 /** The header and footer in the PDF, in words: on every page, or once (and why). */
@@ -8710,6 +8738,7 @@ function downloadBlob(blob, name) {
 function openPdfDialog() {
   updatePages();
   hasHighlight.value = !!page.value.querySelector('mark');
+  hasHidden.value = !!page.value.querySelector('[data-hidden]');
   pdfBands.value = describeBands();
   const rect = saveMenuButton.value?.getBoundingClientRect();
   Object.assign(pdfDialog, { open: true, x: Math.max(8, Math.min((rect?.right ?? window.innerWidth) - 360, window.innerWidth - 368)), y: (rect?.bottom ?? 48) + 4 });
@@ -8723,6 +8752,9 @@ function closePdfDialog() {
 function printToPdf() {
   pdfDialog.open = false;
   // After the dialog has gone from the screen, so the print window opens on the page alone.
+  // Hidden text printed only when asked (see the print styles), for this print only.
+  document.documentElement.classList.toggle('print-hidden-text', hasHidden.value && printHidden.value);
+  window.addEventListener('afterprint', () => document.documentElement.classList.remove('print-hidden-text'), { once: true });
   nextTick(() => requestAnimationFrame(() => window.print()));
 }
 
@@ -9416,6 +9448,9 @@ async function close() {
   .docx-sheet .docx-hf-part::after { display: none !important; }
   .docx-sheet .raw-inline.page-break { border: 0 !important; margin: 0 !important; break-after: page; }
   .docx-sheet [data-page-break-before] { break-before: page; }
+  /* Hidden text (w:vanish) isn't printed, as in Word, unless Print hidden text is chosen. */
+  .docx-sheet [data-hidden] { display: none !important; }
+  .print-hidden-text .docx-sheet [data-hidden] { display: inline !important; opacity: 1 !important; text-decoration: none !important; }
   .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
 }
 .docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
@@ -9468,6 +9503,8 @@ async function close() {
   user-select: none; pointer-events: none;
 }
 @media print { .docx-sheet .docx-page [data-section-note]::after { content: none; } }
+/* Hidden text (w:vanish): shown faintly (see styles.rPrCss), with Word's dotted line under it. */
+.docx-sheet [data-hidden] { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: currentColor; }
 .docx-sheet .watermark-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
 .docx-sheet .watermark-mark {
   position: absolute; left: 50%; transform: translate(-50%, -50%); font-weight: 700; line-height: 1; opacity: .5;
