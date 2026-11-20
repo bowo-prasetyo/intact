@@ -385,7 +385,8 @@ export class StyleSheet {
    * What paragraph style `id` looks like, from its base styles and the document's defaults, as
    * Word's Modify Style shows it: { font, size (pt), bold, italic, color (RRGGBB or null for
    * automatic), align ('left', 'center', 'right', 'both'), before, after (twips), line (240ths of a
-   * line, or null for a fixed or minimum height) }.
+   * line, or null for a fixed or minimum height), left, right, firstLine, hanging (twips: w:ind, as
+   * Word reads it, with a hanging indent winning over a first-line one) }.
    */
   styleFormat(id) {
     const chain = this.chain(id);
@@ -418,6 +419,19 @@ export class StyleSheet {
     const color = last(rPrs, 'color');
     const lineRule = last(pPrs, 'spacing', 'lineRule');
     const line = last(pPrs, 'spacing', 'line');
+    // Indents: each style down the chain sets what its w:ind names; the first line's indent is
+    // either a first-line one or a hanging one, whichever was set last (hanging, if both in one).
+    const ind = { left: 0, right: 0, firstLine: 0, hanging: 0 };
+    for (const pr of pPrs) {
+      const el = wChild(pr, 'ind');
+      if (!el) continue;
+      const left = wAttr(el, 'left') ?? wAttr(el, 'start');
+      const right = wAttr(el, 'right') ?? wAttr(el, 'end');
+      if (left != null) ind.left = Number(left) || 0;
+      if (right != null) ind.right = Number(right) || 0;
+      if (wAttr(el, 'hanging') != null) Object.assign(ind, { hanging: Number(wAttr(el, 'hanging')) || 0, firstLine: 0 });
+      else if (wAttr(el, 'firstLine') != null) Object.assign(ind, { firstLine: Number(wAttr(el, 'firstLine')) || 0, hanging: 0 });
+    }
     return {
       font: font || this.fonts.minor,
       size: Number(last(rPrs, 'sz') ?? 20) / 2,
@@ -428,13 +442,15 @@ export class StyleSheet {
       before: Number(last(pPrs, 'spacing', 'before') ?? 0),
       after: Number(last(pPrs, 'spacing', 'after') ?? 0),
       line: lineRule && lineRule !== 'auto' ? null : Number(line ?? 240),
+      ...ind,
     };
   }
 
   /**
    * Changes paragraph style `id`'s definition, as Word's Modify Style does: `change` has any of
-   * font, size, bold, italic, color (null: automatic), align, before, after, line (see
-   * styleFormat). Only what it names is written, in the style's own w:rPr and w:pPr, so what the
+   * font, size, bold, italic, color (null: automatic), align, before, after, line, left, right,
+   * firstLine, hanging (see styleFormat; firstLine and hanging each take the other's place, as one
+   * w:ind holds one of them). Only what it names is written, in the style's own w:rPr and w:pPr, so what the
    * style takes from its base style otherwise is kept. Every paragraph in the style (and in styles
    * based on it) follows. Returns false if there is no such style.
    */
@@ -471,7 +487,7 @@ export class StyleSheet {
       }
       if (has('color')) set(rPr, 'color', RPR_ORDER, { val: change.color || 'auto' });
     }
-    if (['align', 'before', 'after', 'line'].some(has)) {
+    if (['align', 'before', 'after', 'line', 'left', 'right', 'firstLine', 'hanging'].some(has)) {
       const pPr = wChild(el, 'pPr') || ensureOrdered(el, 'pPr', STYLE_ORDER);
       if (['before', 'after', 'line'].some(has)) {
         const sp = ensureOrdered(pPr, 'spacing', PPR_ORDER);
@@ -483,6 +499,20 @@ export class StyleSheet {
         if (has('line')) {
           sp.setAttributeNS(NS.w, 'w:line', String(Math.round(change.line)));
           sp.setAttributeNS(NS.w, 'w:lineRule', 'auto');
+        }
+      }
+      if (['left', 'right', 'firstLine', 'hanging'].some(has)) {
+        const ind = ensureOrdered(pPr, 'ind', PPR_ORDER);
+        // What would win over the values written: the bidi names, Word's character-unit indents, and
+        // the other of first line and hanging.
+        const drop = [];
+        if (has('left')) drop.push('start', 'leftChars', 'startChars');
+        if (has('right')) drop.push('end', 'rightChars', 'endChars');
+        if (has('firstLine')) drop.push('hanging', 'firstLineChars', 'hangingChars');
+        if (has('hanging')) drop.push('firstLine', 'firstLineChars', 'hangingChars');
+        for (const a of drop) ind.removeAttributeNS(NS.w, a);
+        for (const k of ['left', 'right', 'firstLine', 'hanging']) {
+          if (has(k)) ind.setAttributeNS(NS.w, `w:${k}`, String(Math.max(k === 'left' || k === 'right' ? -31680 : 0, Math.round(change[k]))));
         }
       }
       if (has('align')) set(pPr, 'jc', PPR_ORDER, { val: change.align });

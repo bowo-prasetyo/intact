@@ -229,7 +229,10 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   created, with paragraph ids, if the file has none), resolving sets Word's "done" flag, and Undo
   covers all of it. Deleting a comment's text deletes it too. Comments anchored in a header, footer
   or note work the same way (the panel says where they are): a reply is written into that part next
-  to its comment, inside its range, and a deleted comment's marks go from it
+  to its comment, inside its range, and a deleted comment's marks go from it. Previous and Next
+  comment (the Review tab) go through the comments in the text from the caret, or from the comment
+  shown, round to the other end: each selects the text its comment is on and shows its thread in the
+  panel ("Comment 2 of 7, by Editor"); those in headers, footers and notes are in the panel only
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
@@ -348,10 +351,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   saved. One undoable step
 - Modify Style, as Word's (the Paragraph style menu's last item, Modify style…, or the right-click
   menu): a paragraph style's font, size, bold and italic, colour (or Automatic), alignment, space
-  before and after and line spacing, shown as the style has them (from its base styles and the
+  before and after, line spacing and indents (left, right, and a first-line or hanging indent, as
+  the Paragraph dialog shows them, in centimetres or inches: Normal with a 1.27 cm first-line
+  indent, as a manuscript has it, or a hanging indent for a bibliography), shown as the style has them (from its base styles and the
   document's defaults), with a preview. Only what is changed is written, into the style's own
   `w:rPr` and `w:pPr` in styles.xml (off as off, `w:b w:val="0"`, so a base style's bold doesn't
-  come through); every paragraph in the style, and in styles based on it, follows on the page and
+  come through; a first-line indent written takes the place of a hanging one, and the other way
+  round, with Word's character-unit indents that would win over it); every paragraph in the style, and in styles based on it, follows on the page and
   in Word. Paragraphs keep their own formatting. Ctrl+Z puts the style back
 - A watermark, as Word's Design > Watermark, in Page setup: DRAFT, CONFIDENTIAL, DO NOT COPY,
   SAMPLE, URGENT, ASAP or your own text, diagonal or horizontal, in Word's semi-transparent silver.
@@ -530,6 +536,13 @@ works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](h
   PAGE) are one change per piece: Accept or Reject resolves all of them in its XML at once, as
   Word's Accept All in it would (insertions, deletions, moves, paragraph breaks, formatting, rows,
   cells and merges), and the piece stays locked or linked
+- Show markup, as Word's Display for Review (the Review tab): All markup (as above), Simple markup
+  (the text as it will be once the changes are accepted, with a red line in the margin beside each
+  paragraph that has a change) or No markup (that text alone, comments' highlights too), to read a
+  heavily edited draft clean. Only how the page shows: the changes stay in the page and the file,
+  edits go on being tracked (and show as the view has them), print and PDF follow the view, and
+  every document opens with all markup. Previous and Next change, Accept and Reject show all markup
+  again, so the change they go to can be seen
 - Review your changes before downloading: for a document started here (a blank one, or a new one
   from a template) it doesn't ask for the edits to be tracked, and the CV screening check shows only
   for a CV (or from Help). Download (or Ctrl/Cmd+S) first lists every paragraph that
@@ -856,6 +869,10 @@ The About page shows the version.
 - After restoring a draft, the text you had changed while tracking shows as tracked changes kept from
   the file (accept or reject them; they can't be edited inside), and "Review your changes" lists only
   what changed since restoring. A draft is kept per browser: another browser or device doesn't see it
+- Simple and no markup hide deleted text, but a deleted paragraph break still shows its two
+  paragraphs apart, and a paragraph whose text was all deleted still takes its line; insertions in
+  content kept as it is show as plain text. Word's "Original" view (the text before the changes) isn't
+  offered
 - Tracked changes inside locked content are accepted or rejected together, not one by one; edits
   inside form fields and text moved by dragging aren't tracked (cut and paste is), nor is ending a list
   with Enter on an empty item, or a picture's layout
@@ -917,8 +934,9 @@ The About page shows the version.
   at the width of the document's last one (a landscape section's wide table may be cut off at the
   page's edge here, not in Word); each break is named with its section's paper. "Different first
   page" and "different odd and even pages" are set for the whole document, not section by section.
-  Modify Style changes paragraph styles' font, size, bold, italic, colour, alignment and spacing:
-  not their indents, borders, tab stops, numbering or what they are based on; it isn't tracked
+  Modify Style changes paragraph styles' font, size, bold, italic, colour, alignment, spacing and
+  indents: not their borders, tab stops, numbering or what they are based on (a list's indents come
+  from its numbering, as in Word, so a list paragraph keeps them); it isn't tracked
   (Word doesn't track style changes either)
 - Equations already in a document are shown, not edited (new ones are typed as LaTeX, a part of it:
   no matrices, accents or equation arrays); they need a math font to look as in Word (Windows and macOS have

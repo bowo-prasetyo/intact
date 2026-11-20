@@ -244,6 +244,11 @@
         </fieldset>
         <span class="badge" :class="{ zero: !changes.total }" :title="changesTitle">{{ changes.total }}</span>
       </span>
+      <select data-tab="review" class="markup-choice" :value="markup" aria-label="Show markup" title="What the tracked changes look like, as Word’s Display for Review: all markup, simple markup (a line in the margin beside each change) or no markup (the text as it will be once they are accepted). Only how the page shows them: the changes stay in the file" @change="setMarkup($event.target.value)">
+        <option value="all">All markup</option>
+        <option value="simple">Simple markup</option>
+        <option value="none">No markup</option>
+      </select>
       <span class="sep" data-tab="review" />
       <button data-tab="review" type="button" class="review-toggle" title="Review your changes, what the file carries and its accessibility – any time, not only when you download" @click="openReview()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 4l1.2 1.2L5.5 3M2 9l1.2 1.2L5.5 8M7.5 4.2h6.5M7.5 9.2h6.5M7.5 13h6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>
@@ -252,6 +257,14 @@
       <button data-tab="review" type="button" class="new-comment ph" :title="canComment ? 'New comment (Ctrl+Alt+M)' : `New comment – ${lockMessage}`" :disabled="!canComment" @click="startComment">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /><path d="M8 4.8v4M6 6.8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
       </button>
+      <span data-tab="review" v-if="threads.length" class="comment-nav" role="group" aria-label="Go to a comment">
+        <button type="button" title="Previous comment" aria-label="Previous comment" @click="gotoComment(-1)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 2.5h9v6.5H9.5L7 11.5V9H5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M4 9.5L1.5 12 4 14.5" stroke="currentColor" stroke-width="1.5" fill="none" /></svg>
+        </button>
+        <button type="button" title="Next comment" aria-label="Next comment" @click="gotoComment(1)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2 2.5h9v6.5H9L6.5 11.5V9H2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M12 9.5l2.5 2.5-2.5 2.5" stroke="currentColor" stroke-width="1.5" fill="none" /></svg>
+        </button>
+      </span>
       <button data-tab="review" v-if="threads.length" type="button" class="comments-toggle" :title="`Comments (${threads.length})`" :aria-label="`Comments (${threads.length})`" :class="{ on: commentsOpen }" :aria-pressed="commentsOpen" @click="commentsOpen = !commentsOpen">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3h11v7.5H7L4 13v-2.5H2.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" fill="none" /></svg>
         <span class="badge">{{ threads.length }}</span>
@@ -269,7 +282,7 @@
     <div class="workspace">
       <NavigationPane v-if="navOpen" :headings="navHeadings" :current="navCurrent" @close="toggleNav" @go="goToHeading" />
       <div class="canvas" @mousedown.self="focusEnd">
-        <div class="docx-sheet" :style="sheetStyle" @mousedown.self="focusEnd">
+        <div class="docx-sheet" :style="sheetStyle" :data-markup="markup === 'all' ? null : markup" @mousedown.self="focusEnd">
           <div v-if="watermark.text" class="watermark-layer" aria-hidden="true">
             <span v-for="(y, i) in watermark.centers" :key="i" class="watermark-mark" :class="{ diagonal: watermark.diagonal }" :style="{ top: `${y}px`, color: watermark.color, fontFamily: `'${watermark.font}', Calibri, Carlito, sans-serif`, fontSize: `${watermark.size}px` }">{{ watermark.text }}</span>
           </div>
@@ -779,7 +792,26 @@
           </select>
         </label>
       </fieldset>
-      <p class="preview" :style="{ fontFamily: `'${modifyDialog.font}'`, fontSize: `${Math.min(28, Number(modifyDialog.size) || 11)}pt`, fontWeight: modifyDialog.bold ? 700 : 400, fontStyle: modifyDialog.italic ? 'italic' : 'normal', color: modifyDialog.auto ? '#000' : modifyDialog.color, textAlign: modifyDialog.align === 'both' ? 'justify' : modifyDialog.align }">{{ modifyDialog.name }}: the quick brown fox</p>
+      <fieldset>
+        <legend>Indentation</legend>
+        <label>Left ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.left" type="number" step="0.1" aria-label="Style left indent" /></label>
+        <label>Right ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.right" type="number" step="0.1" aria-label="Style right indent" /></label>
+        <label>Special
+          <select v-model="modifyDialog.special" aria-label="Style special indent">
+            <option value="none">(none)</option>
+            <option value="firstLine">First line</option>
+            <option value="hanging">Hanging</option>
+          </select>
+        </label>
+        <label>By ({{ modifyDialog.unit }}) <input v-model.number="modifyDialog.by" type="number" min="0" step="0.1" :disabled="modifyDialog.special === 'none'" aria-label="Style special indent by" /></label>
+        <label>Units
+          <select :value="modifyDialog.unit" aria-label="Style units" title="Centimetres or inches, for the indents here and the other dialogs’ lengths (remembered in this browser)" @change="setModifyUnit($event.target.value)">
+            <option value="cm">Centimetres</option>
+            <option value="in">Inches</option>
+          </select>
+        </label>
+      </fieldset>
+      <p class="preview" :style="{ fontFamily: `'${modifyDialog.font}'`, fontSize: `${Math.min(28, Number(modifyDialog.size) || 11)}pt`, fontWeight: modifyDialog.bold ? 700 : 400, fontStyle: modifyDialog.italic ? 'italic' : 'normal', color: modifyDialog.auto ? '#000' : modifyDialog.color, textAlign: modifyDialog.align === 'both' ? 'justify' : modifyDialog.align, ...modifyPreviewIndent }"><span>{{ modifyDialog.name }}: the quick brown fox jumps over the lazy dog, and the first line shows its indent</span></p>
       <p class="note">Every paragraph in this style follows, here and in Word.</p>
       <div class="actions">
         <button type="submit" class="confirm">OK</button>
@@ -4460,6 +4492,7 @@ function selectChange(item) {
 }
 
 function gotoChange(dir) {
+  showAllMarkup();
   const items = changeItems(page.value);
   const item = adjacentChange(selectionInPage() || savedRange, items, dir);
   if (item) selectChange(item);
@@ -4471,6 +4504,7 @@ function gotoChange(dir) {
  * 'next' goes on to the next change, as Word's Accept and Reject buttons do; 'stay' doesn't.
  */
 function resolveCurrent(accept, then = 'next') {
+  showAllMarkup();
   const range = selectionInPage() || savedRange;
   const items = changeItems(page.value);
   let targets = changesAt(range, items);
@@ -5935,9 +5969,22 @@ function applyHeaderFooterFlags(titlePg, evenAndOdd) {
 
 // Word's Modify Style, for a paragraph style: its font, size, bold and italic, colour, alignment
 // and spacing, changed in the style itself (styles.xml), so every paragraph in it follows.
-const modifyDialog = reactive({ open: false, x: 0, y: 0, id: '', name: '', font: '', size: 11, bold: false, italic: false, auto: true, color: '#000000', align: 'left', before: 0, after: 0, line: '' });
+// Its indents are shown as the Paragraph dialog shows them (Left is where the first line starts
+// with a hanging indent), in centimetres or inches.
+const modifyDialog = reactive({
+  open: false, x: 0, y: 0, id: '', name: '', font: '', size: 11, bold: false, italic: false, auto: true, color: '#000000', align: 'left', before: 0, after: 0, line: '',
+  unit: 'cm', left: 0, right: 0, special: 'none', by: 0,
+});
 const modifyDialogEl = ref(null);
 let modifyInitial = null;
+let modifyTwips = null; // the indents as they were, exactly, for switching units and for those left alone
+/** The preview's first line, indented (or hanging) as the dialog has it, up to a point. */
+const modifyPreviewIndent = computed(() => {
+  const by = Math.min(4, Math.max(0, Number(modifyDialog.by) || 0) * (modifyDialog.unit === 'in' ? 2.54 : 1));
+  if (modifyDialog.special === 'firstLine') return { textIndent: `${by}cm` };
+  if (modifyDialog.special === 'hanging') return { textIndent: `-${by}cm`, paddingLeft: `${by}cm` };
+  return {};
+});
 const LINE_CHOICES = [[240, 'Single'], [276, '1.15'], [360, '1.5'], [480, 'Double']];
 
 function openModifyStyle() {
@@ -5954,12 +6001,24 @@ function openModifyStyle() {
     font: f.font, size: f.size, bold: f.bold, italic: f.italic, auto: !f.color, color: `#${f.color || '000000'}`,
     align: f.align, before: Math.round(f.before / 2) / 10, after: Math.round(f.after / 2) / 10, line: f.line == null ? '' : String(f.line),
   };
+  const unit = docUnit();
+  modifyTwips = { left: f.left - f.hanging, right: f.right, by: f.hanging || f.firstLine };
+  Object.assign(modifyInitial, {
+    left: fromTwips(modifyTwips.left, unit), right: fromTwips(f.right, unit),
+    special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: fromTwips(modifyTwips.by, unit),
+  });
   loadChoices();
-  Object.assign(modifyDialog, modifyInitial, { open: true, id, name: doc.styleLabel(id), x: Math.max(8, window.innerWidth / 2 - 170), y: 120 });
+  Object.assign(modifyDialog, modifyInitial, { unit, open: true, id, name: doc.styleLabel(id), x: Math.max(8, window.innerWidth / 2 - 170), y: 120 });
   nextTick(() => {
     keepInView(modifyDialog, modifyDialogEl.value);
     modifyDialogEl.value?.querySelector('select')?.focus();
   });
+}
+
+/** Modify Style's indents in another unit (remembered for the next dialogs). */
+function setModifyUnit(unit) {
+  saveUnit(unit);
+  switchUnit(modifyDialog, modifyInitial, modifyTwips, ['left', 'right', 'by'], unit);
 }
 
 function closeModifyStyle() {
@@ -5989,6 +6048,23 @@ function applyModifyStyle() {
   if (Number(d.before) !== i.before) change.before = num(d.before, 0, 1584) * 20;
   if (Number(d.after) !== i.after) change.after = num(d.after, 0, 1584) * 20;
   if (d.line !== i.line && d.line) change.line = Number(d.line);
+  // Indents, as the Paragraph dialog writes them: with a hanging indent, w:left is Left and the
+  // hanging together, so it is written again when either changes; a length left alone keeps its
+  // exact value (what is shown is rounded).
+  const len = (v) => (Number.isFinite(Number(v)) && v !== '' ? Number(v) : 0);
+  const leftChanged = len(d.left) !== i.left;
+  const specialChanged = d.special !== i.special || (d.special !== 'none' && len(d.by) !== i.by);
+  const by = len(d.by) === i.by && d.special === i.special ? modifyTwips.by : Math.max(0, toTwips(len(d.by), d.unit));
+  const hangs = (special) => special === 'hanging';
+  if (leftChanged || (specialChanged && (hangs(d.special) || hangs(i.special)))) {
+    const left = leftChanged ? toTwips(len(d.left), d.unit) : modifyTwips.left;
+    change.left = left + (hangs(d.special) ? by : 0);
+  }
+  if (len(d.right) !== i.right) change.right = toTwips(len(d.right), d.unit);
+  if (specialChanged) {
+    if (d.special === 'hanging') change.hanging = by;
+    else change.firstLine = d.special === 'firstLine' ? by : 0;
+  }
   if (!Object.keys(change).length) return;
   undoStack.flush();
   doc.styles.modifyStyle(d.id, change);
@@ -7488,6 +7564,68 @@ function selectComment(id, reveal = true) {
   }
 }
 
+/**
+ * Previous and Next comment, as Word's Review tab: from the comment shown in the panel, or else from
+ * the caret, to the one before or after it in the text (round to the other end), its text selected
+ * and its thread shown in the panel. Comments in headers, footers and notes are in the panel only.
+ */
+function gotoComment(dir) {
+  const anchored = threads.value.map((t) => ({ id: t.id, range: commentRange(t.id) })).filter((t) => t.range);
+  if (!anchored.length) {
+    message.value = threads.value.length ? 'The comments are in headers, footers or notes: they are listed in the panel' : 'There are no comments to go to';
+    if (threads.value.length) commentsOpen.value = true;
+    return;
+  }
+  let i = anchored.findIndex((t) => t.id === activeComment.value);
+  const caret = selectionInPage() || savedRange;
+  if (i >= 0) i = (i + dir + anchored.length) % anchored.length;
+  else if (caret) {
+    // The first starting after the caret, or the last ending before it (START_TO_END compares a
+    // range's end with the caret's start).
+    const after = (t) => t.range.compareBoundaryPoints(Range.START_TO_START, caret) > 0;
+    const before = (t) => t.range.compareBoundaryPoints(Range.START_TO_END, caret) < 0;
+    if (dir > 0) i = anchored.findIndex(after);
+    else i = anchored.findLastIndex(before);
+    if (i < 0) i = dir > 0 ? 0 : anchored.length - 1;
+  } else i = dir > 0 ? 0 : anchored.length - 1;
+  const { id, range } = anchored[i];
+  commentsOpen.value = true;
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  savedRange = range.cloneRange();
+  selectComment(id);
+  const t = threads.value.find((x) => x.id === id);
+  message.value = `Comment ${i + 1} of ${anchored.length}${t?.author ? `, by ${t.author}` : ''}`;
+  nextTick(() => document.querySelector('.comments .thread.active')?.scrollIntoView({ block: 'nearest' }));
+}
+
+// ------------------------------------------------------------------ markup view
+
+// How tracked changes show, as Word's Display for Review: 'all' (all markup), 'simple' (the text as
+// it will be, with a line in the margin beside each change) or 'none' (no markup). Only the page's
+// look changes (see .docx-sheet[data-markup] in the styles); the changes and the file stay as
+// they are, and every document opens with all markup, so no change goes unseen.
+const markup = ref('all');
+const MARKUP_NAMES = { all: 'All markup', simple: 'Simple markup', none: 'No markup' };
+
+function setMarkup(value) {
+  if (!MARKUP_NAMES[value] || value === markup.value) return;
+  markup.value = value;
+  const n = changes.total;
+  message.value = value === 'all'
+    ? 'All markup: tracked changes are shown'
+    : `${MARKUP_NAMES[value]}: the text as it will be once the changes are accepted${n ? ` – ${count(n, 'tracked change')} kept in the file` : ''}`;
+  nextTick(() => { pageChanged(); schedulePages(0); });
+}
+
+/** Back to all markup, to show a tracked change being gone to, accepted or rejected. */
+function showAllMarkup() {
+  if (markup.value === 'all') return;
+  markup.value = 'all';
+  nextTick(() => { pageChanged(); schedulePages(0); });
+}
+
 function revealRect(rect) {
   const canvas = page.value.closest('.canvas');
   const box = canvas.getBoundingClientRect();
@@ -8197,7 +8335,9 @@ async function close() {
 .modify-dialog .checks { display: flex; gap: 16px; }
 .modify-dialog .color-pick { display: flex; align-items: center; gap: 8px; }
 .modify-dialog .color-pick input[type=color] { width: 40px; height: 26px; padding: 0 2px; }
-.modify-dialog .preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: #fff; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* Two lines, so a first-line or hanging indent shows (clamped inside the padding). */
+.modify-dialog .preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.modify-dialog .preview span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
 .page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
 .para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -8282,6 +8422,8 @@ async function close() {
 .toolbar select.font-choice { min-width: 0; width: 132px; }
 .toolbar select.size-choice { min-width: 0; width: 58px; }
 .toolbar select.char-style { min-width: 0; width: 124px; }
+.toolbar select.markup-choice { min-width: 0; width: 128px; }
+.toolbar .comment-nav { display: inline-flex; }
 .page-count, .smart-typing, .nav-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
 .nav-toggle[aria-pressed="true"] { color: var(--accent); }
 /* The Headings pane is for a wider screen (it is hidden on a phone, and so is its button). */
@@ -8484,6 +8626,26 @@ async function close() {
 .docx-sheet [data-rev-mark]::after { content: '¶'; margin-left: 1px; }
 .docx-sheet [data-rev-mark="ins"]::after { color: #1e6b34; }
 .docx-sheet [data-rev-mark="del"]::after { color: #b3261e; text-decoration: line-through; }
+/* Simple and no markup (Review > Show markup), as Word's Display for Review: the text as it will be
+   once the changes are accepted. Deletions are hidden, insertions look like the text around them and
+   formatting changes aren't marked; nothing in the page or the file changes, only how it shows. */
+.docx-sheet[data-markup] .tc-del, .docx-sheet[data-markup] .raw-inline.deleted,
+.docx-sheet[data-markup] tr[data-rev-row="del"] { display: none; }
+.docx-sheet[data-markup] .tc-ins { color: inherit; background-image: none; }
+.docx-sheet[data-markup] .raw-inline.inserted { color: inherit; text-decoration: none; }
+.docx-sheet[data-markup] [data-tc-mark]::after, .docx-sheet[data-markup] [data-rev-mark]::after { content: none; }
+.docx-sheet[data-markup] [data-fmt="run"] { border-bottom: 0; }
+.docx-sheet[data-markup] [data-fmt-para], .docx-sheet[data-markup] tr[data-fmt-row] > td:first-child,
+.docx-sheet[data-markup] table.docx-table td[data-rev-merge], .docx-sheet[data-markup] table.docx-table td[data-fmt-cell] { box-shadow: none; }
+.docx-sheet[data-markup] table.docx-table[data-fmt-table] { outline: 0; }
+.docx-sheet[data-markup] tr[data-rev-row="ins"] > td { background-color: transparent; }
+/* Simple markup: a red line in the margin beside each paragraph with a change, as Word draws it (a
+   2px line 10px out, the white shadow over the red one's inner part). */
+.docx-sheet[data-markup="simple"] .docx-page :is(p, h1, h2, h3, h4, h5, h6):is(:has(.tc-ins, .tc-del, .raw-inline.inserted, .raw-inline.deleted, [data-fmt]), [data-tc-mark], [data-rev-mark], [data-fmt-para]) {
+  box-shadow: -10px 0 0 0 #fff, -12px 0 0 0 #b3261e;
+}
+/* No markup hides the comments' highlights too, as Word does; the panel still lists them. */
+.docx-sheet[data-markup="none"] ::highlight(comment), .docx-sheet[data-markup="none"] ::highlight(comment-active) { background-color: transparent; }
 .docx-sheet .raw-inline.picture { cursor: pointer; }
 .docx-sheet .raw-inline.picture img { display: block; }
 .docx-sheet .raw-inline.picture::selection, .docx-sheet .raw-inline.picture img::selection { background: transparent; } /* the frame shows it is selected */

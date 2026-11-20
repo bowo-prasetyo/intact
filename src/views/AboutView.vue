@@ -17,7 +17,7 @@
         <li>Update fields (F9): the table of contents, cross-references, caption and note numbers; Word updates page numbers when it opens the file</li>
         <li>References: a table of contents, captions, cross-references, equations typed as LaTeX, and citations with a bibliography in APA or MLA style, as Word writes them; a Headings pane to move around by the headings</li>
         <li>Page numbers in a header or footer, at the top or bottom of the page (left, centre or right), or a new header or footer for them or for text on every page; page setup (paper size, orientation, margins, in centimetres or inches) for the whole document, one section, from a point forward or the selected text (a landscape page for a wide table); a different first page, and different odd and even pages</li>
-        <li>Modify Style: change a paragraph style's font, size, colour, alignment and spacing, and every paragraph in it follows</li>
+        <li>Modify Style: change a paragraph style's font, size, colour, alignment, spacing and indents (a first-line indent for every paragraph), and every paragraph in it follows</li>
         <li>Headers and footers, in the page's margins: the first page's, other pages', even pages' and each section's, chosen with the tabs above and below the page</li>
         <li>The text in text boxes and shapes, shown where Word puts them with their fill and outline</li>
         <li>Insert tables and pictures (from the toolbar, or paste or drop a picture)</li>
@@ -28,7 +28,7 @@
         <li>Draw signature: sign with your finger, a pen or the mouse (or type your name), and it goes in at the caret as a picture</li>
         <li>Insert a check box (ticked with a click, here and in Word) or today's date, in the text's language</li>
         <li>Share… from Download's menu, where the browser can share files: send the file back by mail or a messaging app</li>
-        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes</li>
+        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes; go to the previous or next one</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too), and Word's usual fonts after them; Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space); Format Painter (Ctrl+Shift+C, Ctrl+Shift+V); Change Case (Shift+F3); Insert Symbol</li>
         <li>Zoom from 50% to 200% in the status bar, or with Ctrl+mouse wheel on the page</li>
@@ -47,7 +47,7 @@
         <li>The toolbar from the keyboard: Alt+F10 goes to it, the arrow keys along it, Esc back to the text</li>
         <li>Track Changes for your own edits, formatting included, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
-        <li>Accept and reject tracked changes, one at a time or all at once</li>
+        <li>Accept and reject tracked changes, one at a time or all at once; show all markup, simple markup or no markup, to read an edited draft clean</li>
         <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links; tables from Excel, Google Sheets and Word paste as tables</li>
         <li>Links (Ctrl+K) to web pages, e-mail addresses and DOIs: insert, change or remove them</li>
         <li>Word and character count of the document and of the selection; spelling checked in the document's language where the browser can</li>
