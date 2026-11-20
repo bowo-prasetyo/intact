@@ -35,7 +35,7 @@
       <section v-if="review.inspection" class="release" aria-labelledby="release-title">
         <details ref="releaseEl" class="section" :open="releaseOpen">
           <summary><h3 id="release-title" class="section-title">Before you release</h3> <span class="count" :class="{ warn: releaseWarnings }">{{ releaseCount }}</span></summary>
-          <p v-if="!release.length" class="clean">Nothing hidden: no comments, tracked changes, hidden text or personal information.</p>
+          <p v-if="!release.length" class="clean">Nothing hidden: no comments, tracked changes, hidden text, redactions or personal information.</p>
           <ul v-else>
             <li v-for="item in release" :key="item.id" :class="item.kind">
               <span>{{ item.text }}</span>
@@ -327,6 +327,29 @@ const release = computed(() => {
     out.push({
       id: 'hidden', kind: 'warn', action: i.hidden.removable ? 'hidden' : null, button: 'Remove hidden text',
       text: `Hidden text: ${plural(i.hidden.count, 'passage')}, such as ${quoteValue(i.hidden.sample)} – Word doesn’t show or print it, but anyone can show it again.${stuck ? ` ${stuck === i.hidden.count ? 'It is' : `${plural(stuck, 'passage')} ${stuck === 1 ? 'is' : 'are'}`} in content Intact can’t change: remove ${stuck === 1 ? 'it' : 'them'} in Word.` : ''}` });
+  }
+  // Redaction: what is blacked out, and where what was redacted this session still is.
+  const red = i.redacted || { passages: 0, leftovers: [] };
+  if (red.passages) {
+    out.push({ id: 'redacted', kind: 'info', text: `${plural(red.passages, 'redacted passage')} (█). Redacting here isn’t tracked, so the text under ${red.passages === 1 ? 'it' : 'them'} isn’t in the file.` });
+  }
+  if (red.leftovers.length) {
+    const times = (n, where) => (n === 1 ? `once ${where}` : `${n} times ${where}`);
+    const lines = red.leftovers.map((l) => {
+      const places = [
+        l.redactable && times(l.redactable, 'in the text'),
+        l.tracked && `${times(l.tracked, 'in tracked changes')} (accept or reject them, then redact)`,
+        l.locked && `${times(l.locked, 'in content Intact can’t change')} (remove it in Word)`,
+        l.comments && `in ${plural(l.comments, 'comment')} (edit or delete ${l.comments === 1 ? 'it' : 'them'})`,
+        l.properties && 'in the document properties (change them in Word: File › Info)',
+      ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
+      return `${quoteValue(l.text)} ${places}`;
+    });
+    const redactable = red.leftovers.some((l) => l.redactable);
+    out.push({
+      id: 'redacted-left', kind: 'warn', action: redactable ? 'redact' : null, button: 'Redact them all',
+      text: `What you redacted is still in the file: ${lines.join('; ')}.`,
+    });
   }
   const p = i.properties || { core: [], app: [], custom: [] };
   const props_ = [...p.core, ...p.app];

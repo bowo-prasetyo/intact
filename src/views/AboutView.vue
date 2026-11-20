@@ -86,6 +86,16 @@
         author's name, other properties, custom XML data and embedded files. Comments, tracked changes,
         hidden text and personal information can be removed there, as with Word's Document Inspector, and
         removing personal information can be made the default for files without comments or tracked changes.
+        Redact (the Review tab) blacks out selected text for good, never as a tracked change, and the review
+        says where what you redacted is still in the file: elsewhere in the text, in tracked changes, in
+        comments or in the properties.
+      </p>
+      <h2>Length and readability</h2>
+      <p>
+        A click on the status bar's word count opens Word count: the counts, a target in words and a limit
+        for the headline in characters (the status bar then shows how close you are), and Word's
+        readability statistics, worked out in the browser: words per sentence, passive sentences and the
+        Flesch scores for English, with the long sentences to show one by one.
       </p>
       <h2>Sending a CV</h2>
       <p>
@@ -97,7 +107,7 @@
       <p>
         The review checks accessibility as Word's checker does: pictures without alt text, tables without a
         header row, skipped heading levels, a missing language or title, faint text, unclear links and blank
-        paragraphs used for spacing. Show goes to each one. Saving an edit records it in the document's
+        paragraphs used for spacing, and sentences too long to read easily. Show goes to each one. Saving an edit records it in the document's
         properties (modified, by whom, revision), as Word does; the review can switch that off.
       </p>
       <h2>What is preserved</h2>

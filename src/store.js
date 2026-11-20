@@ -42,7 +42,7 @@ export async function openDraft(draft) {
   const doc = await DocxDocument.open(draft.blob, draft.name);
   doc.restored = true;
   doc.draftId = draft.id;
-  doc.restoredFrom = { savedAt: draft.savedAt, unlocked: !!draft.unlocked };
+  doc.restoredFrom = { savedAt: draft.savedAt, unlocked: !!draft.unlocked, length: draft.length || null };
   // Revision ids from the first opening's own on are this editing's (see firstNewId).
   if (Number.isInteger(draft.firstNewId) && draft.firstNewId < doc.firstNewId) doc.firstNewId = draft.firstNewId;
   setDocument(doc);

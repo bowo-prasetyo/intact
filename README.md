@@ -671,6 +671,16 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   back to 100%, and Ctrl+mouse wheel (or a trackpad's pinch) on the page zooms it. Only how the page
   shows changes, not the document, and it prints at its size; remembered in this browser. Formatting
   marks, line numbers and a picture's frame and handles follow the zoom
+- Word count, as Word's (a click on the status bar's count): pages (about how many), words,
+  characters with and without spaces, paragraphs and sentences, and Word's Readability Statistics:
+  sentences per paragraph, words per sentence and characters per word, and for English text the
+  share of passive sentences, the Flesch Reading Ease and the Flesch-Kincaid Grade Level, worked out
+  in the browser. Sentences of more than 30 words are counted, and Show selects each in turn, to cut
+  or split it. A length to write to, as a newsroom or a publisher sets one: a target in words, shown
+  in the status bar as "612 / 650 words" (in amber once over it), and a limit for the headline in
+  characters, shown as "Headline 52 / 70": the headline is the text's first paragraph when it is in
+  a heading style (Title, Heading 1–6). Both stay with the document while it is open and in its
+  unsaved copy, never in the file
 - The status bar counts the words and characters in the document, and those selected ("12 of 340
   words · 64 of 2104 characters"; with and without spaces in its tooltip); headers and footers aren't
   counted, as in Word; the
@@ -783,11 +793,24 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   counts once. Nothing changed, nothing is recorded: the properties come back byte for byte. The
   review shows what is recorded and can switch it off (remembered in this browser); with personal
   information removed, no name is recorded
+- Redact, for a source's name or an address in a document to be released (the Review tab, or the
+  right-click menu): the selected text becomes █, one for each character, as a page is blacked out
+  by hand. It is never tracked, even while tracking, because a tracked deletion keeps the text in the
+  file for anyone to read in Word; Undo brings it back while the document is open. A link in it goes
+  too, and its address goes from the package's relationships when the file is saved (Undo puts it
+  back). A selection holding a tracked change, or read-only content such as a field, is refused,
+  saying why. The status bar says when the same words are elsewhere in the document, and "Before you
+  release" lists the redacted passages and where what was redacted is still in the file: in the text
+  (Redact them all blacks out every place there, headers, footers and notes included), in tracked
+  changes, in read-only content, in comments or in the document's properties. What was redacted is
+  remembered for this only while the document is open, never in its unsaved copy or the file
 - Check accessibility before publishing, as Word's Accessibility Checker does (Section 508,
   EN 301 549, WCAG): the review lists errors (pictures without alt text, unless marked decorative;
   tables without a header row), warnings (skipped heading levels, no document language, text whose
   colour is below WCAG's contrast minimum) and tips (unclear link text such as "click here", blank
-  paragraphs used for spacing, pictures not in line with text, no title). "Show" goes to each place
+  paragraphs used for spacing, pictures not in line with text, no title, and text hard to read:
+  sentences of more than 30 words, and in English a Flesch-Kincaid grade above 12 once there are
+  100 words, as WCAG's reading level asks). "Show" goes to each place
   in turn; for a picture it opens its alt text, and a missing title can be added there and is saved
   in the document's properties
 - Check a CV for employers' screening software (applicant tracking systems), which read a CV's text
@@ -1242,5 +1265,15 @@ The About page shows the version.
   Share… isn't offered and Download keeps the file on the device. A date that updates shows the day
   it was inserted here (Word updates it when it opens the file); dates already in a file as fields
   aren't updated here
+- Readability scores are worked out as the Flesch formulas define them, with syllables counted by
+  rule rather than from a dictionary, and the passive voice found by its form ("was approved"), so
+  they are near Word's figures rather than the same. They are for English only; other languages get
+  the counts and averages. Sentences end at ., ! and ? (not after common abbreviations such as
+  "Mr." or "Nov."), and a paragraph without one is a sentence, as a headline is
+- Redact blacks out text, not pictures (delete them), and the length of what was redacted stays
+  visible, as on a page blacked out by hand. "Before you release" finds what was redacted only in
+  this session, and only as it was selected (the same words in another form, such as "Ms Ruiz" for
+  "Ana Ruiz", are not found: use Find). Text kept out of view (such as a field's instructions or a
+  picture's alt text) isn't searched; check it in Word's Document Inspector
 - The screening check knows what such software commonly misses, not what a given employer's does;
   it doesn't rate how well a CV matches a job

@@ -174,7 +174,7 @@ test('personal information is removed from the download, and comes back when unt
 test('a document with nothing hidden says so', async ({ page }) => {
   await openInEditor(page, await buildDocx('<w:p><w:r><w:t>Plain text.</w:t></w:r></w:p>'));
   await openReview(page);
-  await expect(releaseSection(page)).toContainText('Nothing hidden: no comments, tracked changes, hidden text or personal information.');
+  await expect(releaseSection(page)).toContainText('Nothing hidden: no comments, tracked changes, hidden text, redactions or personal information.');
   await expect(page.getByRole('note')).toHaveCount(0);
 });
 

@@ -3,6 +3,7 @@
 // EN 301 549, WCAG). It reads the page as rendered: each issue lists the elements it was found in, so
 // the editor can show them one by one.
 import { isEmptyBlock } from './structure.js';
+import { readability, LONG_SENTENCE } from './readability.js';
 
 const DECORATIVE = 'http://schemas.microsoft.com/office/drawing/2017/decorative';
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -109,6 +110,17 @@ export function checkAccessibility(page, doc) {
   const floating = pictures.filter((span) => (doc.pictureLayout(span)?.wrap || 'inline') !== 'inline');
   if (floating.length) {
     add('inline', 'tip', 'Pictures not in line with text', `${plural(floating.length, 'picture')} with text wrapping around ${floating.length === 1 ? 'it' : 'them'}: screen readers may read ${floating.length === 1 ? 'it' : 'them'} out of order. Where the layout allows, choose In line with text in Layout Options.`, floating);
+  }
+
+  // Plain language (WCAG 3.1.5): long sentences, and in English a reading grade above secondary
+  // school, worked out as Word's Readability Statistics do (once the text is long enough to tell).
+  const language = doc.styles.language() || '';
+  const stats = readability(page, { english: !language || /^en\b/i.test(language) });
+  const long = [...new Set(stats.long.map((s) => s.block))];
+  const grade = stats.scores && stats.words >= 100 && stats.scores.grade > 12 ? stats.scores.grade : null;
+  if (long.length || grade) {
+    const what = [long.length && `${plural(stats.long.length, 'sentence')} of more than ${LONG_SENTENCE} words`, grade && `a reading grade of ${grade} (Flesch-Kincaid: the years of school a reader needs)`].filter(Boolean).join(' and ');
+    add('reading', 'tip', 'Hard to read', `${what}. Shorter sentences and everyday words help everyone, and most of all people with reading or cognitive disabilities and those reading in a second language.${long.length ? ' Show goes to them;' : ''} Word count (the word count in the status bar) has the readability statistics.`, long);
   }
 
   // A title, which screen readers announce and PDFs made from the document show.
