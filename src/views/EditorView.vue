@@ -414,9 +414,10 @@
           <label>{{ t('Height') }} ({{ picturePanel.unit }}) <input v-model.number="picturePanel.height" type="number" min="0.1" step="0.1" @change="applySize('height')" /></label>
         </div>
         <label class="inline"><input v-model="picturePanel.lock" type="checkbox" /> {{ t('Keep proportions') }}</label>
-        <button type="button" @click="resetPictureSize">{{ t('Reset size') }}</button>
+        <button v-if="!picture.shape" type="button" @click="resetPictureSize">{{ t('Reset size') }}</button>
       </fieldset>
-      <details>
+      <!-- A line, arrow or shape: its wrapping, position, size and rotation, not a picture's crop or effects. -->
+      <details v-if="!picture.shape">
         <summary>{{ t('Crop') }}</summary>
         <div class="size-row">
           <label>Left (%) <input v-model.number="picturePanel.cropL" type="number" step="1" @change="applyCrop" /></label>
@@ -436,7 +437,7 @@
         </div>
         <label>Rotation (°) <input v-model.number="picturePanel.rot" type="number" step="1" @change="applyRotation" /></label>
       </details>
-      <details>
+      <details v-if="!picture.shape">
         <summary>{{ t('Effects') }}</summary>
         <div class="size-row">
           <label>{{ t('Border') }}
@@ -464,7 +465,7 @@
           <label>Contrast (%) <input v-model.number="picturePanel.contrast" type="number" min="-100" max="100" step="5" @change="applyEffects" /></label>
         </div>
       </details>
-      <details>
+      <details v-if="!picture.shape">
         <summary>{{ t('Style and 3-D') }}</summary>
         <label>{{ t('Picture style') }}
           <select v-model="picturePanel.style" @change="applyStyle">
@@ -947,10 +948,14 @@
 
     <div v-if="insertMenu.open" ref="insertMenuEl" class="change-menu insert-menu" role="menu" :aria-label="t('Insert')" :style="{ left: `${insertMenu.x}px`, top: `${insertMenu.y}px` }" @mousedown.prevent @keydown.esc="closeInsertMenu(true)" @keydown="onMenuArrows">
       <button type="button" role="menuitem" @click="insertCheckbox">Check box<span class="hint">{{ t('☐ ticked with a click') }}</span></button>
-      <button type="button" role="menuitem" @click="insertAnswerLine">{{ t('Answer line') }}<span class="hint">{{ t('Name: ______ to the margin') }}</span></button>
       <p class="menu-label" role="presentation">{{ t('Today’s date') }}</p>
       <button v-for="d in insertMenu.dates" :key="d.style" type="button" role="menuitem" @click="insertDate(d)">{{ d.text }}</button>
       <button type="button" role="menuitemcheckbox" class="auto-date" :aria-checked="String(dateUpdates)" :title="t('As Word’s Date and Time dialog: the date as a field Word changes to that day’s date each time it opens or prints the file, or as text that stays as it is')" @click="toggleDateUpdates"><span class="check" aria-hidden="true">{{ dateUpdates ? '☑' : '☐' }}</span>Update automatically<span class="hint">{{ dateUpdates ? 'Word shows the day it’s opened' : 'Stays as today’s date' }}</span></button>
+      <p class="menu-label" role="presentation">{{ t('Lines and shapes') }}</p>
+      <button type="button" role="menuitem" @click="insertAnswerLine">{{ t('Answer line') }}<span class="hint">{{ t('Name: ______ to the margin') }}</span></button>
+      <button type="button" role="menuitem" @click="insertShape('line')">{{ t('Line') }}<span class="hint">{{ t('In front of the text: drag it into place') }}</span></button>
+      <button type="button" role="menuitem" @click="insertShape('arrow')">{{ t('Arrow') }}<span class="hint">{{ t('To label a diagram or a picture') }}</span></button>
+      <button type="button" role="menuitem" @click="insertShape('textbox')">{{ t('Text box') }}<span class="hint">{{ t('In line with the text, to type in') }}</span></button>
       <p class="menu-label" role="presentation">{{ t('References') }}</p>
       <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">{{ t('From the headings') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
@@ -2808,7 +2813,7 @@ function addRow(cell) {
 
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const PX = 9525; // EMU per pixel
-const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false });
+const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false, shape: false });
 const picturePanel = reactive({
   unit: 'cm', // lengths in centimetres or inches (see editor/units.js)
   open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '',
@@ -2853,8 +2858,9 @@ function showPicture(span) {
     picture.cropping = false;
   }
   picture.el = span;
+  picture.shape = span?.dataset.shape != null;
   updatePictureFrame();
-  if (span) message.value = 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
+  if (span) message.value = picture.shape ? 'Shape: drag it to move it, a handle to resize it, or open Layout Options to turn it' : 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
 }
 
 /** Puts the frame over the selected picture (in the sheet's coordinates). */
@@ -2882,7 +2888,8 @@ function changePicture(change, done) {
   nextTick(() => {
     if (span.isConnected) selectPicture(span);
     fillPicturePanel();
-    if (done) message.value = done;
+    // A line, arrow or shape is changed as a picture is, and called what it is.
+    if (done) message.value = picture.shape ? done.replace(/^Picture\b/, 'Shape') : done;
   });
 }
 
@@ -5097,6 +5104,75 @@ function insertAnswerLine() {
   if (document.queryCommandState('underline')) document.execCommand('underline');
   scheduleTabs();
   message.value = t('Answer line added: an underlined tab to a right tab stop at the margin, as Word makes one');
+}
+
+// ------------------------------------------------------------------ lines, arrows and text boxes
+
+const SHAPE_NAMES = { line: 'Line', arrow: 'Arrow', textbox: 'Text box' };
+
+/**
+ * Insert > Line, Arrow or Text box, as Word's Insert > Shapes makes them. A line or an arrow, 4 cm
+ * long, goes in front of the text where the caret is (anchored to its paragraph), selected, to be
+ * dragged into place, resized and turned as a picture is; a text box (5 × 1.5 cm, with a thin
+ * border) goes in line with the text at the caret, to type in.
+ */
+async function insertShape(kind) {
+  closeInsertMenu();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  if (!range) {
+    message.value = t('Click in the text where it should go');
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  if (noteAt(range.startContainer)) {
+    message.value = t('{what} goes in the text itself, not in a header, footer, note or text box', { what: t(SHAPE_NAMES[kind]) });
+    return;
+  }
+  if (controlAt(range.startContainer, page.value) || formTextAt(range.startContainer)) {
+    message.value = t('{what} can’t go in a field: put the caret after it', { what: t(SHAPE_NAMES[kind]) });
+    return;
+  }
+  const where = range.cloneRange();
+  where.collapse(false);
+  let opts;
+  if (kind === 'textbox') opts = { cx: 1800000, cy: 540000 };
+  else {
+    // At the caret, from where its paragraph's text starts (EMU), halfway down its line.
+    const block = closestBlock(where.startContainer);
+    const caret = where.getClientRects()[0] || where.startContainer.parentElement?.getBoundingClientRect();
+    const box = block?.getBoundingClientRect();
+    const zoom = sheetZoom.value || 1;
+    const x = caret && box ? Math.max(0, (caret.left - box.left - parseFloat(getComputedStyle(block).paddingLeft) * zoom) / zoom) : 0;
+    const y = caret && box ? Math.max(0, (caret.top + caret.height / 2 - box.top) / zoom) : 0;
+    opts = { cx: 1440000, cy: 0, offset: { x: x * 9525, y: y * 9525 } };
+  }
+  const span = await doc.addShape(kind, opts);
+  page.value.focus();
+  selectRange(where);
+  undoStack.flush();
+  const tracked = trackedBy(where.startContainer);
+  if (tracked) insertTracked([span], tracked);
+  else insertAtCaret([span]);
+  page.value.normalize();
+  undoStack.commit();
+  markDirty();
+  refreshChanges();
+  if (kind === 'textbox') {
+    // In it, ready to type.
+    const p = span.querySelector('.textbox-content p, .textbox-content');
+    const caret = document.createRange();
+    caret.selectNodeContents(p);
+    caret.collapse(true);
+    p.closest('[contenteditable="true"]')?.focus();
+    selectRange(caret);
+    message.value = t('Text box inserted: type in it{tracked}', { tracked: tracked ? t(' (tracked)') : '' });
+  } else {
+    selectPicture(span);
+    message.value = t('{what} inserted{tracked}: drag it into place, a handle to make it longer, or Layout Options to turn it', { what: t(SHAPE_NAMES[kind]), tracked: tracked ? t(' (tracked)') : '' });
+  }
+  onSelectionChange();
 }
 
 // ------------------------------------------------------------------ read aloud
