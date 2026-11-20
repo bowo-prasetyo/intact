@@ -242,12 +242,16 @@ function onDrop(e) {
 const createNew = () => run(newDocument);
 const createFrom = (id) => run(() => newFromStarter(id));
 const paper = localPaper();
-// The starters, in groups: in Indonesian, the official documents first; else the English ones only.
+// The starters, in groups: in Indonesian, the official documents first, then those for teachers in
+// Indonesian, then the English ones; else the English ones, then the English ones for teachers.
 const starterGroups = computed(() => {
-  const english = { id: 'en', title: lang.value === 'id' ? 'Other templates (in English)' : 'Or start from a template', starters: STARTERS.filter((s) => !s.lang), note: t('{paper} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.', { paper }) };
-  if (lang.value !== 'id') return [english];
+  const english = { id: 'en', title: lang.value === 'id' ? 'Other templates (in English)' : 'Or start from a template', starters: STARTERS.filter((s) => !s.lang && !s.group), note: t('{paper} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.', { paper }) };
+  if (lang.value !== 'id') {
+    return [english, { id: 'teach', title: 'For teachers', starters: STARTERS.filter((s) => !s.lang && s.group === 'teach'), note: t('Tests number their questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.') }];
+  }
   return [
-    { id: 'id', title: 'Official documents (Tata Naskah Dinas)', starters: STARTERS.filter((s) => s.lang === 'id'), note: t('A4 paper, as the rules for official documents ask; F4 and Folio are in Page setup. Fill in the [placeholders] once, for everywhere they appear.') },
+    { id: 'id', title: 'Official documents (Tata Naskah Dinas)', starters: STARTERS.filter((s) => s.lang === 'id' && !s.group), note: t('A4 paper, as the rules for official documents ask; F4 and Folio are in Page setup. Fill in the [placeholders] once, for everywhere they appear.') },
+    { id: 'guru', title: 'For teachers (Kurikulum Merdeka)', starters: STARTERS.filter((s) => s.lang === 'id' && s.group === 'teach'), note: t('A4 paper. The test numbers its questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.') },
     english,
   ];
 });
@@ -268,6 +272,18 @@ const STARTER_ICONS = {
   'nota-dinas': [PAGE, 'M9 6.5h6M8 9h2M11 9h5M8 11h2M11 11h5M8 13h2M11 13h5M7.5 15h9M8 17.5h6'],
   'surat-undangan': [PAGE, 'M8 7h8M8.5 10.5h7v6h-7zM8.5 12.5h7M10.5 9.5v2M13.5 9.5v2'],
   'berita-acara': [PAGE, 'M9 6.5h6M8 9h8M8 11h8M8 13h6M8 17h3M13 17h3'],
+  // For teachers: a test's two columns of choices; a worksheet's tick; a rubric's grid; a lesson's
+  // stages; a letter home with a child; and the Indonesian ones, as their English counterparts.
+  test: [PAGE, 'M8 7h8M8 9.5h.01M8.5 11h2M8.5 12.5h2M13 9.5h.01M13.5 11h2M13.5 12.5h2M8 15.5h8M8 17.5h8'],
+  worksheet: [PAGE, 'M8 7.5h8M8 10.5l1.2 1.2 2.3-2.4M13 11h3M8 14.5h8M8 17h5'],
+  rubric: ['M3.5 6h17v12h-17z', 'M3.5 9.5h17M3.5 13.5h17M8 6v12M12 6v12M16 6v12'],
+  'lesson-plan': [PAGE, 'M8 7.5h8M8 10.5h2M11.5 10.5h4.5M8 13.5h2M11.5 13.5h4.5M8 16.5h2M11.5 16.5h4.5'],
+  'parent-letter': ['M3.5 6.5h17v11h-17z', 'M3.5 6.5l8.5 6.5 8.5-6.5', 'M17.5 3.5a1.5 1.5 0 1 0 0 .01'],
+  soal: [PAGE, 'M8 7h8M8 9.5h.01M8.5 11h2M8.5 12.5h2M13 9.5h.01M13.5 11h2M13.5 12.5h2M8 15.5h8M8 17.5h8'],
+  'kisi-kisi': ['M3.5 6h17v12h-17z', 'M3.5 9h17M6 6v12M10 6v12M14 6v12M17.5 6v12'],
+  'modul-ajar': [PAGE, 'M9 6.5h6M8 9h3M8 11h8M8 13h8M8 15h3M8 17h8'],
+  rubrik: ['M3.5 6h17v12h-17z', 'M3.5 9.5h17M3.5 13.5h17M8 6v12M12 6v12M16 6v12'],
+  'surat-orang-tua': [PAGE, 'M8 6.5h8M7.5 8.5h9M8 11h5M8 13h8M8 15h8M8.5 18h3M13 18h3'],
 };
 </script>
 

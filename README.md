@@ -85,6 +85,22 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   page); each chapter a Heading 1 that starts a new page a third of the way down (and is listed,
   and can be moved, in the Headings pane); and a scene break as a centred #. Edits to a starter
   aren't tracked, as in a blank document
+- Templates for teachers, as a group of their own on the start page: in English, a test (Part A's
+  multiple choice in two columns between continuous section breaks, its questions and answer
+  choices numbered 1. and A. by Word's own multilevel list, so a choice added with Enter is the next
+  letter; Part B's questions with ruled lines to answer on), a worksheet (matching, fill in the
+  blanks, a question to write about and a self-check), a rubric (criteria against four levels and a
+  score, on a landscape page, its rows tall enough to write in), a lesson plan (objectives,
+  materials, the lesson's stages, differentiation, assessment and reflection) and a letter to
+  parents whose [Parent name], [Student name] and [Class] are a class list's columns for Mail
+  merge, with a reply slip. When the interface is in Indonesian, in Indonesian (untuk guru), after
+  the naskah dinas: a lembar soal (the school's letterhead, the student's details, the general
+  instructions, pilihan ganda A–D in two columns, isian and uraian, each part numbered from 1), a
+  kisi-kisi soal (a landscape table from capaian pembelajaran to nomor soal, signed by the head of
+  school and the teacher), a modul ajar in Kurikulum Merdeka's parts (informasi umum, komponen
+  inti, lampiran), a rubrik penilaian and a surat untuk orang tua for Mail merge, on A4 in Times New
+  Roman 12 pt with 2 cm margins (the letter as an official letter, in Arial). Answer lines are a
+  table whose cells have a line under them, so Word and Intact draw them alike
 - Mail merge from a list, as Word's Mailings tab does it (Download ▾ > Mail merge…, or From a list…
   in Fill in): choose a CSV saved from Excel or Google Sheets (its first row names the columns;
   commas, semicolons or tabs between fields, quoted fields with commas and line breaks, UTF-8 or
@@ -441,6 +457,16 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   paper and margins go into its `w:sectPr`; the rest of it is kept. Where the document has several
   sections, each break is named on the page with its section's paper ("Section 2: A4 landscape ·
   section break (next page)"). One undoable step
+- Columns, as Word's Layout > Columns (in Page setup): one, two or three equal columns, the space
+  between them and a line between them, for the whole document, this section, this point forward or
+  the selected text, written as Word writes them (`w:cols` with `w:num`, `w:space` and `w:sep`).
+  Changing only the columns of part of a document puts continuous section breaks around it, as
+  Word's Columns dialog does (a test paper's multiple choice in two columns under its heading, on
+  the same page): the new section starts `w:type="continuous"`, and the section before keeps how
+  it started. The page shows the columns at once, and a break shows as the kind of start the section
+  after it has, as Word reads `w:type` ("section break (continuous)"). Columns of a document's own
+  widths are kept unless changed here, and then become equal; a column narrower than half an inch is
+  refused. One undoable step
 - Headers and footers, as Word's Header & Footer options (in Page setup): a different first page
   (`w:titlePg` in every section) and different odd and even pages (`w:evenAndOddHeaders` in
   settings.xml). Switched on, the first-page (or even-page) header and footer the document has are
@@ -1059,7 +1085,7 @@ The About page shows the version.
   so text typed there goes before the number, not into it). A
   footer made here is for all pages of the first section and those after it without their own; a
   first page set to have a different footer, and even pages where they differ, don't show it, as in
-  Word. Page setup isn't tracked; columns and gutters stay as they are. The page shows every section
+  Word. Page setup isn't tracked; gutters stay as they are, and columns made here are of equal width (Word's columns of their own widths are set in Word). The page shows every section
   at the width of the document's last one (a landscape section's wide table may be cut off at the
   page's edge here, not in Word); each break is named with its section's paper. "Different first
   page" and "different odd and even pages" are set for the whole document, not section by section.

@@ -628,7 +628,7 @@
           <option v-if="pageDialog.selected" value="selected">{{ t('Selected text') }}</option>
         </select>
       </label>
-      <p v-if="pageDialog.scope === 'forward' || pageDialog.scope === 'selected'" class="note">{{ pageDialog.scope === 'forward' ? t('A section break (next page) goes before the paragraph with the caret: from there on, the pages are set as below.') : t('Section breaks go before and after the selected paragraphs: their pages are set as below, as for a wide table on a landscape page.') }}</p>
+      <p v-if="pageDialog.scope === 'forward' || pageDialog.scope === 'selected'" class="note">{{ pageBreakNote() }}</p>
       <fieldset>
         <legend>{{ t('Paper') }}</legend>
         <label>{{ t('Size') }}
@@ -666,6 +666,19 @@
             <option value="in">{{ t('Inches') }}</option>
           </select>
         </label>
+      </fieldset>
+      <fieldset>
+        <legend>{{ t('Columns') }}</legend>
+        <label>{{ t('Number of columns') }}
+          <select v-model.number="pageDialog.cols">
+            <option v-for="n in columnChoices()" :key="n" :value="n">{{ n === 1 ? t('One') : n === 2 ? t('Two') : n === 3 ? t('Three') : n }}</option>
+          </select>
+        </label>
+        <template v-if="pageDialog.cols > 1">
+          <label>{{ t('Spacing') }} ({{ pageDialog.unit }}) <input v-model.number="pageDialog.colSpace" type="number" min="0" step="0.1" :aria-label="t('Spacing between columns ({unit})', { unit: pageDialog.unit })" /></label>
+          <label class="check"><input v-model="pageDialog.colSep" type="checkbox" /> {{ t('Line between') }}</label>
+        </template>
+        <p v-if="pageDialog.colUnequal" class="note">{{ t('These columns have widths of their own: changed here, they become equal.') }}</p>
       </fieldset>
       <fieldset>
         <legend>{{ t('Headers and footers') }}</legend>
@@ -1138,6 +1151,7 @@ import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separator
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
 import { elementChildren } from '../docx/xml.js';
+import { columnsWrapper } from '../docx/DocxDocument.js';
 import { wordDatePicture, dateFieldInstruction } from '../editor/dates.js';
 import { findPlaceholders } from '../editor/placeholders.js';
 import CommentsPanel from '../components/CommentsPanel.vue';
@@ -6435,6 +6449,7 @@ const MARGINS = ['top', 'bottom', 'left', 'right'];
 const pageDialog = reactive({
   open: false, x: 0, y: 0, unit: 'cm', paper: 'A4', orient: 'portrait', width: 0, height: 0, top: 0, bottom: 0, left: 0, right: 0, mark: '', markText: '', markLayout: 'diagonal',
   scope: 'whole', sections: 1, sectionNo: 1, selected: false, titlePg: false, evenAndOdd: false,
+  cols: 1, colSpace: 0, colSep: false, colUnequal: false,
 });
 let pageRange = null; // the text Page setup applies to, for "This section", "This point forward" and "Selected text"
 // Word's Watermark gallery's texts (Design > Watermark).
@@ -6471,11 +6486,12 @@ function openPageSetup() {
   const paper = PAPERS.find((p) => Math.abs(p.w - short) <= 20 && Math.abs(p.h - long) <= 20);
   const unit = unitFor(now.w, now.h);
   const cm = (twips) => fromTwips(twips, unit);
-  pageTwips = { width: now.w, height: now.h, top: now.top, bottom: now.bottom, left: now.left, right: now.right };
+  pageTwips = { width: now.w, height: now.h, top: now.top, bottom: now.bottom, left: now.left, right: now.right, colSpace: now.colSpace };
   pageInitial = {
     paper: paper ? paper.name : 'custom', orient: now.orient === 'landscape' || now.w > now.h ? 'landscape' : 'portrait',
     width: cm(now.w), height: cm(now.h),
     top: cm(now.top), bottom: cm(now.bottom), left: cm(now.left), right: cm(now.right), w: now.w, h: now.h,
+    cols: now.cols, colSpace: cm(now.colSpace), colSep: now.colSep, colUnequal: now.colUnequal,
     ...watermarkNow(),
     ...doc.headerFooterFlags(),
   };
@@ -6504,7 +6520,66 @@ function pickMargins(name) {
 /** The Page setup dialog's margins in another unit (remembered for the next dialogs). */
 function setPageUnit(unit) {
   saveUnit(unit);
-  switchUnit(pageDialog, pageInitial, pageTwips, [...MARGINS, 'width', 'height'], unit);
+  switchUnit(pageDialog, pageInitial, pageTwips, [...MARGINS, 'width', 'height', 'colSpace'], unit);
+}
+
+/** The numbers of columns offered: one to three, as Word's Columns presets, and the section's own if more. */
+const columnChoices = () => [...new Set([1, 2, 3, pageInitial?.cols || 1])].sort((a, b) => a - b);
+
+/** Whether only the columns are changed in Page setup (not the paper or margins). */
+function onlyColumnsChanged() {
+  const d = pageDialog;
+  const i = pageInitial;
+  if (!i) return false;
+  const paperSame = d.paper === i.paper && d.orient === i.orient && (d.paper !== 'custom' || (Number(d.width) === i.width && Number(d.height) === i.height));
+  return paperSame && MARGINS.every((k) => Number(d[k]) === i[k]) && columnsChanged(d, i);
+}
+
+/** Whether the dialog's columns differ from the section's. */
+const columnsChanged = (d, i) => d.cols !== i.cols || (d.cols > 1 && (Number(d.colSpace) !== i.colSpace || d.colSep !== i.colSep));
+
+/** What "This point forward" or "Selected text" adds: continuous breaks for columns alone, as Word's Columns does; else new pages. */
+function pageBreakNote() {
+  const continuous = onlyColumnsChanged();
+  if (pageDialog.scope === 'forward') {
+    return continuous
+      ? t('A continuous section break goes before the paragraph with the caret: from there on, the text is set in the columns below, on the same page.')
+      : t('A section break (next page) goes before the paragraph with the caret: from there on, the pages are set as below.');
+  }
+  return continuous
+    ? t('Continuous section breaks go before and after the selected paragraphs: they are set in the columns below, on the same page as the text around them.')
+    : t('Section breaks go before and after the selected paragraphs: their pages are set as below, as for a wide table on a landscape page.');
+}
+
+/**
+ * Puts the page's sections in columns as they are set now: each section's blocks in a wrapper
+ * (see DocxDocument.renderBody) where it has more than one column, none where it has one. The
+ * wrappers are only for the page; the caret and selection stay where they were.
+ */
+function rewrapColumns() {
+  const root = page.value;
+  if (!root) return;
+  const sel = window.getSelection();
+  const at = sel.rangeCount && root.contains(sel.anchorNode) ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] : null;
+  for (const w of [...root.querySelectorAll(':scope > .docx-columns')]) w.replaceWith(...w.childNodes);
+  let group = [];
+  const close = (end) => {
+    const cols = doc.sectionColumns(end);
+    if (cols && group.length) {
+      const div = columnsWrapper(cols);
+      group[0].before(div);
+      div.append(...group);
+    }
+    group = [];
+  };
+  for (const block of topBlocks()) {
+    group.push(block);
+    if (block.dataset.sectionEnd != null) close(block);
+  }
+  close(null);
+  if (at && at.every((x) => x != null) && root.contains(at[0]) && root.contains(at[2])) {
+    try { sel.setBaseAndExtent(...at); } catch { /* the caret stays where the browser put it */ }
+  }
 }
 
 /** Applies what was changed in the Page setup dialog to every section, as one undoable step. */
@@ -6531,6 +6606,14 @@ function applyPageSetup() {
     Object.assign(change, { w: landscape ? long : short, h: landscape ? short : long, orient: d.orient });
   }
   for (const k of MARGINS) if (num(d[k]) !== i[k]) change[k] = toTwips(num(d[k]), d.unit);
+  // Columns, as Word's Columns dialog: how many, the space between them and a line between them,
+  // all written together (equal columns), with a space left as it was kept exactly.
+  const columnsOnly = onlyColumnsChanged();
+  if (columnsChanged(d, i)) {
+    change.cols = d.cols;
+    change.colSpace = num(d.colSpace) === i.colSpace ? pageTwips.colSpace : toTwips(num(d.colSpace), d.unit);
+    change.colSep = d.cols > 1 && d.colSep;
+  }
   const markText = (d.mark === 'custom' ? d.markText : d.mark).trim();
   const markInitial = (i.mark === 'custom' ? i.markText : i.mark).trim();
   const markChanged = markText !== markInitial || (!!markText && d.markLayout !== i.markLayout);
@@ -6546,10 +6629,18 @@ function applyPageSetup() {
       message.value = t('The margins leave less than {room} for the text: nothing was changed', { room: d.unit === 'in' ? '1 in' : '2.5 cm' });
       return;
     }
+    // Each column at least half an inch wide, as Word's Columns dialog allows.
+    const cols = change.cols ?? i.cols;
+    const space = change.colSpace ?? pageTwips.colSpace;
+    if (cols > 1 && (width - left - right - (cols - 1) * space) / cols < 720) {
+      message.value = t('{n} columns with that spacing leave less than {room} for each: nothing was changed', { n: cols, room: d.unit === 'in' ? '0.5 in' : '1.27 cm' });
+      return;
+    }
   }
   if ((markChanged || hfChanged || (paged && (d.scope !== 'whole' || sectionEnds().length))) && textLocked.value) return explainLock();
   undoStack.flush();
-  const where = paged ? applySetupTo(d.scope, change) : null;
+  const where = paged ? applySetupTo(d.scope, change, columnsOnly ? 'continuous' : 'nextPage') : null;
+  if (paged) rewrapColumns(); // new section breaks, or columns changed: the page's sections as they are now
   if (markChanged) setWatermark(markText, d.markLayout !== 'horizontal');
   if (hfChanged) applyHeaderFooterFlags(d.titlePg, d.evenAndOdd);
   pageChanged();
@@ -6620,8 +6711,9 @@ function breakHolder(block, after) {
  * section), this section, this point forward (a section break before the caret's paragraph), or
  * the selected text (section breaks before and after it). Returns where it applied, for messages.
  */
-function applySetupTo(scope, change) {
-  const setFor = (end) => (end ? doc.setSectionSetup(end, change) : doc.setPageSetup({ ...doc.pageSetup, ...change }));
+function applySetupTo(scope, change, breakType = 'nextPage') {
+  const setOn = (end, set) => (end ? doc.setSectionSetup(end, set) : doc.setPageSetup({ ...doc.pageSetup, ...set }));
+  const setFor = (end) => setOn(end, change);
   const blocks = pageRange?.startContainer.isConnected ? blocksIn(pageRange) : [];
   if (scope === 'whole' || !blocks.length) {
     doc.setPageSetup({ ...doc.pageSetup, ...change });
@@ -6641,7 +6733,9 @@ function applySetupTo(scope, change) {
     // After the selection: a break, unless the selection ends its section (or the document).
     if (last.dataset.sectionEnd == null && all.indexOf(last) < all.length - 1) {
       const sect = sectPrOf(last);
-      doc.addSectionBreak(breakHolder(last, true), sect);
+      const after = sectionEndOf(last); // the section the text after the selection stays in
+      doc.addSectionBreak(breakHolder(last, true), sect, breakType);
+      setOn(after, { type: breakType }); // it starts after the new break: on a new page, or on the same one
       made++;
     }
   }
@@ -6650,10 +6744,12 @@ function applySetupTo(scope, change) {
   const prev = all[all.indexOf(first) - 1];
   if (prev && prev.dataset.sectionEnd == null) {
     const sect = sectPrOf(first);
-    doc.addSectionBreak(breakHolder(prev, true), sect); // a table before: a new paragraph after it holds the break
+    doc.addSectionBreak(breakHolder(prev, true), sect, breakType); // a table before: a new paragraph after it holds the break
     made++;
+    setOn(sectionEndOf(first), { ...change, type: breakType }); // the new section starts as the break says
+  } else {
+    setFor(sectionEndOf(first));
   }
-  setFor(sectionEndOf(first));
   doc.renumber(page.value);
   return `${scope === 'selected' ? t('for the selected text') : t('from this point forward')}${made ? t(made === 1 ? ' ({n} section break added)' : ' ({n} section breaks added)', { n: made }) : ''}`;
 }
@@ -6666,7 +6762,9 @@ function refreshSections() {
     const s = doc.sectionSetup(el);
     const paper = PAPERS.find((p) => Math.abs(p.w - Math.min(s.w, s.h)) <= 20 && Math.abs(p.h - Math.max(s.w, s.h)) <= 20);
     const numbering = [s.numFmt && s.numFmt !== 'decimal' ? t('pages {format}', { format: formatLabel(s.numFmt) }) : '', s.numStart != null ? t('from {n}', { n: s.numStart }) : ''].filter(Boolean).join(' ');
-    const note = `${t('Section {n}', { n: n + 1 })}: ${paper ? `${paper.name} ` : ''}${t(s.w > s.h || s.orient === 'landscape' ? 'landscape' : 'portrait')}${numbering ? ` · ${numbering}` : ''} · ${t('section break (next page)')}`;
+    const columns = s.cols > 1 ? ` · ${t('{n} columns', { n: s.cols })}` : '';
+    const kind = el.dataset.sectionEnd === 'continuous' ? t('section break (continuous)') : t('section break (next page)');
+    const note = `${t('Section {n}', { n: n + 1 })}: ${paper ? `${paper.name} ` : ''}${t(s.w > s.h || s.orient === 'landscape' ? 'landscape' : 'portrait')}${columns}${numbering ? ` · ${numbering}` : ''} · ${kind}`;
     if (el.dataset.sectionNote !== note) el.dataset.sectionNote = note;
   });
   for (const el of page.value.querySelectorAll('[data-section-note]')) if (el.dataset.sectionEnd == null) delete el.dataset.sectionNote;
