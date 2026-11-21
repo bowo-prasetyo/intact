@@ -218,7 +218,8 @@ Saying no to these keeps the product small enough to keep its promises:
   speech recognition sends the voice to a server, which the privacy promise rules out
 - Writing tools a reporter reaches for in Word: AutoCorrect entries of your own and common typos ✔;
   the thesaurus (Shift+F7), in English and Indonesian, on the device ✔; copy for the web (a CMS, an
-  e-mail) or as Markdown, to the clipboard rather than as another file format ✔
+  e-mail) or as Markdown, to the clipboard rather than as another file format ✔; synonyms in the form
+  of the word they replace ✔; AutoCorrect entries exported and imported as a CSV file ✔
 
 ## How we'll know it's working
 

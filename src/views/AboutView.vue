@@ -100,9 +100,10 @@
       <h2>Writing tools</h2>
       <p>
         AutoCorrect replaces your own entries as you type (cllr becomes Councillor, in the case you typed
-        it), and common English typos in English text; the entries are kept in this browser. The
-        thesaurus (Shift+F7) offers other words for the word at the caret, in English (Princeton
-        WordNet) or Indonesian (Wordnet Bahasa's hand-checked words), from the app's own files, offline.
+        it), and common English typos in English text; the entries are kept in this browser, and Export
+        and Import take them to another as a CSV file. The thesaurus (Shift+F7) offers other words for
+        the word at the caret, in English (Princeton WordNet), in its form (approves: sanctions; took:
+        chose), or Indonesian (Wordnet Bahasa's hand-checked words), from the app's own files, offline.
         Copy for the web puts the text on the clipboard as a website's editor or an e-mail takes it:
         headings, bold, italic, links, lists and tables, without Word's formatting; or as Markdown.
       </p>

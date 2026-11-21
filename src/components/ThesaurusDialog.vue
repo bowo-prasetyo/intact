@@ -18,9 +18,9 @@
     <template v-else-if="result">
       <p v-if="!result.meanings.length" class="hint" role="status">{{ t('No meanings found for “{word}”.', { word: looked }) }} {{ language === 'id' ? t('The Indonesian thesaurus is small: it has only words checked by hand.') : '' }}</p>
       <template v-else>
-        <p class="hint" role="status">{{ replacing ? t('Click a word to put it in place of “{word}”.', { word: replacing }) : t('Click a word to insert it at the caret.') }}</p>
+        <p class="hint" role="status">{{ replacing ? t('Click a word to put it in place of “{word}”.', { word: replacing }) : t('Click a word to insert it at the caret.') }}{{ result.inflected ? ` ${t('Words for “{base}” are shown as “{word}” is: {example}.', { base: baseOf(result), word: looked, example: exampleOf(result) })}` : '' }}</p>
         <section v-for="(m, i) in result.meanings.slice(0, LIMIT)" :key="i" class="meaning">
-          <h3>{{ m.words[0] || m.similar[0] || m.opposite[0] }} <span class="pos">({{ t(m.label) }}{{ m.form !== result.word ? ` · ${m.form}` : '' }})</span></h3>
+          <h3>{{ m.words[0] || m.similar[0] || m.opposite[0] }} <span class="pos">({{ t(m.label) }}{{ m.form !== looked.toLowerCase() ? ` · ${m.form}` : '' }})</span></h3>
           <div v-if="m.words.length" class="words">
             <button v-for="w in m.words" :key="w" type="button" @click="$emit('insert', w)">{{ w }}</button>
           </div>
@@ -53,6 +53,7 @@ import { loadThesaurus } from '../editor/thesaurus.js';
 const props = defineProps({
   word: { type: String, default: '' }, // the word to look up first, and to replace
   lang: { type: String, default: 'en' }, // 'en' or 'id'
+  participle: { type: Boolean, default: false }, // the word replaced follows have or be: an -ed form is a past participle
 });
 defineEmits(['close', 'insert']);
 
@@ -65,13 +66,22 @@ const result = ref(null);
 const looked = ref('');
 const input = ref(null);
 
+/** The base of the first meaning shown in another form ("approve" for "approves"). */
+const baseOf = (r) => r.meanings.find((m) => m.kind !== 'base').form;
+/** One word shown in another form, as an example: "sanctions". */
+const exampleOf = (r) => {
+  const m = r.meanings.find((x) => x.kind !== 'base');
+  return m.words[0] || m.similar[0] || m.opposite[0];
+};
+
 async function look(word) {
   const w = word.trim();
   if (!w) return;
   state.value = 'loading';
   try {
     const thesaurus = await loadThesaurus(language.value);
-    result.value = thesaurus.lookup(w);
+    // Only the word in the text has words before it to tell a participle by.
+    result.value = thesaurus.lookup(w, { participle: props.participle && w.toLowerCase() === replacing.toLowerCase() });
     looked.value = w;
     state.value = '';
   } catch {

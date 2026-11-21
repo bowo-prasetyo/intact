@@ -81,3 +81,60 @@ export function autoCorrectWord(before, settings, english, typed = ' ') {
   if (key === 'i') return /^[\s'’]$/u.test(typed) ? { from: word, to: 'I' } : null;
   return { from: word, to: inCase(TYPO_MAP.get(key), word) };
 }
+
+// ---------------------------------------------------------------- moving entries between browsers
+
+/** Most entries a list may bring in, and the largest file read for one. */
+export const MAX_ENTRIES = 5000;
+export const MAX_FILE = 1024 * 1024;
+
+/**
+ * Your entries as a CSV file's text, to take to another browser or device (or keep, or edit in a
+ * spreadsheet): a header row "Replace,With", then an entry a row, in UTF-8 with a byte order mark,
+ * as Excel's "CSV UTF-8" saves it, so Excel opens it with its accents.
+ */
+export function entriesToCsv(entries) {
+  const field = (s) => (/[",;\t\r\n]|^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  return `﻿${['Replace,With', ...entries.map(([f, w]) => `${field(f)},${field(w)}`)].join('\r\n')}\r\n`;
+}
+
+/**
+ * The entries in a list's text (see entriesToCsv; also a list saved from a spreadsheet as CSV, with
+ * commas, semicolons or tabs, with or without its header row): { entries: [[from, to]], skipped (rows
+ * that aren't an entry: a word to replace that has spaces, or nothing to replace it with) }.
+ * `parseCsv` is mail merge's (docx/merge.js), passed in to keep this file small.
+ */
+export function entriesFromCsv(text, parseCsv) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r\n|\n|\r/, 1)[0];
+  // A list without the header row: one is put on, so its first row is read as an entry.
+  if (!/^\s*"?\s*(replace|ganti|from|text)\b/i.test(first)) {
+    const separator = first.includes('\t') ? '\t' : first.split(';').length > first.split(',').length ? ';' : ',';
+    text = `Replace${separator}With\n${text}`;
+  }
+  const entries = [];
+  let skipped = 0;
+  for (const [from = '', to = ''] of parseCsv(text).rows) {
+    const f = from.trim();
+    if (entryProblem(f, to)) skipped++;
+    else entries.push([f, to.trim()]);
+  }
+  return { entries, skipped };
+}
+
+/**
+ * `incoming` entries put into `current`: an entry for a word already there replaces it (the list
+ * brought in wins, as its last row does for a word twice in it). { entries (sorted), added, changed }.
+ */
+export function mergeEntries(current, incoming) {
+  const byKey = new Map(current.map((e) => [e[0].toLowerCase(), [...e]]));
+  const before = new Map(current.map(([f, w]) => [f.toLowerCase(), w]));
+  for (const [f, w] of incoming) byKey.set(f.toLowerCase(), [f, w]);
+  let added = 0;
+  let changed = 0;
+  for (const [key, [, w]] of byKey) {
+    if (!before.has(key)) added++;
+    else if (before.get(key) !== w) changed++;
+  }
+  return { entries: [...byKey.values()].sort((a, b) => a[0].localeCompare(b[0])), added, changed };
+}
