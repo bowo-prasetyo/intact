@@ -1506,7 +1506,7 @@ The About page shows the version.
   browser or device doesn't have them until they are taken there (Export…, Import…). They are put in
   new comments, not replies, and as plain text (up to 500 of them, 2,000 characters each)
 - Printed comments are listed after the document, not beside the text in the margin as Word's
-  Print Markup shows them; the commented words aren't highlighted on paper, only numbered
+  Print Markup shows them, and each is found by its number in the text
 - The thesaurus is WordNet's: its meanings and words are a dictionary's, not always those a writer
   reaches for. Words are put in another form by rule and by a list of common irregular words: a
   rarer irregular word may come out regular ("slayed" for "slew"), a plural of several words takes it on its
