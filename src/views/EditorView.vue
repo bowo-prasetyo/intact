@@ -1052,6 +1052,8 @@
       <button type="button" role="menuitem" @click="insertShape('textbox')">{{ t('Text box') }}<span class="hint">{{ t('In line with the text, to type in') }}</span></button>
       <p class="menu-label" role="presentation">{{ t('References') }}</p>
       <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">{{ t('From the headings') }}</span></button>
+      <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
+      <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
       <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading or caption') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
@@ -1261,7 +1263,7 @@ import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
-import { tocXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
+import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
@@ -4674,6 +4676,27 @@ function insertTableOfContents() {
   finishInsert(t.entries
     ? `Table of contents inserted: ${t.entries} ${t.entries === 1 ? 'heading' : 'headings'} – Word fills in the page numbers when it opens the file; Update (F9) adds headings written later`
     : 'Table of contents inserted: no headings yet – give paragraphs a heading style, then Update (F9)');
+}
+
+/**
+ * Insert Table of Figures, as Word's References tab: a list of the captions of one label (Figure,
+ * Table), as Word's TOC field with \\c, under a heading ("List of Figures"), built at once as Update
+ * fields builds one. Page numbers are Word's, as in a table of contents.
+ */
+function insertTableOfFigures(label) {
+  closeInsertMenu();
+  const what = label === 'Table' ? 'a list of tables' : 'a list of figures';
+  const spot = insertSpot(what, { block: true });
+  if (!spot) return;
+  undoStack.flush();
+  placeBlocks(spot, doc.renderXmlParagraphs(tableOfFiguresXml(doc.styles.ensureBuiltin('tocHeading'), label)));
+  refreshCss();
+  const t = updateFields(doc, page.value, { only: ['SEQ', 'TOC'] });
+  doc.updateFields = true;
+  const kind = label.toLowerCase();
+  finishInsert(t.entries
+    ? `List of ${kind}s inserted: ${t.entries} ${t.entries === 1 ? 'caption' : 'captions'} – Word fills in the page numbers when it opens the file; Update (F9) adds captions written later`
+    : `List of ${kind}s inserted: no ${kind} captions yet – add them with Caption…, then Update (F9)`);
 }
 
 /** The captions in the text, by label: { figure: [{ block, field, label }] } (label as written). */

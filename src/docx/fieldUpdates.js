@@ -239,9 +239,22 @@ function tocHeadings(doc, root, sw, exclude) {
     const parts = sw['\\t'].split(/[,;]/).map((x) => x.trim());
     for (let i = 0; i + 1 < parts.length; i += 2) styleLevels.set(parts[i].toLowerCase(), Number(parts[i + 1]));
   }
+  // A table of figures (\\c "Figure"): the paragraphs with a caption number of that label, at level 1.
+  const label = typeof sw['\\c'] === 'string' ? sw['\\c'].toLowerCase() : null;
+  const isCaption = (el) => [...el.querySelectorAll('span.field[data-instr]')].some((f) => {
+    const { code, args } = parseInstr(f.dataset.instr);
+    return code === 'SEQ' && args[0]?.toLowerCase() === label;
+  });
   const out = [];
   for (const el of root.querySelectorAll(BLOCKS)) {
     if (el.closest(OUTSIDE_TEXT) || exclude(el)) continue;
+    if (label) {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const text = isCaption(el) ? textOf(r) : '';
+      if (text) out.push({ el, level: 1, text });
+      continue;
+    }
     let level = null;
     const name = doc.styles.byId.get(el.dataset.style || doc.styles.defaultParagraph)?.name.toLowerCase();
     if (name && styleLevels.has(name)) level = styleLevels.get(name);
@@ -345,6 +358,7 @@ function entryParts(p) {
  */
 function rebuildToc(doc, paras, sw, entries) {
   const xml = doc.xml;
+  const figures = typeof sw['\\c'] === 'string'; // a table of figures: its entries in Word's Table of Figures style
   const m = tocMarkers(paras);
   const first = paras[0];
   const last = paras[paras.length - 1];
@@ -364,7 +378,9 @@ function rebuildToc(doc, paras, sw, entries) {
   const pages = new Map();
   for (const p of paras) {
     const style = wAttr(wChild(wChild(p, 'pPr'), 'pStyle'), 'val');
-    const level = Number(/^toc (\d)$/.exec(doc.styles.byId.get(style)?.name.toLowerCase() || '')?.[1] || /^TOC(\d)$/i.exec(style || '')?.[1]);
+    const styleName = doc.styles.byId.get(style)?.name.toLowerCase() || '';
+    const level = figures ? (styleName === 'table of figures' || /^TableofFigures$/i.test(style || '') ? 1 : 0)
+      : Number(/^toc (\d)$/.exec(styleName)?.[1] || /^TOC(\d)$/i.exec(style || '')?.[1]);
     const { text, page, anchor } = entryParts(p);
     if (!text) continue;
     if (level && !templates.has(level)) {
@@ -409,7 +425,7 @@ function rebuildToc(doc, paras, sw, entries) {
     if (t?.pPr) p.appendChild(t.pPr.cloneNode(true));
     else {
       const pPr = p.appendChild(createW(xml, 'pPr'));
-      pPr.appendChild(createW(xml, 'pStyle')).setAttributeNS(W, 'w:val', doc.styles.ensureBuiltin(`toc${e.level}`));
+      pPr.appendChild(createW(xml, 'pStyle')).setAttributeNS(W, 'w:val', doc.styles.ensureBuiltin(figures ? 'tableOfFigures' : `toc${e.level}`));
       const tab = pPr.appendChild(createW(xml, 'tabs')).appendChild(createW(xml, 'tab'));
       tab.setAttributeNS(W, 'w:val', 'right');
       tab.setAttributeNS(W, 'w:leader', 'dot');
@@ -440,7 +456,7 @@ function rebuildToc(doc, paras, sw, entries) {
     const p = createW(xml, 'p');
     const pPr = wChild(first, 'pPr');
     if (pPr) p.appendChild(pPr.cloneNode(true));
-    p.appendChild(run(null, 't', 'No table of contents entries found.'));
+    p.appendChild(run(null, 't', figures ? 'No table of figures entries found.' : 'No table of contents entries found.'));
     out.push(p);
   }
   // The field's begin (and what comes before it) in the first paragraph; its end in the last, or in

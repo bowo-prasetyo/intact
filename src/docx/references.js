@@ -58,6 +58,23 @@ export function tocXml(headingStyle) {
   ];
 }
 
+/** The heading a table of figures is given here, by its caption label. */
+export const FIGURES_HEADINGS = { Figure: 'List of Figures', Table: 'List of Tables', Equation: 'List of Equations' };
+
+/**
+ * A table of figures (a list of figures or of tables), as Word's Insert Table of Figures writes one:
+ * the TOC field with \c and the caption label, linked (\h), its entries the captions of that label,
+ * filled in by updating it. Word adds no heading; a thesis's front matter has one, so it is put
+ * before it ("List of Figures"), in Word's TOC Heading style (`headingStyle`), which isn't listed in
+ * a table of contents.
+ */
+export function tableOfFiguresXml(headingStyle, label) {
+  return [
+    `<w:p><w:pPr><w:pStyle w:val="${esc(headingStyle)}"/></w:pPr>${runXml(FIGURES_HEADINGS[label] || `List of ${label}s`)}</w:p>`,
+    `<w:p>${fieldRuns(` TOC \\h \\z \\c "${label}" `, runXml(`Update the list to show the ${label.toLowerCase()} captions.`))}</w:p>`,
+  ];
+}
+
 // ------------------------------------------------------------------ captions
 
 // Word's caption labels (Insert Caption's Label list).
