@@ -160,7 +160,8 @@ test('a section\'s header with a picture prints once, each section still on its 
   expect(css).toContain('@page intact-s1 { size: 1122.5333333333333px 793.7333333333333px;');
   expect(css).not.toMatch(/@top-(left|center|right) \{ content: "/);
   const dialog = await pdfDialog(page);
-  await expect(dialog).toContainText('The header prints once, at the start');
+  // (The footer too, in a browser without page-margin boxes; the reason given is the header's.)
+  await expect(dialog).toContainText(/The header (prints once, at the start|and footer print once, at the start and the end)/);
   await expect(dialog).toContainText('pictures or a table');
 });
 
