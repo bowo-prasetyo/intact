@@ -231,7 +231,9 @@ Saying no to these keeps the product small enough to keep its promises:
   encrypted again, or protect any document with one ✔ (the password never leaves the device, so
   "Private" holds; it is the files that most need it); a redline from Compare, the changes since
   the other version as tracked changes, to send back as Word's Compare makes one ✔; on a phone, a
-  document to review puts Accept, Reject and the comments first in the toolbar ✔
+  document to review puts Accept, Reject and the comments first in the toolbar ✔; a board paper
+  starter, the decision sought first ✔; downloads named as the next version ("Report v3 DE") where
+  the file opened can't be saved back to ✔
 
 ## How we'll know it's working
 
