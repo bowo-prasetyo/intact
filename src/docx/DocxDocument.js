@@ -753,6 +753,45 @@ export class DocxDocument {
     el.dataset.sectionEnd = type;
   }
 
+  /**
+   * The document's sections as they print, in order, from the section breaks in `root` (the page) as
+   * they are now: [{ end (the paragraph ending it, or null for the final one), setup (sectionSetup's,
+   * in twips), headerDist and footerDist (px), start ('nextPage', 'continuous'… how it begins), titlePg,
+   * header and footer: { default, first, even } (indexes into this.headers and this.footers, or
+   * null) }]. A section without a header (footer) of a type has the one before it has, as in Word;
+   * one made here is the first section's (see newPart) where that section has none of its own.
+   */
+  printSections(root) {
+    const ends = root ? [...root.querySelectorAll('[data-section-end]')].filter((el) => !el.closest('.docx-hf-band, .docx-notes, .textbox')) : [];
+    const sects = [...ends.map((el) => ({ end: el, sectPr: this.sectionBreakOf(el) })), { end: null, sectPr: this.finalSectPr() }];
+    const inherited = { header: {}, footer: {} };
+    for (const [which, list] of [['header', this.headers], ['footer', this.footers]]) {
+      list.forEach((v, i) => { if (v.added && v.section === 1) inherited[which][v.type] = i; });
+    }
+    return sects.map(({ end, sectPr }, i) => {
+      const bands = {};
+      for (const [which, list, local] of [['header', this.headers, 'headerReference'], ['footer', this.footers, 'footerReference']]) {
+        for (const ref of wChildren(sectPr, local)) {
+          const at = list.findIndex((v) => v.rid === ref.getAttributeNS(NS.r, 'id'));
+          if (at >= 0) inherited[which][wAttr(ref, 'type') || 'default'] = at;
+        }
+        bands[which] = { default: inherited[which].default ?? null, first: inherited[which].first ?? null, even: inherited[which].even ?? null };
+      }
+      const mar = wChild(sectPr, 'pgMar');
+      const dist = (a) => (wAttr(mar, a) != null ? Number(wAttr(mar, a)) / 15 : 48);
+      return {
+        end,
+        setup: end ? this.sectionSetup(end) : this.pageSetupNow(),
+        headerDist: dist('header'),
+        footerDist: dist('footer'),
+        // How it begins: the break before it says (see renderBody), the first one on a new page.
+        start: i ? ends[i - 1].dataset.sectionEnd || 'nextPage' : 'nextPage',
+        titlePg: this.hfFlags.titlePg ?? onOff(wChild(sectPr, 'titlePg')) === true,
+        ...bands,
+      };
+    });
+  }
+
   /** The final section's properties as they would be saved now (the page setup set here applied). */
   finalSectPr() {
     const sect = (wChild(this.body, 'sectPr') || createW(this.xml, 'sectPr')).cloneNode(true);
@@ -2179,6 +2218,7 @@ export class DocxDocument {
         if (mark.type === 'begin') fields.push({ instr: '', outer: parent, form });
         else if (mark.type === 'instr' && fields.length) fields[fields.length - 1].instr += mark.text;
         else if (mark.type === 'separate' && fields.length) {
+          fields[fields.length - 1].separated = true;
           const wrap = document.createElement('span');
           wrap.className = 'field';
           const { instr, form: ff } = fields[fields.length - 1];
@@ -2209,7 +2249,11 @@ export class DocxDocument {
           parent.append(wrap);
           parent = wrap;
         } else if (mark.type === 'end' && fields.length) {
-          parent = fields.pop().outer;
+          const field = fields.pop();
+          // A page number without a result (written by software other than Word, which works
+          // it out on opening): its end marks it, to show # and print numbered (see markBarePageField).
+          if (!field.separated && !field.form) markBarePageField(marker, field.instr);
+          parent = field.outer;
         }
         continue;
       }
@@ -2325,6 +2369,13 @@ export class DocxDocument {
       span.dataset.n = String(this.commentOrder.get(id));
       span.title = comment ? `Comment by ${comment.author}: ${comment.paragraphs.join(' ')}` : 'Comment';
       return span;
+    }
+    // A whole page-number field in one run (begin, instruction, end), as some software writes it:
+    // kept as it is, shown and printed as a page number Word hasn't numbered yet.
+    const bare = local === 'r' && bareFieldInstr(node);
+    if (bare != null) {
+      const span = this.hiddenRaw(node);
+      if (markBarePageField(span, bare)) return span;
     }
     const mark = local === 'r' && watermarkInfo(node);
     if (mark) {
@@ -5353,6 +5404,32 @@ function fieldMarker(r) {
   if (k.localName === 'fldChar') return { type: wAttr(k, 'fldCharType') };
   if (k.localName === 'instrText') return { type: 'instr', text: k.textContent };
   return null;
+}
+
+/**
+ * The instruction of the whole field run `r` holds, begin to end with no result (no separate), or
+ * null: some software writes a page number so, in one run.
+ */
+function bareFieldInstr(r) {
+  const kids = elementChildren(r).filter((k) => !(k.namespaceURI === W && (k.localName === 'rPr' || k.localName === 'lastRenderedPageBreak')));
+  if (kids.length < 3 || kids.some((k) => k.namespaceURI !== W || (k.localName !== 'fldChar' && k.localName !== 'instrText'))) return null;
+  const types = kids.filter((k) => k.localName === 'fldChar').map((k) => wAttr(k, 'fldCharType'));
+  if (types.length !== 2 || types[0] !== 'begin' || types[1] !== 'end' || kids[0].localName !== 'fldChar' || kids[kids.length - 1].localName !== 'fldChar') return null;
+  return kids.filter((k) => k.localName === 'instrText').map((k) => k.textContent).join('');
+}
+
+/**
+ * Marks `span` (a hidden marker) as a page number (PAGE, NUMPAGES, SECTIONPAGES) without a result,
+ * if `instr` is one: it shows #, as the editor shows page numbers, and printing numbers it (see
+ * editor/printBands.js). Returns whether it is one.
+ */
+function markBarePageField(span, instr) {
+  const kind = /^\s*(PAGE|NUMPAGES|SECTIONPAGES)\b/i.exec(instr || '')?.[1].toUpperCase();
+  if (!kind) return false;
+  span.classList.add('page-field-bare');
+  span.dataset.instr = instr.trim();
+  span.title = `${kind === 'PAGE' ? 'Page number' : kind === 'NUMPAGES' ? 'Number of pages' : 'Pages in section'} – Word works it out when it opens the file`;
+  return true;
 }
 
 /** The run's only content element if it is `local` (ignoring run properties). */

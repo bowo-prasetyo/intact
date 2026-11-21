@@ -139,16 +139,18 @@ test('a different first page has its own header, and none where it has none', as
   expect(css).toMatch(/@page :first \{.*@bottom-center \{ content: none; \}/);
 });
 
-test('headers of several sections print once, as before, rather than on the wrong pages', async ({ page }) => {
+test('headers of several sections print each on its own section\'s pages', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Page-margin boxes: Chromium (more in print-sections.spec.js)');
   await openInEditor(page, await withBands({ header: para('Last section header'), sections: true }));
   const css = await beforePrint(page);
-  expect(css).toMatch(/@page \{ size: [\d.]+px [\d.]+px; margin: 96px/);
+  expect(css).toMatch(/@page intact-s0 \{[^\n]*@top-left \{ content: "First section header";/);
+  expect(css).toMatch(/@page intact-s1 \{[^\n]*@top-left \{ content: "Last section header";/);
   await page.emulateMedia({ media: 'print' });
-  await expect(page.locator('.docx-hf-band.header')).not.toHaveCSS('position', 'fixed');
+  await expect(page.locator('.docx-hf-band.header')).toBeHidden();
   await page.emulateMedia({ media: 'screen' });
   await page.getByRole('button', { name: 'More ways to save' }).click();
   await page.getByRole('menuitem', { name: /PDF/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Save as PDF' })).toContainText('The header prints once, at the start');
+  await expect(page.getByRole('dialog', { name: 'Save as PDF' })).toContainText('with the header on each');
 });
 
 test('a narrow paper doesn\'t print in the phone\'s layout', async ({ page }) => {
