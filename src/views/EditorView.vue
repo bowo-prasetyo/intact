@@ -1057,8 +1057,8 @@
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
       <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading or caption') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
-      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA or MLA') }}</span></button>
-      <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ doc.sources?.style === 'MLA' ? 'Works Cited' : 'References' }}</span></button>
+      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA, MLA, Chicago, Harvard, IEEE') }}</span></button>
+      <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ CITATION_STYLES[citationStyle(doc.sources?.style)].heading }}</span></button>
     </div>
 
     <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
@@ -1221,7 +1221,7 @@
     <SymbolDialog v-if="symbolOpen" @close="closeSymbols" @insert="insertSymbol" />
     <MailMergeDialog v-if="mailMerge.open" :placeholders="mailMerge.placeholders" :single-blocked="mailMerge.singleBlocked" :merge="runMailMerge" @close="closeMailMerge" />
     <EquationDialog v-if="refDialog === 'equation'" @close="closeRefDialog" @insert="insertEquation" />
-    <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" />
+    <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
 
@@ -1263,7 +1263,7 @@ import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
-import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
+import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
@@ -1326,7 +1326,7 @@ import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
-import { updateFields, parseInstr } from '../docx/fieldUpdates.js';
+import { updateFields, parseInstr, citationNumbersIn } from '../docx/fieldUpdates.js';
 import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -4824,31 +4824,39 @@ function insertEquation({ xml, display }) {
 }
 
 /**
- * Insert Citation: a CITATION field for a source the document has, or a new one added to its
- * sources. A new source, or another style, brings the citations and bibliographies up to date.
+ * Insert Citation: a CITATION field for one source or several (\\m), each one the document has, one
+ * imported from a reference manager's file, or a new one, those added to its sources. A new source,
+ * another style, or any citation in IEEE (whose numbers follow the text's order) brings the
+ * citations and bibliographies up to date.
  */
-function insertCitation({ tag, source, page: cited, style }) {
+// Sources imported from a BibTeX or RIS file in this session, offered until cited (then the document's).
+const sourceLibrary = ref([]);
+function insertCitation({ picks, page: cited, style }) {
   refDialog.value = null;
   const range = insertSpot('a citation');
   if (!range) return;
   undoStack.flush();
   const restyled = doc.sources.style !== style;
   doc.setCitationStyle(style);
-  const src = tag ? doc.sources.list.find((x) => x.tag === tag) : doc.addSource(source);
-  if (!src || !putInline(range, doc.renderXmlRuns(citationXml(src, style, cited)))) return;
-  if (restyled || !tag) updateFields(doc, page.value, { only: ['CITATION', 'BIBLIOGRAPHY'] });
-  finishInsert(`Citation inserted: ${src.authors[0]?.last || src.corporate || src.title}${restyled ? ` – citations now in ${style} style` : ''}`);
+  const fromLibrary = new Set(picks.filter((p) => p.libraryIndex != null).map((p) => p.libraryIndex));
+  const list = picks.map((p) => (p.tag ? doc.sources.list.find((x) => x.tag === p.tag) : doc.addSource(p.source)));
+  if (fromLibrary.size) sourceLibrary.value = sourceLibrary.value.filter((_, i) => !fromLibrary.has(i));
+  if (!list.length || list.some((x) => !x) || !putInline(range, doc.renderXmlRuns(citationXml(list, style, cited, citationNumbersIn(doc, page.value))))) return;
+  if (restyled || style === 'IEEE' || picks.some((p) => !p.tag)) updateFields(doc, page.value, { only: ['CITATION', 'BIBLIOGRAPHY'] });
+  const who = (x) => x.authors[0]?.last || x.corporate || x.title;
+  finishInsert(`Citation inserted: ${list.map(who).join('; ')}${restyled ? ` – citations now in ${style} style` : ''}`);
 }
 
-/** Insert Bibliography: "References" (APA) or "Works Cited" (MLA) and the document's sources, as Word's gallery inserts it. */
+/** Insert Bibliography: the style's heading ("References", "Works Cited") and the document's sources, as Word's gallery inserts it. */
 function insertBibliography() {
   closeInsertMenu();
   const spot = insertSpot('a bibliography', { block: true });
   if (!spot) return;
   undoStack.flush();
-  const style = doc.sources.style === 'MLA' ? 'MLA' : 'APA';
+  const style = citationStyle(doc.sources.style);
   placeBlocks(spot, doc.renderXmlParagraphs(bibliographyXml({
     sources: doc.sources.list, style, headingStyle: doc.styles.ensureBuiltin('h1'), entryStyle: doc.styles.ensureBuiltin('bibliography'),
+    numbers: citationNumbersIn(doc, page.value),
   })));
   const n = doc.sources.list.length;
   finishInsert(n
