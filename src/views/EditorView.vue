@@ -928,7 +928,7 @@
     </form>
 
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
-    <ThesaurusDialog v-if="thesaurusData" :word="thesaurusData.word" :lang="thesaurusData.lang" @close="closeThesaurus" @insert="replaceWithSynonym" />
+    <ThesaurusDialog v-if="thesaurusData" :word="thesaurusData.word" :lang="thesaurusData.lang" :participle="thesaurusData.participle" @close="closeThesaurus" @insert="replaceWithSynonym" />
     <AutoCorrectDialog v-if="autoCorrectDialog" :settings="autoCorrectSettings" :selected="autoCorrectDialog.selected" @close="closeAutoCorrect" @save="saveAutoCorrectSettings" />
     <WordCountDialog v-if="wordCountData" :words="words" :characters="chars" :pages="pageCount" :stats="wordCountData" :target="lengthTarget" :headline="headline" @close="closeWordCount" @save="setLengthTarget" @show-long="showLongSentence" />
 
@@ -1200,6 +1200,7 @@ import WordCountDialog from '../components/WordCountDialog.vue';
 import ThesaurusDialog from '../components/ThesaurusDialog.vue';
 import AutoCorrectDialog from '../components/AutoCorrectDialog.vue';
 import { thesaurusLanguage, matchCase } from '../editor/thesaurus.js';
+import { participleAfter } from '../editor/inflect.js';
 import { loadAutoCorrect, saveAutoCorrect, autoCorrectWord } from '../editor/autoCorrectList.js';
 import { webContent, toHtml, toText, toMarkdown, copyFormats } from '../editor/webCopy.js';
 import { wordCount, readability, headlineOf, blockText, textRange } from '../editor/readability.js';
@@ -1444,7 +1445,16 @@ function openThesaurus() {
   const node = range?.startContainer || savedRange?.startContainer;
   const el = node?.nodeType === 3 ? node.parentElement : node;
   const tag = el?.closest?.('[lang]')?.lang || doc.styles.language() || (lang.value === 'id' ? 'id' : 'en');
-  thesaurusData.value = { word, lang: thesaurusLanguage(tag) };
+  // "has approved", "was approved": an -ed form there is a past participle (see editor/inflect.js).
+  let participle = false;
+  const block = word && closestBlock(range.startContainer);
+  if (block) {
+    const lead = document.createRange();
+    lead.setStart(block, 0);
+    lead.setEnd(range.startContainer, range.startOffset);
+    participle = participleAfter(lead.toString());
+  }
+  thesaurusData.value = { word, lang: thesaurusLanguage(tag), participle };
 }
 
 function closeThesaurus() {

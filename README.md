@@ -680,12 +680,23 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   ("teh" → "the", "adn" → "and", "dont" → "don’t"; the list is in the dialog), in English text only
   (Indonesian's "teh" is tea), and as typed or with a capital, never in capitals. While tracking,
   the word just typed is your own insertion, so the entry takes its place in it, as in Word. "Replace
-  text as you type" switches it all off. The entries are kept in this browser, as your colours are
+  text as you type" switches it all off. The entries are kept in this browser, as your colours are.
+  Export… saves them as a CSV file ("autocorrect.csv": a header row "Replace,With", then an entry a
+  row, in UTF-8 as Excel's "CSV UTF-8" saves it), and Import… brings a list in, from another browser
+  or device or made in a spreadsheet (CSV or tab-separated, with commas, semicolons or tabs, with or
+  without its header row): an entry for a word already there replaces it, and the dialog says how
+  many were added, changed and skipped; nothing is kept until OK is chosen
 - Thesaurus, as Word's (Review › Thesaurus, Shift+F7, or the right-click menu): the word at the caret
   (or selected) looked up, its meanings with the words that say each, the most used first, and
   similar and opposite meanings; a click puts a word in its place, in its case ("Big" → "Large"),
-  tracked while tracking. Other forms of a word are looked up by their base ("approved", "said" →
-  "say"), and any word can be typed in. English from Princeton WordNet 3.1; Indonesian, for text in
+  tracked while tracking. In English, a word in another form is looked up by its base and the
+  words are offered in its form, as they would fit where it is: "approves" offers "sanctions",
+  "took" "chose" (and "taken" "chosen"), "bigger" "larger" and "more prominent", "levies" (a
+  verb) "imposes", with English spelling's rules (stopped, carried, permitted) and the common
+  irregular verbs, plurals and comparatives. An -ed form is a past or a past participle as the words
+  before it say: "returned" offers "gave", "had returned" "given". A base is looked up only as the
+  part of speech its form is ("news" isn't "new"s), and a word that can't be put in that form (a name,
+  "O.K.") is left out of it. Any word can be typed in. English from Princeton WordNet 3.1; Indonesian, for text in
   Indonesian (or chosen in the dialog), from Wordnet Bahasa 1.2's words checked by hand. Both are
   part of the app (`src/data/`, built by `scripts/thesaurus.mjs`), loaded the first time they are
   used, and work offline: nothing is sent anywhere
@@ -1304,11 +1315,15 @@ The About page shows the version.
 - AutoCorrect replaces a word typed in one piece of text (not across formatting changes inside the
   word), with plain text (an entry can't carry formatting or a picture, as Word's formatted entries
   can), and a word to replace is one word, without spaces. Your entries are kept per browser: another
-  browser or device doesn't have them, and there is no import or export yet. Word's own AutoCorrect
+  browser or device doesn't have them until they are taken there (Export…, Import…). Word's own AutoCorrect
   list isn't read from the computer: the typos corrected are Intact's own list, in English
 - The thesaurus is WordNet's: its meanings and words are a dictionary's, not always those a writer
-  reaches for, and a word chosen goes in as the thesaurus lists it (its base form: "approve" for
-  "approves"), to put back in the form needed. The Indonesian thesaurus is small (about 2,600
+  reaches for. Words are put in another form by rule and by a list of common irregular words: a
+  rarer irregular word may come out regular ("slayed" for "slew"), a plural of several words takes it on its
+  last ("levy en masses"), and a longer verb stressed at its end doubles its last letter only if it
+  is a common one (permitted, preferred). Typed into the dialog, an -ed form is a past ("gave"),
+  having no words before it to say otherwise. Indonesian words are offered as they are (its prefixes
+  and suffixes aren't worked out). The Indonesian thesaurus is small (about 2,600
   meanings), as only Wordnet Bahasa's words checked by hand are in it: the rest, made automatically,
   often mix up meanings. Other languages are looked up in English. The English data makes the app's
   offline copy about 0.8 MB bigger (it is loaded only when the thesaurus is first used)

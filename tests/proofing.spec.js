@@ -5,6 +5,7 @@
 // takes it (clean HTML and plain text) or as Markdown.
 import { test, expect } from '@playwright/test';
 import { buildDocx, openInEditor, download, W_NS } from './helpers.js';
+import { inflect, formsOf, participleAfter } from '../src/editor/inflect.js';
 
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -231,4 +232,92 @@ test('Copy as Markdown, and Copy for the web of the selection from the right-cli
   await page.mouse.click(box.x, box.y, { button: 'right' });
   await page.getByRole('menu', { name: 'Context menu' }).getByRole('menuitem', { name: 'Copy for the web' }).click();
   expect(await page.evaluate(() => window.copied)).toEqual({ 'text/html': '<p><strong>council</strong></p>', 'text/plain': 'council\n' });
+});
+
+test('the thesaurus offers words in the form looked up: approves → sanctions, took → chose, bigger → larger', async ({ page }) => {
+  await openInEditor(page, await inLanguage('en-GB', para('The board approves it. She took the job. A bigger levy.')));
+  const dialog = page.getByRole('dialog', { name: 'Thesaurus' });
+  await caretIn(page, 'approves');
+  await page.keyboard.press('Shift+F7');
+  await expect(dialog).toContainText('Words for “approve” are shown as “approves” is: okays.');
+  await expect(dialog.locator('.meaning').first()).toContainText('(verb · approve)');
+  await dialog.getByRole('button', { name: 'sanctions', exact: true }).click();
+  await expect(page.locator('.docx-page p')).toHaveText('The board sanctions it. She took the job. A bigger levy.');
+
+  await caretIn(page, 'took');
+  await page.keyboard.press('Shift+F7');
+  await dialog.getByRole('button', { name: 'chose', exact: true }).click();
+  await caretIn(page, 'bigger');
+  await page.keyboard.press('Shift+F7');
+  await expect(dialog.getByRole('button', { name: 'more prominent' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'larger', exact: true }).first().click();
+  await expect(page.locator('.docx-page p')).toHaveText('The board sanctions it. She chose the job. A larger levy.');
+});
+
+test('after “had” or “was” an -ed form is a past participle: returned → gave, but had returned → given', async ({ page }) => {
+  await openInEditor(page, await inLanguage('en-GB', para('She returned the money. He had returned the keys.')));
+  const dialog = page.getByRole('dialog', { name: 'Thesaurus' });
+  await caretIn(page, 'returned the money');
+  await page.keyboard.press('Shift+F7');
+  await expect(dialog.getByRole('button', { name: 'gave', exact: true }).first()).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'given', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await caretIn(page, 'returned the keys');
+  await page.keyboard.press('Shift+F7');
+  await expect(dialog.getByRole('button', { name: 'gave', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'given', exact: true }).first().click();
+  await expect(page.locator('.docx-page p')).toHaveText('She returned the money. He had given the keys.');
+});
+
+test('AutoCorrect entries go to a CSV file and come back from one, merged, in another browser', async ({ page }) => {
+  await openInEditor(page, await inLanguage('en-GB'));
+  await addEntry(page, 'cllr', 'Councillor');
+  await addEntry(page, 'rics', 'Royal Institution of Chartered Surveyors, London');
+  await page.getByRole('button', { name: 'AutoCorrect options' }).click();
+  const dialog = page.getByRole('dialog', { name: 'AutoCorrect' });
+  const [file] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Export…' }).click()]);
+  expect(file.suggestedFilename()).toBe('autocorrect.csv');
+  const csv = (await import('node:fs')).readFileSync(await file.path(), 'utf8');
+  expect(csv).toBe('﻿Replace,With\r\ncllr,Councillor\r\nrics,"Royal Institution of Chartered Surveyors, London"\r\n');
+  await expect(dialog.getByRole('status')).toHaveText('Exported 2 entries to autocorrect.csv, in your downloads');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  // Another browser: nothing kept, then the list imported (with a list of its own, made in a spreadsheet).
+  await page.evaluate(() => localStorage.removeItem('intact.autocorrect'));
+  await page.reload();
+  await page.getByText('Blank document').click();
+  await page.getByRole('button', { name: 'AutoCorrect options' }).click();
+  await dialog.locator('input[type=file]').setInputFiles({ name: 'autocorrect.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await expect(dialog.getByRole('status')).toHaveText('From autocorrect.csv: 2 entries added. Choose OK to keep them.');
+  await dialog.locator('input[type=file]').setInputFiles({ name: 'mine.txt', mimeType: 'text/plain', buffer: Buffer.from('cllr\tCllr\ndpr\tDewan Perwakilan Rakyat\nno good\tx\n') });
+  await expect(dialog.getByRole('status')).toHaveText('From mine.txt: 1 entry added, 1 changed, 1 row skipped (not an entry: a word to replace with spaces, or nothing to replace it with). Choose OK to keep them.');
+  await expect(dialog.locator('.entries li')).toHaveText(['cllr→Cllr×', 'dpr→Dewan Perwakilan Rakyat×', 'rics→Royal Institution of Chartered Surveyors, London×']);
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await page.locator('.docx-page').click();
+  await page.keyboard.type('The dpr met. ');
+  await expect(page.locator('.docx-page p').last()).toHaveText('The Dewan Perwakilan Rakyat met. ');
+});
+
+test('English word forms: the base and form of a word, and a word put in that form', () => {
+  const forms = (w) => formsOf(w).filter((f) => f.kind !== 'base').map((f) => `${f.base}/${f.pos}/${f.kind}`);
+  expect(forms('took')).toEqual(['take/v/simplePast']);
+  expect(forms('taken')).toEqual(['take/v/participle']);
+  expect(forms('stopped')).toContain('stop/v/past');
+  expect(forms('children')).toEqual(['child/n/plural']);
+  const cases = [
+    ['sanction', 'third', 'v', 'sanctions'], ['carry', 'third', 'v', 'carries'], ['push', 'third', 'v', 'pushes'], ['go', 'third', 'v', 'goes'],
+    ['stop', 'past', 'v', 'stopped'], ['carry', 'past', 'v', 'carried'], ['approve', 'past', 'v', 'approved'], ['visit', 'past', 'v', 'visited'],
+    ['permit', 'past', 'v', 'permitted'], ['offer', 'past', 'v', 'offered'], ['tell', 'past', 'v', 'told'], ['give', 'simplePast', 'v', 'gave'],
+    ['give', 'participle', 'v', 'given'], ['turn over', 'third', 'v', 'turns over'], ['die', 'ing', 'v', 'dying'], ['make', 'ing', 'v', 'making'],
+    ['run', 'ing', 'v', 'running'], ['see', 'ing', 'v', 'seeing'], ['levy', 'plural', 'n', 'levies'], ['tax', 'plural', 'n', 'taxes'],
+    ['man', 'plural', 'n', 'men'], ['flood wall', 'plural', 'n', 'flood walls'], ['right of way', 'plural', 'n', 'rights of way'],
+    ['large', 'er', 'a', 'larger'], ['big', 'est', 'a', 'biggest'], ['happy', 'er', 'a', 'happier'], ['prominent', 'er', 'a', 'more prominent'],
+    ['good', 'est', 'a', 'best'], ['quickly', 'base', 'r', 'quickly'],
+  ];
+  for (const [word, kind, pos, want] of cases) expect(`${word} → ${inflect(word, kind, pos)}`).toBe(`${word} → ${want}`);
+  expect(inflect('give', 'past', 'v', true)).toBe('given');
+  expect(inflect('O.K.', 'third', 'v')).toBeNull();
+  expect(participleAfter('It has ')).toBe(true);
+  expect(participleAfter('It was quickly ')).toBe(true);
+  expect(participleAfter('They ')).toBe(false);
 });
