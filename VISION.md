@@ -139,7 +139,8 @@ Saying no to these keeps the product small enough to keep its promises:
   formatting changes ✔; smart quotes and dashes ✔; count characters ✔
 - Respect Word's restrictions: Restrict Editing (read only, comments, forms, tracked changes),
   read-only recommended, digital signatures (kept valid when unchanged, removed when edited, as in
-  Word), with an explicit "Edit anyway" ✔; say what encrypted, rights-managed and `.doc` files are ✔
+  Word), with an explicit "Edit anyway" ✔; say what rights-managed and `.doc` files are ✔; open
+  password-encrypted files with their password, on the device ✔
 - Show the sensitivity label or classification ✔; check for hidden information before release
   (comments, tracked changes, hidden text, personal information) and remove it ✔
 - Record edits in the document's properties ✔; check accessibility before publishing ✔
@@ -224,6 +225,11 @@ Saying no to these keeps the product small enough to keep its promises:
   the thesaurus (Shift+F7), in English and Indonesian, on the device ✔; copy for the web (a CMS, an
   e-mail) or as Markdown, to the clipboard rather than as another file format ✔; synonyms in the form
   of the word they replace ✔; AutoCorrect entries exported and imported as a CSV file ✔
+- Managers and executives who review and approve confidential papers (board papers, contracts,
+  HR files): open documents encrypted with a password, decrypted on the device, and download them
+  encrypted again, or protect any document with one ✔ (the password never leaves the device, so
+  "Private" holds; it is the files that most need it); a redline from Compare, the changes since
+  the other version as tracked changes, to send back as Word's Compare makes one ✔
 
 ## How we'll know it's working
 

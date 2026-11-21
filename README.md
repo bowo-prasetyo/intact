@@ -17,23 +17,25 @@ Where this is heading, and what it deliberately won't do, is in [VISION.md](VISI
 Built with [Vue 3](https://vuejs.org/), [Vue Router](https://router.vuejs.org/) (hash mode, so it
 works on GitHub Pages without rewrites), [Vite](https://vite.dev/) and [JSZip](https://stuk.github.io/jszip/).
 
-### Older `.doc` files and password-protected files
+### Password-protected files, older `.doc` files and rights management
 
-Intact opens `.docx` files (and `.dotx`, `.docm`, `.dotm`). It doesn't open these, and says so when
-you try, instead of failing:
+Intact opens `.docx` files (and `.dotx`, `.docm`, `.dotm`), including **files encrypted with a
+password** (Word's File > Info > Protect Document > Encrypt with Password, or LibreOffice's Save with
+password): it asks for the password, decrypts the file in the browser and downloads it encrypted with
+the same password again (see Features). The password is checked on this device and never sent or
+stored. It doesn't open these, and says so when you try, instead of failing:
 
 - **Word 97–2003 `.doc` files**, the older binary format many archives still hold. Open the file in
   Microsoft Word (or LibreOffice, or Word for the web) and save it as a Word Document (`.docx`):
   File > Save As > Word Document. Then open the `.docx` here.
-- **Files encrypted with a password** (Word's File > Info > Protect Document > Encrypt with Password).
-  Intact never asks for or handles passwords. Whoever knows the password opens the file in Word,
-  removes it (the same menu, with the password field left empty) and saves; or sends a copy without
-  one. A password that only restricts editing (Restrict Editing) is fine: such files open here,
-  read-only or for filling in, as Word opens them.
 - **Files protected by rights management** (a sensitivity label that encrypts, or IRM). Only the
   label's owner or the organisation's tools can remove the protection.
+- **Files encrypted the oldest ways** (RC4, from Word 97–2003's encryption kept in a `.docx`, or for a
+  certificate rather than a password). Open them in Word, which re-encrypts as Word 2010 and later do.
 
-Compare documents (Review > Compare) says the same of a version it can't read.
+A password that only restricts editing (Restrict Editing) is fine too: such files open here,
+read-only or for filling in, as Word opens them. Compare documents (Review > Compare) says the same of
+a version it can't read, and asks for the password of one encrypted with a password.
 
 ## Features
 
@@ -755,13 +757,31 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   Word's setting is saved too, so the recipient keeps tracking; documents saved with Track Changes
   on open with it on. Your name is remembered in this browser only
 - Compare documents, as Word's Review > Compare does for the text (Review tab, Compare): another
-  version of the document, a `.docx` chosen on this device (read in the browser, never uploaded),
-  against the one open. Each paragraph changed, added or taken out since that version is listed,
-  in the order of the text, with the words taken out struck through and those put in underlined
-  ("hari ~~Senin~~ <u>Selasa pukul 09.00</u>"), and a count of each; a click goes to the paragraph
-  (or to where one was taken out). The other version is read as its body's text: paragraphs and
-  table cells in order, with its tracked deletions left out, as it reads once its changes are
-  accepted; this document's likewise. Nothing in either document is changed (`src/editor/compare.js`)
+  version of the document, a `.docx` chosen on this device (read in the browser, never uploaded;
+  one encrypted with a password asks for it), against the one open. Each paragraph changed, added
+  or taken out since that version is listed, in the order of the text, with the words taken out
+  struck through and those put in underlined ("hari ~~Senin~~ <u>Selasa pukul 09.00</u>"), and a
+  count of each; a click goes to the paragraph (or to where one was taken out). Both versions are
+  read from their XML the same way, as their body's text: paragraphs and table cells in order, with
+  tracked deletions left out, as they read once their changes are accepted (this one as Download
+  would write it), so a document compared with itself is the same. Nothing in either document is
+  changed (`src/editor/compare.js`)
+- A redline from Compare, as Word's Compare makes one ("Open redline" or "Download redline"): a new
+  document, this version as Download would write it, with the changes since the other version
+  written into it as tracked changes in your name (Track Changes' name; "Author" until one is
+  given), dated now, to send back to whoever wrote the other version or to accept and reject in
+  Word (`src/docx/redline.js`). Words put in are marked inserted where they are, keeping their
+  formatting (their runs are split at the change); words taken out are put back, marked deleted,
+  in the formatting of the text beside them, with tabs as tabs; a paragraph added is marked
+  inserted with a paragraph break (the one before it, as Word records Enter, where the two are
+  formatted alike; else its own); a paragraph taken out is put back where it was, deleted with its
+  break, in its style where this document has it. Tracked changes already in this version are
+  accepted in the redline first, as Word's Compare compares the documents as if they were (the
+  status bar says how many). The new changes' ids come after every id the package uses. Accepting
+  all its changes gives this version's text, and rejecting them all the other's (checked by the
+  tests here, and in LibreOffice with real documents). It is named "… (redline).docx", opens in a
+  new tab beside this document (made while the result is read, so the browser lets the tab open), or
+  downloads; with a password on this document, it is encrypted with it. This document is unchanged
 - Accept and reject tracked changes, anyone's and your own, as in Word's Review tab: when the
   document has tracked changes, the toolbar shows Previous, Next, Accept and Reject. Accept and
   Reject act on the change at the cursor (just click it) or every change in a selection, then go
@@ -821,6 +841,29 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   anyway" lifts it for the session after saying what it means (going around Restrict Editing, which
   only someone allowed to should do); the restriction stays in the file, so Word still applies it,
   and the review says so. Protection set up but not enforced restricts nothing, as in Word
+- Documents encrypted with a password, as Word's Encrypt with Password (File > Info > Protect
+  Document) and LibreOffice's Save with password make them: opening one asks for its password, on
+  the start page ("Protected with a password"), which is checked and used on this device only, to
+  decrypt it in the browser (`src/docx/encryption.js`, with the browser's Web Crypto: no library,
+  nothing fetched); a wrong one says so, and the field is there to try again. Word 2010 and later's
+  Agile Encryption (AES with SHA-512 and 100,000 rounds, or the other AES and SHA-1/2 settings it
+  allows) and Office 2007's Standard Encryption, which LibreOffice still writes (AES, SHA-1), are
+  read, from the OLE compound file Word keeps them in (`src/docx/cfb.js`, which reads and writes
+  that container, large files' extra FAT sectors too); a file whose integrity check (its HMAC)
+  doesn't match is refused as changed or damaged. A bar says the document is protected. Downloaded
+  (or saved back, or shared), it is encrypted again with the same password, as Word saves it: Agile
+  Encryption, with a new salt and HMAC key each time, in a compound file with Word's data spaces;
+  a document opened from Standard Encryption is saved with Agile, as Word re-saves one. Unchanged,
+  the file downloads exactly as it was opened. Download's menu has "Protect with password…" for any
+  document (typed twice; the dialog says a lost password can't be recovered) and, once there is
+  one, "Change or remove password…" (also on the bar); the review says whether the file downloads
+  encrypted, with a new password, or without one. The password isn't kept: the key made from it is,
+  while the document is open. The copy of unsaved changes kept on this device is encrypted with the
+  document's password too, and restoring it asks for the password; the start page says it is
+  encrypted. What is made from the document on this device is not encrypted unless said: a mail
+  merge's documents (the status bar says so) and a PDF; a redline is (see above). Checked against
+  other implementations: files encrypted by msoffcrypto-tool and LibreOffice open here, and files
+  encrypted here open in LibreOffice and decrypt with msoffcrypto-tool, integrity check included
 - Digitally signed documents (`_xmlsignatures`) open read-only too, as Word opens them. Downloaded
   unchanged, the file is the one opened, byte for byte, so its signatures stay valid; edited (after
   "Edit anyway"), the signatures are removed from the download, as Word removes them when a signed
@@ -1033,6 +1076,14 @@ Compare documents (Review > Compare) says the same of a version it can't read.
    labelled element away. Comments follow their mark: `src/docx/commentRemoval.js` removes, on save,
    comments whose mark was deleted from `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`
    and `commentsExtensible.xml`, and those parts are only rewritten when a comment was removed.
+14. **Encryption** – a password-encrypted `.docx` is an OLE compound file (`src/docx/cfb.js` reads
+   its streams and writes new ones) holding `EncryptionInfo` and `EncryptedPackage`
+   (`src/docx/encryption.js`, MS-OFFCRYPTO). The password's key is the salted hash hashed again
+   (100,000 rounds for Word) and with a block key; it decrypts the random key the package is
+   encrypted with, in 4096-byte AES-CBC segments, each with its own IV, checked by an HMAC. Web Crypto
+   always pads AES-CBC, so decrypting adds the block that decrypts to padding, and encrypting drops
+   it. `DocxDocument.open` decrypts before anything else and keeps the key; `save` and `draft`
+   encrypt what they would have written (`sealed`), or give back the file opened when nothing changed.
 
 ## Development
 
@@ -1292,14 +1343,23 @@ The About page shows the version.
 - Line numbers restart where Word last broke the pages, not where the edits move the breaks to; a
   section in columns has one column of numbers, at the left; right-to-left sections (`w:bidi` in a
   section) keep their numbers at the left and their columns in order
-- Legacy binary `.doc` files are not supported, nor files encrypted with a password or by rights
-  management (sensitivity labels that encrypt, IRM): they say so when opened, and Compare says so of
-  a version it can't read. See "Older `.doc` files and password-protected files" above for what to
-  do instead
-- Compare documents compares the text, not formatting, pictures, comments, headers, footers or notes,
-  and shows the differences rather than writing them into a new document as tracked changes, as
-  Word's Compare does; a paragraph moved elsewhere shows as taken out in one place and added in
-  another. Very long documents (tens of thousands of paragraphs that differ) are refused
+- Legacy binary `.doc` files are not supported, nor files encrypted by rights management
+  (sensitivity labels that encrypt, IRM), with RC4 or for a certificate: they say so when opened,
+  and Compare says so of a version it can't read. See "Password-protected files, older `.doc` files
+  and rights management" above for what to do instead
+- Password encryption: a mail merge's documents and a PDF made from a protected document aren't
+  encrypted (protect each merged document before sending it, if it needs one); the redline is. A
+  password to modify (Word's General Options, `w:writeProtection`) is a different thing, kept as it
+  is (see Restrict Editing). Opening a protected document takes a moment (Word's 100,000 rounds of
+  hashing, about half a second); the password isn't remembered, so restoring its unsaved changes or
+  reopening it asks again. A lost password can't be recovered
+- Compare documents compares the text, not formatting, pictures, comments, headers, footers or notes;
+  a paragraph moved elsewhere shows as taken out in one place and added in another, and as many
+  paragraphs taken out and added in one place are paired as changed. Its redline marks the text's
+  changes only: formatting changes, pictures, tables' structure, and text in headers, footers,
+  notes and text boxes aren't marked (they are this version's); a paragraph taken out comes back as
+  plain text in its style (not its own direct formatting, numbering or pictures). Very long
+  documents (tens of thousands of paragraphs that differ) are refused
 - Sorting sorts by one column (Word's Sort has up to three), and only a whole table's rows below its
   heading row; formulas are those Word's Formula dialog writes (functions, cells, ranges, ABOVE and
   the like, arithmetic), not bookmarks' values, IF, AND, OR, NOT, DEFINED or TRUE/FALSE, and their
