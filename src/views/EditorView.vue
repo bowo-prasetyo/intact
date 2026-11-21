@@ -32,6 +32,13 @@
       <button v-if="lockMode" type="button" @click="editAnyway">{{ t('Edit anyway') }}</button>
     </div>
 
+    <!-- Encrypted with a password (Word's Encrypt with Password): it downloads encrypted with it. -->
+    <div v-if="passwordProtected" class="restriction-bar unlocked password-bar" role="region" :aria-label="t('Password protection')">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="8" cy="10.5" r="1" fill="currentColor" /></svg>
+      <p><strong>{{ t('Protected with a password.') }}</strong> {{ t('It downloads encrypted with it, as Word saves it, and opens only with it. Unsaved changes kept on this device are encrypted too.') }}</p>
+      <button type="button" aria-haspopup="dialog" @click="openPasswordDialog()">{{ t('Change or remove password') }}</button>
+    </div>
+
     <!-- A template: saved as itself, or made into a new document as Word does when one is opened
          to write with. Either way the template file opened is never changed. -->
     <div v-if="doc.openedFormat.template" class="restriction-bar unlocked template-bar" role="region" :aria-label="t('Template')">
@@ -561,6 +568,7 @@
       <button type="button" role="menuitem" @click="saveMenuAction('web')">{{ t('Copy for the web') }}<span class="shortcut">{{ t('A website’s editor (CMS), an e-mail') }}</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('markdown')">{{ t('Copy as Markdown') }}<span class="shortcut">{{ t('Markdown editors, GitHub, Ghost') }}</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('merge')">Mail merge…<span class="shortcut">{{ t('A letter for each row of a list') }}</span></button>
+      <button type="button" role="menuitem" aria-haspopup="dialog" @click="saveMenuAction('password')">{{ passwordProtected ? t('Change or remove password…') : t('Protect with password…') }}<span class="shortcut">{{ t('Encrypt the file, as Word does') }}</span></button>
     </div>
 
     <form v-if="pdfDialog.open" ref="pdfDialogEl" class="chooser author-dialog pdf-dialog" role="dialog" :aria-label="t('Save as PDF')" aria-describedby="pdf-how" :style="{ left: `${pdfDialog.x}px`, top: `${pdfDialog.y}px` }" @submit.prevent="printToPdf" @keydown.esc="closePdfDialog">
@@ -919,6 +927,26 @@
       <MoreColors :current="fontColor && !fontColor.theme ? fontColor.hex : null" @pick="(hex) => pickFontColor({ hex, label: `#${hex}` })" />
     </div>
 
+    <!-- A password: to protect the document with (or change, or take off), or to read a version to compare. -->
+    <form v-if="pwDialog.open" class="chooser author-dialog drop-offer password-dialog" role="dialog" :aria-label="pwDialog.mode === 'compare' ? t('Password for {name}', { name: pwDialog.file.name }) : passwordProtected ? t('Change or remove password') : t('Protect with password')" @submit.prevent="confirmPasswordDialog" @keydown.esc="closePasswordDialog">
+      <p class="pw-title"><strong>{{ pwDialog.mode === 'compare' ? t('Password for {name}', { name: pwDialog.file.name }) : passwordProtected ? t('Change or remove password') : t('Protect with password') }}</strong></p>
+      <p id="pw-note" class="pw-note">{{ pwDialog.mode === 'compare'
+        ? t('The other version is encrypted. Enter its password to compare it: it is checked on this device and never sent anywhere.')
+        : t('Anyone who opens the downloaded file, in Word or here, needs this password. Keep it safe: a lost password can’t be recovered, and nor can the document. It stays on this device.') }}</p>
+      <label for="pw-new">{{ pwDialog.mode === 'compare' ? t('Password') : passwordProtected ? t('New password') : t('Password') }}</label>
+      <input id="pw-new" ref="pwInput" v-model="pwDialog.value" type="password" maxlength="255" :autocomplete="pwDialog.mode === 'compare' ? 'off' : 'new-password'" spellcheck="false" aria-describedby="pw-note pw-error" :aria-invalid="pwDialog.error ? 'true' : 'false'" :disabled="pwDialog.busy" />
+      <template v-if="pwDialog.mode === 'set'">
+        <label for="pw-again">{{ t('Type it again') }}</label>
+        <input id="pw-again" v-model="pwDialog.again" type="password" maxlength="255" autocomplete="new-password" spellcheck="false" :disabled="pwDialog.busy" />
+      </template>
+      <p id="pw-error" class="pw-error" role="alert">{{ pwDialog.error }}</p>
+      <div class="actions">
+        <button type="submit" class="confirm" :disabled="pwDialog.busy">{{ pwDialog.mode === 'compare' ? t('Compare') : passwordProtected ? t('Change password') : t('Protect') }}</button>
+        <button v-if="pwDialog.mode === 'set' && passwordProtected" type="button" :disabled="pwDialog.busy" @click="removePassword">{{ t('Remove password') }}</button>
+        <button type="button" @click="closePasswordDialog">{{ t('Cancel') }}</button>
+      </div>
+    </form>
+
     <form v-if="dropOffer.file" ref="dropOfferEl" class="chooser author-dialog drop-offer" role="dialog" :aria-label="t('Open in a new tab')" @submit.prevent="openDroppedInNewTab" @keydown.esc="dropOffer.file = null">
       <p>“{{ dropOffer.file.name }}” opens in a new tab, beside this document, which stays open here.</p>
       <div class="actions">
@@ -1070,7 +1098,7 @@
       </div>
     </form>
 
-    <CompareDialog v-if="compare.result" :result="compare.result" :other="compare.other" @close="closeCompare" @go="goToChange" />
+    <CompareDialog v-if="compare.result" :result="compare.result" :other="compare.other" :author="author" :protected="passwordProtected" @close="closeCompare" @go="goToChange" @redline="sendRedline" />
     <input ref="compareInput" type="file" hidden accept=".docx,.dotx,.docm,.dotm,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onCompareFile" />
 
     <div v-if="caseMenu.open" ref="caseMenuEl" class="change-menu case-menu" role="menu" :aria-label="t('Change case')" :style="{ left: `${caseMenu.x}px`, top: `${caseMenu.y}px` }" @mousedown.prevent @keydown.esc="closeCaseMenu(true)" @keydown="onMenuArrows">
@@ -1185,6 +1213,7 @@ import { tocXml, captionXml, bibliographyXml, citationXml } from '../docx/refere
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
+import { redlinePackage } from '../docx/redline.js';
 import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
@@ -1219,6 +1248,7 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
+import { decrypt } from '../docx/encryption.js';
 import { checkAccessibility } from '../editor/accessibility.js';
 import { drawLineNumbers } from '../editor/lineNumbers.js';
 import { estimatePages, drawPageBreaks, UNIT_SELECTOR } from '../editor/pages.js';
@@ -2571,7 +2601,7 @@ async function keepDraft() {
     }
     draftKept.value = await saveDraft({
       id: draftId, name: `${baseName.value.trim() || 'document'}.${fileExt.value}`, blob,
-      firstNewId: doc.firstNewId, unlocked: unlocked.value, length: { ...lengthTarget },
+      firstNewId: doc.firstNewId, unlocked: unlocked.value, length: { ...lengthTarget }, protected: !!doc.encryption,
     });
   })();
   try {
@@ -6834,7 +6864,7 @@ function insertFormula() {
 
 // ------------------------------------------------------------------ comparing documents
 
-const compare = reactive({ result: null, other: '', blocks: [] });
+const compare = reactive({ result: null, other: '', blocks: [], otherXml: '', redline: null });
 const compareInput = ref(null);
 
 function startCompare() {
@@ -6842,7 +6872,7 @@ function startCompare() {
   compareInput.value.click();
 }
 
-/** The page's paragraphs (not headers, footers or notes), and their text as the other version's is read. */
+/** The page's paragraphs (not headers, footers or notes), with text, as the XML's are read. */
 function pageParagraphs() {
   const blocks = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-hf-band, .docx-notes, .textbox') && !el.parentElement.closest(BLOCK_SELECTOR));
   const texts = blocks.map((el) => {
@@ -6857,31 +6887,73 @@ function pageParagraphs() {
   return { texts: kept.map(([tx]) => tx), blocks: kept.map(([, b]) => b) };
 }
 
+/**
+ * The page's paragraph for each of the XML's (`texts`), to go to a change: the same one where the
+ * page has as many, else the next whose text is the same (without spaces), else the nearest.
+ */
+function blocksFor(texts) {
+  const { texts: shown, blocks } = pageParagraphs();
+  if (shown.length === texts.length) return blocks;
+  const squash = (x) => x.replace(/[\s\u00a0\u2029⧉]+/g, '');
+  const out = [];
+  let j = 0;
+  for (const text of texts) {
+    const k = shown.findIndex((x, i) => i >= j && i < j + 8 && squash(x) === squash(text));
+    if (k >= 0) j = k;
+    out.push(blocks[Math.min(j, blocks.length - 1)]);
+    if (k >= 0) j += 1;
+  }
+  return out;
+}
+
 async function onCompareFile(e) {
   const file = e.target.files?.[0];
   if (!file) return;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // Encrypted with a password: asked for (see the password dialog), then compared.
+  if (sniffFile(bytes)?.kind === 'password') {
+    openPasswordDialog('compare', { name: file.name, bytes });
+    return;
+  }
+  await compareWith(file.name, bytes);
+}
+
+/**
+ * Compares the other version (`bytes`, a .docx package, named `name`) with this document. Both are
+ * read from their XML the same way (this one as Download would write it), so a document compared
+ * with itself is the same.
+ */
+async function compareWith(name, bytes) {
+  const file = { name };
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    // A .doc, or a file encrypted with a password or by rights management: say which, as opening one does.
+    // A .doc, or a file encrypted by rights management: say which, as opening one does.
     const unreadable = sniffFile(bytes);
     if (unreadable) throw new Error(t('{name} can’t be compared: {why}', { name: file.name, why: unreadable.message }));
     const zip = await JSZip.loadAsync(bytes);
     const main = Object.keys(zip.files).find((f) => /^word\/document\d*\.xml$/i.test(f));
     if (!main) throw new Error(t('{name} isn’t a Word document (.docx)', { name: file.name }));
-    const before = paragraphsOfXml(await zip.file(main).async('string'));
-    const { texts, blocks } = pageParagraphs();
-    compare.blocks = blocks;
+    const otherXml = await zip.file(main).async('string');
+    const before = paragraphsOfXml(otherXml);
+    await draftSettled();
+    await withHostsUnlocked(() => doc.write(page.value));
+    const after = paragraphsOfXml(await doc.zip.file(doc.mainPath).async('string'));
+    compare.blocks = blocksFor(after);
     compare.other = file.name;
-    compare.result = compareParagraphs(before, texts);
+    compare.otherXml = otherXml;
+    compare.result = compareParagraphs(before, after);
+    // The redline is made now, while the result is read, so that opening it in a new tab follows
+    // the click at once (a browser opens a tab only straight after a click).
+    compare.redline = compare.result.changes.length ? makeRedline().catch((e) => e) : null;
   } catch (err) {
     message.value = /zip|central directory|End of data/i.test(err.message)
-      ? t('{name} can’t be compared: it isn’t a .docx (an older .doc, or a file protected with a password, can’t be read here)', { name: file.name })
+      ? t('{name} can’t be compared: it isn’t a .docx (an older .doc can’t be read here)', { name: file.name })
       : err.message;
   }
 }
 
 function closeCompare() {
   compare.result = null;
+  compare.redline = null;
   refocus();
 }
 
@@ -6889,11 +6961,139 @@ function closeCompare() {
 function goToChange(change) {
   const block = compare.blocks[Math.min(change.at, compare.blocks.length - 1)];
   compare.result = null;
+  compare.redline = null;
   if (!block?.isConnected) return;
   page.value.focus();
   placeCaret(block, change.at < compare.blocks.length);
   block.scrollIntoView({ block: 'center' });
   message.value = change.kind === 'removed' ? t('Text taken out was here') : change.kind === 'added' ? t('Added in this document') : t('Changed in this document');
+}
+
+/**
+ * The redline, as Word's Compare makes one: a new document, this one as Download would write it,
+ * with the changes since the other version as tracked changes in your name (see docx/redline.js).
+ * Encrypted with this document's password, if it has one. { blob, name, accepted }.
+ */
+async function makeRedline() {
+  await draftSettled();
+  const saved = await withHostsUnlocked(() => doc.save(page.value, { plain: true }));
+  const { zip, accepted } = await redlinePackage(JSZip, await saved.arrayBuffer(), doc.mainPath, compare.otherXml, { author: author.value, date: new Date() });
+  const mime = doc.format.mime;
+  const plain = await zip.generateAsync({ type: 'blob', mimeType: mime, compression: 'DEFLATE' });
+  const blob = await doc.sealed(plain, true);
+  const base = baseName.value.trim() || 'document';
+  return { blob: new Blob([blob], { type: mime }), name: `${base} (redline).${fileExt.value}`, accepted };
+}
+
+/** The redline: opened in a new tab beside this document (`how` 'open'), or downloaded. */
+async function sendRedline(how) {
+  const made = await compare.redline;
+  if (!made || made instanceof Error) {
+    message.value = `The redline couldn’t be made: ${made?.message || 'nothing changed'}`;
+    return;
+  }
+  const accepted = made.accepted ? ` – the ${count(made.accepted, 'tracked change')} already in this document ${made.accepted === 1 ? 'is' : 'are'} accepted in it, as Word’s Compare does` : '';
+  const locked = passwordProtected.value ? ', encrypted with this document’s password' : '';
+  if (how === 'open') {
+    const result = openFileInNewTab(new File([made.blob], made.name, { type: made.blob.type }));
+    message.value = {
+      opened: `The redline is opening in a new tab${locked}${accepted}`,
+      blocked: 'The browser didn’t open a new tab: allow pop-ups for this site, or download the redline',
+      unsupported: `A new tab is open: download the redline and choose it there${locked}`,
+    }[result];
+    if (result === 'opened') closeCompare();
+    return;
+  }
+  downloadBlob(made.blob, made.name);
+  message.value = `Redline downloaded: ${made.name}${locked}${accepted}`;
+  closeCompare();
+}
+
+// ------------------------------------------------------------------ password
+
+// Word's Encrypt with Password (File › Info › Protect Document): a document opened with a password
+// downloads encrypted with it (see DocxDocument.sealed and encryption.js); any document can be given
+// one, or have it changed or taken off. The password is used on this device, to make the key that
+// encrypts the file, and isn't kept. The other version to compare may be encrypted too.
+const passwordProtected = ref(!!doc.encryption);
+const passwordAtOpen = !!doc.encryption;
+const pwDialog = reactive({ open: false, mode: 'set', value: '', again: '', error: '', busy: false, file: null });
+const pwInput = ref(null);
+
+async function openPasswordDialog(mode = 'set', file = null) {
+  closeChooser();
+  Object.assign(pwDialog, { open: true, mode, value: '', again: '', error: '', busy: false, file });
+  await nextTick();
+  pwInput.value?.focus();
+}
+
+function closePasswordDialog() {
+  Object.assign(pwDialog, { open: false, value: '', again: '', file: null });
+  refocus();
+}
+
+async function confirmPasswordDialog() {
+  if (pwDialog.busy) return;
+  const value = pwDialog.value;
+  if (!value) {
+    pwDialog.error = t('Type a password.');
+    return;
+  }
+  if (pwDialog.mode === 'compare') {
+    pwDialog.busy = true;
+    try {
+      const { zip } = await decrypt(pwDialog.file.bytes, value);
+      const { name } = pwDialog.file;
+      Object.assign(pwDialog, { open: false, value: '', busy: false, file: null });
+      await compareWith(name, zip);
+    } catch (e) {
+      pwDialog.busy = false;
+      if (e.reason === 'wrong') {
+        pwDialog.error = t('That password isn’t right. Passwords are case-sensitive: check Caps Lock.');
+        await nextTick();
+        pwInput.value?.select();
+      } else {
+        const name = pwDialog.file.name;
+        closePasswordDialog();
+        message.value = t('{name} can’t be compared: {why}', { name, why: e.message });
+      }
+    }
+    return;
+  }
+  if (value !== pwDialog.again) {
+    pwDialog.error = t('The two passwords aren’t the same. Type the same password in both.');
+    return;
+  }
+  pwDialog.busy = true;
+  try {
+    const had = passwordProtected.value;
+    await doc.setPassword(value);
+    passwordProtected.value = true;
+    Object.assign(pwDialog, { open: false, value: '', again: '', busy: false });
+    markDirty();
+    message.value = had ? t('Password changed: the downloaded file opens only with the new one') : t('Protected with a password: the downloaded file opens only with it');
+    refocus();
+  } catch (e) {
+    pwDialog.busy = false;
+    pwDialog.error = e.message;
+  }
+}
+
+async function removePassword() {
+  await doc.setPassword(null);
+  passwordProtected.value = false;
+  Object.assign(pwDialog, { open: false, value: '', again: '', busy: false });
+  markDirty();
+  message.value = t('Password removed: the downloaded file opens without one');
+  refocus();
+}
+
+/** What the review says of the password: { kept | added | changed | removed }, or null. */
+function passwordReview() {
+  if (!passwordAtOpen && !passwordProtected.value) return null;
+  if (!passwordProtected.value) return { removed: true };
+  if (!passwordAtOpen) return { added: true };
+  return doc.encryptionChanged ? { changed: true } : { kept: true };
 }
 
 // ------------------------------------------------------------------ page number format
@@ -9315,6 +9515,7 @@ function saveMenuAction(what) {
   else if (what === 'copy' || what === 'saveAs') requestDownload(what);
   else if (what === 'share') requestShare();
   else if (what === 'merge') openMailMerge();
+  else if (what === 'password') openPasswordDialog();
   else if (what === 'web' || what === 'markdown') copyForWeb(what === 'web' ? 'html' : 'markdown');
   else openPdfDialog();
 }
@@ -9344,7 +9545,8 @@ function closeMailMerge() {
 
 async function runMailMerge({ rows, mapping, mode, nameColumn }) {
   await draftSettled();
-  const saved = await withHostsUnlocked(() => doc.save(page.value));
+  // The document itself, not encrypted: the merged documents are made from it on this device.
+  const saved = await withHostsUnlocked(() => doc.save(page.value, { plain: true }));
   const bytes = await saved.arrayBuffer();
   if (mode === 'single') {
     const main = await (await JSZip.loadAsync(bytes)).file(doc.mainPath).async('string');
@@ -9358,7 +9560,8 @@ async function runMailMerge({ rows, mapping, mode, nameColumn }) {
   });
   downloadBlob(result.blob, result.name);
   const kept = result.keptInHeaders.length ? ` – in the header or footer, ${result.keptInHeaders.join(', ')} ${result.keptInHeaders.length === 1 ? 'is' : 'are'} left as written, as every copy shares it` : '';
-  message.value = `Merged ${result.count} ${result.count === 1 ? 'row' : 'rows'}: ${result.name}${kept}`;
+  const unprotected = passwordProtected.value ? ' – not protected with a password: protect each document before sending it, if it needs one' : '';
+  message.value = `Merged ${result.count} ${result.count === 1 ? 'row' : 'rows'}: ${result.name}${kept}${unprotected}`;
 }
 
 /** Saves `blob` as a download named `name`. */
@@ -9516,7 +9719,7 @@ async function openReview(part = '') {
   issues.push(...screening.issues);
   const forDialog = (list) => list.map(({ targets, ...issue }) => ({ ...issue, count: targets.length }));
   reviewData.value = {
-    ...review, signature, protection: doc.protection, overridden: unlocked.value, restored: doc.restored,
+    ...review, signature, protection: doc.protection, overridden: unlocked.value, restored: doc.restored, password: passwordReview(),
     startedHere: !!(doc.startedHere || doc.fromTemplate),
     label: doc.properties.label, marking: doc.properties.marking, inspection: inspection(),
     properties: doc.propertiesUpdate(),
@@ -9670,7 +9873,8 @@ async function save(action = 'download') {
     discardDraft({ closing: false }); // downloaded or written: the file is the copy now
     const n = doc.commentsRemoved.size;
     message.value = `Saved ${name}${target ? ' on this device' : ''}${n ? ` – ${n} ${n === 1 ? 'comment' : 'comments'} removed with ${n === 1 ? 'its' : 'their'} text` : ''}`
-      + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '');
+      + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '')
+      + (passwordProtected.value ? ' – encrypted with its password' : '');
   } catch (e) {
     console.error(e);
     message.value = `Save failed: ${e.message}`;
@@ -9710,6 +9914,11 @@ async function close() {
 .open-tab { display: inline-flex; align-items: center; gap: 6px; }
 .chooser.drop-offer { left: 50%; top: 72px; transform: translateX(-50%); width: 340px; max-width: calc(100vw - 16px); max-height: none; font-size: 13px; }
 .drop-offer p { margin: 0; line-height: 1.45; }
+.password-dialog { display: flex; flex-direction: column; gap: 6px; }
+.password-dialog .pw-note { color: var(--muted); }
+.password-dialog label { font-weight: 600; margin-top: 4px; }
+.password-dialog .pw-error { color: var(--danger); }
+.password-dialog .pw-error:empty { display: none; }
 @media (max-width: 560px) { .open-tab { padding: 5px 8px; } .open-tab .label { display: none; } }
 /* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
 @media (max-width: 420px) { :deep(.brand span) { display: none; } }

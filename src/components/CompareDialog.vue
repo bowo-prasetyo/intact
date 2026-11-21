@@ -15,8 +15,14 @@
           </button>
         </li>
       </ol>
+      <!-- A redline, as Word's Compare makes: a new document with these changes as tracked changes. -->
+      <p v-if="result.changes.length" id="cmp-redline" class="redline-note">{{ t('A redline is a new Word document: this one, with these changes marked as tracked changes by {author}, to send back or to accept and reject in Word. This document stays as it is.', { author }) }}{{ protected ? ` ${t('It is encrypted with this document’s password.')}` : '' }}</p>
       <div class="actions">
-        <button type="button" class="confirm" @click="$emit('close')">{{ t('Close') }}</button>
+        <template v-if="result.changes.length">
+          <button type="button" class="confirm" aria-describedby="cmp-redline" @click="$emit('redline', 'open')">{{ t('Open redline') }}</button>
+          <button type="button" class="secondary" aria-describedby="cmp-redline" @click="$emit('redline', 'download')">{{ t('Download redline') }}</button>
+        </template>
+        <button type="button" :class="result.changes.length ? 'secondary' : 'confirm'" @click="$emit('close')">{{ t('Close') }}</button>
       </div>
     </section>
   </div>
@@ -25,15 +31,17 @@
 <script setup>
 // The result of Compare documents (see editor/compare.js): each paragraph changed, added or taken out
 // since the other version, its words struck through or underlined as Word's Compare marks them; a
-// click goes to it in the document.
+// click goes to it in the document. The changes can be made into a redline (see docx/redline.js).
 import { computed, ref, onMounted } from 'vue';
 import { t } from '../i18n.js';
 
 const props = defineProps({
   result: { type: Object, required: true },
   other: { type: String, required: true },
+  author: { type: String, default: 'Author' },
+  protected: { type: Boolean, default: false },
 });
-defineEmits(['close', 'go']);
+defineEmits(['close', 'go', 'redline']);
 const closeButton = ref(null);
 onMounted(() => closeButton.value?.focus());
 
@@ -78,6 +86,8 @@ h2 { margin: 0; font-size: 18px; }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 del { color: var(--danger); text-decoration: line-through; }
 ins { color: var(--text); text-decoration: underline; text-decoration-thickness: 2px; background: var(--active); }
-.actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.redline-note { margin: 12px 0 0; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.actions button.secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
 .actions button { font: inherit; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--surface); cursor: pointer; }
 </style>

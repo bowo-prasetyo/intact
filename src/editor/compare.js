@@ -16,31 +16,52 @@ const norm = (s) => s.replace(/[\s ]+/g, ' ').trim();
 export function paragraphsOfXml(xml) {
   const dom = new DOMParser().parseFromString(xml, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length) throw new Error('This file’s text couldn’t be read');
+  return bodyParagraphs(dom).map((p) => p.text);
+}
+
+/**
+ * The body's paragraphs, as paragraphsOfXml reads them, with where their text comes from: [{ p (the
+ * w:p), text, atoms: [{ node (a w:t, w:tab, w:br…), run (its w:r), start, end (in text) }] }].
+ */
+export function bodyParagraphs(dom) {
   const body = dom.getElementsByTagNameNS(W, 'body')[0];
   if (!body) return [];
   const out = [];
   for (const p of body.getElementsByTagNameNS(W, 'p')) {
     if (hasAncestor(p, body, 'txbxContent')) continue;
-    let text = '';
-    const walk = (node) => {
-      for (const c of node.children) {
-        if (c.namespaceURI !== W) {
-          if (c.localName !== 'Fallback') walk(c); // a drawing's copy for older readers: once is enough
-          continue;
-        }
-        const n = c.localName;
-        if (n === 'del' || n === 'moveFrom' || n === 'pPr' || n === 'rPr' || n === 'instrText' || n === 'delText' || n === 'txbxContent' || n === 'p') continue;
-        if (n === 't') text += c.textContent;
-        else if (n === 'tab' || n === 'ptab') text += '\t';
-        else if (n === 'br' || n === 'cr') text += ' ';
-        else if (n === 'noBreakHyphen') text += '‑';
-        else walk(c);
-      }
-    };
-    walk(p);
-    if (norm(text)) out.push(text);
+    const read = readParagraph(p);
+    if (norm(read.text)) out.push({ p, ...read });
   }
   return out;
+}
+
+/** One paragraph's text, as bodyParagraphs reads it: { text, atoms }. */
+export function readParagraph(p) {
+  let text = '';
+  const atoms = [];
+  const add = (node, s) => {
+    let run = node.parentNode;
+    while (run && run !== p && !(run.namespaceURI === W && run.localName === 'r')) run = run.parentNode;
+    atoms.push({ node, run: run === p ? null : run, start: text.length, end: text.length + s.length });
+    text += s;
+  };
+  const walk = (node) => {
+    for (const c of node.children) {
+      if (c.namespaceURI !== W) {
+        if (c.localName !== 'Fallback') walk(c); // a drawing's copy for older readers: once is enough
+        continue;
+      }
+      const n = c.localName;
+      if (n === 'del' || n === 'moveFrom' || n === 'pPr' || n === 'rPr' || n === 'instrText' || n === 'delText' || n === 'txbxContent' || n === 'p') continue;
+      if (n === 't') add(c, c.textContent);
+      else if (n === 'tab' || n === 'ptab') add(c, '\t');
+      else if (n === 'br' || n === 'cr') add(c, ' ');
+      else if (n === 'noBreakHyphen') add(c, '‑');
+      else walk(c);
+    }
+  };
+  walk(p);
+  return { text, atoms };
 }
 
 function hasAncestor(el, stop, local) {

@@ -185,7 +185,7 @@ const summary = computed(() => {
   const r = props.review;
   const l = r.layout;
   const layoutChanged = l && Object.keys(l.before).some((k) => l.before[k] !== l.after[k]);
-  if (!parts.length) return layoutChanged || r.trackingSwitched || r.commentsRemoved.length || r.commentsAdded?.length || r.commentsEdited?.length || r.commentsResolved?.length || r.commentsReopened?.length
+  if (!parts.length) return layoutChanged || r.trackingSwitched || (r.password && !r.password.kept) || r.commentsRemoved.length || r.commentsAdded?.length || r.commentsEdited?.length || r.commentsResolved?.length || r.commentsReopened?.length
     ? 'The text is unchanged.'
     : r.restored ? 'No changes since the restored copy.' : 'No changes: the file is the same as the one you opened.';
   return `${parts.join(', ')}.`;
@@ -204,6 +204,12 @@ const notes = computed(() => {
   } else if (sig) {
     out.push({ kind: 'good', text: `Nothing has changed, so the file downloads exactly as it was opened and its ${sig.count === 1 ? 'digital signature stays' : 'digital signatures stay'} valid.` });
   }
+  // Encryption with a password (Word's Encrypt with Password): what the downloaded file asks for.
+  const pw = r.password;
+  if (pw?.removed) out.push({ kind: 'warn', text: 'The password is removed: the downloaded file opens without one, for anyone who has it.' });
+  else if (pw?.added) out.push({ kind: 'info', text: 'The downloaded file is encrypted with the password you set: it opens, in Word or here, only with it.' });
+  else if (pw?.changed) out.push({ kind: 'info', text: 'The downloaded file is encrypted with the new password you set: the old one no longer opens it.' });
+  else if (pw?.kept) out.push({ kind: 'good', text: 'The downloaded file stays encrypted with its password, as Word saves it.' });
   const p = r.protection;
   if (p) {
     const label = { readOnly: 'no changes (read only)', comments: 'comments only', forms: 'filling in forms only', trackedChanges: 'tracked changes only' }[p.mode];

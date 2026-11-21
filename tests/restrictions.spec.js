@@ -228,7 +228,6 @@ function compoundFile(...names) {
 }
 
 for (const [what, file, says] of [
-  ['password-encrypted', compoundFile('EncryptionInfo', 'EncryptedPackage'), 'This document is encrypted with a password, so Intact can’t open it'],
   ['rights-managed', compoundFile('\u0006DataSpaces', 'DRMEncryptedDataSpace', 'EncryptedPackage'), 'This document is protected by rights management: a sensitivity label that encrypts it, or Information Rights Management.'],
   ['a Word 97–2003', compoundFile('WordDocument', '1Table'), 'This is a Word 97–2003 document (.doc) with a .docx name.'],
   ['not a', Buffer.from('Just some text, not a document.'), 'This file isn’t a .docx document. Every .docx is a ZIP package'],

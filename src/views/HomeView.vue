@@ -26,6 +26,7 @@
           <li v-for="d in drafts" :key="d.id">
             <span class="draft-name">{{ d.name }}</span>
             <span class="draft-when">{{ ago(d.savedAt) }}</span>
+            <span v-if="d.protected" class="draft-when">{{ t('encrypted with its password') }}</span>
             <!-- Being edited in another tab: restoring it here would make a second copy. -->
             <span v-if="openElsewhere.has(d.id)" class="draft-open" :title="t('This document is open in another tab of this browser: switch to that tab to go on with it')">{{ t('Open in another tab') }}</span>
             <template v-else>
@@ -60,6 +61,19 @@
         <input ref="fileInput" type="file" :accept="ACCEPT" hidden :disabled="busy" @change="onPick" />
       </div>
 
+      <!-- A document encrypted with a password: asked for here, checked and decrypted on this device. -->
+      <form v-if="pw.open" class="password" aria-labelledby="pw-title" @submit.prevent="submitPassword" @keydown.esc="cancelPassword">
+        <h2 id="pw-title">{{ t('Protected with a password') }}</h2>
+        <p id="pw-what" class="password-note">{{ pw.text }}</p>
+        <label for="doc-password">{{ t('Password for {name}', { name: pw.name }) }}</label>
+        <div class="password-row">
+          <input id="doc-password" ref="pwInput" v-model="pw.value" type="password" autocomplete="off" spellcheck="false" required :disabled="busy" :aria-invalid="pw.error ? 'true' : 'false'" aria-describedby="pw-what pw-error" />
+          <button type="submit" class="restore" :disabled="busy || !pw.value">{{ t('Open') }}</button>
+          <button type="button" :disabled="busy" @click="cancelPassword">{{ t('Cancel') }}</button>
+        </div>
+        <p id="pw-error" class="password-error" role="alert">{{ pw.error }}</p>
+      </form>
+
       <!-- Starter documents: Word documents made here, with [placeholders] to fill in. In Indonesian,
            the official documents (naskah dinas) come first, in Indonesian; the others are in English. -->
       <section v-for="group in starterGroups" :key="group.id" class="starters" :aria-labelledby="`starters-title-${group.id}`">
@@ -76,14 +90,14 @@
         <p class="starters-note">{{ group.note }}</p>
       </section>
 
-      <p v-if="busy" class="status" role="status">{{ t('Opening…') }}</p>
+      <p v-if="busy" class="status" role="status">{{ pw.open ? t('Checking the password…') : t('Opening…') }}</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { t, lang } from '../i18n.js';
 import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
@@ -136,7 +150,7 @@ onMounted(async () => {
   if (file) load(file);
   else error.value = t('The document couldn’t be brought over from the other tab (it may have been closed). Open it here instead.');
 });
-const restore = (d) => run(() => openDraft(d));
+const restore = (d) => { cancelPassword(); run((password) => openDraft(d, password), d.name); };
 async function discard(d) {
   await deleteDraft(d.id);
   drafts.value = drafts.value.filter((x) => x.id !== d.id);
@@ -165,19 +179,46 @@ const promises = [
   { title: 'Instant', text: 'nothing to install' },
 ];
 
-async function run(task) {
+// A password asked for: { open, name, text, value, error, task (opens the document with a password) }.
+const pw = reactive({ open: false, name: '', text: '', value: '', error: '', task: null });
+const pwInput = ref(null);
+
+/**
+ * Runs `task` (password => opens a document) and goes to the editor. A document encrypted with a
+ * password asks for it, and opens once it is right; the password is used for this and nothing else.
+ */
+async function run(task, name = '') {
   busy.value = true;
   error.value = '';
   try {
-    await task();
+    await task(pw.open ? pw.value : null);
+    Object.assign(pw, { open: false, value: '', error: '', task: null });
     router.push({ name: 'edit' });
   } catch (e) {
+    if (e.name === 'PasswordError' && (e.reason === 'needed' || e.reason === 'wrong')) {
+      if (!pw.open) Object.assign(pw, { open: true, name, text: t('It is encrypted. Enter its password to open it: the password is checked on this device and never sent anywhere, and the document stays encrypted with it when you download it.'), value: '', error: '', task });
+      else pw.error = t('That password isn’t right. Passwords are case-sensitive: check Caps Lock.');
+      busy.value = false; // the field is enabled again before it takes the focus
+      await nextTick();
+      pwInput.value?.scrollIntoView({ block: 'center' });
+      pwInput.value?.focus();
+      pwInput.value?.select();
+      return;
+    }
     console.error(e);
+    Object.assign(pw, { open: false, value: '', error: '', task: null });
     // A file Intact recognises but can't open (encrypted, rights-managed, .doc) says so as it is.
-    error.value = e.name === 'UnreadableFileError' ? e.message : t('Could not open the document: {error}', { error: e.message });
+    error.value = ['UnreadableFileError', 'PasswordError'].includes(e.name) ? e.message : t('Could not open the document: {error}', { error: e.message });
   } finally {
     busy.value = false;
   }
+}
+
+function submitPassword() {
+  if (pw.value && pw.task && !busy.value) run(pw.task, pw.name);
+}
+function cancelPassword() {
+  Object.assign(pw, { open: false, value: '', error: '', task: null });
 }
 
 function load(file, handle = null) {
@@ -186,7 +227,8 @@ function load(file, handle = null) {
     error.value = t('Please choose a Word file: .docx, or a .dotx template, or a .docm or .dotm with macros (older .doc files are not supported).');
     return;
   }
-  run(() => openFile(file, handle));
+  cancelPassword();
+  run((password) => openFile(file, handle, password), file.name);
 }
 
 const onPick = (e) => { load(e.target.files[0]); e.target.value = ''; };
@@ -239,8 +281,8 @@ function onDrop(e) {
   const handle = handleOfDropped([...e.dataTransfer.items].find((i) => i.kind === 'file'));
   handle.then((h) => load(file, h));
 }
-const createNew = () => run(newDocument);
-const createFrom = (id) => run(() => newFromStarter(id));
+const createNew = () => { cancelPassword(); run(newDocument); };
+const createFrom = (id) => { cancelPassword(); run(() => newFromStarter(id)); };
 const paper = localPaper();
 // The starters, in groups: in Indonesian, the official documents first, then those for teachers in
 // Indonesian, then the English ones; else the English ones, then the English ones for teachers.
@@ -356,4 +398,18 @@ h1 { font-size: clamp(1.6rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: 
 .starters-note { margin: 12px 0 0; color: var(--muted); font-size: .85rem; text-align: center; }
 .status { margin-top: 24px; color: var(--muted); }
 .error { margin-top: 24px; color: var(--danger); }
+.password {
+  margin-top: 16px; text-align: left; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.password h2 { font-size: 1rem; margin: 0 0 4px; }
+.password-note { margin: 0 0 10px; color: var(--muted); font-size: .9rem; }
+.password label { display: block; font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
+.password-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.password input { flex: 1 1 200px; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: inherit; }
+.password input[aria-invalid="true"] { border-color: var(--danger); }
+.password button { font: inherit; border-radius: 6px; padding: 5px 14px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: inherit; }
+.password button.restore { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; }
+.password button:disabled { opacity: .6; cursor: default; }
+.password-error { margin: 6px 0 0; color: var(--danger); min-height: 1em; }
+.password-error:empty { display: none; }
 </style>
