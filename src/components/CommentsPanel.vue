@@ -5,7 +5,7 @@
       <button type="button" class="close" title="Hide comments" aria-label="Hide comments" @click="$emit('close')">✕</button>
     </header>
     <p class="note">Add, reply to, edit, resolve and delete comments here.</p>
-    <form v-if="composing" class="composer" aria-label="New comment" @submit.prevent="post" @keydown.esc.stop="$emit('cancel')">
+    <form v-if="composing" class="composer" aria-label="New comment" @submit.prevent="post" @keydown.esc.stop="$emit('cancel')" @keydown="savedByKey">
       <!-- No browser autocomplete: its list of earlier entries would cover the buttons below. -->
       <label v-if="askName" class="field">Your name
         <input ref="nameInput" v-model="nameDraft" type="text" maxlength="100" autocomplete="off" />
@@ -13,6 +13,7 @@
       <label class="field">New comment
         <textarea ref="textInput" v-model="text" rows="3" @keydown.enter.ctrl.prevent="post" @keydown.enter.meta.prevent="post" />
       </label>
+      <CommentBank ref="bank" :current="text" @use="useSaved" />
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <div class="actions">
         <button type="button" @click="$emit('cancel')">Cancel</button>
@@ -82,6 +83,7 @@
 
 <script setup>
 import { nextTick, ref, watch } from 'vue';
+import CommentBank from './CommentBank.vue';
 
 const props = defineProps({
   threads: { type: Array, required: true }, // [{ id, n, author, date, paragraphs, done, isNew, replies: [...] }]
@@ -105,6 +107,30 @@ watch(() => props.composing, async (on) => {
   await nextTick();
   (props.askName ? nameInput.value : textInput.value)?.focus();
 }, { immediate: true });
+
+// The comment bank: a saved comment put in at the caret, with a space before it after other text.
+const bank = ref(null);
+function useSaved(saved) {
+  const el = textInput.value;
+  const v = text.value;
+  const from = el && document.activeElement === el ? el.selectionStart : v.length;
+  const to = el && document.activeElement === el ? el.selectionEnd : v.length;
+  const before = v.slice(0, from);
+  const gap = before && !/\s$/.test(before) ? ' ' : '';
+  text.value = `${before}${gap}${saved}${v.slice(to)}`;
+  error.value = '';
+  nextTick(() => {
+    el?.focus();
+    const at = before.length + gap.length + saved.length;
+    el?.setSelectionRange(at, at);
+  });
+}
+/** Alt+1 to Alt+9 in the new-comment box: that saved comment put in. */
+function savedByKey(e) {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const n = /^Digit([1-9])$/.exec(e.code)?.[1];
+  if (n && bank.value?.useNumber(Number(n))) e.preventDefault();
+}
 
 // Editing a comment, or replying to a thread: one at a time.
 const editing = ref(null); // { id, text }

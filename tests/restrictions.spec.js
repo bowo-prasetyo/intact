@@ -106,7 +106,7 @@ test('comments only: comments can be added, the text stays read-only', async ({ 
   const composer = page.getByRole('form', { name: 'New comment' });
   await composer.getByRole('textbox', { name: 'Your name' }).fill('Rita');
   await composer.getByRole('textbox', { name: 'New comment' }).fill('Please confirm.');
-  await composer.getByRole('button', { name: 'Comment' }).click();
+  await composer.getByRole('button', { name: 'Comment', exact: true }).click();
   const { zip, xml } = await download(page);
   expect(xml).toMatch(/<w:t xml:space="preserve">The <\/w:t><\/w:r><w:commentRangeStart w:id="\d+"\/><w:r><w:t[^>]*>agreed<\/w:t><\/w:r><w:commentRangeEnd/);
   expect(await zip.file('word/comments.xml').async('string')).toContain('Please confirm.');
