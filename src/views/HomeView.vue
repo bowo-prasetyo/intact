@@ -272,6 +272,16 @@ const STARTER_ICONS = {
   'nota-dinas': [PAGE, 'M9 6.5h6M8 9h2M11 9h5M8 11h2M11 11h5M8 13h2M11 13h5M7.5 15h9M8 17.5h6'],
   'surat-undangan': [PAGE, 'M8 7h8M8.5 10.5h7v6h-7zM8.5 12.5h7M10.5 9.5v2M13.5 9.5v2'],
   'berita-acara': [PAGE, 'M9 6.5h6M8 9h8M8 11h8M8 13h6M8 17h3M13 17h3'],
+  // A decree's title over its labelled considerations; an assignment's letterhead and its person's
+  // details; a circular's numbered points; minutes' details and two signatures; a report's lettered
+  // parts; a staff study's parts under its labels; a power of attorney's two signatures.
+  keputusan: [PAGE, 'M9.5 6.5h5M10 8.5h4M8 11h2.5M11.5 11h4.5M8 13h2.5M11.5 13h4.5M8 15h2.5M11.5 15h4.5M13 18h3'],
+  'surat-tugas': [PAGE, 'M8 6.5h8M7.5 8.5h9M10 10.5h4M8 13h2M11 13h5M8 15h2M11 15h5M13 18h3'],
+  'surat-edaran': [PAGE, 'M8 6.5h8M7.5 8.5h9M8 11h.01M10 11h6M8 13.5h.01M10 13.5h6M8 16h.01M10 16h6'],
+  notula: [PAGE, 'M9.5 6.5h5M8 9h2M11 9h5M8 11h2M11 11h5M8 13.5h8M8 15.5h8M8.5 18h3M13 18h3'],
+  laporan: [PAGE, 'M9.5 6.5h5M8 9h.01M9.5 9h6.5M9.5 11h6.5M8 13.5h.01M9.5 13.5h6.5M9.5 15.5h6.5M13 18h3'],
+  'telaahan-staf': [PAGE, 'M9.5 6.5h5M8 8.5h8M8 11h.01M9.5 11h6.5M8 13h.01M9.5 13h6.5M8 15h.01M9.5 15h6.5M13 18h3'],
+  'surat-kuasa': [PAGE, 'M8 6.5h8M7.5 8.5h9M8 11h8M8 13h8M8 15h5M8.5 18h3M13 18h3'],
   // For teachers: a test's two columns of choices; a worksheet's tick; a rubric's grid; a lesson's
   // stages; a letter home with a child; and the Indonesian ones, as their English counterparts.
   test: [PAGE, 'M8 7h8M8 9.5h.01M8.5 11h2M8.5 12.5h2M13 9.5h.01M13.5 11h2M13.5 12.5h2M8 15.5h8M8 17.5h8'],

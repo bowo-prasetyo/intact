@@ -3,7 +3,7 @@
 // Heading 1 and 2, Table Grid, List Paragraph, Footer), with placeholders such as [Your name] that
 // Fill in fills in once for every place they appear. Nothing here is fetched: each is built in the
 // browser from the blank document's parts (see blank.js).
-import { blankDocxFiles, textWidth, sectionXml } from './blank.js';
+import { blankDocxFiles, textWidth, sectionXml, listId, LIST_INDENT, HEADER_REF } from './blank.js';
 
 const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -109,8 +109,56 @@ const tembusan = () => [
   p('2. [Tembusan kedua]'),
 ];
 
+// The other naskah dinas, each of more than a page now and then: their pages numbered from the
+// second on, at the top in the middle between dashes (- 2 -), as the rules for official documents
+// number them; the first page has none (a different first page, its header empty).
+const PAGE_FIELD = '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>- 2 -</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>';
+const ID_PAGED = {
+  header: `<w:p><w:pPr><w:pStyle w:val="Header"/><w:jc w:val="center"/></w:pPr>${PAGE_FIELD}</w:p>`,
+  titlePg: true,
+  section: { numFmt: 'numberInDash' },
+};
+const ID_LABEL_COL = 2268; // 4 cm: a decree's labels (Menimbang, Mengingat, KESATU)
+const ID_COLON_COL = 284; // 0.5 cm: their colons
+
+/** A numbered point: an item of point list `n` (the nth of the starter's `lists`, see blank.js), at `level`. */
+const point = (n, text, o = {}) => p(text, { num: [listId(n), o.level || 0], jc: 'both', after: 0, ...o });
+/** Text under a point (at `level`), lined up with the point's text. */
+const under = (text, level = 0, o = {}) => p(text, { ind: LIST_INDENT * (level + 1), jc: 'both', after: 120, ...o });
+
+/**
+ * A table without borders, as decrees lay out their considerations and articles: a label (Menimbang,
+ * KESATU), a colon, and the text, its paragraphs (made with p() or point()) in `rows` as [label, [paragraphs]].
+ */
+function labelled(rows) {
+  const widths = [ID_LABEL_COL, ID_COLON_COL, ID_WIDTH - ID_LABEL_COL - ID_COLON_COL];
+  const cell = (w, inner) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${NO_BORDERS}</w:tcPr>${inner}</w:tc>`;
+  const body = rows.map(([labelText, paras]) => `<w:tr>${cell(widths[0], p(labelText, { after: 0 }))}${cell(widths[1], p(':', { after: 0 }))}${cell(widths[2], paras.join(''))}</w:tr>`).join('');
+  return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:tblLayout w:type="fixed"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>`
+    + `<w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${body}</w:tbl>`;
+}
+
+/** Runs of `parts`: text, or [text, run options] (a placeholder in capitals: { caps: true }). */
+const runs = (...parts) => parts.map((x) => (Array.isArray(x) ? run(x[0], x[1]) : run(x)));
+/** Where and when an official document is set (Ditetapkan di / pada tanggal), above the signature. */
+const setAt = (where = 'Ditetapkan di', when = 'pada tanggal') => [
+  p(`${where} [Kota]`, { ind: ID_SIGN, before: 360 }),
+  p(`${when} [Tanggal penetapan]`, { ind: ID_SIGN }),
+];
+/** The signature block of a decree: the deciding official's position (in capitals, as written), room to sign, the name and NIP. */
+const decreeSignature = (before = 0) => [
+  p(runs(['[Jabatan penetap]', { caps: true }], ','), { ind: ID_SIGN, before }),
+  p('', { ind: ID_SIGN, after: 1080 }),
+  p('[Nama lengkap]', { ind: ID_SIGN, run: { b: true, u: true } }),
+  p('NIP [NIP]', { ind: ID_SIGN }),
+];
+
+/** A label and its value lined up at a tab stop `at`, indented by `ind`: Nama : […]. */
+const party = (name, value, ind = LIST_INDENT) => idLabel(name, value, { ind, at: 2835, after: 0 });
+
 function naskahDinas() {
   const common = { lang: 'id', paper: 'A4', margins: ID_MARGINS, language: 'id-ID', font: { name: 'Arial', sz: 24 }, normal: ID_SINGLE };
+  const paged = { ...common, ...ID_PAGED, section: { ...ID_PAGED.section } };
   return [
     {
       id: 'surat-dinas',
@@ -219,6 +267,273 @@ function naskahDinas() {
           idTable([1, 1], [[
             'PIHAK KEDUA,\n\n\n\n_[Nama pihak kedua]_\nNIP [NIP pihak kedua]',
             'PIHAK PERTAMA,\n\n\n\n_[Nama pihak pertama]_\nNIP [NIP pihak pertama]',
+          ]]),
+        ].join(''),
+      }),
+    },
+    {
+      // A decree (keputusan) and its attachment (lampiran) in a section of its own, on a new page:
+      // the attachment's pages numbered from 1 again, and its paper turned in Page setup (This
+      // section) for a wide table. The deciding official and the decree's title are typed once, in
+      // ordinary case, and shown in capitals where a decree writes them so (w:caps).
+      id: 'keputusan',
+      title: 'Keputusan',
+      description: 'Keputusan pejabat: menimbang, mengingat, memutuskan, diktum, dan lampiran',
+      file: 'Keputusan',
+      ...paged,
+      build: () => ({
+        ...paged,
+        styles: ['tableGrid'],
+        lists: ['lowerLetter', 'decimal', 'decimal'],
+        section: { ...paged.section, numStart: 1 },
+        body: [
+          p(runs(['KEPUTUSAN ', { b: true }], ['[Jabatan penetap]', { b: true, caps: true }]), { jc: 'center' }),
+          p('NOMOR [Nomor keputusan]', { jc: 'center' }),
+          p('TENTANG', { jc: 'center' }),
+          p(runs(['[Judul keputusan]', { b: true, caps: true }]), { jc: 'center', after: 240 }),
+          p('DENGAN RAHMAT TUHAN YANG MAHA ESA', { jc: 'center', after: 240 }),
+          p(runs(['[Jabatan penetap]', { caps: true }], ','), { jc: 'center', after: 240 }),
+          labelled([
+            ['Menimbang', [
+              point(0, 'bahwa [pertimbangan yang menjadi alasan keputusan];'),
+              point(0, 'bahwa berdasarkan pertimbangan sebagaimana dimaksud dalam huruf a, perlu menetapkan Keputusan [Jabatan penetap] tentang [Judul keputusan];', { after: 120 }),
+            ]],
+            ['Mengingat', [
+              point(1, '[Undang-undang yang menjadi dasar];'),
+              point(1, '[Peraturan yang menjadi dasar];'),
+            ]],
+          ]),
+          p('MEMUTUSKAN:', { jc: 'center', before: 240, after: 240 }),
+          labelled([
+            ['Menetapkan', [p(runs(['Keputusan [Jabatan penetap] tentang [Judul keputusan]', { caps: true }], '.'), { jc: 'both', after: 120 })]],
+            ['KESATU', [p('[Isi diktum kesatu].', { jc: 'both', after: 120 })]],
+            ['KEDUA', [p('[Isi diktum kedua].', { jc: 'both', after: 120 })]],
+            ['KETIGA', [p('Keputusan ini mulai berlaku pada tanggal ditetapkan.', { jc: 'both' })]],
+          ]),
+          ...setAt(),
+          ...decreeSignature(240),
+          p('Salinan Keputusan ini disampaikan kepada Yth.:', { before: 360 }),
+          point(2, '[Penerima salinan pertama];', { jc: 'left' }),
+          point(2, '[Penerima salinan kedua].', { jc: 'left' }),
+          // The decree's section ends here, its pages numbered from its second; the attachment's
+          // begins on a new page (the final section, numbered from 1 again).
+          p('', { section: { paper: 'A4', margins: ID_MARGINS, numFmt: 'numberInDash', refs: HEADER_REF, titlePg: true } }),
+          p('LAMPIRAN', { ind: ID_SIGN }),
+          p(runs('KEPUTUSAN ', ['[Jabatan penetap]', { caps: true }]), { ind: ID_SIGN }),
+          p('NOMOR [Nomor keputusan]', { ind: ID_SIGN }),
+          p(runs('TENTANG ', ['[Judul keputusan]', { caps: true }]), { ind: ID_SIGN, after: 480 }),
+          p(runs(['[Judul lampiran]', { b: true, caps: true }]), { jc: 'center', after: 240 }),
+          table(null, [1, 5, 4, 3], [
+            ['NO.', 'NAMA/NIP', 'JABATAN', 'KEDUDUKAN DALAM TIM'],
+            ['1.', '[Nama anggota pertama]\nNIP [NIP anggota pertama]', '[Jabatan anggota pertama]', 'Ketua'],
+            ['2.', '[Nama anggota kedua]\nNIP [NIP anggota kedua]', '[Jabatan anggota kedua]', 'Anggota'],
+          ], { shade: 'F2F2F2', width: ID_WIDTH }),
+          ...decreeSignature(480),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'surat-tugas',
+      title: 'Surat tugas',
+      description: 'Penugasan pegawai: dasar, kepada siapa, dan untuk apa',
+      file: 'Surat tugas',
+      ...paged,
+      build: () => ({
+        ...paged,
+        styles: ['tableGrid'],
+        lists: ['decimal', 'decimal'],
+        body: [
+          ...kop(),
+          p('SURAT TUGAS', { jc: 'center', run: { b: true } }),
+          p('NOMOR [Nomor surat tugas]', { jc: 'center', after: 240 }),
+          labelled([
+            ['Dasar', [
+              point(0, '[Dasar penugasan: peraturan, surat, atau perintah];'),
+              point(0, '[Dasar penugasan lain, bila ada].'),
+            ]],
+          ]),
+          p('MEMBERI TUGAS', { jc: 'center', before: 240, after: 240, run: { b: true } }),
+          labelled([
+            ['Kepada', [
+              idLabel('Nama', '[Nama pegawai]', { at: 2268, after: 0 }),
+              idLabel('NIP', '[NIP pegawai]', { at: 2268, after: 0 }),
+              idLabel('Pangkat/golongan', '[Pangkat/golongan]', { at: 2268, after: 0 }),
+              idLabel('Jabatan', '[Jabatan pegawai]', { at: 2268, after: 120 }),
+            ]],
+            ['Untuk', [
+              point(1, '[Tugas yang dilaksanakan, di mana, dan kapan];'),
+              point(1, 'melaporkan hasil pelaksanaan tugas kepada [Jabatan pemberi tugas].'),
+            ]],
+          ]),
+          p('[Kota], [Tanggal surat]', { ind: ID_SIGN, before: 480 }),
+          ...signature(0),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'surat-edaran',
+      title: 'Surat edaran',
+      description: 'Pemberitahuan tentang hal yang perlu segera dilaksanakan',
+      file: 'Surat edaran',
+      ...paged,
+      build: () => ({
+        ...paged,
+        lists: ['decimal'],
+        body: [
+          ...kop(),
+          p(runs(['SURAT EDARAN ', { b: true }], ['[Jabatan penanda tangan]', { b: true, caps: true }]), { jc: 'center' }),
+          p('NOMOR [Nomor surat edaran]', { jc: 'center' }),
+          p('TENTANG', { jc: 'center' }),
+          p(runs(['[Hal yang diedarkan]', { b: true, caps: true }]), { jc: 'center', after: 240 }),
+          p('Yth. [Pejabat atau pihak yang dituju]', { after: 240 }),
+          point(0, 'Latar Belakang', { run: { b: true } }),
+          under('[Mengapa surat edaran ini diterbitkan.]'),
+          point(0, 'Maksud dan Tujuan', { run: { b: true } }),
+          under('[Maksud dan tujuan surat edaran ini.]'),
+          point(0, 'Ruang Lingkup', { run: { b: true } }),
+          under('[Kepada siapa dan untuk hal apa surat edaran ini berlaku.]'),
+          point(0, 'Dasar', { run: { b: true } }),
+          under('[Peraturan perundang-undangan yang menjadi dasar.]'),
+          point(0, 'Isi Edaran', { run: { b: true } }),
+          under('[Hal yang diminta atau diberitahukan, rinci dan jelas.]'),
+          point(0, 'Penutup', { run: { b: true } }),
+          under('Demikian surat edaran ini disampaikan untuk dilaksanakan dengan penuh tanggung jawab.'),
+          ...setAt('Dikeluarkan di', 'pada tanggal'),
+          ...signature(240),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'notula',
+      title: 'Notula rapat',
+      description: 'Catatan jalannya rapat: peserta, pembahasan, keputusan, dan tindak lanjut',
+      file: 'Notula rapat',
+      ...paged,
+      build: () => ({
+        ...paged,
+        styles: ['tableGrid'],
+        lists: ['decimal'],
+        body: [
+          p('NOTULA RAPAT', { jc: 'center', run: { b: true } }),
+          p(runs(['[Nama rapat]', { b: true, caps: true }]), { jc: 'center', after: 240 }),
+          idLabel('Hari, tanggal', '[Hari, tanggal]', { at: 2835 }),
+          idLabel('Waktu', '[Pukul mulai] s.d. [Pukul selesai]', { at: 2835 }),
+          idLabel('Tempat', '[Tempat rapat]', { at: 2835 }),
+          idLabel('Pimpinan rapat', '[Nama pimpinan rapat]', { at: 2835 }),
+          idLabel('Notulis', '[Nama notulis]', { at: 2835 }),
+          idLabel('Peserta', '[Peserta rapat, atau lihat daftar hadir terlampir]', { at: 2835 }),
+          idLabel('Acara', '[Acara rapat]', { at: 2835, after: 240 }),
+          p('Jalannya rapat:', { run: { b: true }, after: 120 }),
+          point(0, 'Pembukaan', { run: { b: true } }),
+          under('[Siapa membuka rapat, dan pokok pengantarnya.]'),
+          point(0, 'Pembahasan', { run: { b: true } }),
+          under('[Pokok bahasan, pendapat yang disampaikan, dan oleh siapa.]'),
+          point(0, 'Kesimpulan atau keputusan', { run: { b: true } }),
+          under('[Apa yang disepakati atau diputuskan.]'),
+          point(0, 'Tindak lanjut', { run: { b: true } }),
+          under('[Siapa mengerjakan apa, dan kapan.]'),
+          p('Rapat ditutup pada pukul [Pukul selesai].', { before: 120, after: 360 }),
+          idTable([1, 1], [[
+            'Pimpinan Rapat,\n\n\n\n_[Nama pimpinan rapat]_\nNIP [NIP pimpinan rapat]',
+            'Notulis,\n\n\n\n_[Nama notulis]_\nNIP [NIP notulis]',
+          ]]),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'laporan',
+      title: 'Laporan kegiatan',
+      description: 'Pendahuluan, kegiatan yang dilaksanakan, hasil, kesimpulan dan saran',
+      file: 'Laporan kegiatan',
+      ...paged,
+      build: () => ({
+        ...paged,
+        lists: ['upperLetter'],
+        body: [
+          p('LAPORAN', { jc: 'center', run: { b: true } }),
+          p(runs(['[Judul laporan]', { b: true, caps: true }]), { jc: 'center', after: 360 }),
+          point(0, 'Pendahuluan', { run: { b: true } }),
+          point(0, 'Umum', { level: 1, run: { b: true } }),
+          under('[Gambaran umum tentang hal yang dilaporkan.]', 1),
+          point(0, 'Maksud dan Tujuan', { level: 1, run: { b: true } }),
+          under('[Maksud dan tujuan laporan ini.]', 1),
+          point(0, 'Ruang Lingkup', { level: 1, run: { b: true } }),
+          under('[Apa saja yang dilaporkan, dan batasnya.]', 1),
+          point(0, 'Dasar', { level: 1, run: { b: true } }),
+          under('[Peraturan, surat tugas, atau perintah yang menjadi dasar kegiatan.]', 1),
+          point(0, 'Kegiatan yang Dilaksanakan', { run: { b: true } }),
+          under('[Apa yang dilaksanakan, di mana, kapan, dan oleh siapa.]'),
+          point(0, 'Hasil yang Dicapai', { run: { b: true } }),
+          under('[Hasil kegiatan, dengan data pendukung.]'),
+          point(0, 'Kesimpulan dan Saran', { run: { b: true } }),
+          under('[Kesimpulan dari hasil kegiatan, dan saran tindak lanjut.]'),
+          point(0, 'Penutup', { run: { b: true } }),
+          under('Demikian laporan ini dibuat untuk dapat dipergunakan sebagaimana mestinya.'),
+          p('[Kota], [Tanggal laporan]', { ind: ID_SIGN, before: 360 }),
+          ...signature(0),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'telaahan-staf',
+      title: 'Telaahan staf',
+      description: 'Kajian untuk pimpinan: persoalan, fakta, analisis, dan saran',
+      file: 'Telaahan staf',
+      ...paged,
+      build: () => ({
+        ...paged,
+        lists: ['upperLetter'],
+        body: [
+          p('TELAAHAN STAF', { jc: 'center', run: { b: true }, after: 240 }),
+          idLabel('Kepada', 'Yth. [Jabatan penerima]'),
+          idLabel('Dari', '[Jabatan pengirim]'),
+          idLabel('Tanggal', '[Tanggal]'),
+          idLabel('Hal', '[Hal yang ditelaah]'),
+          p('', { border: 'bottom', after: 240 }),
+          point(0, 'Persoalan', { run: { b: true } }),
+          under('[Persoalan yang dihadapi, dirumuskan singkat dan jelas.]'),
+          point(0, 'Praanggapan', { run: { b: true } }),
+          under('[Dugaan yang beralasan tentang keadaan yang mungkin terjadi.]'),
+          point(0, 'Fakta yang Mempengaruhi', { run: { b: true } }),
+          under('[Fakta dan data yang berkaitan dengan persoalan.]'),
+          point(0, 'Analisis', { run: { b: true } }),
+          under('[Hubungan antara persoalan, fakta, dan praanggapan, dengan pilihan penyelesaiannya.]'),
+          point(0, 'Kesimpulan', { run: { b: true } }),
+          under('[Pilihan penyelesaian yang terbaik, dari analisis.]'),
+          point(0, 'Saran', { run: { b: true } }),
+          under('[Tindakan yang disarankan kepada pimpinan.]'),
+          ...signature(360),
+        ].join(''),
+      }),
+    },
+    {
+      id: 'surat-kuasa',
+      title: 'Surat kuasa',
+      description: 'Pelimpahan kewenangan dari pemberi kepada penerima kuasa',
+      file: 'Surat kuasa',
+      ...common,
+      build: () => ({
+        ...common,
+        styles: ['tableGrid'],
+        body: [
+          ...kop(),
+          p('SURAT KUASA', { jc: 'center', run: { b: true } }),
+          p('NOMOR [Nomor surat kuasa]', { jc: 'center', after: 240 }),
+          p('Yang bertanda tangan di bawah ini:', { after: 120 }),
+          party('Nama', '[Nama pemberi kuasa]'),
+          party('NIP', '[NIP pemberi kuasa]'),
+          party('Jabatan', '[Jabatan pemberi kuasa]'),
+          p('selanjutnya disebut Pemberi Kuasa.', { ind: LIST_INDENT, after: 120 }),
+          p('Dengan ini memberi kuasa kepada:', { after: 120 }),
+          party('Nama', '[Nama penerima kuasa]'),
+          party('NIP', '[NIP penerima kuasa]'),
+          party('Jabatan', '[Jabatan penerima kuasa]'),
+          p('selanjutnya disebut Penerima Kuasa.', { ind: LIST_INDENT, after: 120 }),
+          p('untuk [tindakan yang dikuasakan, dan batasnya].', { jc: 'both', after: 120 }),
+          p('Demikian surat kuasa ini dibuat untuk dipergunakan sebagaimana mestinya.', { jc: 'both', after: 360 }),
+          idTable([1, 1], [[
+            '\nPenerima Kuasa,\n\n\n\n_[Nama penerima kuasa]_\nNIP [NIP penerima kuasa]',
+            '[Kota], [Tanggal surat]\nPemberi Kuasa,\n\n\n\n_[Nama pemberi kuasa]_\nNIP [NIP pemberi kuasa]',
           ]]),
         ].join(''),
       }),

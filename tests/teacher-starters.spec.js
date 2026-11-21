@@ -166,7 +166,7 @@ test.describe('in Indonesian', () => {
     const group = page.getByRole('region', { name: 'Untuk guru (Kurikulum Merdeka)' });
     await expect(group.getByRole('button')).toHaveCount(Object.keys(INDONESIAN).length);
     for (const name of Object.keys(INDONESIAN)) await expect(group.getByRole('button', { name: new RegExp(`^${name}:`) })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Naskah dinas (Tata Naskah Dinas)' }).getByRole('button')).toHaveCount(4);
+    await expect(page.getByRole('region', { name: 'Naskah dinas (Tata Naskah Dinas)' }).getByRole('button')).toHaveCount(11);
     await expect(page.getByRole('region', { name: 'Templat lain (dalam bahasa Inggris)' }).getByRole('button')).toHaveCount(8);
   });
 
