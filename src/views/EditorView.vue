@@ -633,7 +633,8 @@
         <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
         <li v-if="hasHidden"><label class="check"><input v-model="printHidden" type="checkbox" /> {{ t('Print hidden text (a test’s answers, for its answer key)') }}</label></li>
-        <li>Comments and the marks drawn over the page here aren’t in the PDF.</li>
+        <li v-if="threads.length"><label class="check"><input v-model="printComments" type="checkbox" /> {{ t('Print comments, listed after the document with their numbers in the text') }}</label></li>
+        <li>{{ threads.length && printComments ? t('The marks drawn over the page here aren’t in the PDF.') : t('Comments and the marks drawn over the page here aren’t in the PDF.') }}</li>
       </ul>
       <p class="pdf-word">{{ t('The Word file isn’t saved by this: download it as well to keep your changes.') }}</p>
       <div class="actions">
@@ -1308,6 +1309,7 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { ommlToLatex } from '../editor/mathOutput.js';
+import { printCommentsSection } from '../editor/printComments.js';
 import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
 import { decrypt } from '../docx/encryption.js';
 import { checkAccessibility } from '../editor/accessibility.js';
@@ -2125,10 +2127,22 @@ let titleBeforePrint = null;
 function onBeforePrint() {
   if (!page.value || !printStyle) return;
   printStyle.textContent = printCss(page.value, doc, sheetZoom.value);
+  // The comments after the document, beside the page (not in it), if asked for.
+  printedComments?.remove();
+  printedComments = null;
+  const printing = printComments.value && threads.value.length > 0;
+  document.documentElement.classList.toggle('print-comments-on', printing);
+  if (printing) {
+    printedComments = printCommentsSection(threads.value, (id) => commentRange(id)?.toString() || '', t('Comments'));
+    page.value.after(printedComments);
+  }
   titleBeforePrint ??= document.title; // once, should the browser say so twice
   document.title = baseName.value || titleBeforePrint;
 }
 function onAfterPrint() {
+  printedComments?.remove();
+  printedComments = null;
+  document.documentElement.classList.remove('print-comments-on');
   refreshPrintPage();
   if (titleBeforePrint != null) document.title = titleBeforePrint;
   titleBeforePrint = null;
@@ -9691,6 +9705,14 @@ const hasHighlight = ref(false);
 // its answer key with them.
 const hasHidden = ref(false);
 const printHidden = ref(false);
+// Comments printed after the document, numbered as in the text: chosen in Save as PDF, remembered
+// in this browser, and followed by Print (Ctrl+P) too.
+const PRINT_COMMENTS_KEY = 'intact.printComments';
+const printComments = ref(remembered(PRINT_COMMENTS_KEY, '0') === '1');
+watch(printComments, (on) => {
+  try { localStorage.setItem(PRINT_COMMENTS_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+});
+let printedComments = null;
 const pdfBands = ref({}); // what the dialog says about the header and footer
 
 /** The header and footer in the PDF, in words: on every page, or once (and why). */
@@ -10576,7 +10598,20 @@ async function close() {
   .docx-sheet [data-hidden] { display: none !important; }
   .print-hidden-text .docx-sheet [data-hidden] { display: inline !important; opacity: 1 !important; text-decoration: none !important; }
   .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
+  /* Comments: their numbers in the text, and the list after the document, only when asked for. */
+  :root:not(.print-comments-on) .docx-sheet .comment-ref::before { content: none !important; display: none !important; }
+  .print-comments-on .docx-sheet .comment-ref::before { background: none !important; color: #000 !important; border: 1px solid #555; }
+  .docx-sheet > .print-comments { display: block !important; break-before: page; color: #000; font-family: inherit; }
 }
+.docx-sheet > .print-comments { display: none; }
+/* Its own look, not the document's paragraph and heading styles. */
+.docx-sheet > .print-comments h2 { font-size: 14pt; font-weight: 700; margin: 0 0 10pt; }
+.docx-sheet > .print-comments ol { list-style: none; margin: 0; padding: 0; }
+.docx-sheet > .print-comments li { margin: 0 0 9pt; break-inside: avoid; }
+.docx-sheet > .print-comments p { margin: 0 0 2pt; padding: 0; text-indent: 0; line-height: 1.3; }
+.print-comments .n { display: inline-block; min-width: 1.4em; margin-right: 6pt; padding: 0 3pt; border: 1px solid #555; border-radius: 6pt; font-size: 8pt; text-align: center; vertical-align: 1pt; }
+.print-comments .on { color: #444; font-style: italic; }
+.print-comments .reply { margin: 3pt 0 0 2.2em; padding-left: 6pt; border-left: 2px solid #bbb; }
 .docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
 .docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
 .docx-sheet .cs-before { margin-top: 0 !important; }
