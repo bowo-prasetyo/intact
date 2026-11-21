@@ -399,6 +399,7 @@
             @mousedown="onPageMousedown"
             @mouseup="onPageMouseup"
             @contextmenu="onContextMenu"
+            @dblclick="onPageDblclick"
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
@@ -1171,6 +1172,10 @@
         <button type="button" role="menuitem" @click="contextPaste(false)">Paste<span class="key">{{ t('Ctrl+V') }}</span></button>
         <button type="button" role="menuitem" @click="contextPaste(true)">{{ t('Paste as text') }}</button>
       </template>
+      <template v-if="ctxMenu.equation && !ctxMenu.locked">
+        <hr />
+        <button type="button" role="menuitem" @click="contextRun(() => editEquation(ctxMenu.equation), true)">{{ t('Edit equation…') }}</button>
+      </template>
       <template v-if="ctxMenu.change && !lockMode">
         <hr />
         <button type="button" role="menuitem" @click="contextRun(() => resolveCurrent(true, 'stay'))">Accept change</button>
@@ -1220,7 +1225,7 @@
     <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
     <SymbolDialog v-if="symbolOpen" @close="closeSymbols" @insert="insertSymbol" />
     <MailMergeDialog v-if="mailMerge.open" :placeholders="mailMerge.placeholders" :single-blocked="mailMerge.singleBlocked" :merge="runMailMerge" @close="closeMailMerge" />
-    <EquationDialog v-if="refDialog === 'equation'" @close="closeRefDialog" @insert="insertEquation" />
+    <EquationDialog v-if="refDialog === 'equation'" :latex="equationEdit?.latex" :displayed="equationEdit?.display" @close="equationEdit = null; closeRefDialog()" @insert="insertEquation" />
     <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
@@ -1302,6 +1307,7 @@ import {
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
+import { ommlToLatex } from '../editor/mathOutput.js';
 import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
 import { decrypt } from '../docx/encryption.js';
 import { checkAccessibility } from '../editor/accessibility.js';
@@ -4809,8 +4815,86 @@ function insertCrossRef({ kind, index, as }) {
   finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
 }
 
+// ------------------------------------------------------------------ editing equations
+
+// The equation being edited in the Equation dialog: { el, latex, display }, or null when inserting one.
+const equationEdit = ref(null);
+
+/** An equation Intact can edit: the one clicked (`target`), or the one just before or after the caret. */
+function equationAt(range, target) {
+  const isEq = (n) => n?.nodeType === 1 && n.matches('.equation[data-editable]') && page.value.contains(n);
+  const hit = target?.nodeType === 1 ? target.closest('.equation[data-editable]') : null;
+  if (isEq(hit)) return hit;
+  if (!range) return null;
+  const { startContainer: c, startOffset: o } = range;
+  const around = c.nodeType === 3
+    ? [o === 0 ? c.previousSibling : null, o === c.data.length ? c.nextSibling : null]
+    : [c.childNodes[o - 1], c.childNodes[o]];
+  return around.find(isEq) || null;
+}
+
+function onPageDblclick(e) {
+  const el = e.target.closest?.('.equation[data-editable]');
+  if (el && page.value.contains(el)) {
+    e.preventDefault();
+    editEquation(el);
+  }
+}
+
+/** Opens an equation in the document in the Equation dialog, as LaTeX, to change it. */
+function editEquation(el) {
+  if (textLocked.value) {
+    explainLock();
+    return;
+  }
+  const outer = el.parentElement && readOnlyAt(el.parentElement, page.value);
+  if (outer) {
+    explainReadOnly(outer, true);
+    return;
+  }
+  const got = ommlToLatex(doc.raw[Number(el.dataset.raw)]);
+  if (!got) return;
+  equationEdit.value = { el, latex: got.latex, display: got.display };
+  refDialog.value = 'equation';
+}
+
+/** Puts the equation edited in the dialog in place of the one it was (tracked while tracking). */
+function replaceEquation({ xml, changed }) {
+  const { el } = equationEdit.value;
+  equationEdit.value = null;
+  refDialog.value = null;
+  if (!changed || !el.isConnected) {
+    refocus();
+    message.value = 'Equation unchanged – kept as it was';
+    return;
+  }
+  undoStack.flush();
+  const nodes = doc.renderXmlRuns(xml);
+  if (trackedBy(el)) {
+    // Tracked: the equation as it was marked deleted, the new one inserted after it.
+    const range = document.createRange();
+    range.setStartBefore(el);
+    range.setEndAfter(el);
+    page.value.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    if (!putInline(range, nodes)) return;
+  } else {
+    const after = nodes[nodes.length - 1];
+    el.replaceWith(...nodes);
+    page.value.focus();
+    if (after?.isConnected) window.getSelection().collapse(after.parentNode, [...after.parentNode.childNodes].indexOf(after) + 1);
+  }
+  finishInsert('Equation updated – written as Word’s own equation');
+}
+
 /** Insert Equation: Word's Office Math at the caret, on its own line in an empty paragraph if asked. */
-function insertEquation({ xml, display }) {
+function insertEquation({ xml, display, changed }) {
+  if (equationEdit.value) {
+    replaceEquation({ xml, changed });
+    return;
+  }
   refDialog.value = null;
   const range = insertSpot('an equation');
   if (!range) return;
@@ -6084,6 +6168,7 @@ function openContextMenu(x = 0, y = 0, target = null) {
     multi: table && !!tableSelection()?.multi,
     link: !!linkAt(range),
     change: !!hit || changesAt(range, items).length > 0,
+    equation: equationAt(range, target),
   });
   nextTick(() => {
     keepInView(ctxMenu, ctxMenuEl.value);

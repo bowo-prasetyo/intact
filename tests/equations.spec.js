@@ -1,6 +1,6 @@
 // Equations (Office Math) are shown as MathML, which the browser draws, instead of a placeholder:
 // fractions, roots, scripts, sums and integrals, delimiters, matrices, functions, accents and Word's
-// letter styles. They stay read-only and are written back exactly as they were.
+// letter styles. They are written back exactly as they were unless edited (see edit-equations.spec.js).
 import { test, expect } from '@playwright/test';
 import { buildDocx, openInEditor, download, documentXmlOf, canonicalize } from './helpers.js';
 
@@ -44,10 +44,12 @@ test('equations are drawn as MathML: on their own line, or in the line of text',
   await expect(page.locator('.docx-page p').last()).toContainText('The mean');
 });
 
-test('equations stay read-only and are written back exactly as they were', async ({ page }) => {
+test('equations are written back exactly as they were; one LaTeX here can\'t write stays read-only', async ({ page }) => {
   const buffer = await buildDocx(BODY);
   await openInEditor(page, buffer);
   await equation(page, 3).click();
+  await expect(page.locator('.statusbar [role=status]')).toHaveText('Equation – double-click to edit it');
+  await equation(page, 2).click(); // Word's script and double-struck letters
   await expect(page.locator('.statusbar [role=status]')).toHaveText('Read-only: Equation – kept as it is; edit it in Word');
   await page.locator('.docx-page p').last().click();
   await page.keyboard.press('End');

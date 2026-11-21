@@ -8,7 +8,7 @@
 // as Word's equation arrays, its alignment points the &s in the text); accents (\hat, \bar, \vec,
 // \dot, \ddot, \tilde) and lines over and under (\overline, \underline).
 
-const SYMBOLS = {
+export const SYMBOLS = {
   alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ',
   vartheta: 'ϑ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ',
   tau: 'τ', upsilon: 'υ', phi: 'φ', varphi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
@@ -21,12 +21,12 @@ const SYMBOLS = {
   ',': ' ', ';': ' ', quad: ' ', qquad: '  ', '{': '{', '}': '}', '%': '%', $: '$', '#': '#', '&': '&', _: '_',
 };
 // Large operators, with where their limits go (under and over, or beside), as Word places them.
-const NARY = { sum: ['∑', 'undOvr'], prod: ['∏', 'undOvr'], coprod: ['∐', 'undOvr'], bigcup: ['⋃', 'undOvr'], bigcap: ['⋂', 'undOvr'], int: ['∫', 'subSup'], iint: ['∬', 'subSup'], iiint: ['∭', 'subSup'], oint: ['∮', 'subSup'] };
-const FUNCTIONS = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'tanh', 'log', 'ln', 'exp', 'lim', 'max', 'min', 'det', 'gcd']);
+export const NARY = { sum: ['∑', 'undOvr'], prod: ['∏', 'undOvr'], coprod: ['∐', 'undOvr'], bigcup: ['⋃', 'undOvr'], bigcap: ['⋂', 'undOvr'], int: ['∫', 'subSup'], iint: ['∬', 'subSup'], iiint: ['∭', 'subSup'], oint: ['∮', 'subSup'] };
+export const FUNCTIONS = new Set(['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'tanh', 'log', 'ln', 'exp', 'lim', 'max', 'min', 'det', 'gcd']);
 // Accents, as Word's (m:acc with its character; a hat is Word's default).
-const ACCENTS = { hat: '\u0302', widehat: '\u0302', bar: '\u0305', vec: '\u20d7', dot: '\u0307', ddot: '\u0308', tilde: '\u0303', widetilde: '\u0303', check: '\u030c', acute: '\u0301', grave: '\u0300', breve: '\u0306' };
+export const ACCENTS = { hat: '\u0302', widehat: '\u0302', bar: '\u0305', vec: '\u20d7', dot: '\u0307', ddot: '\u0308', tilde: '\u0303', widetilde: '\u0303', check: '\u030c', acute: '\u0301', grave: '\u0300', breve: '\u0306' };
 // Matrices and the brackets around them (none for matrix), as Word puts a matrix in a delimiter.
-const MATRICES = { matrix: null, pmatrix: ['(', ')'], bmatrix: ['[', ']'], Bmatrix: ['{', '}'], vmatrix: ['|', '|'], Vmatrix: ['‖', '‖'] };
+export const MATRICES = { matrix: null, pmatrix: ['(', ')'], bmatrix: ['[', ']'], Bmatrix: ['{', '}'], vmatrix: ['|', '|'], Vmatrix: ['‖', '‖'] };
 // Lines of working, each its own row of an equation array, lined up at their &s.
 const ARRAYS = new Set(['aligned', 'align', 'align*', 'gathered', 'gather', 'gather*', 'split', 'eqnarray', 'eqnarray*']);
 const DELIMS = { '(': '(', ')': ')', '[': '[', ']': ']', '|': '|', '.': '', '\\{': '{', '\\}': '}', '\\langle': '⟨', '\\rangle': '⟩', '\\lvert': '|', '\\rvert': '|' };

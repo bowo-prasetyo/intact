@@ -13,6 +13,7 @@
 //  * Tables keep their structure (read-only) while each cell's content is editable.
 import JSZip from 'jszip';
 import { layoutTabs } from '../editor/tabLayout.js';
+import { ommlToLatex } from '../editor/mathOutput.js';
 import {
   NS, parseXml, serializeXml, wChild, wChildren, wAttr, onOff, createW, ensureOrdered, removeW,
   RPR_ORDER, PPR_ORDER, isEmptyElement, plainText, parseRels, elementChildren, XML_HEADER,
@@ -2537,6 +2538,11 @@ export class DocxDocument {
       if (!maths.length) return false;
       span.classList.add('equation');
       if (maths.some((m) => m.getAttribute('display') === 'block')) span.classList.add('display');
+      // One the Equation dialog can write back (as LaTeX) is edited there; the rest stay Word's.
+      if (ommlToLatex(node)) {
+        span.dataset.editable = '1';
+        span.title = 'Equation – double-click to edit it';
+      }
       span.append(...maths);
       return true;
     } catch {

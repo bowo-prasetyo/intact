@@ -1,5 +1,5 @@
 <template>
-  <ModalDialog title="Equation" @close="$emit('close')" @submit="insert">
+  <ModalDialog :title="editing ? 'Edit equation' : 'Equation'" @close="$emit('close')" @submit="insert">
     <label>Type the equation, as in LaTeX
       <textarea ref="input" v-model="src" rows="3" spellcheck="false" autocomplete="off" aria-label="Equation, as in LaTeX" placeholder="x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}" @keydown.enter.exact.prevent="insert" />
     </label>
@@ -10,10 +10,10 @@
       <p v-if="result.error" class="error">{{ result.error }}</p>
       <div v-else ref="previewEl" class="maths" aria-label="Preview" />
     </div>
-    <label class="check"><input v-model="display" type="checkbox" /> On its own line (when the paragraph is empty)</label>
-    <p class="hint">In a matrix, cases or lines of working, &amp; separates cells (in working, the point the lines are lined up at) and \\ starts a new row. Written as Word’s own equations (Office Math): Word edits them as its own. Equations already in a document are shown, not edited, here.</p>
+    <label v-if="!editing" class="check"><input v-model="display" type="checkbox" /> On its own line (when the paragraph is empty)</label>
+    <p class="hint">In a matrix, cases or lines of working, &amp; separates cells (in working, the point the lines are lined up at) and \\ starts a new row. Written as Word’s own equations (Office Math): Word edits them as its own.<template v-if="editing"> The equation is written again only if it is changed.</template></p>
     <template #actions>
-      <button type="submit" class="confirm" :disabled="!!result.error">Insert</button>
+      <button type="submit" class="confirm" :disabled="!!result.error">{{ editing ? 'Update' : 'Insert' }}</button>
     </template>
   </ModalDialog>
 </template>
@@ -27,8 +27,11 @@ import { latexToOmml } from '../editor/mathInput.js';
 import { ommlToMathml, MATH_NS } from '../docx/omml.js';
 import { NS, parseXml } from '../docx/xml.js';
 
-// insert({ xml, display }): the equation's OMML.
+// To edit an equation already in the document: its LaTeX (`latex`) and whether it is on its own line.
+const props = defineProps({ latex: { type: String, default: '' }, displayed: { type: Boolean, default: false } });
+// insert({ xml, display, src, changed }): the equation's OMML, and the LaTeX it was made from.
 const emit = defineEmits(['close', 'insert']);
+const editing = !!props.latex;
 const EXAMPLES = [
   { label: 'x²', src: 'x^2' },
   { label: 'a/b', src: '\\frac{a}{b}' },
@@ -43,8 +46,8 @@ const EXAMPLES = [
   { label: 'Working', src: '\\begin{aligned} 2x + 3 &= 11 \\\\ 2x &= 8 \\\\ x &= 4 \\end{aligned}' },
   { label: 'Vector', src: '\\vec{v} = \\overline{AB}' },
 ];
-const src = ref('');
-const display = ref(false);
+const src = ref(props.latex);
+const display = ref(props.displayed);
 const input = ref(null);
 const previewEl = ref(null);
 const result = computed(() => latexToOmml(src.value, { display: display.value }));
@@ -63,9 +66,12 @@ watch(result, () => nextTick(drawPreview));
 
 function insert() {
   if (result.value.error) return;
-  emit('insert', { xml: result.value.xml, display: display.value });
+  emit('insert', { xml: result.value.xml, display: display.value, changed: src.value.trim() !== props.latex.trim() });
 }
-onMounted(() => nextTick(() => input.value?.focus()));
+onMounted(() => nextTick(() => {
+  drawPreview();
+  input.value?.focus();
+}));
 </script>
 
 <style scoped>
