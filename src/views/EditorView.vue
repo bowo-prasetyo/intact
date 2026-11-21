@@ -10314,7 +10314,9 @@ async function close() {
 .docx-sheet table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
 .docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
 .docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px rgb(14 100 103 / 33%); }
-.docx-sheet table.docx-table td.vmerge { border-top-color: transparent; }
+/* A cell merged with the one above: no line between them. "hidden" wins over every other border in
+   the collapsing model, the bottom border of the cell above (drawn there, as its own) included. */
+.docx-sheet table.docx-table td.vmerge { border-top-style: hidden !important; }
 .docx-sheet table.docx-table td[data-rev-cell="ins"] { background-color: rgb(30 107 52 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(30 107 52 / 45%); }
 .docx-sheet table.docx-table td[data-rev-cell="del"] { background-color: rgb(179 38 30 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(179 38 30 / 45%); }
 .docx-sheet table.docx-table td.vmerge > * { visibility: hidden; }
