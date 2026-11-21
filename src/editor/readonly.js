@@ -30,6 +30,8 @@ export function readOnlyMessage(el, root) {
   while (titled && titled !== root && !titled.title) titled = titled.parentElement;
   const title = titled && titled !== root ? titled.title : '';
   if (!title) return 'Read-only: this part can’t be edited here – edit it in Word';
+  // An equation edited in the Equation dialog says how to open it there.
+  if (titled.dataset?.editable) return title;
   // A title that says what to do (after a dash) is enough; otherwise, say where to change it.
   return `Read-only: ${title}${title.includes(' – ') ? '' : ' – kept as it is; edit it in Word'}`;
 }

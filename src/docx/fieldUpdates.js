@@ -8,7 +8,7 @@
 // instruction in data-instr; its markers (begin, separate, end) are hidden raw runs around it.
 import { NS, wChild, wAttr, createW, elementChildren, plainText } from './xml.js';
 import { formatNumber } from './numbering.js';
-import { formatCitation, bibliographyXml } from './references.js';
+import { formatCitation, bibliographyXml, parseCitation, numberCitations, citationStyle } from './references.js';
 import { formulaResult, parseFormulaInstr } from './formulas.js';
 
 const W = NS.w;
@@ -192,18 +192,20 @@ export function updateFields(doc, root, { only = null } = {}) {
   // Citations and bibliographies from the document's sources (Word's own: CITATION, BIBLIOGRAPHY),
   // in its citation style. Those in Word's content controls are left for Word, as are citations
   // whose source the document doesn't have.
+  // A citation may cite several sources (\\m); in IEEE they are numbered in the order first cited.
   const sources = doc.sources?.list || [];
-  const style = doc.sources?.style === 'MLA' ? 'MLA' : 'APA';
+  const style = citationStyle(doc.sources?.style);
+  const numbers = citationNumbersIn(doc, root);
   for (const el of inText) {
-    const { code, args, sw } = parsed.get(el);
-    if (code !== 'CITATION' || !want(code)) continue;
-    const source = sources.find((x) => x.tag === args[0]);
-    if (!source) continue;
-    if (setResult(el, formatCitation(source, style, typeof sw['\\p'] === 'string' ? sw['\\p'] : ''))) tally.citation++;
+    if (parsed.get(el).code !== 'CITATION' || !want('CITATION')) continue;
+    const { tags, page } = parseCitation(el.dataset.instr);
+    const cited = tags.map((tag) => sources.find((x) => x.tag === tag));
+    if (!cited.length || cited.some((x) => !x)) continue;
+    if (setResult(el, formatCitation(cited, style, page, numbers))) tally.citation++;
   }
   for (const el of inText) {
     if (parsed.get(el).code !== 'BIBLIOGRAPHY' || !el.isConnected || !want('BIBLIOGRAPHY')) continue;
-    const res = updateBibliography(doc, root, el, sources, style);
+    const res = updateBibliography(doc, root, el, sources, style, numbers);
     if (res.skipped) tally.skipped = res.skipped;
     else if (res.changed) tally.bibliography++;
   }
@@ -219,6 +221,18 @@ export function updateFields(doc, root, { only = null } = {}) {
     }
   }
   return tally;
+}
+
+/**
+ * The numbers IEEE gives the document's sources: in the order each is first cited in the text of
+ * `root` (by the citations Intact updates, those of the document's own sources). tag -> number.
+ */
+export function citationNumbersIn(doc, root) {
+  const known = new Set((doc.sources?.list || []).map((s) => s.tag));
+  const cited = [...root.querySelectorAll('span.field[data-instr]')]
+    .filter((f) => !f.closest(OUTSIDE_TEXT) && !f.closest('.sdt-locked'))
+    .map((f) => parseCitation(f.dataset.instr)?.tags.filter((t) => known.has(t)) || []);
+  return numberCitations(cited);
 }
 
 // ------------------------------------------------------------------ tables of contents
@@ -239,9 +253,22 @@ function tocHeadings(doc, root, sw, exclude) {
     const parts = sw['\\t'].split(/[,;]/).map((x) => x.trim());
     for (let i = 0; i + 1 < parts.length; i += 2) styleLevels.set(parts[i].toLowerCase(), Number(parts[i + 1]));
   }
+  // A table of figures (\\c "Figure"): the paragraphs with a caption number of that label, at level 1.
+  const label = typeof sw['\\c'] === 'string' ? sw['\\c'].toLowerCase() : null;
+  const isCaption = (el) => [...el.querySelectorAll('span.field[data-instr]')].some((f) => {
+    const { code, args } = parseInstr(f.dataset.instr);
+    return code === 'SEQ' && args[0]?.toLowerCase() === label;
+  });
   const out = [];
   for (const el of root.querySelectorAll(BLOCKS)) {
     if (el.closest(OUTSIDE_TEXT) || exclude(el)) continue;
+    if (label) {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const text = isCaption(el) ? textOf(r) : '';
+      if (text) out.push({ el, level: 1, text });
+      continue;
+    }
     let level = null;
     const name = doc.styles.byId.get(el.dataset.style || doc.styles.defaultParagraph)?.name.toLowerCase();
     if (name && styleLevels.has(name)) level = styleLevels.get(name);
@@ -345,6 +372,7 @@ function entryParts(p) {
  */
 function rebuildToc(doc, paras, sw, entries) {
   const xml = doc.xml;
+  const figures = typeof sw['\\c'] === 'string'; // a table of figures: its entries in Word's Table of Figures style
   const m = tocMarkers(paras);
   const first = paras[0];
   const last = paras[paras.length - 1];
@@ -364,7 +392,9 @@ function rebuildToc(doc, paras, sw, entries) {
   const pages = new Map();
   for (const p of paras) {
     const style = wAttr(wChild(wChild(p, 'pPr'), 'pStyle'), 'val');
-    const level = Number(/^toc (\d)$/.exec(doc.styles.byId.get(style)?.name.toLowerCase() || '')?.[1] || /^TOC(\d)$/i.exec(style || '')?.[1]);
+    const styleName = doc.styles.byId.get(style)?.name.toLowerCase() || '';
+    const level = figures ? (styleName === 'table of figures' || /^TableofFigures$/i.test(style || '') ? 1 : 0)
+      : Number(/^toc (\d)$/.exec(styleName)?.[1] || /^TOC(\d)$/i.exec(style || '')?.[1]);
     const { text, page, anchor } = entryParts(p);
     if (!text) continue;
     if (level && !templates.has(level)) {
@@ -409,7 +439,7 @@ function rebuildToc(doc, paras, sw, entries) {
     if (t?.pPr) p.appendChild(t.pPr.cloneNode(true));
     else {
       const pPr = p.appendChild(createW(xml, 'pPr'));
-      pPr.appendChild(createW(xml, 'pStyle')).setAttributeNS(W, 'w:val', doc.styles.ensureBuiltin(`toc${e.level}`));
+      pPr.appendChild(createW(xml, 'pStyle')).setAttributeNS(W, 'w:val', doc.styles.ensureBuiltin(figures ? 'tableOfFigures' : `toc${e.level}`));
       const tab = pPr.appendChild(createW(xml, 'tabs')).appendChild(createW(xml, 'tab'));
       tab.setAttributeNS(W, 'w:val', 'right');
       tab.setAttributeNS(W, 'w:leader', 'dot');
@@ -440,7 +470,7 @@ function rebuildToc(doc, paras, sw, entries) {
     const p = createW(xml, 'p');
     const pPr = wChild(first, 'pPr');
     if (pPr) p.appendChild(pPr.cloneNode(true));
-    p.appendChild(run(null, 't', 'No table of contents entries found.'));
+    p.appendChild(run(null, 't', figures ? 'No table of figures entries found.' : 'No table of contents entries found.'));
     out.push(p);
   }
   // The field's begin (and what comes before it) in the first paragraph; its end in the last, or in
@@ -536,12 +566,12 @@ function fieldBlocks(doc, root, field, what) {
  * sources, one paragraph a source in its entries' paragraph style, sorted as the style sorts them.
  * Returns { changed } or { skipped: why }.
  */
-function updateBibliography(doc, root, field, sources, style) {
+function updateBibliography(doc, root, field, sources, style, numbers) {
   const found = fieldBlocks(doc, root, field, 'a bibliography');
   if (found.skipped) return found;
   const { blocks, firstBlock } = found;
   const entryStyle = blocks.find((b) => b.dataset.style)?.dataset.style || doc.styles.ensureBuiltin('bibliography');
-  const xml = bibliographyXml({ sources, style, entryStyle, withHeading: false });
+  const xml = bibliographyXml({ sources, style, entryStyle, withHeading: false, numbers });
   const before = blocks.map((b) => b.textContent).join('\n');
   const fresh = doc.renderXmlParagraphs(xml);
   if (fresh.map((b) => b.textContent).join('\n') === before) return { changed: false };

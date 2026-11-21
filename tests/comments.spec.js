@@ -30,7 +30,7 @@ async function select(page, text, offset = 0, length = text.length - offset) {
 async function comment(page, text, name = null) {
   if (name) await composer(page).getByRole('textbox', { name: 'Your name' }).fill(name);
   await composer(page).getByRole('textbox', { name: 'New comment' }).fill(text);
-  await composer(page).getByRole('button', { name: 'Comment' }).click();
+  await composer(page).getByRole('button', { name: 'Comment', exact: true }).click();
 }
 
 test('a comment on the selected text, in a document without comments: comments.xml is created', async ({ page }) => {

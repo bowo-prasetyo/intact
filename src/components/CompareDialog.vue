@@ -6,7 +6,7 @@
         <button ref="closeButton" type="button" class="close" :aria-label="t('Close')" @click="$emit('close')">×</button>
       </header>
       <p class="what">{{ t('From {other} to this document: text taken out is struck through, text put in is underlined. Only the text is compared, not its formatting.', { other }) }}</p>
-      <p class="summary" role="status">{{ summary }}</p>
+      <p class="summary" role="status">{{ summary }}<template v-if="notes.length"><br />{{ notesSummary }}</template></p>
       <ol v-if="result.changes.length" class="changes">
         <li v-for="(c, i) in result.changes" :key="i" :class="c.kind">
           <button type="button" class="go" :title="t('Go to it in this document')" @click="$emit('go', c)">
@@ -15,8 +15,19 @@
           </button>
         </li>
       </ol>
+      <template v-if="notes.length">
+        <h3>{{ t('Footnotes and endnotes') }}</h3>
+        <ol class="changes notes" :aria-label="t('Footnotes and endnotes')">
+          <li v-for="(c, i) in notes" :key="`n${i}`" :class="c.kind">
+            <button type="button" class="go" :title="t('Go to it in this document')" @click="$emit('go', c)">
+              <span class="kind">{{ noteLabel(c) }}</span>
+              <span class="text"><template v-for="(p, k) in c.parts" :key="k"><del v-if="p.kind === 'del'">{{ p.text }}</del><ins v-else-if="p.kind === 'ins'">{{ p.text }}</ins><span v-else>{{ shorten(p.text, k, c.parts.length) }}</span></template></span>
+            </button>
+          </li>
+        </ol>
+      </template>
       <!-- A redline, as Word's Compare makes: a new document with these changes as tracked changes. -->
-      <p v-if="result.changes.length" id="cmp-redline" class="redline-note">{{ t('A redline is a new Word document: this one, with these changes marked as tracked changes by {author}, to send back or to accept and reject in Word. This document stays as it is.', { author }) }}{{ protected ? ` ${t('It is encrypted with this document’s password.')}` : '' }}</p>
+      <p v-if="result.changes.length" id="cmp-redline" class="redline-note">{{ t('A redline is a new Word document: this one, with these changes marked as tracked changes by {author}, to send back or to accept and reject in Word. This document stays as it is.', { author }) }}{{ protected ? ` ${t('It is encrypted with this document’s password.')}` : '' }}{{ notes.length ? ` ${t('Changes in footnotes and endnotes are listed here, not marked in it.')}` : '' }}</p>
       <div class="actions">
         <template v-if="result.changes.length">
           <button type="button" class="confirm" aria-describedby="cmp-redline" @click="$emit('redline', 'open')">{{ t('Open redline') }}</button>
@@ -46,11 +57,23 @@ const closeButton = ref(null);
 onMounted(() => closeButton.value?.focus());
 
 const KINDS = { changed: 'Changed', added: 'Added', removed: 'Taken out' };
+// Changes in the footnotes and endnotes: [{ kind, parts, note: 'footnote' | 'endnote', n (its number, or null) }].
+const notes = computed(() => props.result.notes || []);
 const summary = computed(() => {
   const { changed, added, removed } = props.result;
-  if (!changed && !added && !removed) return t('The text is the same in both.');
+  if (!changed && !added && !removed) return notes.value.length ? t('The text of the body is the same in both.') : t('The text is the same in both.');
   return t('{changed} changed, {added} added, {removed} taken out (paragraphs)', { changed, added, removed });
 });
+const notesSummary = computed(() => {
+  const n = (kind) => notes.value.filter((c) => c.kind === kind).length;
+  return t('In the notes: {changed} changed, {added} added, {removed} taken out', { changed: n('changed'), added: n('added'), removed: n('removed') });
+});
+/** "Footnote 2", "Endnote ii, added", "Footnote, taken out". */
+function noteLabel(c) {
+  const name = c.note === 'footnote' ? t('Footnote') : t('Endnote');
+  if (c.kind === 'removed') return t('{note}, taken out', { note: name });
+  return c.kind === 'added' ? t('{note} {n}, added', { note: name, n: c.n }) : `${name} ${c.n}`;
+}
 
 /** Unchanged text around a change, shortened to the words near it. */
 function shorten(text, k, n) {
@@ -82,6 +105,7 @@ h2 { margin: 0; font-size: 18px; }
 .go { display: flex; gap: 10px; width: 100%; padding: 8px 4px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .go:hover { background: var(--hover); }
 .go:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+h3 { margin: 14px 0 4px; font-size: 14px; }
 .kind { flex: none; width: 76px; color: var(--muted); font-size: 12px; }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 del { color: var(--danger); text-decoration: line-through; }

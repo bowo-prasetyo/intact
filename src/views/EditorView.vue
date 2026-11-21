@@ -399,6 +399,7 @@
             @mousedown="onPageMousedown"
             @mouseup="onPageMouseup"
             @contextmenu="onContextMenu"
+            @dblclick="onPageDblclick"
             @compositionend="onCompositionEnd"
             @click="onClick"
           />
@@ -632,7 +633,8 @@
         <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
         <li v-if="hasHidden"><label class="check"><input v-model="printHidden" type="checkbox" /> {{ t('Print hidden text (a test’s answers, for its answer key)') }}</label></li>
-        <li>Comments and the marks drawn over the page here aren’t in the PDF.</li>
+        <li v-if="threads.length"><label class="check"><input v-model="printComments" type="checkbox" /> {{ t('Print comments, listed after the document with their numbers in the text') }}</label></li>
+        <li>{{ threads.length && printComments ? t('The marks drawn over the page here aren’t in the PDF.') : t('Comments and the marks drawn over the page here aren’t in the PDF.') }}</li>
       </ul>
       <p class="pdf-word">{{ t('The Word file isn’t saved by this: download it as well to keep your changes.') }}</p>
       <div class="actions">
@@ -1052,11 +1054,13 @@
       <button type="button" role="menuitem" @click="insertShape('textbox')">{{ t('Text box') }}<span class="hint">{{ t('In line with the text, to type in') }}</span></button>
       <p class="menu-label" role="presentation">{{ t('References') }}</p>
       <button type="button" role="menuitem" @click="insertTableOfContents">Table of contents<span class="hint">{{ t('From the headings') }}</span></button>
+      <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
+      <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
       <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading or caption') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
-      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA or MLA') }}</span></button>
-      <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ doc.sources?.style === 'MLA' ? 'Works Cited' : 'References' }}</span></button>
+      <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA, MLA, Chicago, Harvard, IEEE') }}</span></button>
+      <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ CITATION_STYLES[citationStyle(doc.sources?.style)].heading }}</span></button>
     </div>
 
     <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
@@ -1169,6 +1173,10 @@
         <button type="button" role="menuitem" @click="contextPaste(false)">Paste<span class="key">{{ t('Ctrl+V') }}</span></button>
         <button type="button" role="menuitem" @click="contextPaste(true)">{{ t('Paste as text') }}</button>
       </template>
+      <template v-if="ctxMenu.equation && !ctxMenu.locked">
+        <hr />
+        <button type="button" role="menuitem" @click="contextRun(() => editEquation(ctxMenu.equation), true)">{{ t('Edit equation…') }}</button>
+      </template>
       <template v-if="ctxMenu.change && !lockMode">
         <hr />
         <button type="button" role="menuitem" @click="contextRun(() => resolveCurrent(true, 'stay'))">Accept change</button>
@@ -1218,8 +1226,8 @@
     <SignatureDialog v-if="signatureOpen" @close="closeSignature" @insert="insertSignature" />
     <SymbolDialog v-if="symbolOpen" @close="closeSymbols" @insert="insertSymbol" />
     <MailMergeDialog v-if="mailMerge.open" :placeholders="mailMerge.placeholders" :single-blocked="mailMerge.singleBlocked" :merge="runMailMerge" @close="closeMailMerge" />
-    <EquationDialog v-if="refDialog === 'equation'" @close="closeRefDialog" @insert="insertEquation" />
-    <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" />
+    <EquationDialog v-if="refDialog === 'equation'" :latex="equationEdit?.latex" :displayed="equationEdit?.display" @close="equationEdit = null; closeRefDialog()" @insert="insertEquation" />
+    <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
 
@@ -1261,10 +1269,10 @@ import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
-import { tocXml, captionXml, bibliographyXml, citationXml } from '../docx/references.js';
+import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
-import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
+import { paragraphsOfXml, compareParagraphs, notesOfPackage, compareNotes } from '../editor/compare.js';
 import { redlinePackage } from '../docx/redline.js';
 import { nextVersionName, initialsOf } from '../editor/versionName.js';
 import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
@@ -1300,6 +1308,8 @@ import {
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
+import { ommlToLatex } from '../editor/mathOutput.js';
+import { printCommentsSection } from '../editor/printComments.js';
 import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
 import { decrypt } from '../docx/encryption.js';
 import { checkAccessibility } from '../editor/accessibility.js';
@@ -1324,7 +1334,7 @@ import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
-import { updateFields, parseInstr } from '../docx/fieldUpdates.js';
+import { updateFields, parseInstr, citationNumbersIn } from '../docx/fieldUpdates.js';
 import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -2117,10 +2127,22 @@ let titleBeforePrint = null;
 function onBeforePrint() {
   if (!page.value || !printStyle) return;
   printStyle.textContent = printCss(page.value, doc, sheetZoom.value);
+  // The comments after the document, beside the page (not in it), if asked for.
+  printedComments?.remove();
+  printedComments = null;
+  const printing = printComments.value && threads.value.length > 0;
+  document.documentElement.classList.toggle('print-comments-on', printing);
+  if (printing) {
+    printedComments = printCommentsSection(threads.value, (id) => commentRange(id)?.toString() || '', t('Comments'));
+    page.value.after(printedComments);
+  }
   titleBeforePrint ??= document.title; // once, should the browser say so twice
   document.title = baseName.value || titleBeforePrint;
 }
 function onAfterPrint() {
+  printedComments?.remove();
+  printedComments = null;
+  document.documentElement.classList.remove('print-comments-on');
   refreshPrintPage();
   if (titleBeforePrint != null) document.title = titleBeforePrint;
   titleBeforePrint = null;
@@ -4676,6 +4698,27 @@ function insertTableOfContents() {
     : 'Table of contents inserted: no headings yet – give paragraphs a heading style, then Update (F9)');
 }
 
+/**
+ * Insert Table of Figures, as Word's References tab: a list of the captions of one label (Figure,
+ * Table), as Word's TOC field with \\c, under a heading ("List of Figures"), built at once as Update
+ * fields builds one. Page numbers are Word's, as in a table of contents.
+ */
+function insertTableOfFigures(label) {
+  closeInsertMenu();
+  const what = label === 'Table' ? 'a list of tables' : 'a list of figures';
+  const spot = insertSpot(what, { block: true });
+  if (!spot) return;
+  undoStack.flush();
+  placeBlocks(spot, doc.renderXmlParagraphs(tableOfFiguresXml(doc.styles.ensureBuiltin('tocHeading'), label)));
+  refreshCss();
+  const t = updateFields(doc, page.value, { only: ['SEQ', 'TOC'] });
+  doc.updateFields = true;
+  const kind = label.toLowerCase();
+  finishInsert(t.entries
+    ? `List of ${kind}s inserted: ${t.entries} ${t.entries === 1 ? 'caption' : 'captions'} – Word fills in the page numbers when it opens the file; Update (F9) adds captions written later`
+    : `List of ${kind}s inserted: no ${kind} captions yet – add them with Caption…, then Update (F9)`);
+}
+
 /** The captions in the text, by label: { figure: [{ block, field, label }] } (label as written). */
 function captionsInText() {
   const out = {};
@@ -4786,8 +4829,86 @@ function insertCrossRef({ kind, index, as }) {
   finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
 }
 
+// ------------------------------------------------------------------ editing equations
+
+// The equation being edited in the Equation dialog: { el, latex, display }, or null when inserting one.
+const equationEdit = ref(null);
+
+/** An equation Intact can edit: the one clicked (`target`), or the one just before or after the caret. */
+function equationAt(range, target) {
+  const isEq = (n) => n?.nodeType === 1 && n.matches('.equation[data-editable]') && page.value.contains(n);
+  const hit = target?.nodeType === 1 ? target.closest('.equation[data-editable]') : null;
+  if (isEq(hit)) return hit;
+  if (!range) return null;
+  const { startContainer: c, startOffset: o } = range;
+  const around = c.nodeType === 3
+    ? [o === 0 ? c.previousSibling : null, o === c.data.length ? c.nextSibling : null]
+    : [c.childNodes[o - 1], c.childNodes[o]];
+  return around.find(isEq) || null;
+}
+
+function onPageDblclick(e) {
+  const el = e.target.closest?.('.equation[data-editable]');
+  if (el && page.value.contains(el)) {
+    e.preventDefault();
+    editEquation(el);
+  }
+}
+
+/** Opens an equation in the document in the Equation dialog, as LaTeX, to change it. */
+function editEquation(el) {
+  if (textLocked.value) {
+    explainLock();
+    return;
+  }
+  const outer = el.parentElement && readOnlyAt(el.parentElement, page.value);
+  if (outer) {
+    explainReadOnly(outer, true);
+    return;
+  }
+  const got = ommlToLatex(doc.raw[Number(el.dataset.raw)]);
+  if (!got) return;
+  equationEdit.value = { el, latex: got.latex, display: got.display };
+  refDialog.value = 'equation';
+}
+
+/** Puts the equation edited in the dialog in place of the one it was (tracked while tracking). */
+function replaceEquation({ xml, changed }) {
+  const { el } = equationEdit.value;
+  equationEdit.value = null;
+  refDialog.value = null;
+  if (!changed || !el.isConnected) {
+    refocus();
+    message.value = 'Equation unchanged – kept as it was';
+    return;
+  }
+  undoStack.flush();
+  const nodes = doc.renderXmlRuns(xml);
+  if (trackedBy(el)) {
+    // Tracked: the equation as it was marked deleted, the new one inserted after it.
+    const range = document.createRange();
+    range.setStartBefore(el);
+    range.setEndAfter(el);
+    page.value.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    if (!putInline(range, nodes)) return;
+  } else {
+    const after = nodes[nodes.length - 1];
+    el.replaceWith(...nodes);
+    page.value.focus();
+    if (after?.isConnected) window.getSelection().collapse(after.parentNode, [...after.parentNode.childNodes].indexOf(after) + 1);
+  }
+  finishInsert('Equation updated – written as Word’s own equation');
+}
+
 /** Insert Equation: Word's Office Math at the caret, on its own line in an empty paragraph if asked. */
-function insertEquation({ xml, display }) {
+function insertEquation({ xml, display, changed }) {
+  if (equationEdit.value) {
+    replaceEquation({ xml, changed });
+    return;
+  }
   refDialog.value = null;
   const range = insertSpot('an equation');
   if (!range) return;
@@ -4801,31 +4922,39 @@ function insertEquation({ xml, display }) {
 }
 
 /**
- * Insert Citation: a CITATION field for a source the document has, or a new one added to its
- * sources. A new source, or another style, brings the citations and bibliographies up to date.
+ * Insert Citation: a CITATION field for one source or several (\\m), each one the document has, one
+ * imported from a reference manager's file, or a new one, those added to its sources. A new source,
+ * another style, or any citation in IEEE (whose numbers follow the text's order) brings the
+ * citations and bibliographies up to date.
  */
-function insertCitation({ tag, source, page: cited, style }) {
+// Sources imported from a BibTeX or RIS file in this session, offered until cited (then the document's).
+const sourceLibrary = ref([]);
+function insertCitation({ picks, page: cited, style }) {
   refDialog.value = null;
   const range = insertSpot('a citation');
   if (!range) return;
   undoStack.flush();
   const restyled = doc.sources.style !== style;
   doc.setCitationStyle(style);
-  const src = tag ? doc.sources.list.find((x) => x.tag === tag) : doc.addSource(source);
-  if (!src || !putInline(range, doc.renderXmlRuns(citationXml(src, style, cited)))) return;
-  if (restyled || !tag) updateFields(doc, page.value, { only: ['CITATION', 'BIBLIOGRAPHY'] });
-  finishInsert(`Citation inserted: ${src.authors[0]?.last || src.corporate || src.title}${restyled ? ` – citations now in ${style} style` : ''}`);
+  const fromLibrary = new Set(picks.filter((p) => p.libraryIndex != null).map((p) => p.libraryIndex));
+  const list = picks.map((p) => (p.tag ? doc.sources.list.find((x) => x.tag === p.tag) : doc.addSource(p.source)));
+  if (fromLibrary.size) sourceLibrary.value = sourceLibrary.value.filter((_, i) => !fromLibrary.has(i));
+  if (!list.length || list.some((x) => !x) || !putInline(range, doc.renderXmlRuns(citationXml(list, style, cited, citationNumbersIn(doc, page.value))))) return;
+  if (restyled || style === 'IEEE' || picks.some((p) => !p.tag)) updateFields(doc, page.value, { only: ['CITATION', 'BIBLIOGRAPHY'] });
+  const who = (x) => x.authors[0]?.last || x.corporate || x.title;
+  finishInsert(`Citation inserted: ${list.map(who).join('; ')}${restyled ? ` – citations now in ${style} style` : ''}`);
 }
 
-/** Insert Bibliography: "References" (APA) or "Works Cited" (MLA) and the document's sources, as Word's gallery inserts it. */
+/** Insert Bibliography: the style's heading ("References", "Works Cited") and the document's sources, as Word's gallery inserts it. */
 function insertBibliography() {
   closeInsertMenu();
   const spot = insertSpot('a bibliography', { block: true });
   if (!spot) return;
   undoStack.flush();
-  const style = doc.sources.style === 'MLA' ? 'MLA' : 'APA';
+  const style = citationStyle(doc.sources.style);
   placeBlocks(spot, doc.renderXmlParagraphs(bibliographyXml({
     sources: doc.sources.list, style, headingStyle: doc.styles.ensureBuiltin('h1'), entryStyle: doc.styles.ensureBuiltin('bibliography'),
+    numbers: citationNumbersIn(doc, page.value),
   })));
   const n = doc.sources.list.length;
   finishInsert(n
@@ -6053,6 +6182,7 @@ function openContextMenu(x = 0, y = 0, target = null) {
     multi: table && !!tableSelection()?.multi,
     link: !!linkAt(range),
     change: !!hit || changesAt(range, items).length > 0,
+    equation: equationAt(range, target),
   });
   nextTick(() => {
     keepInView(ctxMenu, ctxMenuEl.value);
@@ -7004,11 +7134,17 @@ async function compareWith(name, bytes) {
     const before = paragraphsOfXml(otherXml);
     await draftSettled();
     await withHostsUnlocked(() => doc.write(page.value));
-    const after = paragraphsOfXml(await doc.zip.file(doc.mainPath).async('string'));
+    const thisXml = await doc.zip.file(doc.mainPath).async('string');
+    const after = paragraphsOfXml(thisXml);
+    // Footnotes and endnotes too, each kind in the order the text refers to them, numbered as shown.
+    const thisNotes = await notesOfPackage(doc.zip, doc.mainPath, thisXml);
+    const notes = compareNotes(await notesOfPackage(zip, main, otherXml), thisNotes).map((c) => ({
+      ...c, n: c.at < thisNotes[c.note].length ? doc.noteNumber(c.note, c.at + 1) : null,
+    }));
     compare.blocks = blocksFor(after);
     compare.other = file.name;
     compare.otherXml = otherXml;
-    compare.result = compareParagraphs(before, after);
+    compare.result = { ...compareParagraphs(before, after), notes };
     // The redline is made now, while the result is read, so that opening it in a new tab follows
     // the click at once (a browser opens a tab only straight after a click).
     compare.redline = compare.result.changes.length ? makeRedline().catch((e) => e) : null;
@@ -7027,6 +7163,10 @@ function closeCompare() {
 
 /** Goes to a change in this document: its paragraph (or, for text taken out, where it was). */
 function goToChange(change) {
+  if (change.note) {
+    goToNoteChange(change);
+    return;
+  }
   const block = compare.blocks[Math.min(change.at, compare.blocks.length - 1)];
   compare.result = null;
   compare.redline = null;
@@ -7035,6 +7175,22 @@ function goToChange(change) {
   placeCaret(block, change.at < compare.blocks.length);
   block.scrollIntoView({ block: 'center' });
   message.value = change.kind === 'removed' ? t('Text taken out was here') : change.kind === 'added' ? t('Added in this document') : t('Changed in this document');
+}
+
+/** Goes to a change in a footnote or endnote: the note (or, for one taken out, the note after it, or the last). */
+function goToNoteChange(change) {
+  compare.result = null;
+  compare.redline = null;
+  const notes = [...page.value.querySelectorAll(`.docx-note[data-note="${change.note}"]:not([hidden])`)];
+  const el = (change.n && notes.find((x) => x.dataset.n === change.n)) || notes[notes.length - 1];
+  if (!el) return;
+  const block = el.querySelector(BLOCK_SELECTOR) || el;
+  el.focus();
+  placeCaret(block, change.kind !== 'removed' || !!change.n);
+  el.scrollIntoView({ block: 'center' });
+  const name = change.note === 'footnote' ? t('footnote') : t('endnote');
+  message.value = change.kind === 'removed' ? t('A {note} taken out was here', { note: name })
+    : change.kind === 'added' ? t('Added in this document: {note} {n}', { note: name, n: change.n }) : t('Changed in this document: {note} {n}', { note: name, n: change.n });
 }
 
 /**
@@ -9549,6 +9705,14 @@ const hasHighlight = ref(false);
 // its answer key with them.
 const hasHidden = ref(false);
 const printHidden = ref(false);
+// Comments printed after the document, numbered as in the text: chosen in Save as PDF, remembered
+// in this browser, and followed by Print (Ctrl+P) too.
+const PRINT_COMMENTS_KEY = 'intact.printComments';
+const printComments = ref(remembered(PRINT_COMMENTS_KEY, '0') === '1');
+watch(printComments, (on) => {
+  try { localStorage.setItem(PRINT_COMMENTS_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+});
+let printedComments = null;
 const pdfBands = ref({}); // what the dialog says about the header and footer
 
 /** The header and footer in the PDF, in words: on every page, or once (and why). */
@@ -10434,7 +10598,20 @@ async function close() {
   .docx-sheet [data-hidden] { display: none !important; }
   .print-hidden-text .docx-sheet [data-hidden] { display: inline !important; opacity: 1 !important; text-decoration: none !important; }
   .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
+  /* Comments: their numbers in the text, and the list after the document, only when asked for. */
+  :root:not(.print-comments-on) .docx-sheet .comment-ref::before { content: none !important; display: none !important; }
+  .print-comments-on .docx-sheet .comment-ref::before { background: none !important; color: #000 !important; border: 1px solid #555; }
+  .docx-sheet > .print-comments { display: block !important; break-before: page; color: #000; font-family: inherit; }
 }
+.docx-sheet > .print-comments { display: none; }
+/* Its own look, not the document's paragraph and heading styles. */
+.docx-sheet > .print-comments h2 { font-size: 14pt; font-weight: 700; margin: 0 0 10pt; }
+.docx-sheet > .print-comments ol { list-style: none; margin: 0; padding: 0; }
+.docx-sheet > .print-comments li { margin: 0 0 9pt; break-inside: avoid; }
+.docx-sheet > .print-comments p { margin: 0 0 2pt; padding: 0; text-indent: 0; line-height: 1.3; }
+.print-comments .n { display: inline-block; min-width: 1.4em; margin-right: 6pt; padding: 0 3pt; border: 1px solid #555; border-radius: 6pt; font-size: 8pt; text-align: center; vertical-align: 1pt; }
+.print-comments .on { color: #444; font-style: italic; }
+.print-comments .reply { margin: 3pt 0 0 2.2em; padding-left: 6pt; border-left: 2px solid #bbb; }
 .docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
 .docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
 .docx-sheet .cs-before { margin-top: 0 !important; }

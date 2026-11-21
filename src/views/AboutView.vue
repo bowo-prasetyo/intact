@@ -15,7 +15,7 @@
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F) or an endnote (Ctrl+Alt+D)</li>
         <li>Update fields (F9): the table of contents, cross-references, caption and note numbers; Word updates page numbers when it opens the file</li>
-        <li>References: a table of contents, captions, cross-references, equations typed as LaTeX, and citations with a bibliography in APA or MLA style, as Word writes them; a Headings pane to move around by the headings, and to move a chapter with its text</li>
+        <li>References: a table of contents, a list of figures or tables, captions, cross-references, equations typed as LaTeX (and those already in a document edited the same way: double-click one), and citations of one source or several with a bibliography in APA, MLA, Chicago, Harvard or IEEE style, its sources typed in or imported from a BibTeX or RIS file, as Word writes them; a Headings pane to move around by the headings, and to move a chapter with its text</li>
         <li>Page numbers in a header or footer, at the top or bottom of the page (left, centre or right), or a new header or footer for them or for text on every page; page setup (paper size, orientation, margins, in centimetres or inches) for the whole document, one section, from a point forward or the selected text (a landscape page for a wide table); a different first page, and different odd and even pages</li>
         <li>Modify Style: change a paragraph style's font, size, colour, alignment, spacing and indents (a first-line indent for every paragraph), and every paragraph in it follows</li>
         <li>Headers and footers, in the page's margins: the first page's, other pages', even pages' and each section's, chosen with the tabs above and below the page</li>
@@ -28,7 +28,7 @@
         <li>Draw signature: sign with your finger, a pen or the mouse (or type your name), and it goes in at the caret as a picture</li>
         <li>Insert a check box (ticked with a click, here and in Word) or today's date, in the text's language</li>
         <li>Share… from Download's menu, where the browser can share files: send the file back by mail or a messaging app</li>
-        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes; go to the previous or next one</li>
+        <li>Comments: add (Ctrl+Alt+M), reply, edit, resolve and delete, including comments in headers, footers and notes; go to the previous or next one; save comments you give often and reuse them with a click or Alt+1 to Alt+9 (kept in this browser)</li>
         <li>Bold, italic, underline, strikethrough, superscript, subscript and highlight</li>
         <li>Font, size, colour and character style, from those the document already uses (its theme's fonts and colours too), and Word's usual fonts after them; Grow and Shrink Font (Ctrl+Shift+&gt;, Ctrl+Shift+&lt;); Clear formatting (Ctrl+Space); Format Painter (Ctrl+Shift+C, Ctrl+Shift+V); Change Case (Shift+F3); Insert Symbol</li>
         <li>Zoom from 50% to 200% in the status bar, or with Ctrl+mouse wheel on the page</li>
@@ -40,9 +40,9 @@
         <li>The interface in English or Indonesian (Bahasa Indonesia), chosen on the start page; in Indonesian, starters for official documents (surat dinas, nota dinas, surat undangan, berita acara, keputusan with its lampiran, surat tugas, surat edaran, notula, laporan kegiatan, telaahan staf, surat kuasa)</li>
         <li>Numbering library (Numbering ▾): Indonesia's legal numbering (Pasal 1 → (1) → a. → 1.; BAB I → Pasal 1), 1. → 1.1. → 1.1.1., and Word's own</li>
         <li>Sort a table's rows by a column (text, numbers or dates), and table formulas such as =SUM(ABOVE) with a number format, from the Table layout menu; Update fields (F9) works them out again</li>
-        <li>Compare documents (Review): what changed in the text between another version of the document and this one, word by word, read on this device; and a redline of it, a new document with those changes as tracked changes, to send back or to accept and reject in Word</li>
+        <li>Compare documents (Review): what changed in the text and in the footnotes and endnotes between another version of the document and this one, word by word, read on this device; and a redline of it, a new document with those changes as tracked changes, to send back or to accept and reject in Word</li>
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page; each section on its own paper, with its own header, footer and page numbers</li>
-        <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
+        <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device; with the comments listed after the document if you ask</li>
         <li>Save back to the file opened, and Save as…, where the browser can (Chrome and Edge on a computer): the browser writes the file where it is</li>
         <li>Elsewhere, a changed document can download as its next version ("Report v2", "Report_v5_DE" with your initials), chosen in the review and remembered, rather than as "Report (1)"</li>
         <li>About how many pages, in the status bar, with a dashed line where each page begins</li>

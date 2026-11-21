@@ -234,6 +234,14 @@ Saying no to these keeps the product small enough to keep its promises:
   document to review puts Accept, Reject and the comments first in the toolbar ✔; a board paper
   starter, the decision sought first ✔; downloads named as the next version ("Report v3 DE") where
   the file opened can't be saved back to ✔
+- Academics who mark students' work, examine theses and write papers with co-authors: saved comments
+  reused when marking (a comment bank, kept in this browser) ✔; comments listed after the document
+  in a printout or PDF, for work returned through a learning platform ✔; citations of several
+  sources at once, in Chicago, Harvard and IEEE as well as APA and MLA, their sources imported from a
+  reference manager's BibTeX or RIS file read on the device ✔; equations already in a document
+  edited as LaTeX ✔; a list of figures or tables ✔; Compare that looks in the footnotes and
+  endnotes too ✔. Not a reference manager's plug-in: Zotero's, EndNote's and Mendeley's own
+  citations stay theirs, updated in Word
 
 ## How we'll know it's working
 

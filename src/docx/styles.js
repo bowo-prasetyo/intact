@@ -50,6 +50,10 @@ export const BUILTIN_STYLES = {
   caption: { name: 'caption', id: 'Caption', xml: (basedOn) => `
     <w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="caption"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="35"/><w:unhideWhenUsed/><w:qFormat/>
     <w:pPr><w:spacing w:after="200" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:i/><w:iCs/><w:color w:val="44546A"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>` },
+  // A table of figures' entries (a list of figures or tables), as Word defines them.
+  tableOfFigures: { name: 'table of figures', id: 'TableofFigures', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="TableofFigures"><w:name w:val="table of figures"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/>
+    <w:pPr><w:spacing w:after="0"/></w:pPr></w:style>` },
   bibliography: { name: 'bibliography', id: 'Bibliography', xml: (basedOn) => `
     <w:style w:type="paragraph" w:styleId="Bibliography"><w:name w:val="Bibliography"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="37"/><w:unhideWhenUsed/></w:style>` },
 };

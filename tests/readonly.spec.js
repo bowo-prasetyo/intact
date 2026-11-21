@@ -75,7 +75,7 @@ test('locked fields and equations say what they are when clicked; a picture is s
   await clickAt(page, page.locator('.docx-page .raw-inline:has(img)'), 0.5);
   await expect(status(page)).toHaveText('Picture: drag a corner to resize, or open Layout Options for wrapping and position'); // pictures are laid out here
   await clickAt(page, page.locator('.docx-page [title^="Equation"]'), 0.5);
-  await expect(status(page)).toHaveText('Read-only: Equation – kept as it is; edit it in Word');
+  await expect(status(page)).toHaveText('Equation – double-click to edit it'); // in the Equation dialog, as LaTeX
   const { xml } = await download(page);
   expect(xml).toContain('</w:sdt><w:r><w:t xml:space="preserve">! end.</w:t>'); // typed beside the field
 });
