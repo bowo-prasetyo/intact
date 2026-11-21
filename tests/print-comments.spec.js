@@ -29,7 +29,7 @@ const beforePrint = (page) => page.evaluate(() => window.dispatchEvent(new Event
 const afterPrint = (page) => page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
 const list = (page) => page.locator('.docx-sheet > .print-comments');
 
-test('asked for in Save as PDF: the comments print after the document, numbered as in the text, with replies', async ({ page }) => {
+test('asked for in Save as PDF: the comments print after the document, numbered as in the text, with replies', async ({ page, browserName }) => {
   await openInEditor(page, await buildDocx(BODY, OPTS));
   const dialog = await openPdfDialog(page);
   const option = dialog.getByRole('checkbox', { name: /Print comments/ });
@@ -59,7 +59,8 @@ test('asked for in Save as PDF: the comments print after the document, numbered 
   expect(marker).not.toBe('none');
   // Starts on a page of its own, after the document.
   expect(await list(page).evaluate((el) => getComputedStyle(el).breakBefore)).toBe('page');
-  expect(Buffer.byteLength(await page.pdf({ preferCSSPageSize: true }))).toBeGreaterThan(0);
+  // A PDF is made with it (Playwright makes PDFs in Chromium only).
+  if (browserName === 'chromium') expect(Buffer.byteLength(await page.pdf({ preferCSSPageSize: true }))).toBeGreaterThan(0);
 
   // Gone after printing; the document saved is the same as without it.
   await page.emulateMedia({ media: 'screen' });
