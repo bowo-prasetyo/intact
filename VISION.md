@@ -216,6 +216,9 @@ Saying no to these keeps the product small enough to keep its promises:
   statistics and the long sentences to show ✔; Redact, never tracked, with "Before you release"
   saying where a redacted name is still in the file ✔. Not dictation or transcription: the browsers'
   speech recognition sends the voice to a server, which the privacy promise rules out
+- Writing tools a reporter reaches for in Word: AutoCorrect entries of your own and common typos ✔;
+  the thesaurus (Shift+F7), in English and Indonesian, on the device ✔; copy for the web (a CMS, an
+  e-mail) or as Markdown, to the clipboard rather than as another file format ✔
 
 ## How we'll know it's working
 

@@ -671,6 +671,33 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   back to 100%, and Ctrl+mouse wheel (or a trackpad's pinch) on the page zooms it. Only how the page
   shows changes, not the document, and it prints at its size; remembered in this browser. Formatting
   marks, line numbers and a picture's frame and handles follow the zoom
+- AutoCorrect entries of your own, as Word's AutoCorrect Options (the status bar's AutoCorrect, beside AutoFormat): a word
+  and what replaces it as you type, such as a long name from its initials ("cllr" → "Councillor"),
+  once a space, punctuation or Enter ends the word, in the case it was typed in ("Cllr" →
+  "Councillor", "CLLR" → "COUNCILLOR"; an entry with capitals of its own, such as "NYT", is typed as
+  it is). Ctrl+Z straight after gives back what was typed. Opened with text selected, the dialog
+  offers it as what to replace with. Common English typos are corrected too, as Word corrects them
+  ("teh" → "the", "adn" → "and", "dont" → "don’t"; the list is in the dialog), in English text only
+  (Indonesian's "teh" is tea), and as typed or with a capital, never in capitals. While tracking,
+  the word just typed is your own insertion, so the entry takes its place in it, as in Word. "Replace
+  text as you type" switches it all off. The entries are kept in this browser, as your colours are
+- Thesaurus, as Word's (Review › Thesaurus, Shift+F7, or the right-click menu): the word at the caret
+  (or selected) looked up, its meanings with the words that say each, the most used first, and
+  similar and opposite meanings; a click puts a word in its place, in its case ("Big" → "Large"),
+  tracked while tracking. Other forms of a word are looked up by their base ("approved", "said" →
+  "say"), and any word can be typed in. English from Princeton WordNet 3.1; Indonesian, for text in
+  Indonesian (or chosen in the dialog), from Wordnet Bahasa 1.2's words checked by hand. Both are
+  part of the app (`src/data/`, built by `scripts/thesaurus.mjs`), loaded the first time they are
+  used, and work offline: nothing is sent anywhere
+- Copy for the web (Download's menu, or the right-click menu for the selection): the document as a
+  website's editor (a CMS such as WordPress), an e-mail or a newsletter takes it: clean HTML with
+  headings, paragraphs, bold, italic, strikethrough, superscript and subscript, links, bulleted and
+  numbered lists (nested by level) and tables, and none of Word's fonts, colours or styles; plain
+  text beside it for fields that take only text (list items with their markers, cells apart by
+  tabs). The text is as it will read: deleted tracked text and hidden text are left out. Copy as
+  Markdown gives the same as Markdown (with GitHub's tables), for Markdown editors, GitHub and
+  Ghost. The status bar says what was copied, and what was left out (pictures, text boxes, notes and
+  equations, to add in the site's editor). Nothing is saved as a file: it goes to the clipboard
 - Word count, as Word's (a click on the status bar's count): pages (about how many), words,
   characters with and without spaces, paragraphs and sentences, and Word's Readability Statistics:
   sentences per paragraph, words per sentence and characters per word, and for English text the
@@ -981,6 +1008,15 @@ npm run build    # production build in dist/
 npm test         # round-trip and editing tests in headless Chromium and Firefox
 ```
 
+The thesaurus's data (`src/data/thesaurus-*.txt`) is built from the open wordnets, with their
+licences at the top of each file:
+
+```bash
+npm pack wordnet-db@3.1.14 && tar xzf wordnet-db-3.1.14.tgz   # Princeton WordNet 3.1
+git clone --depth 1 https://github.com/open-language/id-wordnet   # Wordnet Bahasa 1.2
+node scripts/thesaurus.mjs package/dict id-wordnet/database/1.2/wn-msa-all.tab
+```
+
 ## Testing
 
 `tests/` drives the production build in real browsers (Chromium and Firefox) with
@@ -1265,6 +1301,22 @@ The About page shows the version.
   Share… isn't offered and Download keeps the file on the device. A date that updates shows the day
   it was inserted here (Word updates it when it opens the file); dates already in a file as fields
   aren't updated here
+- AutoCorrect replaces a word typed in one piece of text (not across formatting changes inside the
+  word), with plain text (an entry can't carry formatting or a picture, as Word's formatted entries
+  can), and a word to replace is one word, without spaces. Your entries are kept per browser: another
+  browser or device doesn't have them, and there is no import or export yet. Word's own AutoCorrect
+  list isn't read from the computer: the typos corrected are Intact's own list, in English
+- The thesaurus is WordNet's: its meanings and words are a dictionary's, not always those a writer
+  reaches for, and a word chosen goes in as the thesaurus lists it (its base form: "approve" for
+  "approves"), to put back in the form needed. The Indonesian thesaurus is small (about 2,600
+  meanings), as only Wordnet Bahasa's words checked by hand are in it: the rest, made automatically,
+  often mix up meanings. Other languages are looked up in English. The English data makes the app's
+  offline copy about 0.8 MB bigger (it is loaded only when the thesaurus is first used)
+- Copy for the web leaves out pictures, text boxes, footnotes and endnotes, equations and comments
+  (it says how many), and underline (on the web it reads as a link); a heading's own bold isn't
+  copied as bold. Formatting is read from the page as shown, so a style's bold or italic comes
+  through as bold or italic. The browser decides what a site's editor receives on paste: some
+  editors keep only the plain text
 - Readability scores are worked out as the Flesch formulas define them, with syllables counted by
   rule rather than from a dictionary, and the passive voice found by its form ("was approved"), so
   they are near Word's figures rather than the same. They are for English only; other languages get
