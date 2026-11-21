@@ -251,7 +251,15 @@ a version it can't read, and asks for the password of one encrypted with a passw
   it will be called (the file's name: the page's title is the file's name while printing), about
   how many pages it has, and what it will show that you may not want sent: tracked changes and
   highlights, which print as they show (accept or reject the changes first for a clean copy).
-  Comments and the marks drawn over the page don't print
+  The marks drawn over the page don't print, nor do comments unless asked for (see below)
+- Comments in the printout and PDF, for marked work returned as a PDF (as a learning platform often
+  asks for): ticked in Save as PDF ("Print comments", remembered in this browser and followed by
+  Print, Ctrl+P, too), the comments are listed after the document, from a new page, each with its
+  number as the text shows it, its author and date, the words it is on ("On “clearly”"), whether it
+  is resolved, and its replies; those in a header, footer or note say where they are. Their numbers
+  in the text print with them. The list is made beside the page just before printing and taken away
+  after (`src/editor/printComments.js`), so the document saved, and Undo, never see it. Not asked
+  for, nothing of the comments prints, their numbers in the text neither
 - About how many pages, as Word would print it: the status bar says "≈ 2 pages", and a dashed line
   across the page, numbered in the margin, shows about where each page begins. Worked out from the
   paper size and margins (and a header or footer taller than its margin), line by line as Word fills
@@ -391,6 +399,14 @@ a version it can't read, and asks for the password of one encrypted with a passw
   comment (the Review tab) go through the comments in the text from the caret, or from the comment
   shown, round to the other end: each selects the text its comment is on and shows its thread in the
   panel ("Comment 2 of 7, by Editor"); those in headers, footers and notes are in the panel only
+- A comment bank, for marking: in the new-comment box, Save for reuse keeps the comment written
+  (feedback given often, "Cite a primary source here"), and Saved comments lists those kept, to put
+  one in with a click, at the caret (after a space where text comes before it), or with Alt+1 to
+  Alt+9 for the first nine; a box finds one in a long list, and × removes one. Kept in this browser,
+  as AutoCorrect entries are, never in a document or sent anywhere (`src/editor/commentBank.js`);
+  Export… and Import… take them to another browser or device as a CSV file (one comment a row under
+  a "Comment" header, also a column saved from a spreadsheet, with or without its header), those
+  already kept left out
 - Fill in templates and forms: text fields (content controls) are editable, with placeholder text
   replaced as you type; check boxes tick on click; drop-down lists and date pickers offer their
   choices. From the keyboard, Alt+↓ (or Space on a selected field) ticks a box or opens a list or
@@ -438,6 +454,12 @@ a version it can't read, and asks for the password of one encrypted with a passw
   - Table of contents: "Contents" in Word's TOC Heading style and Word's `TOC` field over headings
     1–3 (\o "1-3" \h \z \u), built at once from the headings as Update fields builds one, linked to
     them; Word fills in the page numbers when it opens the file (`w:updateFields`)
+  - List of figures, List of tables: the captions of that label ("Figure 1: Apparatus"), as Word's
+    Insert Table of Figures writes them: Word's `TOC` field with `\c "Figure"` (\h \z), each entry
+    in Word's Table of Figures style, linked to its caption through a `_Toc` bookmark, under a
+    heading ("List of Figures", "List of Tables") in TOC Heading style, which a table of contents
+    doesn't list, for a thesis's front matter. Built at once and rebuilt by Update fields (F9); page
+    numbers are Word's, as in a table of contents
   - Caption…: "Figure 1: text" (or Table, Equation) in Word's Caption style, numbered by a `SEQ`
     field among the others, below a picture or paragraph or above a table, as Word places them
   - Cross-reference…: to a heading (its text) or a caption (its label and number, or all of it), or
@@ -451,16 +473,42 @@ a version it can't read, and asks for the password of one encrypted with a passw
     line, `m:oMathPara`, in an empty paragraph) that Word edits as its own: a matrix as `m:m` in a
     delimiter (`m:d`), lines of working as an equation array (`m:eqArr`) whose alignment points are
     the `&`s in its text, as Word writes them (`src/editor/mathInput.js`). An equation array, typed
-    here or written by Word, is shown lined up at those points
-  - Citation…: a source the document has, or a new one (a book, a journal article or a website), in
-    APA (7th edition) or MLA (9th edition) style, with the page cited if wanted, as Word's `CITATION`
-    field. Sources are kept as Word keeps them, in its Source Manager's part (`customXml/itemN.xml`,
-    `b:Sources`, with its properties part and relationships), so Word's Manage Sources lists them;
-    the part is written only when a source or the style is changed, else it goes back byte for byte
-  - Bibliography: "References" (APA) or "Works Cited" (MLA) in Heading 1, and Word's `BIBLIOGRAPHY`
-    field listing the document's sources in that style, one paragraph each in Word's Bibliography
-    style with a half-inch hanging indent (`src/docx/references.js`). A new source or another
-    style brings the citations and bibliographies up to date at once
+    here or written by Word, is shown lined up at those points. An equation already in the
+    document, Word's or one made here, is edited the same way: a double-click on it (or the
+    right-click menu's Edit equation…) opens it in the dialog as LaTeX, read back from its Office
+    Math (`src/editor/mathOutput.js`), and Update writes it again in its place, on its own line if it
+    was, tracked while tracking (the old one deleted, the new one inserted) and undone with Ctrl+Z.
+    Unchanged, it is kept exactly as Word wrote it; one with what LaTeX here can't write (Word's
+    bold, script or double-struck letters, boxes, phantoms, prescripts) isn't offered, and stays as
+    it is
+  - Citation…: one source or several cited together ("(Smith & Lee, 2020, p. 4; Doe, 2019)"),
+    ticked in the order they are to be cited, each one the document has, one imported from a file,
+    or a new one (a book, a journal article or a website), with the page cited if wanted (it goes
+    with the first), as Word's `CITATION` field, each further source after `\m`. In APA (7th
+    edition), MLA (9th edition), Chicago (17th edition, author-date: "(Smith and Lee 2020, 4)"),
+    Harvard (Cite Them Right: "(Smith and Lee, 2020, p. 4)") or IEEE ("[1, p. 4]", numbered in the
+    order each source is first cited, renumbered as citations are added before others), each
+    recorded under the name Word's own style of that name has (`\CHICAGO.XSL`,
+    `\HarvardAnglia2008OfficeOnline.xsl`, `\IEEE2006OfficeOnline.xsl`), so a document's style is read
+    back when it is opened again. Sources are kept as Word keeps them, in its Source Manager's part
+    (`customXml/itemN.xml`, `b:Sources`, with its properties part and relationships), so Word's
+    Manage Sources lists them; the part is written only when a source or the style is changed, else
+    it goes back byte for byte
+  - Import from a reference manager (in Citation…): a BibTeX file (`.bib`, from Zotero, Mendeley,
+    JabRef, Google Scholar or a LaTeX project) or a RIS file (`.ris`, from EndNote, Zotero, Mendeley
+    and most databases), read on this device (`src/docx/bibImport.js`): authors (organisations'
+    names in braces too), title, year, journal, volume, issue, pages, publisher and city, web
+    address or DOI (as a `https://doi.org/` address) and the date accessed, LaTeX's accents made
+    letters ({\"o} as ö). Its sources are offered beside the document's, with a box to find one in a
+    long list, those already there (the same title and year) left out; only those cited go into the
+    document, so its bibliography lists what it cites. The others are offered until the document is
+    closed
+  - Bibliography: the style's heading ("References" in APA, Harvard and IEEE, "Works Cited" in MLA,
+    "Bibliography" in Chicago) in Heading 1, and Word's `BIBLIOGRAPHY` field listing the document's
+    sources in that style, one paragraph each in Word's Bibliography style with a half-inch hanging
+    indent, sorted by author, or in IEEE by number, each after its number and a tab
+    (`src/docx/references.js`). A new source or another style brings the citations and
+    bibliographies up to date at once
 - Headings (the status bar's button), as Word's Navigation pane: the document's headings by level,
   the one the caret is under marked; a click goes to a heading. Kept up to date as you type, and
   shown or hidden as last time in this browser. A heading moves with everything under it (a chapter
@@ -474,7 +522,8 @@ a version it can't read, and asks for the password of one encrypted with a passw
   order; cross-references (`REF`) show the bookmarked text again, or its paragraph's number
   (\r, \n, \w) and "above"/"below" (\p); note numbers in cross-references (`NOTEREF`) follow the
   notes; citations (`CITATION`) and bibliographies (`BIBLIOGRAPHY`, in the text) from the
-  document's sources, in its citation style; and tables of contents (`TOC`, in Word's content control or in the text) are rebuilt from
+  document's sources, in its citation style (IEEE's numbers in the order first cited); tables of
+  figures (`TOC \c`) from the captions of their label; and tables of contents (`TOC`, in Word's content control or in the text) are rebuilt from
   the headings (\o outline levels, \u paragraphs' own levels, \t styles), as Word builds one:
   each entry in the table's own formatting for its level (Word's TOC 1–9 styles where it has none),
   linked to its heading with \h, through Word's `_Toc` bookmark (added to a heading without one).
@@ -590,8 +639,8 @@ a version it can't read, and asks for the password of one encrypted with a passw
   shows another in its place; the document keeps it
 - See equations: Word's equations (Office Math) are drawn as MathML by the browser (fractions,
   roots, scripts, sums and integrals, brackets, matrices, functions, accents, and Word's script,
-  double-struck and bold letters), on their own line or in the line of text. They stay read-only
-  and are written back exactly as they were (new ones can be typed: see References)
+  double-struck and bold letters), on their own line or in the line of text. They are written back
+  exactly as they were unless edited (a double-click opens one as LaTeX: see References)
 - Fill in placeholders (the toolbar's Fill in button, which shows how many there are, or the
   template bar): text a template leaves to fill in, in brackets — `[Client name]`, `{{date}}`,
   `«Amount»` or `<<Amount>>` — is listed once each, with how many places it appears; focusing one
@@ -770,8 +819,10 @@ a version it can't read, and asks for the password of one encrypted with a passw
   count of each; a click goes to the paragraph (or to where one was taken out). Both versions are
   read from their XML the same way, as their body's text: paragraphs and table cells in order, with
   tracked deletions left out, as they read once their changes are accepted (this one as Download
-  would write it), so a document compared with itself is the same. Nothing in either document is
-  changed (`src/editor/compare.js`)
+  would write it), so a document compared with itself is the same. Footnotes and endnotes are
+  compared too, each kind in the order the text refers to them and numbered as the page shows them
+  ("Footnote 3", "Endnote ii"), word by word, and listed under their own heading with a count of
+  each; a click goes to the note. Nothing in either document is changed (`src/editor/compare.js`)
 - A redline from Compare, as Word's Compare makes one ("Open redline" or "Download redline"): a new
   document, this version as Download would write it, with the changes since the other version
   written into it as tracked changes in your name (Track Changes' name; "Author" until one is
@@ -1308,8 +1359,13 @@ The About page shows the version.
   indents: not their borders, tab stops, numbering or what they are based on (a list's indents come
   from its numbering, as in Word, so a list paragraph keeps them); it isn't tracked
   (Word doesn't track style changes either)
-- Equations already in a document are shown, not edited (new ones are typed as LaTeX, a part of it:
-  environments with their own column settings, such as `array`, aren't); they need a math font to look as in Word (Windows and macOS have one: Cambria Math, STIX
+- Equations are typed and edited as LaTeX, a part of it (environments with their own column
+  settings, such as `array`, aren't; nor are letter styles such as `\mathbf` or `\mathcal`): an
+  equation already in a document with what that part can't write (Word's bold, script or
+  double-struck letters, boxes, phantoms, prescripts) is shown, not edited. An equation edited is
+  written again as Office Math made from its LaTeX: Word's settings on it that LaTeX doesn't hold
+  (its fonts, justification, a limit's place) are Word's defaults again, and a function or limit
+  (`\sin`, `\lim`) comes back as its name with its argument or a script beside it. Equations need a math font to look as in Word (Windows and macOS have one: Cambria Math, STIX
   Two Math; on Linux install one such as Latin Modern Math)
 - Fields are preserved; their instructions can't be edited (their results can, until they are
   updated). Update fields doesn't work out page numbers (`PAGE`, `PAGEREF`, `NUMPAGES`: Word does
@@ -1318,11 +1374,17 @@ The About page shows the version.
   updates them), nor
   fields in notes, headers and footers or written as simple fields (`w:fldSimple`); it isn't
   tracked. Editing a comment's text replaces any formatting within it
-- Citations and bibliographies are formatted here in APA or MLA style as their guides set them out,
-  close to but not always the same as Word's own styles, which Word applies again when it updates
-  them; a citation cites one source, books, journal articles and websites are the kinds of source
-  offered, and Word's other styles (Chicago, Harvard, IEEE…) aren't. A table of contents,
-  bibliography or caption isn't tracked (it can't be inserted while tracking), and its paragraphs go in
+- Citations and bibliographies are formatted here in APA, MLA, Chicago (author-date), Harvard or
+  IEEE style as their guides set them out, close to but not always the same as Word's own styles,
+  which Word applies again when it updates them (Word's Chicago, for one, is its own mix of
+  Chicago's styles); Word's other styles (GB7714, GOST, ISO 690, SIST02, Turabian) aren't offered.
+  The page cited goes with the first source of a citation of several, and the sources are cited in
+  the order ticked, not sorted. Books, journal articles and websites are the kinds of source made
+  here: a conference paper or book chapter imported from a BibTeX or RIS file is kept as an article
+  in its proceedings or book, and a thesis or report as a book from its university or institution;
+  editors, editions, series and a source's other details aren't read from the file. Imported
+  sources not cited are offered only until the document is closed (import the file again). A table
+  of contents, table of figures, bibliography or caption isn't tracked (it can't be inserted while tracking), and its paragraphs go in
   the text itself, not in a table, note, header, footer or text box. Undo takes a citation out of
   the text, not its source out of the document's sources (as in Word, where a source stays in the list)
 - Tables, page breaks and new comments can't go in a header, footer or text box, nor pictures in a
@@ -1384,11 +1446,15 @@ The About page shows the version.
   is (see Restrict Editing). Opening a protected document takes a moment (Word's 100,000 rounds of
   hashing, about half a second); the password isn't remembered, so restoring its unsaved changes or
   reopening it asks again. A lost password can't be recovered
-- Compare documents compares the text, not formatting, pictures, comments, headers, footers or notes;
+- Compare documents compares the text and the notes' text, not formatting, pictures, comments,
+  headers or footers; notes are matched by their text, as paragraphs are, so a note taken out and
+  another put in at the same place show as one note changed (a note whose reference a tracked
+  change deletes isn't read);
   a paragraph moved elsewhere shows as taken out in one place and added in another, and as many
   paragraphs taken out and added in one place are paired as changed. Its redline marks the text's
   changes only: formatting changes, pictures, tables' structure, and text in headers, footers,
-  notes and text boxes aren't marked (they are this version's); a paragraph taken out comes back as
+  notes and text boxes aren't marked (they are this version's; the dialog lists the notes'
+  changes, and says the redline doesn't mark them); a paragraph taken out comes back as
   plain text in its style (not its own direct formatting, numbering or pictures). Very long
   documents (tens of thousands of paragraphs that differ) are refused
 - Sorting sorts by one column (Word's Sort has up to three), and only a whole table's rows below its
@@ -1436,6 +1502,11 @@ The About page shows the version.
   can), and a word to replace is one word, without spaces. Your entries are kept per browser: another
   browser or device doesn't have them until they are taken there (Export…, Import…). Word's own AutoCorrect
   list isn't read from the computer: the typos corrected are Intact's own list, in English
+- Saved comments (the comment bank) are kept per browser, as AutoCorrect entries are: another
+  browser or device doesn't have them until they are taken there (Export…, Import…). They are put in
+  new comments, not replies, and as plain text (up to 500 of them, 2,000 characters each)
+- Printed comments are listed after the document, not beside the text in the margin as Word's
+  Print Markup shows them; the commented words aren't highlighted on paper, only numbered
 - The thesaurus is WordNet's: its meanings and words are a dictionary's, not always those a writer
   reaches for. Words are put in another form by rule and by a list of common irregular words: a
   rarer irregular word may come out regular ("slayed" for "slew"), a plural of several words takes it on its
