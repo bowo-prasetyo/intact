@@ -161,3 +161,56 @@ export function compareParagraphs(before, after) {
   const count = (kind) => changes.filter((c) => c.kind === kind).length;
   return { changes, added: count('added'), removed: count('removed'), changed: count('changed') };
 }
+
+// ------------------------------------------------------------------ footnotes and endnotes
+
+const NOTE_REL = { footnote: /\/footnotes$/, endnote: /\/endnotes$/ };
+const parse = (xml) => new DOMParser().parseFromString(xml, 'application/xml');
+const inDeletion = (el, stop) => {
+  for (let n = el.parentNode; n && n !== stop; n = n.parentNode) if (n.namespaceURI === W && (n.localName === 'del' || n.localName === 'moveFrom')) return true;
+  return false;
+};
+
+/**
+ * The footnotes and endnotes of a package (a JSZip `zip`, its main part at `mainPath`, whose XML is
+ * `mainXml`), as text, in the order its text refers to them, as Word numbers them: { footnote:
+ * [text], endnote: [text] }. A note's paragraphs are read as the body's are, joined by a space;
+ * notes whose reference a tracked change deletes are left out.
+ */
+export async function notesOfPackage(zip, mainPath, mainXml) {
+  const out = { footnote: [], endnote: [] };
+  const dir = mainPath.replace(/[^/]*$/, '');
+  const relsXml = await zip.file(`${dir}_rels/${mainPath.slice(dir.length)}.rels`)?.async('string');
+  if (!relsXml) return out;
+  const rels = [...parse(relsXml).documentElement.children];
+  const body = parse(mainXml).getElementsByTagNameNS(W, 'body')[0];
+  if (!body) return out;
+  for (const kind of Object.keys(out)) {
+    const rel = rels.find((r) => NOTE_REL[kind].test(r.getAttribute('Type') || ''));
+    if (!rel) continue;
+    const target = rel.getAttribute('Target') || '';
+    const path = target.startsWith('/') ? target.slice(1) : `${dir}${target}`.replace(/[^/]+\/\.\.\//g, '');
+    const xml = await zip.file(path)?.async('string');
+    if (!xml) continue;
+    const notes = new Map([...parse(xml).documentElement.children].filter((n) => n.localName === kind).map((n) => [n.getAttributeNS(W, 'id'), n]));
+    for (const ref of body.getElementsByTagNameNS(W, `${kind}Reference`)) {
+      const note = notes.get(ref.getAttributeNS(W, 'id'));
+      if (!note || inDeletion(ref, body)) continue;
+      out[kind].push([...note.getElementsByTagNameNS(W, 'p')].map((p) => readParagraph(p).text).join(' '));
+    }
+  }
+  return out;
+}
+
+/**
+ * What changed in the notes from version `before` to `after` (as notesOfPackage reads them):
+ * compareParagraphs' changes, each with its kind of note (`note`: 'footnote' | 'endnote') and `at`
+ * the index of the note in `after` (or of the one it would come before), footnotes first.
+ */
+export function compareNotes(before, after) {
+  const out = [];
+  for (const note of ['footnote', 'endnote']) {
+    for (const c of compareParagraphs(before[note] || [], after[note] || []).changes) out.push({ ...c, note });
+  }
+  return out;
+}

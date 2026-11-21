@@ -135,7 +135,7 @@ test('Insert offers today’s date in the text’s language and types it at the 
   await page.getByRole('button', { name: 'Insert a check box or date' }).click();
   const menu = page.getByRole('menu', { name: 'Insert' });
   await expect(menu.getByRole('menuitem')).toHaveText([/Check box/, 'November 19, 2026', 'Thursday, November 19, 2026', '11/19/2026', '2026-11-19',
-    /^Answer line/, /^Line/, /^Arrow/, /^Text box/, /^Table of contents/, /^Caption/, /^Cross-reference/, /^Equation/, /^Citation/, /^Bibliography/]);
+    /^Answer line/, /^Line/, /^Arrow/, /^Text box/, /^Table of contents/, /^List of figures/, /^List of tables/, /^Caption/, /^Cross-reference/, /^Equation/, /^Citation/, /^Bibliography/]);
   await menu.getByRole('menuitem', { name: 'November 19, 2026', exact: true }).click();
   await expect(page.locator('.docx-page p').nth(1)).toHaveText('Date: November 19, 2026');
   const { xml } = await download(page);

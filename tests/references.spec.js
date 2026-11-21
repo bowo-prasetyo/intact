@@ -199,6 +199,7 @@ test('MLA: citing again in MLA restyles the citations and the bibliography, whic
   await caretAt(page, 'We measured it.');
   await insertMenu(page, /Citation/);
   await cite.getByLabel('Citation style').selectOption('MLA');
+  await cite.getByLabel(/Smith \(2020\)/).uncheck(); // suggested: the last source cited
   await cite.getByLabel('A new source…').check();
   await cite.getByLabel('Type of source').selectOption('InternetSite');
   await cite.getByLabel('Authors').fill('Park, Sun');
