@@ -169,12 +169,22 @@ test('a starter downloaded and opened again comes back with the same text', asyn
 // (kop) and the signatory's name and NIP, written as Word writes a document.
 test.describe('in Indonesian', () => {
   test.use({ locale: 'id-ID' });
-  const NASKAH = { 'Surat dinas': 'Surat dinas', 'Nota dinas': 'Nota dinas', 'Surat undangan': 'Surat undangan', 'Berita acara': 'Berita acara' };
+  const NASKAH = {
+    'Surat dinas': 'Surat dinas', 'Nota dinas': 'Nota dinas', 'Surat undangan': 'Surat undangan', 'Berita acara': 'Berita acara',
+    Keputusan: 'Keputusan', 'Surat tugas': 'Surat tugas', 'Surat edaran': 'Surat edaran', 'Notula rapat': 'Notula rapat',
+    'Laporan kegiatan': 'Laporan kegiatan', 'Telaahan staf': 'Telaahan staf', 'Surat kuasa': 'Surat kuasa',
+  };
+  // Those that start with the office's letterhead (kop); a decree, minutes, a report and a staff
+  // study start with their title.
+  const KOP = ['Surat dinas', 'Nota dinas', 'Surat undangan', 'Berita acara', 'Surat tugas', 'Surat edaran', 'Surat kuasa'];
+  // Those whose pages are numbered from the second, at the top in the middle (- 2 -).
+  const PAGED = ['Keputusan', 'Surat tugas', 'Surat edaran', 'Notula rapat', 'Laporan kegiatan', 'Telaahan staf'];
+  const SECTPR_ORDER = ['headerReference', 'footerReference', 'footnotePr', 'endnotePr', 'type', 'pgSz', 'pgMar', 'paperSrc', 'pgBorders', 'lnNumType', 'pgNumType', 'cols', 'formProt', 'vAlign', 'noEndnote', 'titlePg', 'textDirection', 'bidi', 'rtlGutter', 'docGrid', 'printerSettings', 'sectPrChange'];
 
   test('the start page offers the naskah dinas first, then the others (in English)', async ({ page }) => {
     await page.goto('./');
     const official = page.getByRole('region', { name: 'Naskah dinas (Tata Naskah Dinas)' });
-    await expect(official.getByRole('button')).toHaveCount(4);
+    await expect(official.getByRole('button')).toHaveCount(Object.keys(NASKAH).length);
     for (const name of Object.keys(NASKAH)) await expect(official.getByRole('button', { name: new RegExp(`^${name}:`) })).toBeVisible();
     await expect(official).toContainText('Kertas A4, sesuai ketentuan tata naskah dinas; F4 dan Folio ada di Pengaturan halaman.');
     const others = page.getByRole('region', { name: 'Templat lain (dalam bahasa Inggris)' });
@@ -195,12 +205,18 @@ test.describe('in Indonesian', () => {
       await start(page, name);
       await expect(page.getByRole('dialog', { name: 'Isi placeholder' })).toBeVisible();
       await expect(page.getByRole('textbox', { name: 'Nama berkas' })).toHaveValue(file);
-      await expect(page.locator('.docx-page > p').first()).toHaveText('[NAMA INSTANSI]');
+      if (KOP.includes(name)) await expect(page.locator('.docx-page > p').first()).toHaveText('[NAMA INSTANSI]');
       const { zip, read } = await savedHere(page);
       const doc = await read('word/document.xml');
       expect(doc).toContain('<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1701"');
-      expect(doc).toContain('<w:pBdr><w:bottom w:val="thickThinSmallGap" w:sz="24" w:space="1" w:color="auto"/></w:pBdr>');
+      if (KOP.includes(name)) expect(doc).toContain('<w:pBdr><w:bottom w:val="thickThinSmallGap" w:sz="24" w:space="1" w:color="auto"/></w:pBdr>');
       expect(doc).toContain('NIP [NIP');
+      if (PAGED.includes(name)) {
+        // A page number at the top in the middle, between dashes, from the second page.
+        expect(doc).toMatch(/<w:pgNumType w:fmt="numberInDash"[^>]*\/><w:cols [^>]*\/><w:titlePg\/><\/w:sectPr>\s*<\/w:body>/);
+        expect(await read('word/header1.xml')).toContain('<w:jc w:val="center"/></w:pPr><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE ');
+      }
+      expect(outOfOrder(doc, 'sectPr', SECTPR_ORDER)).toEqual([]);
       expect(outOfOrder(doc, 'pPr', PPR_ORDER)).toEqual([]);
       expect(outOfOrder(doc, 'rPr', RPR_ORDER)).toEqual([]);
       expect(outOfOrder(doc, 'tcPr', TCPR_ORDER)).toEqual([]);
@@ -239,5 +255,63 @@ test.describe('in Indonesian', () => {
     await expect(table.locator('td').first()).toContainText('PIHAK KEDUA,');
     await expect(table.locator('td').nth(1)).toContainText('PIHAK PERTAMA,');
     await expect(table.locator('td').first()).toHaveCSS('border-top-style', 'none');
+  });
+
+  test('the keputusan: its considerations numbered a., b. and 1., 2. as Word numbers them, the official and title typed once and shown in capitals', async ({ page }) => {
+    await start(page, 'Keputusan');
+    const dialog = page.getByRole('dialog', { name: 'Isi placeholder' });
+    // [Jabatan penetap]: the title, the official, Menimbang, Menetapkan, the signature, and the attachment's heading and signature.
+    await expect(dialog.getByText('7 tempat')).toBeVisible();
+    await dialog.getByRole('textbox', { name: 'Jabatan penetap', exact: true }).fill('Kepala Badan Contoh');
+    await dialog.getByRole('textbox', { name: 'Judul keputusan', exact: true }).fill('Pembentukan Tim Penyusun Anggaran');
+    await dialog.getByRole('button', { name: 'Isi' }).click();
+    // w:caps: typed once in ordinary case, shown in capitals (as the page draws it: innerText).
+    await expect.poll(() => page.locator('.docx-page > p').first().innerText()).toBe('KEPUTUSAN KEPALA BADAN CONTOH');
+    await expect(page.locator('.docx-page > p').first().locator('strong')).toHaveText(['KEPUTUSAN ', 'Kepala Badan Contoh']); // all of it bold
+    const considerations = page.locator('.docx-page table').first();
+    await expect(considerations.locator('td').first()).toHaveText('Menimbang');
+    await expect(considerations.locator('td').first()).toHaveCSS('border-top-style', 'none');
+    const points = considerations.locator('p.list');
+    await expect(points).toHaveCount(4);
+    expect(await points.evaluateAll((ps) => ps.map((el) => el.dataset.marker))).toEqual(['a.', 'b.', '1.', '2.']);
+    await expect(points.nth(1)).toContainText('Keputusan Kepala Badan Contoh tentang Pembentukan Tim Penyusun Anggaran;');
+    // The attachment in a section of its own, on a new page, numbered from 1 again.
+    await expect(page.locator('.docx-page [data-section-end="nextPage"]')).toHaveCount(1);
+    await expect(page.locator('.docx-page p', { hasText: /^LAMPIRAN$/ })).toBeVisible();
+    const { read } = await savedHere(page);
+    const doc = await read('word/document.xml');
+    expect(doc).toContain('<w:sectPr><w:headerReference w:type="default" r:id="rId5"/><w:pgSz w:w="11906" w:h="16838"/>');
+    expect(doc).toMatch(/<w:pgNumType w:fmt="numberInDash" w:start="1"\/><w:cols [^>]*\/><w:titlePg\/><\/w:sectPr>\s*<\/w:body>/);
+    expect(doc).toContain('<w:caps/>');
+    const numbering = await read('word/numbering.xml');
+    expect(numbering).toContain('<w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%1."/>');
+  });
+
+  test('the keputusan prints its attachment\'s pages numbered from 1, neither first page numbered', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Page-margin boxes: Chromium');
+    await start(page, 'Keputusan');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    const css = await page.evaluate(() => [...document.head.querySelectorAll('style')].map((s) => s.textContent).find((t) => t.includes('@page')));
+    // The decree's first page (the document's) has no number; its others: - 2 -, - 3 -.
+    expect(css).toMatch(/@page intact-s0 \{[^\n]*@top-center \{ content: "- " counter\(intact-run0\) " -";/);
+    expect(css).toMatch(/@page intact-s0:first \{ counter-increment: intact-run0 1 intact-run1 0; @top-left \{ content: none; \} @top-center \{ content: none; \}/);
+    // The attachment's: its first page (its number 1) has none, its others the dashes and number.
+    expect(css).toMatch(/@page intact-s1 \{[^\n]*counter-increment: intact-run1;[^\n]*@top-center \{ content: counter\(intact-run1, intact-c\d+\) counter\(intact-run1, intact-c\d+\) counter\(intact-run1, intact-c\d+\);/);
+    expect(css).toContain('range: infinite 0, 2 infinite;');
+  });
+
+  test('the surat tugas: the employee\'s details lined up, what to do numbered', async ({ page }) => {
+    await start(page, 'Surat tugas');
+    const table = page.locator('.docx-page table');
+    await expect(table.locator('td', { hasText: /^Kepada$/ })).toBeVisible();
+    await expect(table.locator('p', { hasText: '[NIP pegawai]' })).toHaveText(/^NIP\s*: \[NIP pegawai\]$/);
+    expect(await table.locator('p.list').evaluateAll((ps) => ps.map((el) => el.dataset.marker))).toEqual(['1.', '2.', '1.', '2.']);
+  });
+
+  test('the laporan kegiatan: its parts lettered A., B., the introduction\'s numbered under it', async ({ page }) => {
+    await start(page, 'Laporan kegiatan');
+    const markers = await page.locator('.docx-page p.list').evaluateAll((ps) => ps.map((el) => `${el.dataset.marker} ${el.textContent}`));
+    expect(markers).toEqual(['A. Pendahuluan', '1. Umum', '2. Maksud dan Tujuan', '3. Ruang Lingkup', '4. Dasar', 'B. Kegiatan yang Dilaksanakan', 'C. Hasil yang Dicapai', 'D. Kesimpulan dan Saran', 'E. Penutup']);
   });
 });

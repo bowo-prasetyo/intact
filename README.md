@@ -65,7 +65,23 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   (kop: its name in capitals, its unit, address and contacts, over a thick-and-thin line, as Word's
   border writes it), "Nomor", "Sifat", "Lampiran" and "Hal" lined up at a tab stop with their colons,
   the signatory's position, name and NIP at the right, "Tembusan", and in the berita acara both
-  parties' signatures side by side in a table without borders. Their placeholders are in Indonesian
+  parties' signatures side by side in a table without borders. Then the others an office writes
+  most: a keputusan (a decree: its title, "Menimbang" and "Mengingat" with their points, "MEMUTUSKAN",
+  "Menetapkan" and its articles, KESATU, KEDUA, KETIGA, in a table without borders, as decrees lay
+  them out; where and when it was set; to whom copies go; and its lampiran, the attachment, in a
+  section of its own on a new page, to turn landscape in Page setup for a wide table), a surat tugas
+  (an assignment: its basis, the employee's name, NIP, rank and position lined up, and what to do), a
+  surat edaran (a circular: background, purpose, scope, basis, what is asked, closing), a notula
+  rapat (minutes: when, where, who led and who took notes, what was discussed and decided, and who
+  does what next, signed by both), a laporan kegiatan (an activity report: introduction, what was
+  done, results, conclusions and recommendations), a telaahan staf (a staff study for a superior:
+  the problem, assumptions, facts, analysis, conclusion and recommendation) and a surat kuasa (a
+  power of attorney, signed by whoever gives it and whoever receives it). Their points are Word's
+  numbered lists (a., b.; 1., 2.; A., B., with 1., 2. under them), so a point added with Enter is the
+  next letter or number; their pages are numbered from the second, at the top in the middle between
+  dashes (- 2 -), as the rules for official documents number them, and the decree's attachment
+  from 1 again. The deciding official and the decree's title are typed once and shown in capitals
+  where a decree writes them so (Word's All caps). Their placeholders are in Indonesian
   ("[Nomor surat]", "[Nama jabatan]"), for Fill in. F4 and Folio are in Page setup, for offices
   that print on them
 - Start from a template, on the start page: a letter, a memo, meeting minutes, a quote, an invoice,
@@ -213,7 +229,15 @@ Compare documents (Review > Compare) says the same of a version it can't read.
   pictures and tables too; page numbers (`PAGE`, `NUMPAGES`, also as simple fields) are numbered on
   each page, "Page 2 of 3", and a different first page or different even pages get their own, in
   CSS page-margin boxes (Chrome, Edge), which hold a header's or footer's text, laid out by its
-  alignment and Word's centre and right tab stops, in its font and colour
+  alignment and Word's centre and right tab stops, in its font and colour. A document of several
+  sections prints as Word prints it: each section on its own paper (a portrait decree, then its
+  landscape attachment), with its own margins, header and footer, and page numbers in its own format
+  and from its own start (i, ii for a report's front matter, then 1, 2), or numbered on from the
+  section before; a section that starts on the same page (continuous) shares that page. Each section's
+  different first page is followed (nothing on the attachment's first page, its others numbered)
+  where the section starts its page numbers at a number, as an attachment does. A page number
+  written without a result (as some software writes one, a whole field in one run) shows # as the
+  others do, prints numbered, and is saved as it was
 - Save as PDF from Download's menu (▾): a short dialog says that the browser makes the PDF from
   its print window, on this device (Save as PDF, or Microsoft Print to PDF, as the destination), what
   it will be called (the file's name: the page's title is the file's name while printing), about
@@ -1149,10 +1173,15 @@ The About page shows the version.
   turned with its picture. Field cells that are locked, linked to data or not text
   fields can't be merged
 - Printing prints headers and footers once, at the start and the end, as the page shows them, where
-  they can't be put on the right pages: a document whose sections have headers or footers of their
-  own, and a page number beside a picture or table, or in a browser without CSS page-margin boxes
-  (Firefox, Safari), where a page number would otherwise print the same on every page. Page numbers
-  print in Arabic numerals, from 1; line numbers and comments in the margin aren't printed. Browsers that switch tabs with Ctrl+1 to Ctrl+9 may
+  they can't be put on the right pages (the Save as PDF dialog says why): a page number beside a
+  picture or table; in a document of several sections, a header or footer with a picture or table
+  (a logo in a letterhead: each section still prints on its own paper), a section after the first
+  with a different first page that numbers its pages on from the section before (which page is its
+  first is Word's to work out: start its numbers at a number, in Format page numbers, to print it),
+  the number of pages in a section (`SECTIONPAGES`), or a section that begins on the same page as the
+  one before with a header of its own; and in a browser without CSS page-margin boxes (Firefox,
+  Safari), where a page number would otherwise print the same on every page. Even pages are the
+  printout's even pages, as the browser counts them. Line numbers and comments in the margin aren't printed. Browsers that switch tabs with Ctrl+1 to Ctrl+9 may
   keep Ctrl+1, Ctrl+2 and Ctrl+5 for themselves (the installed app, in its own window, gets them):
   the Line and Paragraph Spacing menu does the same. Ctrl+T and Ctrl+Shift+T (hanging indent) are
   the browser's: use the Paragraph dialog. Indents are set in centimetres or inches and spacing in points
@@ -1191,7 +1220,7 @@ The About page shows the version.
   first page set to have a different footer, and even pages where they differ, don't show it, as in
   Word. Page setup isn't tracked; gutters stay as they are, and columns made here are of equal width (Word's columns of their own widths are set in Word). The page shows every section
   at the width of the document's last one (a landscape section's wide table may be cut off at the
-  page's edge here, not in Word); each break is named with its section's paper. "Different first
+  page's edge here, not in Word, nor printed, where each section is on its own paper); each break is named with its section's paper. "Different first
   page" and "different odd and even pages" are set for the whole document, not section by section.
   Modify Style changes paragraph styles' font, size, bold, italic, colour, alignment, spacing and
   indents: not their borders, tab stops, numbering or what they are based on (a list's indents come
@@ -1250,9 +1279,8 @@ The About page shows the version.
   Review your changes, Help, comments, mail merge, pictures' Layout Options and messages in the
   status bar are still in English, as is the About page
 - Page numbers print in their section's format and from its start where the header or footer goes
-  in the page's margin boxes (Chrome and Edge; one section): where a document has several sections
-  with their own headers or footers, the header and footer print once, as before, and Word numbers
-  the pages when it opens the file
+  in the page's margin boxes (Chrome and Edge); elsewhere (see Printing above) the header and footer
+  print once, and Word numbers the pages when it opens the file
 - Placeholders are found in the page (its headers, text, notes and footers), not in comments, and
   only on one line and within one paragraph; a placeholder written as underscores (`________`)
   or as "XXX" isn't recognised. A new document made from a template doesn't record which template

@@ -202,7 +202,11 @@ Saying no to these keeps the product small enough to keep its promises:
   interface in Indonesian ✔; starters for the naskah dinas (surat dinas, nota dinas, surat undangan,
   berita acara) ✔; Indonesian legal numbering (Pasal → ayat → huruf, BAB → Pasal) ✔;
   compare two versions of a document ✔; sort a table and table formulas (=SUM(ABOVE)) ✔; say what
-  to do with older `.doc` and password-protected files ✔
+  to do with older `.doc` and password-protected files ✔; print and save as PDF each section on its
+  own paper, with its own header, footer and page numbers (a decree and its landscape attachment) ✔;
+  cells merged down without a line between them ✔; starters for the other naskah an office writes
+  most (keputusan with its lampiran, surat tugas, surat edaran, notula, laporan kegiatan, telaahan
+  staf, surat kuasa), their points numbered as Word numbers them and their pages from the second ✔
 - Teachers who write tests, worksheets and letters home (Indonesia first, and in English): columns,
   as Word's Columns, with continuous section breaks for part of a page ✔; templates for a test or
   lembar soal (multiple choice in two columns, numbered 1. and A. by Word, ruled answer lines), a

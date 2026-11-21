@@ -141,3 +141,36 @@ test('a field cell that isn\'t a text field (here a drop-down list) isn\'t merge
   await layout(page, 'Merge cells');
   await expect(page.locator('.statusbar [role=status]')).toHaveText('A cell to merge is a field that can’t be changed here (locked, linked to data, or not a text field): merge it in Word');
 });
+
+test('cells merged down show no line between them, on screen and in print', async ({ page }) => {
+  // A1 merged down into A2 (vMerge), in a table with every border drawn (Table Grid's), as Word writes it.
+  const borders = '<w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((s) => `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('') + '</w:tblBorders>';
+  const merged = '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>' + borders + '</w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>'
+    + `<w:tr>${CELL('1', '<w:tcW w:w="3000" w:type="dxa"/><w:vMerge w:val="restart"/>')}${CELL('B1')}</w:tr>`
+    + `<w:tr>${CELL('', '<w:tcW w:w="3000" w:type="dxa"/><w:vMerge/>')}${CELL('B2')}</w:tr></w:tbl><w:p/>`;
+  await openInEditor(page, await buildDocx(merged));
+  await page.locator('td', { hasText: 'B2' }).click(); // the caret away from the merged cell
+  // How dark the line between two cells is: the darkest pixel across a strip over their shared edge.
+  const darkest = async (above, below) => {
+    const [a, b] = await Promise.all([above.boundingBox(), below.boundingBox()]);
+    const y = Math.round(b.y);
+    const png = await page.screenshot({ clip: { x: Math.round(a.x + a.width / 2) - 10, y: y - 3, width: 20, height: 6 } });
+    return page.evaluate(async (src) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const c = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height });
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let min = 255;
+      for (let i = 0; i < d.length; i += 4) min = Math.min(min, (d[i] + d[i + 1] + d[i + 2]) / 3);
+      return min;
+    }, `data:image/png;base64,${png.toString('base64')}`);
+  };
+  const cells = page.locator('table.docx-table td');
+  expect(await darkest(cells.nth(1), cells.nth(3))).toBeLessThan(215); // B1 | B2: a line (grey or darker)
+  expect(await darkest(cells.nth(0), cells.nth(2))).toBeGreaterThan(245); // 1 | (merged): none
+  await page.emulateMedia({ media: 'print' });
+  expect(await darkest(cells.nth(0), cells.nth(2))).toBeGreaterThan(245);
+});

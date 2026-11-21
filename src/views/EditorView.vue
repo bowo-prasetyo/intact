@@ -9288,14 +9288,11 @@ function describeBands() {
   const modes = printModes(page.value, doc, sheetZoom.value);
   const names = (mode) => ['header', 'footer'].filter((w) => modes[w] === mode).join(' and ');
   const once = names('once');
-  const sections = [...doc.headers, ...doc.footers].some((v) => v.section > 1);
   return {
     every: names('every'),
     once,
     onceWhere: once === 'header' ? 'at the start' : once === 'footer' ? 'at the end' : 'at the start and the end',
-    why: sections
-      ? 'the document’s sections have headers and footers of their own, which only Word can put on the right pages.'
-      : 'a page number with pictures or a table beside it needs Word (or a browser that prints page-margin text, such as Chrome or Edge).',
+    why: modes.why,
   };
 }
 
@@ -10292,7 +10289,14 @@ async function close() {
 .docx-sheet .field.page-field[data-digits="2"] { padding-right: .6em; }
 .docx-sheet .field.page-field[data-digits="3"] { padding-right: 1.2em; }
 .docx-sheet .field.page-field[data-show]:not([data-show=""])::after { content: attr(data-show); position: absolute; left: 0; top: 0; -webkit-text-fill-color: currentColor; white-space: nowrap; }
+/* A page number without a result (see markBarePageField): # as the others show, printed numbered
+   where headers and footers print on every page, and blank where they print once. */
+.docx-sheet span.raw-hidden.page-field-bare::after { content: "#"; }
 @media print {
+  .docx-sheet span.raw-hidden.page-field-bare::after { content: none; }
+  /* Where the caret is (a table cell's, a content control's outline) isn't part of the page. */
+  .docx-sheet table.docx-table td:focus-within, .docx-sheet .sdt:focus-within { box-shadow: none !important; }
+  .docx-sheet .sdt:not(.sdt-locked):focus-within { background: none !important; }
   .docx-sheet .field.page-field[data-show] { -webkit-text-fill-color: inherit; padding-right: 0; }
   .docx-sheet .field.page-field[data-show]::after { content: none; }
 }
@@ -10314,7 +10318,9 @@ async function close() {
 .docx-sheet table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
 .docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
 .docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px rgb(14 100 103 / 33%); }
-.docx-sheet table.docx-table td.vmerge { border-top-color: transparent; }
+/* A cell merged with the one above: no line between them. "hidden" wins over every other border in
+   the collapsing model, the bottom border of the cell above (drawn there, as its own) included. */
+.docx-sheet table.docx-table td.vmerge { border-top-style: hidden !important; }
 .docx-sheet table.docx-table td[data-rev-cell="ins"] { background-color: rgb(30 107 52 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(30 107 52 / 45%); }
 .docx-sheet table.docx-table td[data-rev-cell="del"] { background-color: rgb(179 38 30 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(179 38 30 / 45%); }
 .docx-sheet table.docx-table td.vmerge > * { visibility: hidden; }

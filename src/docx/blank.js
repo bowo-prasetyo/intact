@@ -24,13 +24,33 @@ const QUESTION_LIST = '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:va
   + '<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="upperLetter"/><w:lvlText w:val="%2."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="794" w:hanging="397"/></w:pPr></w:lvl>'
   + '</w:abstractNum>';
 /**
- * The numbering part: the bulleted list (numId 1) and, for a test paper, `questions` lists of
- * questions (numIds 2, 3…), each starting again at 1, as each part of a test numbers its own.
+ * A numbered list as official documents number their points (see starters.js), its first level in
+ * Word's format `fmt` ('lowerLetter' for a., b.; 'decimal' for 1., 2.; 'upperLetter' for A., B.) and
+ * its second in 1., 2. under it, each hanging 0.75 cm, so the text lines up after the number.
  */
-const numberingXml = (questions = 0) => `<w:numbering ${W_NS}>${BULLET_LIST}${questions ? QUESTION_LIST : ''}`
+const pointList = (id, fmt) => `<w:abstractNum w:abstractNumId="${id}"><w:multiLevelType w:val="hybridMultilevel"/>`
+  + `<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="${fmt}"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${LIST_INDENT}" w:hanging="${LIST_INDENT}"/></w:pPr></w:lvl>`
+  + `<w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%2."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${2 * LIST_INDENT}" w:hanging="${LIST_INDENT}"/></w:pPr></w:lvl>`
+  + '</w:abstractNum>';
+/** Where a point list's text starts (its hanging indent), in twips: 0.75 cm. */
+export const LIST_INDENT = 425;
+/** The numId of the `i`th of a starter's point lists (`lists`, see blankDocxFiles). */
+export const listId = (i) => 20 + i;
+
+/**
+ * The numbering part: the bulleted list (numId 1); for a test paper, `questions` lists of
+ * questions (numIds 2, 3…), each starting again at 1, as each part of a test numbers its own; and
+ * an official document's `lists`, a format each (see pointList), numbered from listId(0) on, each
+ * starting at 1 (the points of Menimbang, then of Mengingat…).
+ */
+const numberingXml = (questions = 0, lists = []) => `<w:numbering ${W_NS}>${BULLET_LIST}${questions ? QUESTION_LIST : ''}`
+  + lists.map((fmt, i) => pointList(listId(i), fmt)).join('')
   + '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
   + Array.from({ length: questions }, (_, i) => `<w:num w:numId="${i + 2}"><w:abstractNumId w:val="1"/>${i ? '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride>' : ''}</w:num>`).join('')
+  + lists.map((_, i) => `<w:num w:numId="${listId(i)}"><w:abstractNumId w:val="${listId(i)}"/></w:num>`).join('')
   + '</w:numbering>';
+/** A section's reference to the header blankDocxFiles makes (`header`), for a section in the body to have it too. */
+export const HEADER_REF = '<w:headerReference w:type="default" r:id="rId5"/>';
 const FOOTER = `<w:ftr ${W_NS}><w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr>`
   + '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE   \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'
   + '<w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>';
@@ -40,17 +60,20 @@ const PAPERS = { A4: { w: 11906, h: 16838 }, Letter: { w: 12240, h: 15840 } };
 export const textWidth = (paper = 'A4', landscape = false) => (landscape ? PAPERS[paper].h : PAPERS[paper].w) - 2 * 1440;
 
 /**
- * A section's page and columns, as Word writes them in a w:sectPr (without its header and footer
- * references): on `paper`, turned for `landscape`, with `margins` (twips), starting as `type` says
- * ('continuous' for a section on the same page; none, a new page), in `cols` equal columns with a
- * line between them (`sep`).
+ * A section's page and columns, as Word writes them in a w:sectPr: on `paper`, turned for
+ * `landscape`, with `margins` (twips), starting as `type` says ('continuous' for a section on the
+ * same page; none, a new page), in `cols` equal columns with a line between them (`sep`); its page
+ * numbers in Word's format `numFmt` ('numberInDash' for - 2 -), from `numStart` (else on from the
+ * section before); its header and footer `refs` (references, as HEADER_REF), with a different first
+ * page (`titlePg`) where asked.
  */
-export function sectionXml({ paper = 'A4', landscape = false, margins = null, type = null, cols = 1, sep = false } = {}) {
+export function sectionXml({ paper = 'A4', landscape = false, margins = null, type = null, cols = 1, sep = false, numFmt = null, numStart = null, refs = '', titlePg = false } = {}) {
   const { w, h } = PAPERS[paper] || PAPERS.A4;
   const m = { top: 1440, right: 1440, bottom: 1440, left: 1440, ...margins };
   const size = landscape ? `<w:pgSz w:w="${h}" w:h="${w}" w:orient="landscape"/>` : `<w:pgSz w:w="${w}" w:h="${h}"/>`;
-  return `${type ? `<w:type w:val="${type}"/>` : ''}${size}<w:pgMar w:top="${m.top}" w:right="${m.right}" w:bottom="${m.bottom}" w:left="${m.left}" w:header="708" w:footer="708" w:gutter="0"/>`
-    + `<w:cols${cols > 1 ? ` w:num="${cols}"` : ''} w:space="708"${cols > 1 && sep ? ' w:sep="1"' : ''}/>`;
+  const num = numFmt || numStart != null ? `<w:pgNumType${numFmt ? ` w:fmt="${numFmt}"` : ''}${numStart != null ? ` w:start="${numStart}"` : ''}/>` : '';
+  return `${refs}${type ? `<w:type w:val="${type}"/>` : ''}${size}<w:pgMar w:top="${m.top}" w:right="${m.right}" w:bottom="${m.bottom}" w:left="${m.left}" w:header="708" w:footer="708" w:gutter="0"/>`
+    + `${num}<w:cols${cols > 1 ? ` w:num="${cols}"` : ''} w:space="708"${cols > 1 && sep ? ' w:sep="1"' : ''}/>${titlePg ? '<w:titlePg/>' : ''}`;
 }
 
 /**
@@ -63,11 +86,11 @@ export function sectionXml({ paper = 'A4', landscape = false, margins = null, ty
  * (a different first page, its header left empty, as a title page has it). `margins` ({ top, right,
  * bottom, left } in twips) are 2.54 cm unless given; `language` is the text's (w:lang), en-US unless given.
  * A test paper also gives `questions` (how many numbered lists of questions it has, see
- * numberingXml) and `section` (sectionXml's options for the final section: a page turned
+ * numberingXml), an official document `lists` (its numbered points' formats, see numberingXml) and `section` (sectionXml's options for the final section: a page turned
  * `landscape`, or a section that starts on the same page, after others in the body in columns).
  */
-export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, questions = 0, footer = false, paper = 'A4', title = '', font = null, normal = '', heading1 = null, header = '', titlePg = false, margins = null, language = 'en-US', section = {} } = {}) {
-  const numbered = bullets || questions > 0;
+export function blankDocxFiles({ body = '<w:p/>', styles = [], bullets = false, questions = 0, lists = [], footer = false, paper = 'A4', title = '', font = null, normal = '', heading1 = null, header = '', titlePg = false, margins = null, language = 'en-US', section = {} } = {}) {
+  const numbered = bullets || questions > 0 || lists.length > 0;
   const builtin = (k) => BUILTIN_STYLES[k].xml('<w:basedOn w:val="Normal"/>').replace('__NORMAL__', 'Normal');
   const h1 = heading1
     ? builtin('h1').replace(/<w:pPr>.*?<\/w:pPr>\s*<w:rPr>.*?<\/w:rPr>/s, `<w:pPr>${heading1.pPr}</w:pPr><w:rPr>${heading1.rPr}</w:rPr>`)
@@ -110,7 +133,7 @@ ${numbered ? '<Override PartName="/word/numbering.xml" ContentType="application/
 ${numbered ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n' : ''}${footer ? '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>\n' : ''}${header ? '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>\n' : ''}</Relationships>`,
     'word/settings.xml': XML_HEADER + `<w:settings ${W_NS}><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
     'word/document.xml': XML_HEADER + `<w:document ${W_NS}><w:body>${body}
-<w:sectPr>${header ? '<w:headerReference w:type="default" r:id="rId5"/>' : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}${sectionXml({ paper, margins, ...section })}${titlePg ? '<w:titlePg/>' : ''}</w:sectPr>
+<w:sectPr>${sectionXml({ paper, margins, ...section, refs: `${header ? HEADER_REF : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}`, titlePg })}</w:sectPr>
 </w:body></w:document>`,
     'word/styles.xml': XML_HEADER + `<w:styles ${W_NS}>
 <w:docDefaults>
@@ -123,7 +146,7 @@ ${numbered ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/of
 ${builtins.replace(/w:asciiTheme="majorHAnsi" w:hAnsiTheme="majorHAnsi" w:eastAsiaTheme="majorEastAsia" w:cstheme="majorBidi"/g, font ? `w:ascii="${fontName}" w:hAnsi="${fontName}"` : 'w:ascii="Calibri Light" w:hAnsi="Calibri Light"')}
 </w:styles>`,
   };
-  if (numbered) files['word/numbering.xml'] = XML_HEADER + numberingXml(questions);
+  if (numbered) files['word/numbering.xml'] = XML_HEADER + numberingXml(questions, lists);
   if (footer) files['word/footer1.xml'] = XML_HEADER + FOOTER;
   if (header) files['word/header1.xml'] = XML_HEADER + `<w:hdr ${W_NS}>${header}</w:hdr>`;
   return files;
