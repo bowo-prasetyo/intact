@@ -110,6 +110,12 @@
       </div>
 
       <footer>
+        <!-- A new version's name, for a changed document saved as a new file (see versionName.js). -->
+        <div v-if="versioning?.offered" class="version-name" role="group" aria-label="File name">
+          <p class="version-file">Downloads as <strong class="version-name-value">{{ versioning.name }}</strong></p>
+          <label><input type="checkbox" :checked="versioning.on" @change="$emit('versioning', { on: $event.target.checked })" /> Name it as a new version (v2, v3…), so earlier copies keep their names</label>
+          <label v-if="versioning.on && versioning.initials"><input type="checkbox" :checked="versioning.initialsOn" @change="$emit('versioning', { initials: $event.target.checked })" /> With my initials ({{ versioning.initials }})</label>
+        </div>
         <label class="skip"><input type="checkbox" :checked="skip" @change="$emit('skip', $event.target.checked)" /> Download without this review next time</label>
         <div class="buttons">
           <button type="button" @click="$emit('close')">Keep editing</button>
@@ -136,8 +142,10 @@ const props = defineProps({
   focus: { type: String, default: '' },
   // What its main button does: 'download', 'share' (Download's menu: Share…), 'save' (into the file opened) or 'saveAs'.
   action: { type: String, default: 'download' },
+  // The download's name, and whether it is a new version's: { offered, on, name, initials, initialsOn }.
+  versioning: { type: Object, default: null },
 });
-const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'personal-default', 'show-issue', 'title', 'update-properties']);
+const emit = defineEmits(['close', 'download', 'skip', 'update-fields', 'release', 'personal', 'personal-default', 'show-issue', 'title', 'update-properties', 'versioning']);
 
 const SEVERITY = { error: 'Error', warning: 'Warning', tip: 'Tip' };
 const title = ref('');
@@ -498,6 +506,10 @@ footer {
   padding: 14px 20px; border-top: 1px solid var(--border); margin-top: 12px;
 }
 .skip { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+/* The download's name, across the footer above its choices. */
+.version-name { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.version-name p { margin: 0; overflow-wrap: anywhere; }
+.version-name label { display: flex; gap: 6px; align-items: flex-start; color: var(--muted); }
 .buttons { display: flex; gap: 8px; margin-left: auto; }
 .buttons button { padding: 7px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
 .buttons .primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }

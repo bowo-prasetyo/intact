@@ -10,7 +10,7 @@
       </p>
       <h2>What you can edit</h2>
       <ul>
-        <li>Start from a template on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV, a report or a novel's manuscript (standard manuscript format), with placeholders that Fill in fills in once for everywhere they appear</li>
+        <li>Start from a template on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV, a report, a board paper (the decision sought first, then options, costs, risks and next steps) or a novel's manuscript (standard manuscript format), with placeholders that Fill in fills in once for everywhere they appear</li>
         <li>Mail merge from a list (a CSV from Excel or Google Sheets): a letter for each row, in one document or a .zip of documents, from Download's menu or Fill in</li>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F) or an endnote (Ctrl+Alt+D)</li>
@@ -44,6 +44,7 @@
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page; each section on its own paper, with its own header, footer and page numbers</li>
         <li>Save as PDF from Download's menu: the browser makes it from its print window, on this device</li>
         <li>Save back to the file opened, and Save as…, where the browser can (Chrome and Edge on a computer): the browser writes the file where it is</li>
+        <li>Elsewhere, a changed document can download as its next version ("Report v2", "Report_v5_DE" with your initials), chosen in the review and remembered, rather than as "Report (1)"</li>
         <li>About how many pages, in the status bar, with a dashed line where each page begins</li>
         <li>Several documents at once, each in its own tab: Open (Ctrl+O) opens another beside this one, and a document dropped on the page opens in a new tab</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>

@@ -1012,7 +1012,7 @@
     <AutoCorrectDialog v-if="autoCorrectDialog" :settings="autoCorrectSettings" :selected="autoCorrectDialog.selected" @close="closeAutoCorrect" @save="saveAutoCorrectSettings" />
     <WordCountDialog v-if="wordCountData" :words="words" :characters="chars" :pages="pageCount" :stats="wordCountData" :target="lengthTarget" :headline="headline" @close="closeWordCount" @save="setLengthTarget" @show-long="showLongSentence" />
 
-    <ReviewDialog v-if="reviewData" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
+    <ReviewDialog v-if="reviewData" :versioning="versioning" @versioning="setVersioning" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
     <form v-if="authorDialog.open" ref="authorEl" class="chooser author-dialog" role="dialog" :aria-label="t('Your name on tracked changes')" :style="{ left: `${authorDialog.x}px`, top: `${authorDialog.y}px` }" @submit.prevent="confirmAuthor" @keydown.esc="closeAuthorDialog">
       <label for="author-name">{{ t('Your name on tracked changes') }}</label>
@@ -1266,6 +1266,7 @@ import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
 import { redlinePackage } from '../docx/redline.js';
+import { nextVersionName, initialsOf } from '../editor/versionName.js';
 import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
@@ -9675,6 +9676,34 @@ function printToPdf() {
 
 // "Review my changes" before Download: what will go back to the recipient. It can be skipped; the
 // choice is remembered in this browser only, and the toolbar's Review button still shows it.
+// Versioned names for downloads (see editor/versionName.js): where the file opened can't be saved
+// back to, each download is a new file; named as the next version ("Report v2", "Report_v4_JD"),
+// rather than the browser's "Report (1)", when asked for in the review (remembered). Only for a
+// document opened from a file and changed: a new one has no earlier version.
+const VERSION_KEY = 'intact.versionNames';
+const VERSION_INITIALS_KEY = 'intact.versionInitials';
+const versionNames = ref(remembered(VERSION_KEY, '0') === '1');
+const versionInitials = ref(remembered(VERSION_INITIALS_KEY, '0') === '1');
+const myInitials = computed(() => (named.value ? initialsOf(author.value) : ''));
+/** Whether a download now would be a new version: a changed document that came from a file, saved as a new file. */
+const versionable = (action) => ['download', 'copy', 'share'].includes(action) && !doc.startedHere && !fromTemplate.value && dirty.value;
+const versionedBase = () => nextVersionName(baseName.value, versionInitials.value ? myInitials.value : '');
+const versioning = computed(() => {
+  const action = saveAction.value;
+  const base = versionNames.value ? versionedBase() : (baseName.value.trim() || 'document');
+  return { offered: versionable(action), on: versionNames.value, name: `${base}.${fileExt.value}`, initials: myInitials.value, initialsOn: versionInitials.value };
+});
+function setVersioning({ on, initials }) {
+  if (on != null) {
+    versionNames.value = on;
+    try { localStorage.setItem(VERSION_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+  }
+  if (initials != null) {
+    versionInitials.value = initials;
+    try { localStorage.setItem(VERSION_INITIALS_KEY, initials ? '1' : '0'); } catch { /* this session only */ }
+  }
+}
+
 const SKIP_REVIEW_KEY = 'intact.skipReview';
 const reviewData = ref(null);
 const reviewFocus = ref('');
@@ -9908,7 +9937,10 @@ async function save(action = 'download') {
   if (saving.value) return;
   saving.value = true;
   try {
-    let name = `${baseName.value.trim() || 'document'}.${fileExt.value}`;
+    // The next version's name, where asked for (see versioning): the header's name follows it, so
+    // the download after the next edits is the version after that.
+    const version = versionNames.value && versionable(action) ? versionedBase() : null;
+    let name = `${version || baseName.value.trim() || 'document'}.${fileExt.value}`;
     // A file renamed in the header is a new file: Save as…, where the browser can.
     if (action === 'save' && fileHandle.value.name !== name) action = canSaveAs ? 'saveAs' : 'download';
     // First, while the click still counts as asking: the file to write to, and leave to write it.
@@ -9938,10 +9970,12 @@ async function save(action = 'download') {
     doc.name = name;
     if (action === 'share') {
       saving.value = false;
+      if (version) baseName.value = version;
       await shareFile(new File([blob], name, { type: doc.format.mime || blob.type }));
       return;
     }
     if (!target) downloadBlob(blob, name);
+    if (version) baseName.value = version;
     dirty.value = false;
     discardDraft({ closing: false }); // downloaded or written: the file is the copy now
     const n = doc.commentsRemoved.size;

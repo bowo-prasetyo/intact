@@ -65,6 +65,8 @@ export default {
   'Experience, education and skills, easy for screening software to read': 'Pengalaman, pendidikan, dan keterampilan, mudah dibaca perangkat lunak penyaring',
   'Report': 'Laporan',
   'Headings for a summary, findings and recommendations, numbered pages': 'Judul untuk ringkasan, temuan, dan rekomendasi, halaman bernomor',
+  'Board paper': 'Kertas kerja direksi',
+  'A decision paper: what is asked first, then options, costs, risks and next steps': 'Kertas keputusan: keputusan yang diminta di awal, lalu opsi, biaya, risiko, dan langkah berikutnya',
   'Manuscript': 'Naskah novel',
   'A novel in standard manuscript format: title page, chapters, double-spaced': 'Novel dalam format naskah standar: halaman judul, bab, spasi ganda',
 

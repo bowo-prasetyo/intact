@@ -1,5 +1,5 @@
 // Starter documents on the start page: a letter, a memo, minutes, a quote, an invoice, a CV, a
-// report and a novel's manuscript. Each opens as a new document with Fill in showing its placeholders, is written as Word
+// report, a board paper and a novel's manuscript. Each opens as a new document with Fill in showing its placeholders, is written as Word
 // writes a document (its properties in the order Word's schema requires, its parts related and
 // typed), is on the paper used where the browser is, and comes back unchanged when opened again.
 import fs from 'node:fs';
@@ -8,8 +8,8 @@ import JSZip from 'jszip';
 import { downloadFile } from './helpers.js';
 import { RPR_ORDER, PPR_ORDER } from '../src/docx/xml.js';
 
-const STARTERS = ['Letter', 'Memo', 'Meeting minutes', 'Quote', 'Invoice', 'CV', 'Report', 'Manuscript'];
-const FILES = { Letter: 'Letter', Memo: 'Memo', 'Meeting minutes': 'Minutes', Quote: 'Quote', Invoice: 'Invoice', CV: 'CV', Report: 'Report', Manuscript: 'Manuscript' };
+const STARTERS = ['Letter', 'Memo', 'Meeting minutes', 'Quote', 'Invoice', 'CV', 'Report', 'Board paper', 'Manuscript'];
+const FILES = { Letter: 'Letter', Memo: 'Memo', 'Meeting minutes': 'Minutes', Quote: 'Quote', Invoice: 'Invoice', CV: 'CV', Report: 'Report', 'Board paper': 'Board paper', Manuscript: 'Manuscript' };
 const TCPR_ORDER = ['cnfStyle', 'tcW', 'gridSpan', 'hMerge', 'vMerge', 'tcBorders', 'shd', 'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark'];
 const TBLPR_ORDER = ['tblStyle', 'tblpPr', 'tblOverlap', 'bidiVisual', 'tblStyleRowBandSize', 'tblStyleColBandSize', 'tblW', 'jc', 'tblCellSpacing', 'tblInd', 'tblBorders', 'shd', 'tblLayout', 'tblCellMar', 'tblLook'];
 
@@ -314,4 +314,25 @@ test.describe('in Indonesian', () => {
     const markers = await page.locator('.docx-page p.list').evaluateAll((ps) => ps.map((el) => `${el.dataset.marker} ${el.textContent}`));
     expect(markers).toEqual(['A. Pendahuluan', '1. Umum', '2. Maksud dan Tujuan', '3. Ruang Lingkup', '4. Dasar', 'B. Kegiatan yang Dilaksanakan', 'C. Hasil yang Dicapai', 'D. Kesimpulan dan Saran', 'E. Penutup']);
   });
+});
+
+test('the board paper puts the decision sought first, in a box, then the options, money, risks and next steps', async ({ page }) => {
+  await start(page, 'Board paper');
+  const fill = page.getByRole('dialog', { name: /fill in/i });
+  await expect(fill).toBeVisible();
+  // Its placeholders, each filled in once for every place it appears.
+  await expect(fill).toContainText(/Board or committee\s*4 places/);
+  await page.keyboard.press('Escape');
+  const headings = await page.locator('.docx-page h1').allTextContents(); // the Title first, then the Heading 1s
+  expect(headings.slice(1)).toEqual(['Recommendation', 'Summary', 'Background', 'Options considered', 'Financial implications', 'Risks', 'Consultation', 'Next steps', 'Appendices']);
+  const { read } = await saved(page);
+  const doc = await read('word/document.xml');
+  // The decision sought comes before the first heading, in a table with a shaded heading row.
+  const box = doc.indexOf('Decision sought');
+  expect(box).toBeGreaterThan(0);
+  expect(box).toBeLessThan(doc.indexOf('Recommendation'));
+  expect(doc.slice(doc.lastIndexOf('<w:tbl>', box), box)).toContain('w:fill="D9E2F3"');
+  // Four tables: the decision, the options, the risks and the next steps; numbered pages.
+  expect(doc.match(/<w:tbl>/g)).toHaveLength(4);
+  expect(await read('word/footer1.xml')).toContain('PAGE');
 });
