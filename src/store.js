@@ -16,8 +16,8 @@ export function setDocument(doc) {
  * Opens `file`. `handle`, where the browser gave one (see editor/fileHandles.js), is the file on
  * the device that Save writes back to.
  */
-export async function openFile(file, handle = null) {
-  const doc = await DocxDocument.open(await file.arrayBuffer(), file.name);
+export async function openFile(file, handle = null, password = null) {
+  const doc = await DocxDocument.open(await file.arrayBuffer(), file.name, { password });
   doc.fileHandle = handle;
   setDocument(doc);
 }
@@ -36,10 +36,11 @@ export async function newFromStarter(id) {
 /**
  * Opens a draft kept in this browser (see drafts.js) where its editing left off: with its unsaved
  * changes, the tracked changes made then still counted as this editing's own, and "Edit anyway"
- * still on if it was. Its edits keep updating the same draft.
+ * still on if it was. Its edits keep updating the same draft. A password-protected document's draft
+ * is encrypted with its password, which `password` gives.
  */
-export async function openDraft(draft) {
-  const doc = await DocxDocument.open(draft.blob, draft.name);
+export async function openDraft(draft, password = null) {
+  const doc = await DocxDocument.open(draft.blob, draft.name, { password });
   doc.restored = true;
   doc.draftId = draft.id;
   doc.restoredFrom = { savedAt: draft.savedAt, unlocked: !!draft.unlocked, length: draft.length || null };

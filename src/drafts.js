@@ -35,7 +35,8 @@ async function run(mode, work) {
 const quietly = (promise, fallback) => promise.catch((e) => { console.warn('Drafts:', e); return fallback; });
 
 /**
- * Keeps a draft: { id, name, blob, savedAt, firstNewId, unlocked, length (a length target) }. Older drafts beyond the most
+ * Keeps a draft: { id, name, blob, savedAt, firstNewId, unlocked, length (a length target), protected
+ * (encrypted with the document's password: see DocxDocument.draft) }. Older drafts beyond the most
  * recent few go. Resolves to whether it was kept.
  */
 export function saveDraft(draft) {

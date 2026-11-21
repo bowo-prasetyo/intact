@@ -49,6 +49,7 @@ import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
 import { formFieldInfo, formFieldTitle, setFormCheck, setFormDropdown } from './formFields.js';
 import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
+import { PasswordError, decrypt, encrypt, keyForPassword } from './encryption.js';
 import { propertyPaths, readProperties, personalParts, anonymize, updateCore } from './properties.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
@@ -291,16 +292,48 @@ const STANDARD_FONTS = [
 
 export class DocxDocument {
   /** @param {ArrayBuffer|Blob} data */
-  static async open(data, name = 'document.docx') {
-    const bytes = new Uint8Array(data instanceof Blob ? await data.arrayBuffer() : data);
+  /**
+   * Opens a .docx (its bytes). One encrypted with a password is decrypted here with `password`, on
+   * this device (see encryption.js); without one, or with a wrong one, a PasswordError says so.
+   */
+  static async open(data, name = 'document.docx', { password = null } = {}) {
+    let bytes = new Uint8Array(data instanceof Blob ? await data.arrayBuffer() : data);
     // Encrypted, rights-managed and legacy files aren't ZIP packages: say what they are instead.
     const unreadable = sniffFile(bytes);
-    if (unreadable) throw unreadable;
+    let encryption = null;
+    if (unreadable?.kind === 'password') {
+      if (password == null) throw new PasswordError('needed', `${name} is protected with a password. Enter it to open the document: it is checked on this device and never sent anywhere.`);
+      const decrypted = await decrypt(bytes, password);
+      // A document encrypted the way Office 2007 did is encrypted again as Word does now, with the same password.
+      encryption = { key: decrypted.key || await keyForPassword(password), source: bytes, changed: !decrypted.key };
+      bytes = decrypted.zip;
+      const inner = sniffFile(bytes);
+      if (inner) throw inner;
+    } else if (unreadable) throw unreadable;
     const zip = await JSZip.loadAsync(bytes);
     const doc = new DocxDocument(zip, name);
     doc.sourceBytes = bytes; // what was opened: downloaded as it is when a signed file is unchanged
+    // { key (to encrypt it again), source (the encrypted file opened), changed (the password since) }, or null.
+    doc.encryption = encryption;
     await doc.init();
     return doc;
+  }
+
+  /**
+   * Protects the document with `password` from now on (Word's Encrypt with Password), or, with null,
+   * takes the protection off. Only the downloaded file changes: the text doesn't.
+   */
+  async setPassword(password) {
+    this.encryption = password == null ? null : { key: await keyForPassword(password), source: null, changed: true };
+    this.encryptionChanged = true;
+  }
+
+  /** The saved package, encrypted with the document's password if it has one. */
+  async sealed(blob, changed) {
+    if (!this.encryption) return blob;
+    // Unchanged, with the same password: the file goes back exactly as it was opened.
+    if (!changed && !this.encryption.changed && this.encryption.source) return new Blob([this.encryption.source], { type: this.format.mime });
+    return new Blob([await encrypt(new Uint8Array(await blob.arrayBuffer()), this.encryption.key)], { type: this.format.mime });
   }
 
   static async createBlank(name = 'Untitled.docx', files = blankDocxFiles()) {
@@ -4103,17 +4136,21 @@ export class DocxDocument {
   }
 
   /** Produces a .docx Blob from the current editor content. */
-  async save(root) {
+  async save(root, { plain = false } = {}) {
     await this.write(root);
+    let blob;
     if (this.signatures) {
       // Unchanged, the file goes back exactly as it was opened, so its signatures stay valid.
       this.signaturesRemoved = this.changed;
-      if (!this.signaturesRemoved) return new Blob([this.sourceBytes], { type: this.format.mime });
+      if (!this.signaturesRemoved) blob = new Blob([this.sourceBytes], { type: this.format.mime });
       // Changed, they no longer match the document: Word removes them when a signed document is
       // edited, and so does Intact, rather than send a file that Word shows as invalidly signed.
-      await removeSignatures(this.zip, this.signatures);
+      else await removeSignatures(this.zip, this.signatures);
     }
-    return this.zip.generateAsync({ type: 'blob', mimeType: this.format.mime, compression: 'DEFLATE' });
+    blob ||= await this.zip.generateAsync({ type: 'blob', mimeType: this.format.mime, compression: 'DEFLATE' });
+    // With a password, encrypted with it, as Word saves such a document; `plain` for what is made
+    // from the document on this device (mail merge, a redline), which encrypts its own results.
+    return plain ? blob : this.sealed(blob, this.changed);
   }
 
   /**
@@ -4131,13 +4168,15 @@ export class DocxDocument {
     } finally {
       Object.assign(this, keep);
     }
-    if (!this.changed) return null;
+    if (!this.changed && !this.encryptionChanged) return null;
     let zip = this.zip;
     if (this.signatures) {
       zip = await JSZip.loadAsync(await this.zip.generateAsync({ type: 'uint8array' }));
       await removeSignatures(zip, this.signatures);
     }
-    return zip.generateAsync({ type: 'blob', mimeType: this.format.mime, compression: 'DEFLATE' });
+    // A password-protected document's draft is encrypted with its password too: nothing of it is
+    // kept on the device in the clear (restoring it asks for the password).
+    return this.sealed(await zip.generateAsync({ type: 'blob', mimeType: this.format.mime, compression: 'DEFLATE' }), true);
   }
 
   /**

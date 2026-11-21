@@ -25,3 +25,14 @@ the application wrote it.
 | `libreoffice-report.docx` | LibreOffice Writer 24.2 (the report via ODT) | As the pandoc report, written the LibreOffice way | Generated |
 | `libreoffice-memo.docx` | LibreOffice Writer 24.2 (the memo re-saved) | As the python-docx memo, with every header and footer variant written out | Generated |
 | `libreoffice-letter.docx` | LibreOffice Writer 24.2 (the Word letter re-saved) | As the Word letter; LibreOffice puts the footer's picture and text box in one run | Generated from the anonymized letter |
+
+## Encrypted with a password (`encrypted/`)
+
+Kept apart from the fixtures above (which `tests/fixtures.spec.js` opens without a password), and
+tested by `tests/encryption.spec.js`. Each is a fixture above, encrypted by another program, so the
+decryption is checked against other implementations than Intact's own:
+
+| File | Encrypted by | Encryption | Password |
+|---|---|---|---|
+| `encrypted/report-password.docx` | msoffcrypto-tool 5 (`OOXMLFile.encrypt`) | Agile (4.4): AES-256, SHA-512, 100,000 rounds, as Word 2010 and later | `Rahasia 2026!` |
+| `encrypted/libreoffice-memo-password.docx` | LibreOffice Writer 24.2 (Save with password, Word 2007–365) | Standard (3.2): AES-128, SHA-1, as Office 2007 | `Memo-Pass 7` |

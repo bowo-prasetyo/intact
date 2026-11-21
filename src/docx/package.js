@@ -38,7 +38,8 @@ export function sniffFile(bytes) {
     return new UnreadableFileError('rights-managed', 'This document is protected by rights management: a sensitivity label that encrypts it, or Information Rights Management. Only Microsoft Office, signed in with an account that has permission, can open it, so Intact can’t and won’t try. Open it in Word, or ask its owner for a copy without encryption if policy allows.');
   }
   if (hasUtf16(text, 'EncryptionInfo') || hasUtf16(text, 'EncryptedPackage')) {
-    return new UnreadableFileError('password', 'This document is encrypted with a password, so Intact can’t open it: it doesn’t decrypt files. To edit it here, open it in Word, remove the password (File › Info › Protect Document › Encrypt with Password, and clear it) and save a copy, if your organisation’s policy allows; or ask the sender for a copy without a password.');
+    // Opened with its password (see DocxDocument.open and encryption.js), which is asked for.
+    return new UnreadableFileError('password', 'This document is encrypted with a password: it opens with its password, which is checked on this device.');
   }
   if (hasUtf16(text, 'WordDocument')) {
     return new UnreadableFileError('doc', 'This is a Word 97–2003 document (.doc) with a .docx name. Intact opens .docx only: in Word, save it as a Word Document (.docx) with File › Save As, then open that.');
