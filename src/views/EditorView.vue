@@ -254,6 +254,10 @@
         <option value="original">{{ t('Original') }}</option>
       </select>
       <span class="sep" data-tab="review" />
+      <!-- Proofing, as on Word's Review tab: the thesaurus (AutoCorrect is beside AutoFormat, in the status bar). -->
+      <button data-tab="review" type="button" :title="t('Thesaurus (Shift+F7): other words for the word at the caret, on this device')" :aria-label="t('Thesaurus')" @click="openThesaurus">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 2.5h4.2c.8 0 1.3.5 1.3 1.3V13.5c0-.7-.6-1.2-1.3-1.2H2.5zM13.5 2.5H9.3c-.8 0-1.3.5-1.3 1.3V13.5c0-.7.6-1.2 1.3-1.2h4.2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Thesaurus') }}</span>
+      </button>
       <!-- Hidden text, for a test's answer key: as Word, a font setting; here beside the review of what the file carries. -->
       <button data-tab="review" type="button" :title="t('Hidden text (Ctrl+Shift+H): for a test’s answers, shown here and printed only when asked')" :aria-label="t('Hidden text')" :class="{ on: state.hidden }" :aria-pressed="state.hidden" @click="toggleHidden">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z" stroke="currentColor" stroke-width="1.2" fill="none" /><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.2" fill="none" /><path d="M2.5 14L13.5 2" stroke="currentColor" stroke-width="1.3" /></svg>
@@ -554,6 +558,8 @@
       <button v-if="canSaveAs" type="button" role="menuitem" @click="saveMenuAction('saveAs')">Save as…<span class="shortcut">{{ t('A file on this device, saved to after') }}</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('pdf')">PDF…<span class="shortcut">{{ t('Ctrl+P') }}</span></button>
       <button v-if="canShareFiles" type="button" role="menuitem" @click="saveMenuAction('share')">Share…<span class="shortcut">{{ t('Mail, messages…') }}</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('web')">{{ t('Copy for the web') }}<span class="shortcut">{{ t('A website’s editor (CMS), an e-mail') }}</span></button>
+      <button type="button" role="menuitem" @click="saveMenuAction('markdown')">{{ t('Copy as Markdown') }}<span class="shortcut">{{ t('Markdown editors, GitHub, Ghost') }}</span></button>
       <button type="button" role="menuitem" @click="saveMenuAction('merge')">Mail merge…<span class="shortcut">{{ t('A letter for each row of a list') }}</span></button>
     </div>
 
@@ -922,6 +928,8 @@
     </form>
 
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
+    <ThesaurusDialog v-if="thesaurusData" :word="thesaurusData.word" :lang="thesaurusData.lang" @close="closeThesaurus" @insert="replaceWithSynonym" />
+    <AutoCorrectDialog v-if="autoCorrectDialog" :settings="autoCorrectSettings" :selected="autoCorrectDialog.selected" @close="closeAutoCorrect" @save="saveAutoCorrectSettings" />
     <WordCountDialog v-if="wordCountData" :words="words" :characters="chars" :pages="pageCount" :stats="wordCountData" :target="lengthTarget" :headline="headline" @close="closeWordCount" @save="setLengthTarget" @show-long="showLongSentence" />
 
     <ReviewDialog v-if="reviewData" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
@@ -1076,6 +1084,7 @@
         <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCut">Cut<span class="key">{{ t('Ctrl+X') }}</span></button>
       </template>
       <button type="button" role="menuitem" :disabled="!ctxMenu.selected" @click="contextCopy">Copy<span class="key">{{ t('Ctrl+C') }}</span></button>
+      <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(() => copyForWeb('html', true))">{{ t('Copy for the web') }}</button>
       <template v-if="!ctxMenu.locked">
         <button type="button" role="menuitem" @click="contextPaste(false)">Paste<span class="key">{{ t('Ctrl+V') }}</span></button>
         <button type="button" role="menuitem" @click="contextPaste(true)">{{ t('Paste as text') }}</button>
@@ -1098,6 +1107,7 @@
       <template v-if="!ctxMenu.locked">
         <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(toggleHidden)">{{ t('Hidden text') }}<span class="key">{{ t('Ctrl+Shift+H') }}</span></button>
         <button v-if="ctxMenu.selected" type="button" role="menuitem" @click="contextRun(redactSelection)">{{ t('Redact') }}</button>
+        <button type="button" role="menuitem" @click="contextRun(openThesaurus)">{{ t('Thesaurus…') }}<span class="key">{{ t('Shift+F7') }}</span></button>
         <button type="button" role="menuitem" @click="contextRun(openParagraphDialog, true)">{{ t('Paragraph…') }}</button>
         <button type="button" role="menuitem" @click="contextRun(openModifyStyle)">{{ t('Modify style…') }}</button>
         <template v-if="ctxMenu.table">
@@ -1139,6 +1149,8 @@
       <button type="button" class="nav-toggle" :aria-pressed="navOpen" :title="t('Headings: move around the document by its headings, as Word’s Navigation pane')" @click="toggleNav">{{ t('Headings') }}</button>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? t('page') : t('pages') }}</button>
       <button type="button" class="smart-typing" :aria-pressed="autoFormat" :title="autoFormat ? 'As you type, as in Word: &quot; and \' give curly quotes, -- a dash, ... an ellipsis, (c) ©, --&gt; an arrow, 1. or * then a space at the start of a paragraph a list, and a web or e-mail address then a space a link – click to type them as they are' : 'Quotes, dashes, ellipses, list numbers and addresses are typed as they are – click to format them as you type, as in Word'" @click="toggleAutoFormat">AutoFormat: {{ autoFormat ? 'on' : 'off' }}</button>
+      <!-- Word's AutoCorrect Options, which hold AutoFormat As You Type too: your entries and common typos. -->
+      <button type="button" class="smart-typing" :aria-label="t('AutoCorrect options')" :title="t('AutoCorrect: your own words to replace as you type (cllr → Councillor), and common typos')" @click="openAutoCorrect">{{ t('AutoCorrect') }}</button>
       <span v-if="fontsMissing.length" class="fonts-missing" :title="`Not on this device, so shown in another font: ${fontsMissing.join(', ')}. The document keeps them: the text looks as it should in Word on a computer that has them.`">{{ fontsMissing.length === 1 ? `Font shown with a substitute: ${fontsMissing[0]}` : `${fontsMissing.length} fonts shown with substitutes` }}</span>
       <button v-if="tracking" type="button" class="tracking-status" :title="t('Change your name on tracked changes')" @click="openAuthorDialog">{{ t('Tracking changes as {name}', { name: author }) }}</button>
       <span v-if="draftKept" class="draft-status" :title="draftTitle">{{ t('Changes kept on this device') }}</span>
@@ -1185,6 +1197,11 @@ import ReviewDialog from '../components/ReviewDialog.vue';
 import SignatureDialog from '../components/SignatureDialog.vue';
 import HelpDialog from '../components/HelpDialog.vue';
 import WordCountDialog from '../components/WordCountDialog.vue';
+import ThesaurusDialog from '../components/ThesaurusDialog.vue';
+import AutoCorrectDialog from '../components/AutoCorrectDialog.vue';
+import { thesaurusLanguage, matchCase } from '../editor/thesaurus.js';
+import { loadAutoCorrect, saveAutoCorrect, autoCorrectWord } from '../editor/autoCorrectList.js';
+import { webContent, toHtml, toText, toMarkdown, copyFormats } from '../editor/webCopy.js';
 import { wordCount, readability, headlineOf, blockText, textRange } from '../editor/readability.js';
 import { findMatches, matchRange } from '../editor/find.js';
 import { currentDoc, setDocument } from '../store.js';
@@ -1408,6 +1425,175 @@ const labelChip = computed(() => {
   if (marking) return { text: marking.value, title: `Classification (${marking.name}): ${marking.value}. Intact keeps it as it is: change it in Word.` };
   return null;
 });
+
+// ------------------------------------------------------------------ thesaurus
+
+// Word's Thesaurus (Shift+F7): the word at the caret, or selected, looked up; a word chosen goes in
+// its place (tracked while tracking), in its case. See components/ThesaurusDialog.vue.
+const thesaurusData = ref(null); // { word, lang } while it is open
+let thesaurusRange = null; // the word it replaces
+
+function openThesaurus() {
+  restoreSelection();
+  let range = selectionInPage() || savedRange;
+  if (range && !page.value.contains(range.commonAncestorContainer)) range = null;
+  if (range?.collapsed) range = wordAt(range);
+  let word = range ? range.toString().replace(/\s+/g, ' ').trim() : '';
+  if (word.length > 60 || !/[\p{L}]/u.test(word)) word = '';
+  thesaurusRange = word ? range.cloneRange() : null;
+  const node = range?.startContainer || savedRange?.startContainer;
+  const el = node?.nodeType === 3 ? node.parentElement : node;
+  const tag = el?.closest?.('[lang]')?.lang || doc.styles.language() || (lang.value === 'id' ? 'id' : 'en');
+  thesaurusData.value = { word, lang: thesaurusLanguage(tag) };
+}
+
+function closeThesaurus() {
+  thesaurusData.value = null;
+  refocus();
+}
+
+/** Puts the word chosen in the thesaurus in place of the word looked up (or at the caret). */
+function replaceWithSynonym(word) {
+  const was = thesaurusData.value?.word || '';
+  thesaurusData.value = null;
+  if (textLocked.value) return explainLock();
+  page.value.focus();
+  if (thesaurusRange && page.value.contains(thesaurusRange.startContainer)) selectRange(thesaurusRange);
+  else restoreSelection();
+  const text = was ? matchCase(word, was) : word;
+  typeText(text);
+  undoStack.commit();
+  markDirty();
+  const tracked = tracking.value ? t(' (tracked)') : '';
+  message.value = was ? t('“{old}” replaced with “{new}”{tracked}', { old: was, new: text, tracked }) : t('“{new}” inserted{tracked}', { new: text, tracked });
+}
+
+// ------------------------------------------------------------------ AutoCorrect entries
+
+// Word's AutoCorrect "Replace text as you type": your entries and common English typos, as the word
+// is ended by a space, punctuation or Enter (see editor/autoCorrectList.js). Kept in this browser.
+const autoCorrectSettings = ref(loadAutoCorrect());
+const autoCorrectDialog = ref(null); // { selected } while it is open
+const ENDS_WORD = /^[\s.,;:!?)\]}"'”’»]$/u;
+
+function openAutoCorrect() {
+  const range = selectionInPage() || savedRange;
+  const selected = range && !range.collapsed && page.value.contains(range.commonAncestorContainer) ? range.toString().replace(/\s+/g, ' ').trim().slice(0, 255) : '';
+  autoCorrectDialog.value = { selected };
+}
+
+function closeAutoCorrect() {
+  autoCorrectDialog.value = null;
+  refocus();
+}
+
+function saveAutoCorrectSettings(settings) {
+  autoCorrectSettings.value = settings;
+  const kept = saveAutoCorrect(settings);
+  autoCorrectDialog.value = null;
+  refocus();
+  const n = settings.entries.length;
+  message.value = !settings.on ? t('AutoCorrect is off: text is typed as it is')
+    : `${t(n === 1 ? 'AutoCorrect: 1 entry of yours' : 'AutoCorrect: {n} entries of yours', { n })}${kept ? '' : t(' – for this session only: the browser doesn’t keep them')}`;
+}
+
+/** The AutoCorrect replacement for the word just before the caret (`range`, collapsed), or null. */
+function correctionAt(range, typed = ' ') {
+  const node = range?.startContainer;
+  if (!range?.collapsed || node?.nodeType !== 3 || inPlainFieldQuiet()) return null;
+  if (node.parentElement.closest('a, .raw-inline, [data-raw], .field, [data-tc="del"]')) return null;
+  const block = closestBlock(node);
+  if (!block) return null;
+  const lead = document.createRange();
+  lead.setStart(block, 0);
+  lead.setEnd(node, range.startOffset);
+  const tag = node.parentElement.closest('[lang]')?.lang || doc.styles.language() || (lang.value === 'id' ? 'id' : 'en');
+  const hit = autoCorrectWord(lead.toString(), autoCorrectSettings.value, /^en\b/i.test(tag), typed);
+  // The word typed in one piece of text, as it is.
+  if (!hit || range.startOffset < hit.from.length || node.data.slice(range.startOffset - hit.from.length, range.startOffset) !== hit.from) return null;
+  // What goes after it: a quote typed is a curly one where AutoFormat makes them.
+  const quote = autoFormat.value && smartQuote(lead.toString(), typed, tag);
+  return { ...hit, after: quote || typed };
+}
+
+/** Replaces the word of `hit` (see correctionAt): `after` characters typed after it stay after the caret. */
+function applyCorrection(hit, after = '') {
+  const now = selectionInPage();
+  const at = now?.startContainer;
+  const typed = hit.from + after;
+  // Found again where it is now: typing the character after it may have moved it to another node.
+  if (!now?.collapsed || at?.nodeType !== 3 || at.data.slice(Math.max(0, now.startOffset - typed.length), now.startOffset) !== typed) return false;
+  const word = document.createRange();
+  word.setStart(at, now.startOffset - typed.length);
+  word.setEnd(at, now.startOffset - after.length);
+  selectRange(word);
+  typeText(hit.to);
+  // The caret goes back after what was typed after the word.
+  const sel = window.getSelection();
+  for (let i = 0; i < after.length; i++) sel.modify('move', 'forward', 'character');
+  undoStack.commit();
+  markDirty();
+  return true;
+}
+
+/**
+ * A space or punctuation ending a word with an entry: the character is typed first, as an undo step
+ * of its own, then the word replaced, so Ctrl+Z straight after gives back what was typed, as in Word.
+ */
+function autoCorrectTyped(e) {
+  if (!ENDS_WORD.test(e.data)) return false;
+  const hit = correctionAt(selectionInPage(), e.data);
+  if (!hit) return false;
+  e.preventDefault();
+  typeText(hit.after);
+  undoStack.commit();
+  applyCorrection(hit, hit.after);
+  return true;
+}
+
+/** Enter after a word with an entry: the word is replaced (an undo step of its own), then the paragraph is split. */
+function autoCorrectEnter(e) {
+  const hit = correctionAt(selectionInPage(), '\n');
+  if (!hit) return false;
+  e.preventDefault();
+  undoStack.flush();
+  applyCorrection(hit);
+  // Then Enter, as it would have been: tracked while tracking.
+  const opts = trackedBy(selectionInPage()?.startContainer);
+  if (opts) pendingSplit = opts;
+  document.execCommand('insertParagraph'); // fires input
+  return true;
+}
+
+// ------------------------------------------------------------------ copy for the web
+
+/**
+ * Copy for the web (Download's menu, or the right-click menu for the selection): the text with
+ * headings, bold, italic, links, lists and tables only, as a website's editor (CMS) or an e-mail
+ * takes it, with plain text beside it for fields that take only text; or as Markdown. See
+ * editor/webCopy.js.
+ */
+function copyForWeb(kind, selection = false) {
+  const range = selection ? (selectionInPage() || savedRange) : null;
+  if (selection && (!range || range.collapsed)) {
+    message.value = t('Select the text to copy first');
+    return;
+  }
+  const { blocks, left } = webContent(page.value, { range, levelOf: (el) => doc.listOf(el)?.ilvl ?? Number(el.dataset.ilvl || 0) });
+  if (!blocks.length) {
+    message.value = t('Nothing to copy: the text is empty');
+    return;
+  }
+  const formats = kind === 'markdown' ? { 'text/plain': toMarkdown(blocks) } : { 'text/html': toHtml(blocks), 'text/plain': toText(blocks) };
+  if (!copyFormats(formats)) {
+    message.value = t('The browser didn’t copy: try again from the menu');
+    return;
+  }
+  const what = [left.pictures && t(left.pictures === 1 ? '1 picture' : '{n} pictures', { n: left.pictures }), left.textBoxes && t(left.textBoxes === 1 ? '1 text box' : '{n} text boxes', { n: left.textBoxes }),
+    left.notes && t(left.notes === 1 ? '1 note' : '{n} notes', { n: left.notes }), left.equations && t(left.equations === 1 ? '1 equation' : '{n} equations', { n: left.equations })].filter(Boolean);
+  const counted = t(blocks.length === 1 ? '1 paragraph' : '{n} paragraphs', { n: blocks.length });
+  message.value = `${kind === 'markdown' ? t('Copied as Markdown: {what}', { what: counted }) : t('Copied for the web: {what}, with headings, bold, italic, links and lists – paste it into your site’s editor or an e-mail', { what: counted })}${what.length ? t(' · left out: {what}', { what: what.join(', ') }) : ''}`;
+}
 
 // ------------------------------------------------------------------ word count and length
 
@@ -5991,6 +6177,8 @@ function toggleAutoFormat() {
  * is tracked while tracking. True if the key press was dealt with here.
  */
 function smartTyping(e) {
+  if (e.inputType === 'insertParagraph' && autoCorrectEnter(e)) return true;
+  if (e.inputType === 'insertText' && e.data && [...e.data].length === 1 && autoCorrectTyped(e)) return true;
   if (autoFormat.value && e.inputType === 'insertParagraph' && autoLinkEnter(e)) return true;
   if (!autoFormat.value || e.inputType !== 'insertText' || !e.data || [...e.data].length !== 1) return false;
   const range = selectionInPage();
@@ -7930,6 +8118,11 @@ function onKeydown(e) {
     openContextMenu();
     return;
   }
+  if (e.key === 'F7' && e.shiftKey && !mod && !e.altKey) {
+    e.preventDefault();
+    openThesaurus();
+    return;
+  }
   if (e.key === 'F3' && e.shiftKey && !mod && !e.altKey) {
     e.preventDefault();
     changeCaseTo(null);
@@ -9115,6 +9308,7 @@ function saveMenuAction(what) {
   else if (what === 'copy' || what === 'saveAs') requestDownload(what);
   else if (what === 'share') requestShare();
   else if (what === 'merge') openMailMerge();
+  else if (what === 'web' || what === 'markdown') copyForWeb(what === 'web' ? 'html' : 'markdown');
   else openPdfDialog();
 }
 

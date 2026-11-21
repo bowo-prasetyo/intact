@@ -42,7 +42,7 @@ test('right-click on selected text offers Cut, Copy and Paste; Cut and Paste mov
   await rightClickOn(page, 'invoice ');
   await expect(menu(page)).toBeVisible();
   await expect(menu(page).getByRole('menuitem', { name: /^Cut/ })).toBeEnabled();
-  await expect(menu(page).getByRole('menuitem', { name: /^Copy/ })).toBeEnabled();
+  await expect(menu(page).getByRole('menuitem', { name: /^Copy(?! for)/ })).toBeEnabled();
   await expect(menu(page).getByRole('menuitem', { name: /^Paste as text/ })).toBeVisible();
   // Not in a table: no table items.
   await expect(menu(page).getByRole('menuitem', { name: 'Insert row below' })).toHaveCount(0);

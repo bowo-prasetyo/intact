@@ -97,6 +97,20 @@
         readability statistics, worked out in the browser: words per sentence, passive sentences and the
         Flesch scores for English, with the long sentences to show one by one.
       </p>
+      <h2>Writing tools</h2>
+      <p>
+        AutoCorrect replaces your own entries as you type (cllr becomes Councillor, in the case you typed
+        it), and common English typos in English text; the entries are kept in this browser. The
+        thesaurus (Shift+F7) offers other words for the word at the caret, in English (Princeton
+        WordNet) or Indonesian (Wordnet Bahasa's hand-checked words), from the app's own files, offline.
+        Copy for the web puts the text on the clipboard as a website's editor or an e-mail takes it:
+        headings, bold, italic, links, lists and tables, without Word's formatting; or as Markdown.
+      </p>
+      <p class="credit">
+        WordNet 3.1 Copyright 2006 by Princeton University; all rights reserved. Wordnet Bahasa Copyright
+        2011–2015 Francis Bond and others, under the MIT licence. Their licences are with their data in
+        the app's source.
+      </p>
       <h2>Sending a CV</h2>
       <p>
         Many employers' screening software reads a CV's text before anyone does. For a document that reads
@@ -168,6 +182,7 @@ const version = __APP_VERSION__; // eslint-disable-line no-undef -- set by vite.
 </script>
 
 <style scoped>
+.credit { font-size: 12px; color: var(--muted); }
 .about { max-width: 720px; margin: 0 auto; padding: 32px 16px; line-height: 1.6; }
 .shortcuts { border-collapse: collapse; }
 .shortcuts th, .shortcuts td { text-align: left; vertical-align: top; padding: 4px 16px 4px 0; border-bottom: 1px solid var(--border); font-weight: normal; }

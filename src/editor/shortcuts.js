@@ -58,6 +58,7 @@ export const SHORTCUTS = [
   ['Ctrl+Alt+H', 'Highlight (in the last colour chosen)'],
   ['Ctrl+Shift+H', 'Hidden text, such as a test’s answers: shown here, printed only when asked'],
   ['Shift+F3', 'Change case: UPPERCASE, lowercase, Capitalize Each Word in turn'],
+  ['Shift+F7', 'Thesaurus: other words for the word at the caret'],
   ['Ctrl+Shift+C, Ctrl+Shift+V', 'Copy formatting, and paint it on the selected text (Format Painter)'],
   ['Ctrl+Shift+8', 'Show or hide formatting marks (¶)'],
   ['Ctrl+Alt+M', 'New comment'],
