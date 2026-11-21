@@ -308,6 +308,8 @@ const STARTER_ICONS = {
   invoice: ['M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z', 'M9 8h6M9 11.5h6M9 15h3'],
   cv: [PAGE, 'M12 10.2a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8.5 14.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5M8 17.5h8'],
   report: [PAGE, 'M8.5 17v-3M12 17v-6M15.5 17V8.5'],
+  // A board paper: the decision asked for in its box, then the text.
+  'board-paper': [PAGE, 'M7.5 6.5h9v3.5h-9zM9 8.2h6M8 12.5h8M8 14.5h8M8 16.5h5'],
   manuscript: [PAGE, 'M9.5 7.5h5M8 11h8M8 13.5h8M8 16h8M8 18.5h5'],
   // The naskah dinas: a letterhead's line over the text; a memo's labels; an invitation's calendar; two signatures.
   'surat-dinas': [PAGE, 'M8 6.5h8M7.5 8.5h9M8 11h4M8 13h8M8 15h8M13 18h3'],

@@ -1,5 +1,5 @@
 // Starter documents for the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV,
-// a report and a manuscript, each a Word document written as Word writes one, in Word's own styles (Title,
+// a report, a board paper and a manuscript, each a Word document written as Word writes one, in Word's own styles (Title,
 // Heading 1 and 2, Table Grid, List Paragraph, Footer), with placeholders such as [Your name] that
 // Fill in fills in once for every place they appear. Nothing here is fetched: each is built in the
 // browser from the blank document's parts (see blank.js).
@@ -740,6 +740,63 @@ export const STARTERS = [
         p('[Another recommendation]', { style: 'ListParagraph', bullet: true }),
         p('Conclusion', { style: 'Heading1' }),
         p('[What the reader should take away.]'),
+      ].join(''),
+    }),
+  },
+  {
+    // A board paper (a decision paper), as boards and executive committees ask for one: what is
+    // asked of them first, in a box, then the recommendation, a summary, the options weighed, the
+    // money, the risks, who was consulted and what happens next; numbered pages, for the board pack.
+    id: 'board-paper',
+    title: 'Board paper',
+    description: 'A decision paper: what is asked first, then options, costs, risks and next steps',
+    file: 'Board paper',
+    build: (paper) => ({
+      styles: ['tableGrid'],
+      bullets: true,
+      footer: true,
+      body: [
+        p('[Paper title]', { style: 'Title', after: 80 }),
+        p('[Organisation] · [Board or committee] · [Meeting date]', { after: 240, run: { color: '595959' } }),
+        label('Paper no.', '[Paper number]'),
+        label('From', '[Author name], [Author role]'),
+        label('Sponsor', '[Executive sponsor]'),
+        label('Purpose', '[For decision, for discussion or for information]'),
+        label('Status', '[Confidential, or Public]'),
+        p('', { border: 'bottom', after: 240 }),
+        table(paper, [1], [
+          ['Decision sought'],
+          ['The [Board or committee] is asked to [approve, endorse or note] [what], [by when].'],
+        ]),
+        p('Recommendation', { style: 'Heading1', before: 360 }),
+        p('That the [Board or committee] [approves the recommended option].', { style: 'ListParagraph', bullet: true }),
+        p('That the [Board or committee] [notes the risks and how they are managed].', { style: 'ListParagraph', bullet: true }),
+        p('Summary', { style: 'Heading1' }),
+        p('[In three or four sentences: the issue, what you propose and why, what it costs, and what happens if nothing is done.]'),
+        p('Background', { style: 'Heading1' }),
+        p('[What the reader needs to know: how this came about, and any earlier decisions.]'),
+        p('Options considered', { style: 'Heading1', keepNext: true }),
+        table(paper, [3, 4, 4, 2], [
+          ['Option', 'Benefits', 'Risks', 'Cost'],
+          ['1. [Do nothing]', '[Benefits of doing nothing]', '[Risks of doing nothing]', '[Cost]'],
+          ['2. [Second option]', '[Benefits]', '[Risks]', '[Cost]'],
+          ['3. [Recommended option]', '[Benefits]', '[Risks]', '[Cost]'],
+        ], { right: [3] }),
+        p('[Why the recommended option is the best of these.]', { before: 120 }),
+        p('Financial implications', { style: 'Heading1' }),
+        p('[The cost, the budget it comes from, any savings or return, and over what period.]'),
+        p('Risks', { style: 'Heading1', keepNext: true }),
+        table(paper, [4, 2.2, 2.2, 4.6], [
+          ['Risk', 'Likelihood', 'Impact', 'How it is managed'],
+          ['[A risk of the recommended option]', '[Low/Med/High]', '[Low/Med/High]', '[What reduces it, and who watches it]'],
+          ['', '', '', ''],
+        ]),
+        p('Consultation', { style: 'Heading1', before: 360 }),
+        p('[Who was consulted (finance, legal, people, those affected) and what they said.]'),
+        p('Next steps', { style: 'Heading1', keepNext: true }),
+        table(paper, [6, 3, 2], [['Action', 'Owner', 'Due'], ['[First step once approved]', '[Owner]', '[Date]'], ['', '', '']]),
+        p('Appendices', { style: 'Heading1', before: 360 }),
+        p('[Appendix A: title]', { style: 'ListParagraph', bullet: true }),
       ].join(''),
     }),
   },

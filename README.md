@@ -87,7 +87,7 @@ a version it can't read, and asks for the password of one encrypted with a passw
   ("[Nomor surat]", "[Nama jabatan]"), for Fill in. F4 and Folio are in Page setup, for offices
   that print on them
 - Start from a template, on the start page: a letter, a memo, meeting minutes, a quote, an invoice,
-  a CV, a report and a novel's manuscript, each a new Word document made in the browser (nothing is fetched), in Word's
+  a CV, a report, a board paper and a novel's manuscript, each a new Word document made in the browser (nothing is fetched), in Word's
   own styles (Title, Heading 1 and 2, Table Grid with a shaded heading row that repeats on each page,
   List Paragraph with Word's bullets, Footer with a page number), with lines such as "To:" and
   "Date:" lined up at a tab stop, and placeholders that say what to type ("[Recipient name]",
@@ -95,7 +95,13 @@ a version it can't read, and asks for the password of one encrypted with a passw
   Letter paper where the browser's language is of a country that uses it (the United States,
   Canada, Mexico, the Philippines and others in the Americas), else A4, with 2.54 cm margins. The CV
   keeps contact details in the text, where screening software reads them, and the report numbers
-  its pages. The manuscript is in standard manuscript format, as agents and publishers ask for it:
+  its pages. The board paper (a decision paper for a board or executive committee) puts what is
+  asked of them first: its title, the paper's number, author, sponsor, purpose and status lined up,
+  then the decision sought in a box (a one-cell table with a shaded heading), then Recommendation,
+  Summary, Background, Options considered (a table of each option's benefits, risks and cost),
+  Financial implications, Risks (likelihood, impact and how each is managed), Consultation, Next
+  steps (action, owner, due) and Appendices, on numbered pages for the board pack; "[Board or
+  committee]" is typed once for its four places. The manuscript is in standard manuscript format, as agents and publishers ask for it:
   Times New Roman 12 pt, double-spaced, each paragraph's first line indented half an inch and no
   space between paragraphs (all Normal's, so text typed or pasted follows); a title page with the
   author's contact details, "about [Word count, rounded] words" and the title halfway down; a header
@@ -827,6 +833,16 @@ a version it can't read, and asks for the password of one encrypted with a passw
   (a new manuscript, say), which later Saves write to. A file renamed in the header is saved as a
   new one. The file is written where it is, by the browser: nothing is uploaded. Elsewhere (Firefox,
   Safari, phones), Open and Download work as before
+- Name a download as the next version, where a changed document is saved as a new file (Download,
+  Download a copy and Share): "Name it as a new version" in the review ("Downloads as Report
+  v2.docx"), rather than the browser's "Report (1).docx" beside the earlier copy. The version is
+  found at the end of the name and goes up as it is written ("v2" → "v3", "_V09" → "_V10", "rev 3"
+  → "rev 4", "v1.2" → "v1.3"), or "v2" is added with the separator the name uses ("Q3_board_paper"
+  → "Q3_board_paper_v2"); "With my initials" adds Track Changes' name's initials, replacing those
+  of whoever made the last version ("Report_v4_JD" → "Report_v5_DE"). The header's name follows, so
+  the next download after more edits is the version after. Remembered in this browser, and applied
+  when the review is skipped; off until asked for. A new document, or one not changed since it was
+  opened or last downloaded, isn't offered a version (`src/editor/versionName.js`)
 - Share… from Download's menu (▾), where the browser can share files (Safari on iPhone and iPad,
   among others): after "Review your changes", the saved file goes to the device's share sheet, to
   send it back by mail or a messaging app without looking for it in Downloads. It goes from the page

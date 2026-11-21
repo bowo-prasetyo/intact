@@ -75,7 +75,7 @@ test.describe('in English', () => {
     await expect(group.getByRole('button')).toHaveCount(Object.keys(ENGLISH).length);
     for (const name of Object.keys(ENGLISH)) await expect(group.getByRole('button', { name: new RegExp(`^${name}:`) })).toBeVisible();
     // The everyday templates are as they were, without them.
-    await expect(page.getByRole('region', { name: 'Or start from a template' }).getByRole('button')).toHaveCount(8);
+    await expect(page.getByRole('region', { name: 'Or start from a template' }).getByRole('button')).toHaveCount(9);
   });
 
   for (const [name, file] of Object.entries(ENGLISH)) {
@@ -167,7 +167,7 @@ test.describe('in Indonesian', () => {
     await expect(group.getByRole('button')).toHaveCount(Object.keys(INDONESIAN).length);
     for (const name of Object.keys(INDONESIAN)) await expect(group.getByRole('button', { name: new RegExp(`^${name}:`) })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Naskah dinas (Tata Naskah Dinas)' }).getByRole('button')).toHaveCount(11);
-    await expect(page.getByRole('region', { name: 'Templat lain (dalam bahasa Inggris)' }).getByRole('button')).toHaveCount(8);
+    await expect(page.getByRole('region', { name: 'Templat lain (dalam bahasa Inggris)' }).getByRole('button')).toHaveCount(9);
   });
 
   for (const [name, file] of Object.entries(INDONESIAN)) {
