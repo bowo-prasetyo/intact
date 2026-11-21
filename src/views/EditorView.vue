@@ -1271,7 +1271,7 @@ import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
-import { paragraphsOfXml, compareParagraphs } from '../editor/compare.js';
+import { paragraphsOfXml, compareParagraphs, notesOfPackage, compareNotes } from '../editor/compare.js';
 import { redlinePackage } from '../docx/redline.js';
 import { nextVersionName, initialsOf } from '../editor/versionName.js';
 import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
@@ -7120,11 +7120,17 @@ async function compareWith(name, bytes) {
     const before = paragraphsOfXml(otherXml);
     await draftSettled();
     await withHostsUnlocked(() => doc.write(page.value));
-    const after = paragraphsOfXml(await doc.zip.file(doc.mainPath).async('string'));
+    const thisXml = await doc.zip.file(doc.mainPath).async('string');
+    const after = paragraphsOfXml(thisXml);
+    // Footnotes and endnotes too, each kind in the order the text refers to them, numbered as shown.
+    const thisNotes = await notesOfPackage(doc.zip, doc.mainPath, thisXml);
+    const notes = compareNotes(await notesOfPackage(zip, main, otherXml), thisNotes).map((c) => ({
+      ...c, n: c.at < thisNotes[c.note].length ? doc.noteNumber(c.note, c.at + 1) : null,
+    }));
     compare.blocks = blocksFor(after);
     compare.other = file.name;
     compare.otherXml = otherXml;
-    compare.result = compareParagraphs(before, after);
+    compare.result = { ...compareParagraphs(before, after), notes };
     // The redline is made now, while the result is read, so that opening it in a new tab follows
     // the click at once (a browser opens a tab only straight after a click).
     compare.redline = compare.result.changes.length ? makeRedline().catch((e) => e) : null;
@@ -7143,6 +7149,10 @@ function closeCompare() {
 
 /** Goes to a change in this document: its paragraph (or, for text taken out, where it was). */
 function goToChange(change) {
+  if (change.note) {
+    goToNoteChange(change);
+    return;
+  }
   const block = compare.blocks[Math.min(change.at, compare.blocks.length - 1)];
   compare.result = null;
   compare.redline = null;
@@ -7151,6 +7161,22 @@ function goToChange(change) {
   placeCaret(block, change.at < compare.blocks.length);
   block.scrollIntoView({ block: 'center' });
   message.value = change.kind === 'removed' ? t('Text taken out was here') : change.kind === 'added' ? t('Added in this document') : t('Changed in this document');
+}
+
+/** Goes to a change in a footnote or endnote: the note (or, for one taken out, the note after it, or the last). */
+function goToNoteChange(change) {
+  compare.result = null;
+  compare.redline = null;
+  const notes = [...page.value.querySelectorAll(`.docx-note[data-note="${change.note}"]:not([hidden])`)];
+  const el = (change.n && notes.find((x) => x.dataset.n === change.n)) || notes[notes.length - 1];
+  if (!el) return;
+  const block = el.querySelector(BLOCK_SELECTOR) || el;
+  el.focus();
+  placeCaret(block, change.kind !== 'removed' || !!change.n);
+  el.scrollIntoView({ block: 'center' });
+  const name = change.note === 'footnote' ? t('footnote') : t('endnote');
+  message.value = change.kind === 'removed' ? t('A {note} taken out was here', { note: name })
+    : change.kind === 'added' ? t('Added in this document: {note} {n}', { note: name, n: change.n }) : t('Changed in this document: {note} {n}', { note: name, n: change.n });
 }
 
 /**
