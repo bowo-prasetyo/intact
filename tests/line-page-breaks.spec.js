@@ -81,17 +81,18 @@ test('a paragraph kept together moves to the next page whole, with the one kept 
   const topOf = (text) => page.locator('.docx-page p', { hasText: text }).first().evaluate((p) => p.getBoundingClientRect().top);
   await expect(mark).toBeVisible();
   // At first the long step is split across the pages.
-  const step = await topOf('This step explains');
-  await expect.poll(async () => (await mark.boundingBox()).y - step).toBeGreaterThan(10);
+  await expect.poll(async () => (await mark.boundingBox()).y - (await topOf('This step explains'))).toBeGreaterThan(10);
+
+  // Measured together, as the page may scroll (Firefox scrolls the caret's paragraph into view).
+  const gap = async (text) => Math.abs((await mark.boundingBox()).y - (await topOf(text)));
 
   let dialog = await openDialog(page, 'This step explains');
   await dialog.getByLabel('Keep lines together').check();
   await dialog.getByRole('button', { name: 'OK' }).click();
-  await expect.poll(async () => Math.abs((await mark.boundingBox()).y - step)).toBeLessThan(12);
+  await expect.poll(() => gap('This step explains')).toBeLessThan(12);
 
   dialog = await openDialog(page, 'Lead in');
   await dialog.getByLabel('Keep with next').check();
   await dialog.getByRole('button', { name: 'OK' }).click();
-  const lead = await topOf('Lead in');
-  await expect.poll(async () => Math.abs((await mark.boundingBox()).y - lead)).toBeLessThan(12);
+  await expect.poll(() => gap('Lead in')).toBeLessThan(12);
 });
