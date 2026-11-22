@@ -8945,6 +8945,7 @@ function pasteFrom(clipboardData) {
     else deleteSelection();
   }
   const tables = pasteMixed(blocks, tracked);
+  const code = applyPastedCode();
   onInput();
   undoStack.commit();
   const notes = [];
@@ -8954,7 +8955,41 @@ function pasteFrom(clipboardData) {
   if (skippedImages) {
     notes.push(`${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted with the text – copy a picture on its own and paste it, or use Insert picture`);
   }
+  if (code) notes.push(code);
   if (notes.length) message.value = notes.join(' · ');
+}
+
+/**
+ * Pasted code (marked by editor/paste.js) in the document's own code styles where it has them, as
+ * a technical document's "Code" paragraph style and "HTML Code" character style are, else in
+ * Consolas, Word's monospaced font: a code block's lines take the paragraph style (see
+ * pasteBlocks), other code the character style or the font. Returns what to say, or ''.
+ */
+function applyPastedCode() {
+  const marks = [...page.value.querySelectorAll('span[data-paste-code]')];
+  if (!marks.length) return '';
+  const { paragraph, character } = doc.codeStyles();
+  let font = false;
+  const used = new Set();
+  for (const m of marks) {
+    const texts = [...m.childNodes];
+    m.replaceWith(...texts);
+    const text = texts.find((n) => n.nodeType === 3 && n.data);
+    if (!text) continue;
+    if (paragraph && closestBlock(text)?.dataset.style === paragraph) {
+      used.add(paragraph); // the style gives it
+      continue;
+    }
+    const r = document.createRange();
+    r.setStart(text, 0);
+    r.setEnd(text, text.length);
+    restyle(doc, r, character ? setCharacterStyle(character) : setFont('Consolas'));
+    if (character) used.add(character);
+    else font = true;
+  }
+  const names = [paragraph, character].filter((id) => id && used.has(id)).map((id) => doc.styles.label(id));
+  if (names.length) return `Code pasted in the document’s ${names.join(' and ')} ${names.length === 1 ? 'style' : 'styles'}${font ? ', and Consolas' : ''}`;
+  return font ? 'Code pasted in Consolas, Word’s monospaced font (make a Code style with New style… to use one of your own)' : '';
 }
 
 /** The paragraph blocks of parsed clipboard blocks, those in tables' cells too. */
@@ -9081,6 +9116,9 @@ function pasteBlocks(blocks, tracked = null, renumber = true) {
     const here = selectionInPage();
     const el = here && closestBlock(here.startContainer);
     if (el && (i > 0 || destWasEmpty)) applyList(el, block);
+    // A code block's line in its own paragraph: the document's code paragraph style, where it has one.
+    const codeStyle = block.code && el && (i > 0 || destWasEmpty) && el.tagName === 'P' ? doc.codeStyles().paragraph : null;
+    if (codeStyle) el.dataset.style = codeStyle;
     if (tracked && block.runs.length) insertTracked(runNodes(block.runs), tracked);
     else insertAtCaret(runNodes(block.runs));
   });

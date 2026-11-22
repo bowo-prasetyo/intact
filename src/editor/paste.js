@@ -3,8 +3,10 @@
 // superscript or subscript, and links to web and e-mail addresses (written as Word's hyperlinks).
 // Tables (from Excel, Google Sheets, LibreOffice Calc, Word or a web page) stay tables: their rows,
 // columns, merged cells and relative column widths, each cell's text with the formatting above.
-// Everything else (fonts, colours, styles, pictures, other links, data-* attributes) is dropped,
-// because it can't be mapped faithfully to the document's own formatting.
+// Code (in <code>, <pre> and the like, or in a monospaced font, as code editors copy it) keeps its
+// line breaks and indentation and is marked as code, for the document's own code style or a
+// monospaced font. Everything else (other fonts, colours, styles, pictures, other links, data-*
+// attributes) is dropped, because it can't be mapped faithfully to the document's own formatting.
 import { isLinkable } from '../docx/links.js';
 
 const BLOCKS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'TR', 'TABLE', 'UL', 'OL', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'DL', 'DT', 'DD', 'FIGURE']);
@@ -107,6 +109,8 @@ function formatOf(el, inherited, classes = null) {
   if (tag === 'SUB') f.va = 'subscript';
   if (/^H[1-6]$/.test(tag) || tag === 'TH') f.b = true;
   if (tag === 'PRE') f.pre = true;
+  // Code: in code's own tags, or in a monospaced font (as code editors and terminals copy it).
+  if (CODE_TAGS.has(tag)) f.code = true;
   for (const name of classes?.size ? el.classList : []) {
     const declared = classes.get(name);
     if (!declared) continue;
@@ -114,9 +118,18 @@ function formatOf(el, inherited, classes = null) {
     probe.style.cssText = declared;
     applyStyle(f, probe.style);
   }
-  if (el.style) applyStyle(f, el.style);
+  if (el.style) {
+    applyStyle(f, el.style);
+    if (el.style.fontFamily) f.code = MONOSPACE.test(el.style.fontFamily);
+    // Code editors (VS Code, JetBrains) copy each line as a <div style="white-space: pre">.
+    if (/^pre/.test(el.style.whiteSpace)) f.pre = true;
+  }
   return f;
 }
+
+const CODE_TAGS = new Set(['CODE', 'PRE', 'KBD', 'SAMP', 'TT', 'VAR']);
+// The first font named: a monospaced one (or the generic family) is code's.
+const MONOSPACE = /^\s*["']?(monospace|ui-monospace|consolas|courier|courier new|menlo|monaco|lucida console|lucida sans typewriter|andale mono|dejavu sans mono|liberation mono|ubuntu mono|source code pro|fira code|fira mono|jetbrains mono|cascadia (code|mono)|sf mono|roboto mono|ibm plex mono|inconsolata|hack|droid sans mono|noto sans mono|pt mono|sfmono-regular)\b/i;
 
 const cssLength = (value) => {
   const m = /^\s*([\d.]+)\s*(px|pt|cm|mm|in)?\s*$/i.exec(value || '');
@@ -207,7 +220,16 @@ function walk(node, format, state) {
       let text = child.data;
       if (!format.pre) text = text.replace(/[\t\n\r ]+/g, ' ');
       text = text.replace(/ /g, ' ');
-      if (text) state.current.runs.push({ text, b: format.b, i: format.i, u: format.u, s: format.s, va: format.va || null, href: format.href || null });
+      const run = (t) => ({ text: t, b: format.b, i: format.i, u: format.u, s: format.s, va: format.va || null, href: format.href || null, code: !!format.code });
+      if (format.pre && /[\r\n]/.test(text)) {
+        // Preformatted text (a code block): each line a paragraph, as Word pastes one.
+        text.split(/\r\n?|\n/).forEach((line, i) => {
+          if (i) startBlock(state);
+          if (line) state.current.runs.push(run(line));
+        });
+        continue;
+      }
+      if (text) state.current.runs.push(run(text));
       continue;
     }
     if (child.nodeType !== 1) continue;
@@ -276,14 +298,17 @@ function tidy(block) {
   const runs = [];
   for (const r of block.runs) {
     const last = runs[runs.length - 1];
-    if (!r.br && last && !last.br && last.b === r.b && last.i === r.i && last.u === r.u && last.s === r.s && (last.va || null) === (r.va || null) && (last.href || null) === (r.href || null)) last.text += r.text;
+    if (!r.br && last && !last.br && last.b === r.b && last.i === r.i && last.u === r.u && last.s === r.s && (last.va || null) === (r.va || null) && (last.href || null) === (r.href || null) && !!last.code === !!r.code) last.text += r.text;
     else runs.push({ ...r });
   }
   const first = runs.find((r) => !r.br);
-  if (first && runs[0] === first) first.text = first.text.replace(/^ +/, '');
+  if (first && runs[0] === first && !first.code) first.text = first.text.replace(/^ +/, '');
   const lastRun = runs[runs.length - 1];
   if (lastRun && !lastRun.br) lastRun.text = lastRun.text.replace(/ +$/, '');
-  return { list: block.list, runs: runs.filter((r) => r.br || r.text) };
+  const kept = runs.filter((r) => r.br || r.text);
+  // A paragraph of code (a code block's line): all its text is code, as <pre> or a code editor gives it.
+  const code = !block.list && kept.some((r) => r.text) && kept.every((r) => r.br || r.code || !r.text.trim());
+  return { list: block.list, runs: kept, ...(code ? { code: true } : {}) };
 }
 
 /**
@@ -298,6 +323,13 @@ export function runNodes(runs) {
       continue;
     }
     let node = document.createTextNode(r.text);
+    // Code is marked for the editor to give its font (see EditorView pasteBlocks); the mark is taken off then.
+    if (r.code) {
+      const mark = document.createElement('span');
+      mark.dataset.pasteCode = '';
+      mark.append(node);
+      node = mark;
+    }
     for (const [on, tag] of [[r.va === 'subscript', 'sub'], [r.va === 'superscript', 'sup'], [r.s, 's'], [r.u, 'u'], [r.i, 'em'], [r.b, 'strong']]) {
       if (!on) continue;
       const wrap = document.createElement(tag);

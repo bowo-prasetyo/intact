@@ -3977,6 +3977,19 @@ export class DocxDocument {
     return a.localName === b.localName && this.sameProps(wrapIn(this.xml, a), wrapIn(this.xml, b));
   }
 
+  /**
+   * The document's own styles for code, by name, as technical documents have them: { paragraph
+   * ("Code", "Code Block", "Source Code", "HTML Preformatted"…), character ("HTML Code", "Inline
+   * Code", "Code Char"…) }, each a style id or null.
+   */
+  codeStyles() {
+    const find = (type, re) => [...this.styles.byId.values()].find((st) => st.type === type && re.test(st.name.trim()))?.id || null;
+    return {
+      paragraph: find('paragraph', /^(code|code ?block|source ?code|source|listing|program listing|html preformatted|preformatted( text)?|code example)$/i),
+      character: find('character', /^(html code|inline ?code|code( char)?|source ?code( char)?|code text|html preformatted char)$/i),
+    };
+  }
+
   /** Word's Default Paragraph Font (the default character style), or null. */
   defaultCharacterStyle() {
     for (const st of this.styles.byId.values()) if (st.type === 'character' && st.isDefault) return st.id;
