@@ -167,6 +167,14 @@ a version it can't read, and asks for the password of one encrypted with a passw
   `w:multiLevelType` multilevel, each level's text, format, indent and suffix; a centred level's
   `w:jc` in its own properties), so Word and LibreOffice number it the same; lists in files that
   restart a level only after a given one (`w:lvlRestart`) are numbered so here too
+- Numbered headings, as Word's "1 Heading 1, 1.1 Heading 2, 1.1.1 Heading 3" (Numbering ▾): every
+  heading numbered by its style, a specification's or a manual's 1, 1.1, 1.1.1, written as Word
+  writes it: a new multilevel list whose levels are linked to Heading 1–9 (`w:pStyle` in each
+  `w:lvl`), and each heading style numbered by it (`w:numPr` in the style, with no `w:ilvl` at the
+  first level). The paragraphs aren't changed: their styles number them, here and in Word, so a
+  heading added later is numbered too. Heading 1–3 are added if the document lacks them. Remove
+  heading numbering takes it off the styles; Ctrl+Z puts them back. Not tracked (Word doesn't track
+  style changes either)
 - Bulleted and numbered lists that behave like Word's: the Bullets and Numbering buttons start and
   end lists; Enter on an empty item (or Backspace at its start) ends the list; Tab and Shift+Tab at
   the start of an item change its level
@@ -229,6 +237,13 @@ a version it can't read, and asks for the password of one encrypted with a passw
   as Word writes them; tracked while tracking. On the page, tabs go to Word's default stops
   (`w:defaultTabStop`, half an inch unless the file says otherwise), or, where a paragraph's first
   stop is a left one, to that stop, so a letter's "Nomor:" and "Perihal:" lines line up as in Word
+- Line and page breaks, as the Paragraph dialog's Line and Page Breaks tab in Word: Keep with next
+  (a step kept with its figure, a heading with its text), Keep lines together and Page break before,
+  shown as the paragraph has them (from its style too), written as the paragraph's own
+  `w:keepNext`, `w:keepLines` and `w:pageBreakBefore` only where its style doesn't say the same (off
+  as `w:val="0"` where the style has it on); tracked while tracking. The page estimate follows them:
+  a paragraph kept together moves to the next page whole, and paragraphs kept with the next go with
+  it, chained as Word chains them
 - Print the document (Ctrl+P, or the browser's Print): only the page is printed, not the editor
   around it, on the document's paper size and in its margins, with a new page at each page break,
   "page break before" and section break; tracked changes and highlights print as they show.
@@ -251,7 +266,11 @@ a version it can't read, and asks for the password of one encrypted with a passw
   it will be called (the file's name: the page's title is the file's name while printing), about
   how many pages it has, and what it will show that you may not want sent: tracked changes and
   highlights, which print as they show (accept or reject the changes first for a clean copy).
-  The marks drawn over the page don't print, nor do comments unless asked for (see below)
+  The marks drawn over the page don't print, nor do comments unless asked for (see below). Where the
+  text has page numbers only Word works out (a table of contents, a list of figures, an index, a
+  page reference: `TOC`, `INDEX`, `PAGEREF`), it says they are the numbers the file had and that
+  the pages here break about where Word's do, and how to get a PDF whose numbers are right (update
+  the fields in Word and save the PDF there); Print says so in the status bar
 - Comments in the printout and PDF, for marked work returned as a PDF (as a learning platform often
   asks for): ticked in Save as PDF ("Print comments", remembered in this browser and followed by
   Print, Ctrl+P, too), the comments are listed after the document, from a new page, each with its
@@ -341,10 +360,14 @@ a version it can't read, and asks for the password of one encrypted with a passw
   inserted rows. Each is one change to accept or reject; accepting a merge across a row leaves one
   cell spanning the columns (`gridSpan`), as Word writes a merge. Cells an older Word file merged
   with `w:hMerge` show merged
-- Insert pictures (PNG, JPEG, GIF or BMP) from the toolbar, by pasting a picture on its own (such as
+- Insert pictures (PNG, JPEG, GIF, BMP or SVG) from the toolbar, by pasting a picture on its own (such as
   a screenshot) or by dropping picture files on the page: in line with the text at the caret, at
   their size or narrowed to fit between the margins, tracked while tracking. The picture's file,
-  relationship and content type are added when saving, only if it is still in the document
+  relationship and content type are added when saving, only if it is still in the document. An SVG
+  (a diagram) is inserted as Word 2016 and later insert one: the SVG kept as it is, and a PNG drawn
+  from it here at twice its size, for readers before Office 2016, the picture's `a:blip` pointing at
+  the PNG with the SVG in its extension (`asvg:svgBlip`); the page shows the PNG, drawn from the SVG
+  as an image, which runs none of its scripts
 - A logo in the header or footer (a letterhead): with the caret in a header or footer, Insert
   picture (or pasting or dropping one) puts it there, in line at the caret, with the picture file's
   relationship in that part's own relationships (`header1.xml.rels`), as Word writes it; the text's
@@ -462,8 +485,36 @@ a version it can't read, and asks for the password of one encrypted with a passw
     numbers are Word's, as in a table of contents
   - Caption…: "Figure 1: text" (or Table, Equation) in Word's Caption style, numbered by a `SEQ`
     field among the others, below a picture or paragraph or above a table, as Word places them
-  - Cross-reference…: to a heading (its text) or a caption (its label and number, or all of it), or
-    "above"/"below", as a `REF` field to a `_Ref` bookmark added on it, as Word adds one
+  - Cross-reference…: to a numbered item (its number, "step 3", as `REF \r`, or its text), a
+    heading (its text, or its number once headings are numbered), a bookmark (its text, or its
+    paragraph's number) or a caption (its label and number, or all of it), or "above"/"below", as a
+    `REF` field to a `_Ref` bookmark added on it, as Word adds one (a bookmark's own name for a
+    bookmark)
+  - Bookmark…: names the selected text, or the place at the caret, as Word's Bookmark dialog does
+    (`w:bookmarkStart` and `w:bookmarkEnd`, never tracked, as in Word), with Word's rules for a
+    name (up to 40 letters, digits and underscores, a letter first); lists the document's bookmarks
+    (not Word's hidden `_Toc` and `_Ref` ones) with their text, goes to one and deletes one. A name
+    already used moves that bookmark here, as in Word
+  - Mark index entry… (Alt+Shift+X), as Word's Mark Entry: Word's `XE` field after the selected text
+    (it shows nothing in the text), with a subentry after a colon (`XE "Pump:seals"`); Mark all marks
+    the selected text in each paragraph of the text it is in, once a paragraph, as Word's Mark All
+  - Index: "Index" in Heading 1 and Word's `INDEX` field (\h "A" for a letter's heading, \c "1" for
+    one column), built at once from the entries marked, as Word's update builds one: an entry a line
+    in Word's Index 1 style with the pages it is on ("Pump, 3, 7"), its subentries below it in Index
+    2, a letter's heading before its entries in Index Heading, sorted as the document's language
+    sorts them (case and accents aside). The pages come from the page estimate (about where Word's
+    pages break), and the file asks Word to work them out again when it opens it (`w:updateFields`);
+    Update (F9) rebuilds it with entries marked later
+  - Document property…: the title, subject, keywords, category, status and comments
+    (`docProps/core.xml`) and the document's own custom properties (`docProps/custom.xml`, as Word's
+    Advanced Properties › Custom: a product's name, a version number), added, changed and removed; a
+    property can be put at the caret as Word's `DOCPROPERTY` field ("Version 2.4"). Changing a
+    property brings every field showing it up to date at once, in headers and footers too, so a
+    version number changed once is changed everywhere. A custom property keeps its type where its
+    new value still fits it (a number, a date), else becomes text; a new one is text, as Word adds
+    one; a sensitivity label's properties (`MSIP_Label_*`) aren't offered and are kept as they are. A
+    file without the parts gets them, with their relationships and content types. Ctrl+Z puts the
+    properties back
   - Equation…: typed as in LaTeX (fractions, scripts, roots, sums and integrals with limits,
     brackets that grow, Greek letters, the usual symbols, functions upright; matrices in their
     brackets, `\begin{pmatrix} a & b \\ c & d \end{pmatrix}` and bmatrix, Bmatrix, vmatrix, Vmatrix
@@ -521,7 +572,9 @@ a version it can't read, and asks for the password of one encrypted with a passw
   Word's number formats, \c repeat, \r reset and \s per chapter) are renumbered in the text's
   order; cross-references (`REF`) show the bookmarked text again, or its paragraph's number
   (\r, \n, \w) and "above"/"below" (\p); note numbers in cross-references (`NOTEREF`) follow the
-  notes; citations (`CITATION`) and bibliographies (`BIBLIOGRAPHY`, in the text) from the
+  notes; document properties (`DOCPROPERTY`, in headers and footers too) show the properties as
+  they now are; indexes (`INDEX`) are rebuilt from the entries marked (see Index above);
+  citations (`CITATION`) and bibliographies (`BIBLIOGRAPHY`, in the text) from the
   document's sources, in its citation style (IEEE's numbers in the order first cited); tables of
   figures (`TOC \c`) from the captions of their label; and tables of contents (`TOC`, in Word's content control or in the text) are rebuilt from
   the headings (\o outline levels, \u paragraphs' own levels, \t styles), as Word builds one:
@@ -601,6 +654,16 @@ a version it can't read, and asks for the password of one encrypted with a passw
   come through; a first-line indent written takes the place of a hanging one, and the other way
   round, with Word's character-unit indents that would win over it); every paragraph in the style, and in styles based on it, follows on the page and
   in Word. Paragraphs keep their own formatting. Ctrl+Z puts the style back
+- New style…, as Word's Create New Style from Formatting (the Paragraph style menu): a paragraph or
+  character style made from the selection's formatting, as a manual's "Code", "Note" or "Warning"
+  style is made, named as you choose. A paragraph style takes the paragraph's own formatting
+  (spacing, indents, borders, shading, alignment, line and page breaks) and its first run's (font,
+  size, colour and the like), based on the paragraph's style; a character style the selected
+  text's. Written as Word writes one (`w:customStyle`, in Word's style gallery with `w:qFormat`, a
+  paragraph style followed by itself), and offered in the style menus from then on. The selection is
+  given the style and loses the direct formatting the style now gives it, as in Word, so Modify
+  style… changes it later. Tracked while tracking (the style itself isn't, as in Word); a name
+  already used is refused, saying why; Ctrl+Z takes the new style away again
 - A watermark, as Word's Design > Watermark, in Page setup: DRAFT, CONFIDENTIAL, DO NOT COPY,
   SAMPLE, URGENT, ASAP or your own text, diagonal or horizontal, in Word's semi-transparent silver.
   Written as Word writes one, as WordArt in every header behind the text (a VML text path named
@@ -669,6 +732,13 @@ a version it can't read, and asks for the password of one encrypted with a passw
   to web and e-mail addresses come through from web pages, Google Docs and Word; fonts, colours,
   styles, other links and pictures in copied text don't (the status bar says when pictures were
   skipped; a picture copied on its own is inserted)
+- Paste code: text in `<code>`, `<pre>`, `<kbd>` and the like, or in a monospaced font (as VS Code,
+  a terminal or a documentation site copies it), keeps its lines and indentation (each line of a
+  code block a paragraph, as Word pastes one) and goes in the document's own code styles where it
+  has them, found by their names: a code block's lines in a paragraph style such as Code, Code
+  Block, Source Code or HTML Preformatted; code in a sentence in a character style such as HTML
+  Code or Inline Code. Without them, code is pasted in Consolas, Word's monospaced font (New style…
+  makes a Code style of your own from it). The status bar says which
 - Paste tables from Excel, Google Sheets, LibreOffice Calc, Word or a web page as tables, as Word
   pastes them: the rows and columns, cells merged across and down (`gridSpan`, `vMerge`), the
   columns' widths in proportion to the copied ones (`<col width>`, or the cells'), and each cell's
@@ -1331,7 +1401,7 @@ The About page shows the version.
   spacing or indents; Ctrl+Shift+C opens the developer tools in some browsers instead (use the
   button)
 - Pasting keeps only bold, italic, underline, strikethrough, superscript, subscript, paragraphs,
-  lists, tables and links to web and e-mail addresses (not highlight); pictures within copied text and other
+  lists, tables, code (in a code style or Consolas, not its colours) and links to web and e-mail addresses (not highlight); pictures within copied text and other
   links (their text is kept) are not added. A pasted table's cell shading, borders, number alignment
   and row heights aren't kept (it takes Table Grid's), and a table pasted in another table's cell is
   pasted as text, not as a nested table or into the cells there. Making existing text a link isn't tracked
@@ -1462,7 +1532,25 @@ The About page shows the version.
   the like, arithmetic), not bookmarks' values, IF, AND, OR, NOT, DEFINED or TRUE/FALSE, and their
   results update with F9 rather than as you type, as in Word
 - The Numbering library's lists are new lists: Word's Define New Multilevel List (other formats,
-  linking levels to heading styles) isn't offered
+  linking levels to styles other than the headings) isn't offered; numbered headings are Word's 1,
+  1.1, 1.1.1, linked to Heading 1–9 (a "Chapter 1" or "1.1." look is set in Word)
+- Bookmarks: Word's hidden bookmarks (`_Toc`, `_Ref`) aren't listed, and a bookmark in a note,
+  header, footer or text box isn't offered to cross-reference. Cross-references to a numbered item
+  show its number as Update fields shows it (the number in its list, without the dot after it);
+  Word's "full context" and "no context" numbers (\w, \n) are Word's to work out
+- An index's page numbers come from the page estimate, about where Word's pages break, until Word
+  updates the index when it opens the file. Mark index entry doesn't offer Word's cross-references
+  ("See"), page ranges, bold or italic page numbers or a third level, nor Word's index formats
+  (right-aligned page numbers, two columns, run-in subentries); an index in a file that has them
+  is rebuilt with entries and subentries only (`\t` "See" cross-references kept as text). Entries
+  are marked in the text, not in notes, headers, footers or text boxes; Mark all is
+  case-sensitive, as in Word
+- Document property… edits the core properties listed there and custom properties as text: the
+  author, company and the like are left as they are (Before you release removes them), and a new
+  custom property is text, not a number, date or Yes/No. A `DOCPROPERTY` field of a property the
+  document lacks keeps its result, as Word shows an error there
+- New style… makes paragraph and character styles from the selection, not linked styles, list or
+  table styles; a style's "Automatically update" and its own next style are Word's to set
 - Restrict Editing applies to the whole document: the parts Word lets everyone (or named people)
   edit in a read-only document (`w:permStart`), and sections left unprotected in a form
   (`w:formProt`), are locked here too; "Edit anyway" opens everything. Formatting restrictions
@@ -1474,15 +1562,15 @@ The About page shows the version.
   label can't be applied or changed here
 - The accessibility check reads the page as shown: it doesn't check reading order, colour alone
   conveying meaning, or charts, equations and objects kept as they are; a table's header row, the
-  document's language and a picture's "decorative" mark are set in Word. Without a core properties
-  part, a title can't be added here
+  document's language and a picture's "decorative" mark are set in Word. A file without a core
+  properties part gets one for a title added here
 - Signatures are recognised, not verified: Intact doesn't check that a signature is valid or who
   signed
 - The page count is worked out, not Word's: the browser's fonts and line breaking, the last
   section's paper and margins for every section, footnotes not taking room at the bottom of a page,
-  and rows kept whole where Word may split them. A paragraph's "keep with next" and "keep lines
-  together" other than headings' aren't followed. On a phone, where the page takes the screen's
-  width, pages aren't counted
+  and rows kept whole where Word may split them. "Keep with next" and "keep lines together" are
+  followed by moving whole paragraphs, not a table's rows. On a phone, where the page takes the
+  screen's width, pages aren't counted
 - The PDF is the browser's: its fonts (a font the device lacks is substituted, as on screen), and
   links and a document outline as the browser makes them. Saving the PDF is the print window's
 - Typed addresses become links as Word makes them: an address without `www.` or a scheme (such as

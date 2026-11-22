@@ -4461,7 +4461,7 @@ export class DocxDocument {
   async writeCore() {
     const edits = this.propEdits?.core || null;
     // Without a core part, one is added for properties given here (as Word adds one on saving).
-    if (!this.propertyPaths?.core && edits && Object.values(edits).some(Boolean)) {
+    if (!this.propertyPaths?.core && ((edits && Object.values(edits).some(Boolean)) || this.newTitle)) {
       await this.addPackagePart('docProps/core.xml', CORE_PROPS_REL, CORE_PROPS_CT, EMPTY_CORE);
       this.propertyPaths.core = 'docProps/core.xml';
       this.coreOriginal = EMPTY_CORE;

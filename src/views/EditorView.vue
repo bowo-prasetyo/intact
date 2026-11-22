@@ -1065,14 +1065,14 @@
       <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
       <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
-      <button type="button" role="menuitem" @click="openMarkEntry">Mark index entry…<span class="hint">{{ t('Alt+Shift+X: a word for the index') }}</span></button>
-      <button type="button" role="menuitem" @click="insertIndex">Index<span class="hint">{{ t('From the entries marked') }}</span></button>
-      <button type="button" role="menuitem" @click="openProperties">Document property…<span class="hint">{{ t('Title, version… as fields Word updates') }}</span></button>
       <button type="button" role="menuitem" @click="openBookmarks">Bookmark…<span class="hint">{{ t('Name a place to refer to') }}</span></button>
       <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading, numbered item, bookmark or caption') }}</span></button>
+      <button type="button" role="menuitem" @click="openMarkEntry">Mark index entry…<span class="hint">{{ t('Alt+Shift+X: a word for the index') }}</span></button>
+      <button type="button" role="menuitem" @click="insertIndex">Index<span class="hint">{{ t('From the entries marked') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA, MLA, Chicago, Harvard, IEEE') }}</span></button>
       <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ CITATION_STYLES[citationStyle(doc.sources?.style)].heading }}</span></button>
+      <button type="button" role="menuitem" @click="openProperties">Document property…<span class="hint">{{ t('Title, version… as fields Word updates') }}</span></button>
     </div>
 
     <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
