@@ -51,7 +51,10 @@ import { relsPathOf } from './links.js';
 import { formFieldInfo, formFieldTitle, setFormCheck, setFormDropdown } from './formFields.js';
 import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
 import { PasswordError, decrypt, encrypt, keyForPassword } from './encryption.js';
-import { propertyPaths, readProperties, personalParts, anonymize, updateCore } from './properties.js';
+import {
+  propertyPaths, readProperties, personalParts, anonymize, updateCore, readCore, setCore, setCustom, managedProperty, EDITABLE_CORE,
+  EMPTY_CORE, CUSTOM_PROPS_REL, CUSTOM_PROPS_CT, CORE_PROPS_REL, CORE_PROPS_CT,
+} from './properties.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -445,6 +448,10 @@ export class DocxDocument {
     this.updateProperties = true;
     this.modifiedBy = '';
     this.newTitle = null;
+    // Properties edited here (Document properties…): { core: { title, … } or null, custom: [{ name,
+    // value }] or null }, written on saving (see writeCore, writeCustom).
+    this.customOriginal = this.propertyPaths.custom ? await this.text(this.propertyPaths.custom) : null;
+    this.propEdits = { core: null, custom: null };
     this.changed = false; // whether the last write changed the document (see write)
     this.restored = false; // opened from a draft (see drafts.js): it differs from the file first opened
     // The package's parts as opened, to tell whether a save changes anything (see packageChanged).
@@ -4300,8 +4307,9 @@ export class DocxDocument {
     // Whether the document now differs from the one opened: only then are its properties updated.
     // A restored draft already holds edits to the file first opened, so it counts as changed too,
     // and so does a new document made from a template, which is no longer the file opened.
-    this.changed = this.restored || this.removePersonal || this.newTitle != null || this.fromTemplate || await this.packageChanged();
-    this.writeCore();
+    await this.writeCustom();
+    this.changed = this.restored || this.removePersonal || this.newTitle != null || !!this.propEdits.core || this.fromTemplate || await this.packageChanged();
+    await this.writeCore();
     await this.writePersonal();
   }
 
@@ -4311,18 +4319,127 @@ export class DocxDocument {
    * Always worked out from the properties as opened, so saving twice counts one revision; with
    * nothing changed (or updating switched off), the part as opened goes back.
    */
-  writeCore() {
+  async writeCore() {
+    const edits = this.propEdits?.core || null;
+    // Without a core part, one is added for properties given here (as Word adds one on saving).
+    if (!this.propertyPaths?.core && edits && Object.values(edits).some(Boolean)) {
+      await this.addPackagePart('docProps/core.xml', CORE_PROPS_REL, CORE_PROPS_CT, EMPTY_CORE);
+      this.propertyPaths.core = 'docProps/core.xml';
+      this.coreOriginal = EMPTY_CORE;
+      this.coreAdded = true;
+    }
     const path = this.propertyPaths?.core;
     if (!path || this.coreOriginal == null) return;
     const update = this.changed && this.updateProperties;
-    if (!update && this.newTitle == null) {
+    if (!update && this.newTitle == null && !edits) {
       if (this.coreWritten && this.zip.files[path] === this.coreWritten) this.zip.file(path, this.coreOriginal);
       this.coreWritten = null;
       return;
     }
-    const xml = updateCore(this.coreOriginal, update ? { modified: new Date(), by: this.modifiedBy, revision: true } : {}, this.newTitle);
+    let xml = updateCore(this.coreOriginal, update ? { modified: new Date(), by: this.modifiedBy, revision: true } : {}, edits ? null : this.newTitle);
+    if (edits) xml = setCore(xml, edits);
     this.zip.file(path, xml);
     this.coreWritten = this.zip.files[path];
+  }
+
+  /**
+   * Writes the custom properties given here (Document properties…) into docProps/custom.xml: in
+   * the part the file had, or a new one (with its relationship and content type); with none given
+   * (or Undo back to none), the part goes back as it was.
+   */
+  async writeCustom() {
+    const list = this.propEdits?.custom;
+    const path = this.propertyPaths?.custom;
+    if (!list) {
+      if (path && this.customWritten && this.zip.files[path] === this.customWritten) {
+        if (this.customOriginal != null) this.zip.file(path, this.customOriginal);
+      }
+      this.customWritten = null;
+      return;
+    }
+    if (!path) {
+      await this.addPackagePart('docProps/custom.xml', CUSTOM_PROPS_REL, CUSTOM_PROPS_CT, setCustom(null, list));
+      this.propertyPaths.custom = 'docProps/custom.xml';
+    } else this.zip.file(path, setCustom(this.customOriginal, list));
+    this.customWritten = this.zip.files[this.propertyPaths.custom];
+  }
+
+  /** Adds a part of the package (not the main part's): its file, its relationship in _rels/.rels and its content type. */
+  async addPackagePart(path, relType, contentType, xml) {
+    this.zip.file(path, xml);
+    const rels = parseXml((await this.text('_rels/.rels')) || `<Relationships xmlns="${NS.pr}"/>`);
+    if (![...rels.documentElement.children].some((r) => r.getAttribute('Type') === relType)) {
+      let id = 1;
+      while ([...rels.documentElement.children].some((r) => r.getAttribute('Id') === `rIdProps${id}`)) id++;
+      const rel = rels.createElementNS(NS.pr, 'Relationship');
+      rel.setAttribute('Id', `rIdProps${id}`);
+      rel.setAttribute('Type', relType);
+      rel.setAttribute('Target', path);
+      rels.documentElement.appendChild(rel);
+      this.zip.file('_rels/.rels', serializeXml(rels));
+    }
+    const ct = parseXml(await this.text('[Content_Types].xml'));
+    if (![...ct.documentElement.children].some((d) => d.getAttribute('PartName') === `/${path}`)) {
+      const ov = ct.createElementNS(NS.ct, 'Override');
+      ov.setAttribute('PartName', `/${path}`);
+      ov.setAttribute('ContentType', contentType);
+      ct.documentElement.appendChild(ov);
+      this.zip.file('[Content_Types].xml', serializeXml(ct));
+    }
+  }
+
+  /**
+   * The properties Document properties… edits, as they are now: { core: { title, subject, keywords,
+   * category, contentStatus, description }, custom: [{ name, value }] } (custom ones Office manages,
+   * a sensitivity label's, left out).
+   */
+  editableProperties() {
+    const core = this.propEdits.core || readCore(this.coreOriginal);
+    if (!this.propEdits.core && this.newTitle != null) core.title = this.newTitle;
+    const custom = this.propEdits.custom || (this.properties?.custom || []).filter((p) => !managedProperty(p.name)).map(({ name, value }) => ({ name, value }));
+    return { core: { ...core }, custom: custom.map((p) => ({ ...p })) };
+  }
+
+  /** Sets the properties to save (see editableProperties); the review's list follows. */
+  setProperties({ core, custom }) {
+    this.propEdits = { core: core ? { ...core } : null, custom: custom ? custom.map((p) => ({ ...p })) : null };
+    if (core) this.newTitle = null;
+    this.refreshPropertyList();
+  }
+
+  /** The properties as they are now in the list the review shows (doc.properties). */
+  refreshPropertyList() {
+    if (!this.propertiesAsOpened) this.propertiesAsOpened = { core: this.properties.core, custom: this.properties.custom };
+    const { core, custom } = this.propEdits;
+    const labels = Object.fromEntries(EDITABLE_CORE.map(([key, , , label]) => [label, key]));
+    this.properties.core = core
+      ? [...this.propertiesAsOpened.core.filter((p) => !(p.label in labels)), ...EDITABLE_CORE.filter(([key]) => core[key]).map(([key, , , label]) => ({ label, value: core[key] }))]
+      : this.propertiesAsOpened.core;
+    this.properties.custom = custom
+      ? [...this.propertiesAsOpened.custom.filter((p) => managedProperty(p.name)), ...custom]
+      : this.propertiesAsOpened.custom;
+  }
+
+  /** For Undo: the properties edited here, as a value (see setPropertyState). */
+  propertyState() {
+    return this.propEdits.core || this.propEdits.custom ? this.propEdits : null;
+  }
+
+  setPropertyState(state) {
+    this.propEdits = { core: state?.core ? { ...state.core } : null, custom: state?.custom ? state.custom.map((p) => ({ ...p })) : null };
+    this.refreshPropertyList();
+  }
+
+  /**
+   * The value a DOCPROPERTY field shows for property `name` (Title, Subject, Keywords, Category,
+   * Comments, or a custom property's name, in any case), or null if the document has none.
+   */
+  propertyValue(name) {
+    const { core, custom } = this.editableProperties();
+    const key = EDITABLE_CORE.find(([, , , , field]) => field && field.toLowerCase() === String(name).toLowerCase())?.[0];
+    if (key) return core[key];
+    const p = custom.find((c) => c.name.toLowerCase() === String(name).toLowerCase());
+    return p ? p.value : null;
   }
 
   /** What saving records in the properties, for the review: { available, on, by, revision, lastBy }. */

@@ -22,6 +22,7 @@ const ARG_SWITCHES = {
   REF: new Set(['\\*', '\\d']),
   NOTEREF: new Set(['\\*']),
   CITATION: new Set(['\\l', '\\p', '\\s', '\\v', '\\m', '\\f']),
+  DOCPROPERTY: new Set(['\\*']),
 };
 
 /** A field instruction (' SEQ Figure \\* ARABIC ') as { code: 'SEQ', args: ['Figure'], sw: { '\\*': 'ARABIC' } }. */
@@ -119,7 +120,19 @@ function blockOf({ start }) {
 export function updateFields(doc, root, { only = null } = {}) {
   // Only fields of these kinds (as inserting a table of contents updates it alone), or all.
   const want = (code) => !only || only.includes(code);
-  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0, formula: 0 };
+  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0, formula: 0, docproperty: 0 };
+  // Document properties (DOCPROPERTY Version), everywhere they are, headers and footers too: they
+  // don't depend on where they are, and a version or a product name is often in a footer.
+  if (want('DOCPROPERTY') && doc.propertyValue) {
+    for (const el of root.querySelectorAll('span.field[data-instr]')) {
+      if (el.closest('.sdt-locked, .textbox')) continue;
+      const { code, args } = parseInstr(el.dataset.instr);
+      if (code !== 'DOCPROPERTY' || !args[0]) continue;
+      const value = doc.propertyValue(args[0]);
+      if (value == null) continue; // Word shows an error; the result is left as it is
+      if (setResult(el, value)) tally.docproperty++;
+    }
+  }
   const all = [...root.querySelectorAll('span.field[data-instr]')].filter((f) => !f.closest(OUTSIDE_TEXT));
   const parsed = new Map(all.map((f) => [f, parseInstr(f.dataset.instr)]));
   const inText = all.filter((f) => !f.closest('.sdt-locked'));

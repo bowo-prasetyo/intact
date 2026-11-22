@@ -1063,6 +1063,7 @@
       <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
       <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
+      <button type="button" role="menuitem" @click="openProperties">Document property…<span class="hint">{{ t('Title, version… as fields Word updates') }}</span></button>
       <button type="button" role="menuitem" @click="openBookmarks">Bookmark…<span class="hint">{{ t('Name a place to refer to') }}</span></button>
       <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading, numbered item, bookmark or caption') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
@@ -1238,6 +1239,7 @@
     <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
+    <PropertiesDialog v-if="refDialog === 'properties'" :properties="doc.editableProperties()" @close="closeRefDialog" @save="saveProperties" />
     <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
 
     <footer class="statusbar">
@@ -1278,6 +1280,7 @@ import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
 import BookmarkDialog from '../components/BookmarkDialog.vue';
+import PropertiesDialog from '../components/PropertiesDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
@@ -2253,9 +2256,10 @@ onMounted(() => {
   // Undo also covers what isn't in the page: comments in headers, footers and notes, and Page setup.
   undoStack = createHistory(page.value, {
     state: {
-      get: () => JSON.stringify([doc.storyState(), doc.pageSetup, doc.hfFlags, doc.styles.styleState()]),
+      get: () => JSON.stringify([doc.storyState(), doc.pageSetup, doc.hfFlags, doc.styles.styleState(), doc.propertyState()]),
       set: (v) => {
-        const [story, setup, flags, styles] = JSON.parse(v);
+        const [story, setup, flags, styles, props] = JSON.parse(v);
+        doc.setPropertyState(props);
         doc.setStoryState(story);
         doc.setPageSetup(setup);
         doc.hfFlags = { ...flags };
@@ -4597,7 +4601,7 @@ function insertCheckbox() {
 // ------------------------------------------------------------------ references: contents, captions, citations
 
 // The References dialogs open from the Insert menu, for the place it was opened at (insertRange).
-const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref' | 'bookmark'
+const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref' | 'bookmark' | 'properties'
 const captionInfo = reactive({ counts: {}, target: 'the paragraph', table: false });
 const xrefTargets = ref({});
 let xrefEls = {}; // what each cross-reference target is in the page: { Heading: [{ block }], Figure: [{ block, field }] }
@@ -4863,6 +4867,43 @@ function insertCrossRef({ kind, index, as }) {
   if (!text) text = name; // an empty bookmark's text: Word shows nothing; something to see and update
   if (!putInline(selectionInPage(), doc.newField(instr, text))) return;
   finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
+}
+
+// ------------------------------------------------------------------ document properties
+
+function openProperties() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  refDialog.value = 'properties';
+}
+
+/**
+ * Saves the properties given in Document properties… (written into docProps/core.xml and
+ * custom.xml on saving), brings the fields showing them (DOCPROPERTY) up to date at once, and with
+ * `field` puts a field showing that property at the caret. One undoable step.
+ */
+function saveProperties({ core, custom, field }) {
+  refDialog.value = null;
+  let range = null;
+  if (field) {
+    range = insertSpot('a field');
+    if (!range) return;
+  } else refocusAt(insertRange);
+  undoStack.flush();
+  doc.setProperties({ core, custom });
+  const { docproperty } = updateFields(doc, page.value, { only: ['DOCPROPERTY'] });
+  markDirty();
+  if (field) {
+    const name = /\s/.test(field) ? `"${field}"` : field;
+    const value = doc.propertyValue(field) || '';
+    if (!putInline(selectionInPage(), doc.newField(` DOCPROPERTY  ${name}  \\* MERGEFORMAT `, value || field))) return;
+    finishInsert(`${field} inserted as a field: change it in Document property…, and Update (F9) shows it again`);
+    return;
+  }
+  onInput();
+  undoStack.commit();
+  message.value = docproperty ? `Properties saved: ${docproperty} ${docproperty === 1 ? 'field shows' : 'fields show'} them as they now are` : 'Properties saved: they are written into the file when it’s downloaded';
 }
 
 // ------------------------------------------------------------------ bookmarks
@@ -7567,6 +7608,7 @@ function updateAllFields() {
     t.seq && count(t.seq, 'caption number'),
     t.formula && count(t.formula, 'formula', 'formulas'),
     t.noteref && count(t.noteref, 'note number'),
+    t.docproperty && count(t.docproperty, 'document property', 'document properties'),
   ].filter(Boolean);
   const notes = [];
   if (t.missing) notes.push(`${count(t.missing, 'cross-reference')} to text no longer in the document ${t.missing === 1 ? 'was' : 'were'} left as ${t.missing === 1 ? 'it was' : 'they were'}`);
