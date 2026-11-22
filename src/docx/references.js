@@ -67,6 +67,27 @@ export function tocXml(headingStyle) {
   ];
 }
 
+/**
+ * An index, as Word's Insert Index writes one: the INDEX field (\h "A": a heading for each letter;
+ * \c "1": one column), its entries the index entries marked in the text (XE fields), filled in by
+ * updating it; under a heading ("Index") in `headingStyle` (Heading 1, so a table of contents lists it).
+ */
+export function indexXml(headingStyle) {
+  return [
+    `<w:p><w:pPr><w:pStyle w:val="${esc(headingStyle)}"/></w:pPr>${runXml('Index')}</w:p>`,
+    `<w:p>${fieldRuns(' INDEX \\h "A" \\c "1" ', runXml('Update the index to list the entries marked.'))}</w:p>`,
+  ];
+}
+
+/**
+ * An index entry, as Word's Mark Entry writes one: the XE field, its entry and subentry (`sub`)
+ * after a colon, with no result (it shows nothing in the text).
+ */
+export function xeInstr(main, sub = '') {
+  const clean = (t) => t.replace(/["\\]/g, '').replace(/:/g, ' ').replace(/\s+/g, ' ').trim();
+  return ` XE "${clean(main)}${sub && clean(sub) ? `:${clean(sub)}` : ''}" `;
+}
+
 /** The heading a table of figures is given here, by its caption label. */
 export const FIGURES_HEADINGS = { Figure: 'List of Figures', Table: 'List of Tables', Equation: 'List of Equations' };
 

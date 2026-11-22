@@ -1,6 +1,7 @@
 // Updating fields here, as Word's F9 does, for what doesn't need pages: caption numbers (SEQ), table
-// formulas (=SUM(ABOVE)), note numbers in cross-references (NOTEREF), cross-references (REF), and tables of contents (TOC),
-// rebuilt from the headings. Page numbers are Word's: Intact doesn't lay the text out in pages, so a
+// formulas (=SUM(ABOVE)), note numbers in cross-references (NOTEREF), cross-references (REF), document
+// properties (DOCPROPERTY), tables of contents (TOC), rebuilt from the headings, and indexes (INDEX),
+// from the entries marked (XE), their pages from the page estimate. Page numbers are Word's: Intact doesn't lay the text out in pages, so a
 // table of contents keeps the number each entry showed (a new entry takes the one above it) and the
 // file asks Word to update them when it opens it (see EditorView updateAllFields).
 //
@@ -23,6 +24,8 @@ const ARG_SWITCHES = {
   NOTEREF: new Set(['\\*']),
   CITATION: new Set(['\\l', '\\p', '\\s', '\\v', '\\m', '\\f']),
   DOCPROPERTY: new Set(['\\*']),
+  XE: new Set(['\\t', '\\f', '\\r', '\\y']),
+  INDEX: new Set(['\\b', '\\c', '\\d', '\\e', '\\f', '\\g', '\\h', '\\k', '\\l', '\\p', '\\s', '\\y', '\\z']),
 };
 
 /** A field instruction (' SEQ Figure \\* ARABIC ') as { code: 'SEQ', args: ['Figure'], sw: { '\\*': 'ARABIC' } }. */
@@ -117,10 +120,10 @@ function blockOf({ start }) {
  * entries, missing (cross-references to bookmarks not found), skipped (tables of contents left as
  * they are, with the reason) }.
  */
-export function updateFields(doc, root, { only = null } = {}) {
+export function updateFields(doc, root, { only = null, pageOf = null } = {}) {
   // Only fields of these kinds (as inserting a table of contents updates it alone), or all.
   const want = (code) => !only || only.includes(code);
-  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0, formula: 0, docproperty: 0 };
+  const tally = { seq: 0, noteref: 0, ref: 0, toc: 0, entries: 0, missing: 0, skipped: null, citation: 0, bibliography: 0, formula: 0, docproperty: 0, index: 0, indexEntries: 0 };
   // Document properties (DOCPROPERTY Version), everywhere they are, headers and footers too: they
   // don't depend on where they are, and a version or a product name is often in a footer.
   if (want('DOCPROPERTY') && doc.propertyValue) {
@@ -222,6 +225,17 @@ export function updateFields(doc, root, { only = null } = {}) {
     const res = updateBibliography(doc, root, el, sources, style, numbers);
     if (res.skipped) tally.skipped = res.skipped;
     else if (res.changed) tally.bibliography++;
+  }
+
+  // Indexes, from the entries marked in the text (XE), with the pages they are about on (`pageOf`).
+  for (const el of all) {
+    if (parsed.get(el).code !== 'INDEX' || !el.isConnected || !want('INDEX')) continue;
+    const res = updateIndex(doc, root, el, parsed.get(el).sw, pageOf);
+    if (res.skipped) tally.skipped = res.skipped;
+    else {
+      tally.index++;
+      tally.indexEntries += res.entries;
+    }
   }
 
   // Tables of contents, last: their entries are the headings as they now are.
@@ -338,10 +352,10 @@ function xmlMarkers(paras) {
   return out;
 }
 
-/** The TOC field's begin, separate and end markers in `paras` (the first TOC field), or null. */
-function tocMarkers(paras) {
+/** The TOC field's begin, separate and end markers in `paras` (the first TOC field, or of `code`), or null. */
+function tocMarkers(paras, code = /^\s*TOC\b/i) {
   const marks = xmlMarkers(paras);
-  const b = marks.findIndex((m) => m.type === 'begin' && /^\s*TOC\b/i.test(m.instr));
+  const b = marks.findIndex((m) => m.type === 'begin' && code.test(m.instr));
   if (b < 0) return null;
   let depth = 0;
   let sep = null;
@@ -571,6 +585,138 @@ function fieldBlocks(doc, root, field, what) {
     return { skipped: `${what} with tracked changes in it (accept or reject them first)` };
   }
   return { blocks, firstBlock };
+}
+
+// ------------------------------------------------------------------ indexes
+
+/**
+ * The index entries marked in the text of `root` (Word's XE fields, which show nothing), in order:
+ * [{ marker (the field's begin marker in the page), main, sub, see (\t's text, or null) }].
+ */
+export function indexEntries(doc, root) {
+  const out = [];
+  const stack = [];
+  for (const el of root.querySelectorAll('.raw-hidden[data-raw]')) {
+    if (el.closest(OUTSIDE_TEXT)) continue;
+    const node = doc.raw[Number(el.dataset.raw)];
+    if (node?.localName !== 'r') continue;
+    const fld = wChild(node, 'fldChar');
+    const it = wChild(node, 'instrText');
+    if (fld) {
+      const type = wAttr(fld, 'fldCharType');
+      if (type === 'begin') stack.push({ marker: el, instr: '', separated: false });
+      else if (type === 'separate' && stack.length) stack[stack.length - 1].separated = true;
+      else if (type === 'end' && stack.length) {
+        const f = stack.pop();
+        const { code, args, sw } = parseInstr(f.instr);
+        if (code !== 'XE' || f.separated || !args[0]) continue;
+        const [main, ...sub] = args[0].split(':');
+        if (!main.trim()) continue;
+        out.push({ marker: f.marker, main: main.trim(), sub: sub.join(':').trim(), see: typeof sw['\\t'] === 'string' ? sw['\\t'] : null });
+      }
+    } else if (it && stack.length && !stack[stack.length - 1].separated) stack[stack.length - 1].instr += it.textContent;
+  }
+  return out;
+}
+
+/**
+ * The index's entries grouped as Word lists them: [{ text, pages: [n], see, subs: [{ text, pages,
+ * see }] }], sorted as the document's language sorts them (case and accents aside), pages in order.
+ */
+function indexGroups(entries, pageOf, lang) {
+  const collator = new Intl.Collator(lang || undefined, { sensitivity: 'base', numeric: true });
+  const mains = new Map();
+  const groupOf = (map, text) => {
+    const key = text.toLocaleLowerCase();
+    if (!map.has(key)) map.set(key, { text, pages: new Set(), see: null, subs: new Map() });
+    return map.get(key);
+  };
+  for (const e of entries) {
+    const main = groupOf(mains, e.main);
+    const target = e.sub ? groupOf(main.subs, e.sub) : main;
+    if (e.see) target.see = e.see;
+    else {
+      const page = pageOf ? pageOf(e.marker) : null;
+      if (page != null) target.pages.add(page);
+    }
+  }
+  const sorted = (map) => [...map.values()].sort((a, b) => collator.compare(a.text, b.text))
+    .map((g) => ({ text: g.text, see: g.see, pages: [...g.pages].sort((a, b) => a - b), subs: sorted(g.subs) }));
+  return sorted(mains);
+}
+
+/**
+ * Rebuilds the index whose result starts at `field` (in the text) from the entries marked, as
+ * Word's update does: an entry a paragraph in Word's Index 1 style ("Pump, 3, 7"), its subentries
+ * in Index 2, and with \h a letter's heading before its entries, in Index Heading. The page numbers
+ * are where the entries are about (`pageOf(marker)`: the page estimate), Word's own once it updates
+ * the index. Returns { entries } or { skipped: why }.
+ */
+function updateIndex(doc, root, field, sw, pageOf) {
+  const found = fieldBlocks(doc, root, field, 'an index');
+  if (found.skipped) return found;
+  const { blocks, firstBlock } = found;
+  const paras = blocks.map((b) => doc.paragraphXml(b));
+  const m = tocMarkers(paras, /^\s*INDEX\b/i);
+  const first = paras[0];
+  const last = paras[paras.length - 1];
+  if (!m?.sep || m.begin.p !== first || m.sep.p !== first || m.end.p !== last) return { skipped: 'an index Intact can’t read' };
+  const entries = indexEntries(doc, root).filter((e) => !blocks.some((b) => b.contains(e.marker)));
+  const lang = doc.styles?.language?.() || (typeof navigator !== 'undefined' && navigator.language) || 'en';
+  const groups = indexGroups(entries, pageOf, lang);
+  const xml = doc.xml;
+  const para = (styleKey, text) => {
+    const p = createW(xml, 'p');
+    const pPr = p.appendChild(createW(xml, 'pPr'));
+    pPr.appendChild(createW(xml, 'pStyle')).setAttributeNS(W, 'w:val', doc.styles.ensureBuiltin(styleKey));
+    const r = p.appendChild(createW(xml, 'r'));
+    const t = r.appendChild(createW(xml, 't'));
+    t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+    t.textContent = text;
+    return p;
+  };
+  const line = (g) => [g.text, ...(g.pages.length ? [g.pages.join(', ')] : []), ...(g.see ? [g.see] : [])].join(', ');
+  const headings = sw['\\h'] !== undefined;
+  const out = [];
+  let letter = null;
+  for (const g of groups) {
+    const first1 = g.text.charAt(0).toLocaleUpperCase();
+    const l = /\p{L}/u.test(first1) ? first1 : '#';
+    if (headings && l !== letter) out.push(para('indexHeading', l));
+    letter = l;
+    out.push(para('index1', line(g)));
+    for (const sub of g.subs) out.push(para('index2', line(sub)));
+  }
+  if (!out.length) {
+    const p = createW(xml, 'p');
+    if (wChild(first, 'pPr')) p.appendChild(wChild(first, 'pPr').cloneNode(true));
+    const r = p.appendChild(createW(xml, 'r'));
+    r.appendChild(createW(xml, 't')).textContent = 'No index entries found.';
+    out.push(p);
+  }
+  // The field's begin (to its separate marker) in the first paragraph; its end in the last, or in a
+  // paragraph of its own as it was (as a table of contents is rebuilt).
+  const top = (p, run) => elementChildren(p).find((c) => c === run || c.contains(run));
+  const firstKids = elementChildren(first).filter((c) => !isW(c, 'pPr'));
+  const prefix = firstKids.slice(0, firstKids.indexOf(top(first, m.sep.run)) + 1);
+  const lastKids = elementChildren(last).filter((c) => !isW(c, 'pPr'));
+  const endAt = lastKids.indexOf(top(last, m.end.run));
+  const suffix = lastKids.slice(endAt);
+  const lastOwn = last !== first && !lastKids.slice(0, endAt).some((c) => plainText(c).trim());
+  const at = wChild(out[0], 'pPr')?.nextSibling || out[0].firstChild;
+  for (const c of prefix) out[0].insertBefore(c.cloneNode(true), at);
+  if (lastOwn) {
+    const p = last.cloneNode(false);
+    if (wChild(last, 'pPr')) p.appendChild(wChild(last, 'pPr').cloneNode(true));
+    for (const c of suffix) p.appendChild(c.cloneNode(true));
+    out.push(p);
+  } else {
+    for (const c of suffix) out[out.length - 1].appendChild(c.cloneNode(true));
+  }
+  const fresh = out.map((p) => doc.renderParagraph(p));
+  firstBlock.before(...fresh);
+  for (const b of blocks) b.remove();
+  return { entries: groups.length };
 }
 
 // ------------------------------------------------------------------ bibliographies

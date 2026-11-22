@@ -54,6 +54,13 @@ export const BUILTIN_STYLES = {
   tableOfFigures: { name: 'table of figures', id: 'TableofFigures', xml: (basedOn) => `
     <w:style w:type="paragraph" w:styleId="TableofFigures"><w:name w:val="table of figures"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/>
     <w:pPr><w:spacing w:after="0"/></w:pPr></w:style>` },
+  // An index's entries (Index 1, Index 2) and its letters' headings, as Word defines them.
+  ...Object.fromEntries([1, 2, 3].map((n) => [`index${n}`, { name: `index ${n}`, id: `Index${n}`, xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="Index${n}"><w:name w:val="index ${n}"/>${basedOn}<w:next w:val="__NORMAL__"/><w:autoRedefine/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/>
+    <w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="${220 * n}" w:hanging="220"/></w:pPr></w:style>` }])),
+  indexHeading: { name: 'index heading', id: 'IndexHeading', xml: (basedOn) => `
+    <w:style w:type="paragraph" w:styleId="IndexHeading"><w:name w:val="index heading"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/>
+    <w:pPr><w:spacing w:before="240" w:after="60"/></w:pPr><w:rPr><w:rFonts w:asciiTheme="majorHAnsi" w:hAnsiTheme="majorHAnsi" w:eastAsiaTheme="majorEastAsia" w:cstheme="majorBidi"/><w:b/><w:bCs/></w:rPr></w:style>` },
   bibliography: { name: 'bibliography', id: 'Bibliography', xml: (basedOn) => `
     <w:style w:type="paragraph" w:styleId="Bibliography"><w:name w:val="Bibliography"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="37"/><w:unhideWhenUsed/></w:style>` },
 };

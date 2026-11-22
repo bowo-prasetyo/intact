@@ -907,6 +907,16 @@ export class DocxDocument {
    * A field as Word writes one (begin, instruction `instr`, separate, its result `result`, end), as
    * rendered nodes to put at the caret: a page number, or today's date that Word updates (DATE).
    */
+  /** A field with no result (an index entry, XE), rendered: its begin, instruction and end markers, hidden. */
+  newBareField(instr) {
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const p = parseXml(`<w:p xmlns:w="${W}"><w:r><w:fldChar w:fldCharType="begin"/></w:r>`
+      + `<w:r><w:instrText xml:space="preserve">${esc(instr)}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`).documentElement;
+    const holder = document.createElement('span');
+    this.renderInlines(this.xml.importNode(p, true), holder);
+    return [...holder.childNodes];
+  }
+
   newField(instr, result) {
     const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const p = parseXml(`<w:p xmlns:w="${W}"><w:r><w:fldChar w:fldCharType="begin"/></w:r>`

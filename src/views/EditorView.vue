@@ -1065,6 +1065,8 @@
       <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
       <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
+      <button type="button" role="menuitem" @click="openMarkEntry">Mark index entry…<span class="hint">{{ t('Alt+Shift+X: a word for the index') }}</span></button>
+      <button type="button" role="menuitem" @click="insertIndex">Index<span class="hint">{{ t('From the entries marked') }}</span></button>
       <button type="button" role="menuitem" @click="openProperties">Document property…<span class="hint">{{ t('Title, version… as fields Word updates') }}</span></button>
       <button type="button" role="menuitem" @click="openBookmarks">Bookmark…<span class="hint">{{ t('Name a place to refer to') }}</span></button>
       <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading, numbered item, bookmark or caption') }}</span></button>
@@ -1241,6 +1243,7 @@
     <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
+    <IndexEntryDialog v-if="refDialog === 'xe'" :text="markEntry.text" :count="markEntry.count" @close="closeRefDialog" @mark="markIndexEntry" />
     <PropertiesDialog v-if="refDialog === 'properties'" :properties="doc.editableProperties()" @close="closeRefDialog" @save="saveProperties" />
     <NewStyleDialog v-if="refDialog === 'newStyle'" :names="newStyle.names" :based-on="newStyle.basedOn" :selection="newStyle.selection" @close="closeRefDialog" @create="createStyle" />
     <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
@@ -1285,8 +1288,9 @@ import CrossRefDialog from '../components/CrossRefDialog.vue';
 import BookmarkDialog from '../components/BookmarkDialog.vue';
 import PropertiesDialog from '../components/PropertiesDialog.vue';
 import NewStyleDialog from '../components/NewStyleDialog.vue';
+import IndexEntryDialog from '../components/IndexEntryDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
-import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
+import { tocXml, indexXml, xeInstr, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { paragraphsOfXml, compareParagraphs, notesOfPackage, compareNotes } from '../editor/compare.js';
@@ -1351,7 +1355,7 @@ import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
-import { updateFields, parseInstr, citationNumbersIn, bookmarks as bookmarksIn, bookmarkRange, textOf } from '../docx/fieldUpdates.js';
+import { updateFields, parseInstr, citationNumbersIn, bookmarks as bookmarksIn, bookmarkRange, textOf, indexEntries } from '../docx/fieldUpdates.js';
 import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -4605,7 +4609,7 @@ function insertCheckbox() {
 // ------------------------------------------------------------------ references: contents, captions, citations
 
 // The References dialogs open from the Insert menu, for the place it was opened at (insertRange).
-const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref' | 'bookmark' | 'properties'
+const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref' | 'bookmark' | 'properties' | 'xe' | 'newStyle'
 const captionInfo = reactive({ counts: {}, target: 'the paragraph', table: false });
 const xrefTargets = ref({});
 let xrefEls = {}; // what each cross-reference target is in the page: { Heading: [{ block }], Figure: [{ block, field }] }
@@ -4871,6 +4875,101 @@ function insertCrossRef({ kind, index, as }) {
   if (!text) text = name; // an empty bookmark's text: Word shows nothing; something to see and update
   if (!putInline(selectionInPage(), doc.newField(instr, text))) return;
   finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
+}
+
+// ------------------------------------------------------------------ indexes
+
+// Word's Mark Index Entry: the selected text (to mark, and to mark everywhere), and how many there are.
+const markEntry = reactive({ text: '', count: 0 });
+
+function openMarkEntry() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  const text = range && !range.collapsed ? range.toString().replace(/\s+/g, ' ').trim() : '';
+  Object.assign(markEntry, { text: text.length <= 200 && !/[\n:"]/.test(text) ? text : '', count: indexEntries(doc, page.value).length });
+  refDialog.value = 'xe';
+}
+
+/**
+ * The page each index entry is on, about, for an index (see updateFields): from the page estimate,
+ * as printed; a document whose pages aren't counted (a phone) puts every entry on page 1.
+ */
+function indexPageOf() {
+  const { breaks } = narrow?.matches ? { breaks: [] } : pagesAt100();
+  const ys = breaks.map((b) => b.y);
+  return (marker) => {
+    const block = closestBlock(marker) || marker.parentElement;
+    const top = block?.getBoundingClientRect().top ?? 0;
+    return 1 + ys.filter((y) => y <= top + 1).length;
+  };
+}
+
+/** Puts an index entry (XE) at the end of `range`, as Word does after the text marked: tracked while tracking. */
+function putEntry(range, instr) {
+  const at = range.cloneRange();
+  at.collapse(false);
+  selectRange(at);
+  return putInline(at, doc.newBareField(instr));
+}
+
+/**
+ * Marks an index entry after the selection (Word's Mark), or with `all` after the selected text in
+ * each paragraph of the text it is in, once a paragraph (Word's Mark All), then brings the indexes
+ * up to date. One undoable step.
+ */
+function markIndexEntry({ main, sub, all }) {
+  refDialog.value = null;
+  const range = insertSpot('an index entry');
+  if (!range) return;
+  const instr = xeInstr(main, sub);
+  undoStack.flush();
+  let marked = 0;
+  if (!all) {
+    if (putEntry(range, instr)) marked = 1;
+  } else {
+    const text = markEntry.text;
+    const blocks = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((b) => !b.closest('.docx-notes, .docx-hf-band, .textbox') && !readOnlyAt(b, page.value));
+    for (const block of blocks) {
+      if (!block.isConnected || !block.textContent.includes(text)) continue;
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.data.indexOf(text);
+        if (i < 0 || inField(n) || readOnlyAt(n.parentElement, page.value)) continue;
+        const r = document.createRange();
+        r.setStart(n, i);
+        r.setEnd(n, i + text.length);
+        if (putEntry(r, instr)) marked++;
+        break;
+      }
+    }
+  }
+  if (!marked) return;
+  const t = updateFields(doc, page.value, { only: ['INDEX'], pageOf: indexPageOf() });
+  if (t.index) doc.updateFields = true;
+  const label = sub ? `${main}: ${sub}` : main;
+  finishInsert(`${marked === 1 ? 'Index entry' : `${marked} index entries`} “${label}” marked${t.index ? ' – the index is up to date' : ' – Insert › Index lists the entries'}`);
+}
+
+/**
+ * Insert Index, as Word's References tab: "Index" and Word's INDEX field, built at once from the
+ * entries marked, an entry a line with the pages it is on, a letter's heading before its entries.
+ * The page numbers are the page estimate's: Word works them out again when it opens the file.
+ */
+function insertIndex() {
+  closeInsertMenu();
+  const spot = insertSpot('an index', { block: true });
+  if (!spot) return;
+  undoStack.flush();
+  placeBlocks(spot, doc.renderXmlParagraphs(indexXml(doc.styles.ensureBuiltin('h1'))));
+  refreshCss();
+  const t = updateFields(doc, page.value, { only: ['INDEX'], pageOf: indexPageOf() });
+  refreshCss(); // the Index styles may be new
+  doc.updateFields = true;
+  finishInsert(t.indexEntries
+    ? `Index inserted: ${t.indexEntries} ${t.indexEntries === 1 ? 'entry' : 'entries'}, on about the pages shown here – Word works the page numbers out when it opens the file; Update (F9) adds entries marked later`
+    : 'Index inserted: no entries marked yet – mark them with Mark index entry… (Alt+Shift+X), then Update (F9)');
 }
 
 // ------------------------------------------------------------------ document properties
@@ -7603,7 +7702,7 @@ function updateAllFields() {
   if (textLocked.value) return explainLock();
   undoStack.flush();
   const before = page.value.innerHTML;
-  const t = updateFields(doc, page.value);
+  const t = updateFields(doc, page.value, { pageOf: indexPageOf() });
   refreshCss(); // a TOC level's style may have been added
   const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
   const done = [
@@ -7613,13 +7712,14 @@ function updateAllFields() {
     t.formula && count(t.formula, 'formula', 'formulas'),
     t.noteref && count(t.noteref, 'note number'),
     t.docproperty && count(t.docproperty, 'document property', 'document properties'),
+    t.index && (t.index === 1 ? `the index (${count(t.indexEntries, 'entry', 'entries')})` : `${t.index} indexes`),
   ].filter(Boolean);
   const notes = [];
   if (t.missing) notes.push(`${count(t.missing, 'cross-reference')} to text no longer in the document ${t.missing === 1 ? 'was' : 'were'} left as ${t.missing === 1 ? 'it was' : 'they were'}`);
   if (t.skipped) notes.push(`${t.skipped} was left as it was`);
-  if (t.toc) {
+  if (t.toc || t.index) {
     doc.updateFields = true;
-    notes.push('page numbers are Word’s: the file asks Word to update them when it opens it');
+    notes.push(t.toc ? 'page numbers are Word’s: the file asks Word to update them when it opens it' : 'the index’s page numbers are about those here: Word works them out when it opens the file');
   }
   if (page.value.innerHTML !== before) {
     doc.renumber(page.value);
@@ -8826,6 +8926,13 @@ function onKeydown(e) {
   if (e.key === 'F9' && !mod && !e.altKey && !e.shiftKey) {
     e.preventDefault();
     updateAllFields();
+    return;
+  }
+  // Alt+Shift+X: Mark Index Entry, as in Word (by the key's place, for other layouts).
+  if (e.code === 'KeyX' && e.altKey && e.shiftKey && !mod && !e.getModifierState?.('AltGraph')) {
+    e.preventDefault();
+    insertRange = selectionInPage()?.cloneRange() || insertRange;
+    openMarkEntry();
     return;
   }
   // The Menu key and Shift+F10 open the right-click menu at the caret; not every browser makes a
@@ -10564,7 +10671,8 @@ async function close() {
 .save-split .primary:first-child { border-radius: 4px 0 0 4px; }
 .save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
 .save-menu { min-width: 220px; }
-.insert-menu { min-width: 220px; }
+.insert-menu { min-width: 220px; max-height: calc(100vh - 16px); overflow-y: auto; }
+.insert-menu > * { flex-shrink: 0; }
 .insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
 .insert-menu .hint { color: var(--muted); font-size: 12px; }
 .list-library { width: min(460px, calc(100vw - 16px)); }
