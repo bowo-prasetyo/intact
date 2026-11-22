@@ -75,7 +75,8 @@ function setResult(field, text) {
 }
 
 /** The bookmarks in `root`: name -> { start, end } (their hidden markers; end may be missing). */
-function bookmarks(doc, root) {
+/** The bookmarks in `root`: name -> { start, end } (their hidden markers in the page; end null if missing). */
+export function bookmarks(doc, root) {
   const starts = new Map();
   const ends = new Map();
   for (const el of root.querySelectorAll('.raw-hidden[data-raw]')) {
@@ -89,7 +90,7 @@ function bookmarks(doc, root) {
 }
 
 /** A range over a bookmark's content (to its end, or to the end of its paragraph). */
-function bookmarkRange({ start, end }) {
+export function bookmarkRange({ start, end }) {
   const r = document.createRange();
   r.setStartAfter(start);
   if (end) r.setEndBefore(end);
@@ -101,7 +102,7 @@ function bookmarkRange({ start, end }) {
   return r;
 }
 
-const textOf = (range) => range.toString().replace(/\s*\n+\s*/g, ' ').trim();
+export const textOf = (range) => range.toString().replace(/\s*\n+\s*/g, ' ').trim();
 
 /** The paragraph a bookmark is in (or, for one between paragraphs, the next). */
 function blockOf({ start }) {

@@ -1063,7 +1063,8 @@
       <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
       <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
-      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading or caption') }}</span></button>
+      <button type="button" role="menuitem" @click="openBookmarks">Bookmark…<span class="hint">{{ t('Name a place to refer to') }}</span></button>
+      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading, numbered item, bookmark or caption') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA, MLA, Chicago, Harvard, IEEE') }}</span></button>
       <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ CITATION_STYLES[citationStyle(doc.sources?.style)].heading }}</span></button>
@@ -1237,6 +1238,7 @@
     <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
+    <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="t('Word count, length and readability')" @click="openWordCount">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : lengthTarget.words ? `${words} / ${lengthTarget.words}` : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</button></span>
@@ -1275,6 +1277,7 @@ import EquationDialog from '../components/EquationDialog.vue';
 import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
+import BookmarkDialog from '../components/BookmarkDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
@@ -1341,7 +1344,7 @@ import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
-import { updateFields, parseInstr, citationNumbersIn } from '../docx/fieldUpdates.js';
+import { updateFields, parseInstr, citationNumbersIn, bookmarks as bookmarksIn, bookmarkRange, textOf } from '../docx/fieldUpdates.js';
 import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -4594,7 +4597,7 @@ function insertCheckbox() {
 // ------------------------------------------------------------------ references: contents, captions, citations
 
 // The References dialogs open from the Insert menu, for the place it was opened at (insertRange).
-const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref'
+const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref' | 'bookmark'
 const captionInfo = reactive({ counts: {}, target: 'the paragraph', table: false });
 const xrefTargets = ref({});
 let xrefEls = {}; // what each cross-reference target is in the page: { Heading: [{ block }], Figure: [{ block, field }] }
@@ -4796,8 +4799,21 @@ function openCrossRef() {
   refocusAt(insertRange);
   const headings = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-notes, .docx-hf-band, .textbox, table')
     && (doc.outlineLevel(el) ?? 9) < 9 && el.textContent.trim());
-  xrefEls = { Heading: headings.map((block) => ({ block })) };
-  const targets = { Heading: headings.map((el) => ({ text: el.textContent.trim(), level: doc.outlineLevel(el) + 1 })) };
+  const numberOf = (el) => (el.classList.contains('list') && doc.listKind(doc.listOf(el)) === 'number' ? (el.dataset.marker || '').trim() : '');
+  const items = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-notes, .docx-hf-band, .textbox')
+    && numberOf(el) && el.textContent.trim() && !headings.includes(el));
+  const marks = [...bookmarksIn(doc, page.value)].filter(([name, m]) => !name.startsWith('_') && !m.start.closest('.docx-notes, .docx-hf-band, .textbox'));
+  const markBlock = (m) => closestBlock(m.start) || (m.start.nextElementSibling?.matches(BLOCK_SELECTOR) ? m.start.nextElementSibling : null);
+  xrefEls = {
+    'Numbered item': items.map((block) => ({ block })),
+    Heading: headings.map((block) => ({ block })),
+    Bookmark: marks.map(([name, m]) => ({ name, mark: m, block: markBlock(m) })),
+  };
+  const targets = {
+    'Numbered item': items.map((el) => ({ text: `${numberOf(el)} ${el.textContent.trim()}` })),
+    Heading: headings.map((el) => ({ text: `${numberOf(el) ? `${numberOf(el)} ` : ''}${el.textContent.trim()}`, level: doc.outlineLevel(el) + 1, numbered: !!numberOf(el) })),
+    Bookmark: marks.map(([name, m], i) => ({ text: `${name}: ${textOf(bookmarkRange(m)) || '(a place)'}`, numbered: !!(xrefEls.Bookmark[i].block && numberOf(xrefEls.Bookmark[i].block)) })),
+  };
   for (const list of Object.values(captionsInText())) {
     const label = capitalized(list[0].label);
     xrefEls[label] = list;
@@ -4824,19 +4840,107 @@ function insertCrossRef({ kind, index, as }) {
   refDialog.value = null;
   const target = xrefEls[kind]?.[index];
   const range = insertSpot('a cross-reference');
-  if (!range || !target?.block.isConnected) return;
+  if (!range || !(kind === 'Bookmark' ? target?.mark.start.isConnected : target?.block.isConnected)) return;
   undoStack.flush();
   const { block, field } = target;
-  const number = kind !== 'Heading' && as === 'number';
-  const name = refBookmark(block, number ? field : null);
-  let text = number ? `${target.label} ${field.textContent.trim()}` : block.textContent.trim();
-  let instr = ` REF ${name} \\h `;
+  const caption = !['Heading', 'Numbered item', 'Bookmark'].includes(kind);
+  const number = caption && as === 'number';
+  // A paragraph's own number (a numbered item, a numbered heading, a bookmark's paragraph): \\r, as
+  // Word's "Paragraph number" writes it, shown as Update fields shows it.
+  const paragraphNumber = !caption && as === 'number';
+  const name = kind === 'Bookmark' ? target.name : refBookmark(block, number ? field : null);
+  let text;
+  if (paragraphNumber) text = (block?.dataset.marker || '').trim().replace(/\.$/, '');
+  else if (number) text = `${target.label} ${field.textContent.trim()}`;
+  else if (kind === 'Bookmark') text = textOf(bookmarkRange(target.mark));
+  else text = block.textContent.trim();
+  let instr = ` REF ${name}${paragraphNumber ? ' \\r' : ''} \\h `;
   if (as === 'position') {
-    text = block.compareDocumentPosition(range.startContainer) & Node.DOCUMENT_POSITION_FOLLOWING ? 'above' : 'below';
+    const at = kind === 'Bookmark' ? target.mark.start : block;
+    text = at.compareDocumentPosition(range.startContainer) & Node.DOCUMENT_POSITION_FOLLOWING ? 'above' : 'below';
     instr = ` REF ${name} \\p \\h `;
   }
+  if (!text) text = name; // an empty bookmark's text: Word shows nothing; something to see and update
   if (!putInline(selectionInPage(), doc.newField(instr, text))) return;
   finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
+}
+
+// ------------------------------------------------------------------ bookmarks
+
+// Word's Bookmark dialog: the document's bookmarks (not Word's hidden _Toc and _Ref ones).
+const bookmarkList = ref([]);
+const bookmarkSelection = ref(false);
+
+function listBookmarks() {
+  return [...bookmarksIn(doc, page.value)].filter(([name]) => !name.startsWith('_'))
+    .map(([name, m]) => ({ name, text: textOf(bookmarkRange(m)) }));
+}
+
+function openBookmarks() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  bookmarkSelection.value = !!range && !range.collapsed;
+  bookmarkList.value = listBookmarks();
+  refDialog.value = 'bookmark';
+}
+
+/** Takes bookmark `name`'s markers out of the page (its text stays). */
+function dropBookmark(name) {
+  const m = bookmarksIn(doc, page.value).get(name);
+  if (!m) return false;
+  m.start.remove();
+  m.end?.remove();
+  return true;
+}
+
+/**
+ * Adds bookmark `name` around the selection (or at the caret), as Word's Add: a w:bookmarkStart and
+ * w:bookmarkEnd in the text, never tracked (Word doesn't track bookmarks). One already of that name
+ * (in any case) moves here.
+ */
+function addBookmark(name) {
+  refDialog.value = null;
+  const range = insertSpot('a bookmark');
+  if (!range) return;
+  if (!closestBlock(range.startContainer) || !closestBlock(range.endContainer)) {
+    message.value = 'Click in the text, or select some, to mark with a bookmark';
+    return;
+  }
+  undoStack.flush();
+  const same = [...bookmarksIn(doc, page.value).keys()].find((n) => n.toLowerCase() === name.toLowerCase());
+  const moved = same && dropBookmark(same);
+  const [start, end] = doc.newBookmark(name);
+  const r = range.cloneRange();
+  const at = r.cloneRange();
+  at.collapse(false);
+  at.insertNode(end);
+  r.collapse(true);
+  r.insertNode(start);
+  finishInsert(`Bookmark “${name}” ${moved ? 'moved here' : 'added'}: Cross-reference… can point to it`);
+}
+
+/** Selects bookmark `name`'s text (or puts the caret at it), as Word's Go To. */
+function gotoBookmark(name) {
+  refDialog.value = null;
+  const m = bookmarksIn(doc, page.value).get(name);
+  if (!m) return;
+  const r = bookmarkRange(m);
+  page.value.focus();
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+  m.start.parentElement?.scrollIntoView({ block: 'center' });
+  onSelectionChange();
+}
+
+function removeBookmark(name) {
+  refDialog.value = null;
+  undoStack.flush();
+  if (!dropBookmark(name)) return;
+  finishInsert(`Bookmark “${name}” deleted: cross-references to it stay as they are until Word updates them`);
+  refocusAt(insertRange);
 }
 
 // ------------------------------------------------------------------ editing equations
