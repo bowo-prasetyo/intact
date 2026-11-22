@@ -58,6 +58,8 @@ export const BUILTIN_STYLES = {
     <w:style w:type="paragraph" w:styleId="Bibliography"><w:name w:val="Bibliography"/>${basedOn}<w:next w:val="__NORMAL__"/><w:uiPriority w:val="37"/><w:unhideWhenUsed/></w:style>` },
 };
 
+const elementCount = (el) => [...el.childNodes].filter((n) => n.nodeType === 1).length;
+
 export class StyleSheet {
   constructor(stylesDoc, themeDoc) {
     this.doc = stylesDoc;
@@ -563,21 +565,59 @@ export class StyleSheet {
     return true;
   }
 
-  /** The styles changed with Modify Style, as they are now: a string, for Undo (see setStyleState). */
-  styleState() {
-    if (!this.originals?.size) return '';
-    return JSON.stringify([...this.originals.keys()].map((id) => [id, serializeXml(this.styleEl(id)).replace(/^<\?xml[^>]*\?>\s*/, '')]));
+  /**
+   * A style that is new here, as Word's Create New Style from Formatting adds one: { name, type
+   * ('paragraph' or 'character'), basedOn (a style id, or null), pPr, rPr (elements, or null) }.
+   * Its id is its name without spaces and punctuation, made unique. Shown in Word's gallery
+   * (w:qFormat), a paragraph style followed by itself. Returns its id. Undone with Undo (see styleState).
+   */
+  addStyle({ name, type, basedOn = null, pPr = null, rPr = null }) {
+    let base = name.replace(/[^\p{L}\p{N}]/gu, '') || (type === 'character' ? 'CharStyle' : 'Style');
+    if (/^\p{N}/u.test(base)) base = `Style${base}`;
+    let id = base;
+    for (let n = 1; this.byId.has(id); n++) id = `${base}${n}`;
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const xml = `<w:style xmlns:w="${NS.w}" w:type="${type}" w:customStyle="1" w:styleId="${id}"><w:name w:val="${esc(name)}"/>`
+      + `${basedOn ? `<w:basedOn w:val="${basedOn}"/>` : ''}${type === 'paragraph' ? `<w:next w:val="${id}"/>` : ''}<w:qFormat/></w:style>`;
+    const el = this.doc.importNode(parseXml(xml).documentElement, true);
+    el.removeAttributeNS('http://www.w3.org/2000/xmlns/', 'w'); // the part declares it
+    if (pPr && type === 'paragraph' && elementCount(pPr)) el.appendChild(this.doc.importNode(pPr, true));
+    if (rPr && elementCount(rPr)) el.appendChild(this.doc.importNode(rPr, true));
+    this.doc.documentElement.appendChild(el);
+    this.added ||= new Map();
+    this.added.set(id, serializeXml(el).replace(/^<\?xml[^>]*\?>\s*/, ''));
+    this.changed = true;
+    this.reindex();
+    return id;
   }
 
-  /** Puts the styles changed with Modify Style back as `state` (from styleState) has them, or as they were. */
+  /** The styles changed with Modify Style, and those added here, as they are now: a string, for Undo (see setStyleState). */
+  styleState() {
+    if (!this.originals?.size && !this.added?.size) return '';
+    const xml = (id) => serializeXml(this.styleEl(id)).replace(/^<\?xml[^>]*\?>\s*/, '');
+    const modified = [...(this.originals?.keys() || [])].filter((id) => this.styleEl(id)).map((id) => [id, xml(id)]);
+    const added = [...(this.added?.keys() || [])].filter((id) => this.styleEl(id)).map((id) => [id, xml(id)]);
+    return JSON.stringify(added.length ? { modified, added } : modified);
+  }
+
+  /** Puts the styles changed with Modify Style back as `state` (from styleState) has them, or as they were; and those added here, there or not. */
   setStyleState(state) {
-    if (!this.originals?.size) return;
-    const now = new Map(state ? JSON.parse(state) : []);
-    for (const [id, original] of this.originals) {
+    if (!this.originals?.size && !this.added?.size) return;
+    const parsed = state ? JSON.parse(state) : [];
+    const now = new Map(Array.isArray(parsed) ? parsed : parsed.modified);
+    const added = new Map(Array.isArray(parsed) ? [] : parsed.added);
+    const fresh = (xml) => this.doc.importNode(parseXml(xml).documentElement, true);
+    for (const [id, original] of this.originals || []) {
       const el = this.styleEl(id);
-      const xml = now.get(id) ?? original;
-      const fresh = this.doc.importNode(parseXml(xml).documentElement, true);
-      if (el) el.replaceWith(fresh);
+      // A style added here and then modified: whether it is there at all is the added list's to say.
+      if (this.added?.has(id) && !added.has(id)) continue;
+      if (el) el.replaceWith(fresh(now.get(id) ?? original));
+    }
+    for (const id of this.added?.keys() || []) {
+      const el = this.styleEl(id);
+      if (!added.has(id)) el?.remove();
+      else if (el) el.replaceWith(fresh(now.get(id) ?? added.get(id)));
+      else this.doc.documentElement.appendChild(fresh(now.get(id) ?? added.get(id)));
     }
     this.reindex();
   }

@@ -91,6 +91,7 @@
           <option v-for="c in styleChoices" :key="c.id" :value="`style:${c.id}`">{{ c.label }}</option>
         </optgroup>
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
+        <option value="__new">{{ t('New style…') }}</option>
         <option value="__modify">{{ t('Modify style…') }}</option>
       </select>
       <select data-tab="home" class="font-choice" :value="fontValue" :aria-label="t('Font')" :title="t('Font: the document’s own fonts first, then Word’s usual ones')" @change="applyFont($event.target.value)">
@@ -1240,6 +1241,7 @@
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
     <PropertiesDialog v-if="refDialog === 'properties'" :properties="doc.editableProperties()" @close="closeRefDialog" @save="saveProperties" />
+    <NewStyleDialog v-if="refDialog === 'newStyle'" :names="newStyle.names" :based-on="newStyle.basedOn" :selection="newStyle.selection" @close="closeRefDialog" @create="createStyle" />
     <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
 
     <footer class="statusbar">
@@ -1281,6 +1283,7 @@ import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
 import BookmarkDialog from '../components/BookmarkDialog.vue';
 import PropertiesDialog from '../components/PropertiesDialog.vue';
+import NewStyleDialog from '../components/NewStyleDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
@@ -8166,7 +8169,109 @@ function onStyleMenu(e) {
     openModifyStyle();
     return;
   }
+  if (value === '__new') {
+    e.target.value = state.block;
+    openNewStyle();
+    return;
+  }
   applyBlockStyle(value);
+}
+
+// ------------------------------------------------------------------ new styles
+
+// Word's Create New Style from Formatting: what the dialog needs, and where the selection was.
+const newStyle = reactive({ names: [], basedOn: 'Normal', selection: false });
+let newStyleAt = null; // { range, block }
+
+function openNewStyle() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const range = selectionInPage();
+  const [block] = range ? selectedBlocks(range) : [];
+  if (!block) {
+    message.value = 'Click in the paragraph (or select the text) whose formatting the new style is to have';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  newStyleAt = { range: range.cloneRange(), block };
+  Object.assign(newStyle, {
+    names: [...doc.styles.byId.values()].flatMap((st) => [st.name.toLowerCase(), doc.styles.label(st.id).toLowerCase()]),
+    basedOn: doc.styles.label(block.dataset.style || doc.styles.defaultParagraph) || 'Normal',
+    selection: !range.collapsed && closestBlock(range.startContainer) === closestBlock(range.endContainer),
+  });
+  refDialog.value = 'newStyle';
+}
+
+/** Takes off a run's own properties that say what the new style's `rPr` says (the style gives them now). */
+const absorbRun = (styleRPr) => (rPr) => {
+  if (!styleRPr) return;
+  for (const c of [...styleRPr.children]) {
+    const mine = [...rPr.children].find((x) => x.localName === c.localName);
+    if (mine && doc.sameProperty(mine, c)) rPr.removeChild(mine);
+  }
+};
+
+/**
+ * Creates the style (see doc.newStyleFrom) and gives it to the selection: a paragraph style to the
+ * selected paragraphs, a character style to the selected text, each losing the formatting of its own
+ * that the style now gives, as in Word, so a later Modify style… changes them too. Tracked while
+ * tracking (the new style itself isn't, as in Word); one undoable step.
+ */
+function createStyle({ name, type }) {
+  refDialog.value = null;
+  const at = newStyleAt;
+  newStyleAt = null;
+  if (!at?.block.isConnected) return;
+  page.value.focus();
+  selectRange(at.range);
+  const range = at.range;
+  if (type === 'character' && range.collapsed) {
+    message.value = 'Select the text whose formatting a character style is to have';
+    return;
+  }
+  undoStack.flush();
+  const { id, pPr, rPr } = doc.newStyleFrom(range, at.block, { name, type });
+  refreshCss();
+  styleChoices.value = doc.styleChoices();
+  characterStyles.value = doc.characterStyles();
+  if (type === 'character') {
+    const after = withTrackedRuns(range, () => restyle(doc, range, (r) => {
+      absorbRun(rPr)(r);
+      setCharacterStyle(id)(r);
+    }));
+    if (after) selectRange(after);
+  } else {
+    const tag = doc.tagFor(id);
+    const blocks = selectedBlocks(range);
+    const replaced = new Map();
+    withTrackedParagraphs(blocks, () => {
+      for (const block of blocks) {
+        let el = block;
+        if (block.tagName.toLowerCase() !== tag) {
+          el = document.createElement(tag);
+          for (const attr of block.attributes) el.setAttribute(attr.name, attr.value);
+          while (block.firstChild) el.append(block.firstChild);
+          block.replaceWith(el);
+          replaced.set(block, el);
+        }
+        el.dataset.style = id;
+        doc.absorbParagraph(el, pPr);
+      }
+    }, (b) => replaced.get(b) || b);
+    for (const b of blocks) {
+      const el = replaced.get(b) || b;
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      if (rPr && el.textContent) withTrackedRuns(r, () => restyle(doc, r, absorbRun(rPr)));
+    }
+    placeCaret(replaced.get(blocks[0]) || blocks[0]);
+  }
+  doc.renumber(page.value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  message.value = `Style ${name} created: ${type === 'character' ? 'choose it in Character style' : 'choose it in Paragraph style'} for more, and change it with Modify style…`;
 }
 
 // ------------------------------------------------------------------ watermark

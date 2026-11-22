@@ -167,6 +167,13 @@ const HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/rel
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
 const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
+/** `el` alone in a new <w:pPr>, for comparing one property with sameProps. */
+function wrapIn(xml, el) {
+  const w = createW(xml, 'pPr');
+  w.appendChild(el.cloneNode(true));
+  return w;
+}
+
 // Word's Line and Page Breaks that the Paragraph dialog sets (on/off paragraph properties).
 const BREAK_PROPS = ['keepNext', 'keepLines', 'pageBreakBefore'];
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
@@ -3927,6 +3934,77 @@ export class DocxDocument {
     this.numberingChanged = true;
     this.kinds = null;
     return headings;
+  }
+
+  /**
+   * Adds a style made from the formatting at `range` in paragraph `block`, as Word's Create New
+   * Style from Formatting does: a paragraph style (`type` 'paragraph') takes the paragraph's own
+   * formatting and its first run's, based on the paragraph's style; a character style the first
+   * selected run's. Lists, a section, a tracked change's record and a style already applied aren't
+   * taken. Returns { id, pPr, rPr } (what the style was given, for taking it off the text).
+   */
+  newStyleFrom(range, block, { name, type }) {
+    const holder = block.cloneNode(false);
+    const r = range.cloneRange();
+    if (type === 'paragraph' || r.collapsed) r.selectNodeContents(block);
+    holder.append(r.cloneContents());
+    const p = this.paragraphXml(holder);
+    // A character style: the run properties of the first selected text, as it is in the page.
+    const first = (() => {
+      if (type !== 'character') return null;
+      const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+      for (let n = walker.currentNode.nodeType === 3 ? walker.currentNode : walker.nextNode(); n; n = walker.nextNode()) {
+        if (n.data && range.intersectsNode(n)) return n;
+      }
+      return null;
+    })();
+    const run = wChildren(p, 'r').find((x) => wChild(x, 't')) || wChildren(p, 'r')[0];
+    const found = first ? this.rPrOf(first) : run && wChild(run, 'rPr');
+    const rPr = found ? found.cloneNode(true) : null;
+    if (rPr) removeW(rPr, 'rStyle', 'rPrChange', 'ins', 'del', 'moveFrom', 'moveTo');
+    let pPr = null;
+    if (type === 'paragraph' && wChild(p, 'pPr')) {
+      pPr = wChild(p, 'pPr').cloneNode(true);
+      removeW(pPr, 'pStyle', 'numPr', 'rPr', 'sectPr', 'pPrChange', 'framePr', 'cnfStyle');
+    }
+    const basedOn = type === 'paragraph' ? (block.dataset.style || this.styles.defaultParagraph) : this.defaultCharacterStyle();
+    const id = this.styles.addStyle({ name, type, basedOn, pPr, rPr });
+    return { id, pPr, rPr };
+  }
+
+  /** True if two properties (<w:b/>, <w:rFonts …/>) say the same, whatever the order of their attributes. */
+  sameProperty(a, b) {
+    return a.localName === b.localName && this.sameProps(wrapIn(this.xml, a), wrapIn(this.xml, b));
+  }
+
+  /** Word's Default Paragraph Font (the default character style), or null. */
+  defaultCharacterStyle() {
+    for (const st of this.styles.byId.values()) if (st.type === 'character' && st.isDefault) return st.id;
+    return null;
+  }
+
+  /** True if a style is named `name` (in any case), as Word allows a name once. */
+  styleNamed(name) {
+    const low = name.trim().toLowerCase();
+    return [...this.styles.byId.values()].some((st) => st.name.toLowerCase() === low || this.styles.label(st.id).toLowerCase() === low);
+  }
+
+  /**
+   * Takes paragraph `el`'s own properties that say what `pPr` (a style's) says off it, so the style
+   * gives them, as Word does when a paragraph is made into a new style.
+   */
+  absorbParagraph(el, pPr) {
+    if (!pPr || el.dataset.ppr == null) return;
+    const own = this.rawClone(el.dataset.ppr);
+    for (const c of elementChildren(pPr)) {
+      const mine = wChild(own, c.localName);
+      if (mine && this.sameProperty(mine, c)) own.removeChild(mine);
+    }
+    el.dataset.ppr = this.keep(own);
+    const css = this.styles.pPrCss(own, el.dir === 'rtl');
+    for (const prop of ['margin-top', 'margin-bottom', 'line-height', 'padding-left', 'padding-right', 'text-indent', 'text-align', 'border-top', 'border-bottom', 'border-left', 'border-right', 'background-color']) {
+      el.style.setProperty(prop, css[prop] || '');
+    }
   }
 
   /** True if the document's Heading 1 is numbered by its style (see numberHeadings). */
