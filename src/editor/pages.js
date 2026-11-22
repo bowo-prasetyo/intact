@@ -2,8 +2,9 @@
 // breaks when it opens the file, from its own fonts and layout), but people sending a CV, a letter or
 // a form need to know whether it still fits on one page or two. So the text is cut into pages the
 // way Word fills them: line by line, each page holding the paper's height less its margins (and a
-// header or footer taller than its margin), with Word's widow and orphan control and its headings
-// kept with the paragraph after them, and a new page at each page break, "page break before" and
+// header or footer taller than its margin), with Word's widow and orphan control, headings and
+// paragraphs set to "keep with next" kept with the paragraph after them, paragraphs set to "keep
+// lines together" kept whole, and a new page at each page break, "page break before" and
 // section break that starts a new page. Like the line numbers and the formatting marks, the result
 // is drawn in a layer over the page, never in it, so it can't change the document.
 
@@ -141,9 +142,20 @@ export function estimatePages(page, height, zoom = 1) {
         if (u.count - k === 1 && same(j - 1)) { j--; k--; } // widow: a line goes with the last
         if (k === 1 && same(j - 1)) { j--; k = 0; } // orphan: the first line goes too
       }
-      // A heading just before the page's first paragraph goes to the next page with it.
-      const prev = units[j - 1];
-      if (k === 0 && prev && HEADING.test(prev.block.tagName) && prev.index === prev.count - 1 && units[j - prev.count]?.block === prev.block) j -= prev.count;
+      // A paragraph kept together (Keep lines together) goes to the next page whole.
+      if (k > 0 && units[j].block.dataset?.keepLines != null && units[j - k]?.block === units[j].block) {
+        j -= k;
+        k = 0;
+      }
+      // A paragraph kept with the next (a heading, a step and its figure) goes to the next page with
+      // the page's first paragraph, and so does one kept with it, as Word chains them.
+      for (;;) {
+        const prev = units[j - 1];
+        const kept = prev && (HEADING.test(prev.block.tagName) || prev.block.dataset?.keepNext != null);
+        if (!(k === 0 && kept && prev.index === prev.count - 1 && units[j - prev.count]?.block === prev.block)) break;
+        if (units[j - prev.count].top <= start + 0.5) break; // the whole page would go: Word breaks it after all
+        j -= prev.count;
+      }
       if (units[j].top <= start + 0.5) j = i;
       start = units[j].top;
       breaks.push({ y: start, block: units[j].block });

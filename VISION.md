@@ -242,6 +242,14 @@ Saying no to these keeps the product small enough to keep its promises:
   edited as LaTeX ✔; a list of figures or tables ✔; Compare that looks in the footnotes and
   endnotes too ✔. Not a reference manager's plug-in: Zotero's, EndNote's and Mendeley's own
   citations stay theirs, updated in Word
+- Technical writers who keep manuals and specifications in Word, for the edits between Word
+  sessions (a reviewer's fixes, an SME's correction on a locked-down machine): Keep with next, keep
+  lines together and page break before ✔; numbered headings, 1, 1.1, 1.1.1, linked to the heading
+  styles ✔; bookmarks, and cross-references to them and to numbered items ✔; document properties
+  and DOCPROPERTY fields, a version number changed once ✔; a new style from the selection's
+  formatting (Code, Note) ✔; code pasted in the document's code styles, and SVG pictures with
+  their PNG ✔; Save as PDF saying when page numbers are Word's to work out ✔; index entries and an
+  index ✔. Not master documents, structured authoring (DITA) or a style system built from nothing
 
 ## How we'll know it's working
 

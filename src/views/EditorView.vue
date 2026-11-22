@@ -91,6 +91,7 @@
           <option v-for="c in styleChoices" :key="c.id" :value="`style:${c.id}`">{{ c.label }}</option>
         </optgroup>
         <option v-if="!knownBlock" :value="state.block" disabled>{{ doc.styleLabel(state.block.slice(6)) }}</option>
+        <option value="__new">{{ t('New style…') }}</option>
         <option value="__modify">{{ t('Modify style…') }}</option>
       </select>
       <select data-tab="home" class="font-choice" :value="fontValue" :aria-label="t('Font')" :title="t('Font: the document’s own fonts first, then Word’s usual ones')" @change="applyFont($event.target.value)">
@@ -192,7 +193,7 @@
       <button data-tab="insert" type="button" class="ph" :title="t('Draw signature: sign with your finger, a pen or the mouse, and put it at the caret')" :aria-label="t('Draw signature')" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Sign') }}</span>
       </button>
-      <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple hidden @change="onPicturesPicked" />
+      <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/svg+xml,.svg" multiple hidden @change="onPicturesPicked" />
       <button data-tab="insert" ref="tableButton" type="button" :title="t('Insert table')" :aria-label="t('Insert table')" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><path d="M1.8 6h12.4M1.8 9.8h12.4M6 2.3v11.4M10 2.3v11.4" stroke="currentColor" stroke-width="1.1" fill="none" /></svg><span class="short-label">{{ t('Table') }}</span>
       </button>
@@ -630,6 +631,7 @@
       <ul class="pdf-notes">
         <li v-if="pageCount">About {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }} on {{ paperName() }}{{ pdfBands.every ? `, with the ${pdfBands.every} on each` : '' }}.</li>
         <li v-if="pdfBands.once">The {{ pdfBands.once }} {{ pdfBands.once.includes(' and ') ? 'print' : 'prints' }} once, {{ pdfBands.onceWhere }}, as {{ pdfBands.once.includes(' and ') ? 'they show' : 'it shows' }} here: {{ pdfBands.why }}</li>
+        <li v-if="pdfPageRefs" class="warn pdf-pagerefs">{{ pdfPageRefs }}</li>
         <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
         <li v-if="hasHidden"><label class="check"><input v-model="printHidden" type="checkbox" /> {{ t('Print hidden text (a test’s answers, for its answer key)') }}</label></li>
@@ -829,6 +831,12 @@
           </select>
         </label>
         <label v-if="!LINE_PRESETS[paraDialog.rule]">{{ t('At') }} ({{ paraDialog.rule === 'multiple' ? 'lines' : 'pt' }}) <input v-model.number="paraDialog.at" type="number" min="0" :step="paraDialog.rule === 'multiple' ? 0.05 : 1" /></label>
+      </fieldset>
+      <fieldset class="line-page-breaks">
+        <legend>{{ t('Line and page breaks') }}</legend>
+        <label class="check"><input v-model="paraDialog.keepNext" type="checkbox" /> {{ t('Keep with next') }}</label>
+        <label class="check"><input v-model="paraDialog.keepLines" type="checkbox" /> {{ t('Keep lines together') }}</label>
+        <label class="check"><input v-model="paraDialog.pageBreakBefore" type="checkbox" /> {{ t('Page break before') }}</label>
       </fieldset>
       <fieldset class="tab-stops">
         <legend>{{ t('Tab stops') }}</legend>
@@ -1057,10 +1065,14 @@
       <button type="button" role="menuitem" @click="insertTableOfFigures('Figure')">List of figures<span class="hint">{{ t('From the Figure captions') }}</span></button>
       <button type="button" role="menuitem" @click="insertTableOfFigures('Table')">List of tables<span class="hint">{{ t('From the Table captions') }}</span></button>
       <button type="button" role="menuitem" @click="openCaption">Caption…<span class="hint">{{ t('Figure 1, Table 1') }}</span></button>
-      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading or caption') }}</span></button>
+      <button type="button" role="menuitem" @click="openBookmarks">Bookmark…<span class="hint">{{ t('Name a place to refer to') }}</span></button>
+      <button type="button" role="menuitem" @click="openCrossRef">Cross-reference…<span class="hint">{{ t('To a heading, numbered item, bookmark or caption') }}</span></button>
+      <button type="button" role="menuitem" @click="openMarkEntry">Mark index entry…<span class="hint">{{ t('Alt+Shift+X: a word for the index') }}</span></button>
+      <button type="button" role="menuitem" @click="insertIndex">Index<span class="hint">{{ t('From the entries marked') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('equation')">Equation…<span class="hint">{{ t('Typed as in LaTeX') }}</span></button>
       <button type="button" role="menuitem" @click="openRefDialog('citation')">Citation…<span class="hint">{{ t('APA, MLA, Chicago, Harvard, IEEE') }}</span></button>
       <button type="button" role="menuitem" @click="insertBibliography">Bibliography<span class="hint">{{ CITATION_STYLES[citationStyle(doc.sources?.style)].heading }}</span></button>
+      <button type="button" role="menuitem" @click="openProperties">Document property…<span class="hint">{{ t('Title, version… as fields Word updates') }}</span></button>
     </div>
 
     <!-- As Word's Insert Page Number (Top of Page, Bottom of Page) and Edit Header / Edit Footer. -->
@@ -1106,6 +1118,7 @@
     <!-- Word's Numbering Library and Multilevel List, with Indonesia's legal numbering (Pasal, ayat, huruf). -->
     <div v-if="listLibrary.open" ref="listLibraryEl" class="change-menu insert-menu list-library" role="menu" :aria-label="t('Numbering library')" :style="{ left: `${listLibrary.x}px`, top: `${listLibrary.y}px` }" @mousedown.prevent @keydown.esc="closeListLibrary(true)" @keydown="onMenuArrows">
       <button v-for="p in LIST_LIBRARY" :key="p.id" type="button" role="menuitem" @click="applyListPreset(p.id)">{{ t(p.label) }}<span class="hint">{{ t(p.hint) }}</span></button>
+      <button type="button" role="menuitem" @click="numberHeadings(!listLibrary.headingsNumbered)">{{ listLibrary.headingsNumbered ? t('Remove heading numbering') : t('1 Heading 1 → 1.1 Heading 2 → 1.1.1 Heading 3') }}<span class="hint">{{ listLibrary.headingsNumbered ? t('The headings’ styles stop numbering them') : t('Numbers every heading by its style, as Word’s heading numbering') }}</span></button>
     </div>
 
     <!-- Word's Sort (Table Layout > Sort): the rows below the heading row, by a column's text, number or date. -->
@@ -1230,6 +1243,10 @@
     <CitationDialog v-if="refDialog === 'citation'" :sources="doc.sources.list" :library="sourceLibrary" :numbers="citationNumbersIn(doc, page)" :style="doc.sources.style" @close="closeRefDialog" @insert="insertCitation" @import="(found) => sourceLibrary.push(...found)" />
     <CaptionDialog v-if="refDialog === 'caption'" :counts="captionInfo.counts" :target="captionInfo.target" :table="captionInfo.table" @close="closeRefDialog" @insert="insertCaption" />
     <CrossRefDialog v-if="refDialog === 'xref'" :targets="xrefTargets" @close="closeRefDialog" @insert="insertCrossRef" />
+    <IndexEntryDialog v-if="refDialog === 'xe'" :text="markEntry.text" :count="markEntry.count" @close="closeRefDialog" @mark="markIndexEntry" />
+    <PropertiesDialog v-if="refDialog === 'properties'" :properties="doc.editableProperties()" @close="closeRefDialog" @save="saveProperties" />
+    <NewStyleDialog v-if="refDialog === 'newStyle'" :names="newStyle.names" :based-on="newStyle.basedOn" :selection="newStyle.selection" @close="closeRefDialog" @create="createStyle" />
+    <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
 
     <footer class="statusbar">
       <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="t('Word count, length and readability')" @click="openWordCount">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : lengthTarget.words ? `${words} / ${lengthTarget.words}` : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</button></span>
@@ -1268,8 +1285,12 @@ import EquationDialog from '../components/EquationDialog.vue';
 import CitationDialog from '../components/CitationDialog.vue';
 import CaptionDialog from '../components/CaptionDialog.vue';
 import CrossRefDialog from '../components/CrossRefDialog.vue';
+import BookmarkDialog from '../components/BookmarkDialog.vue';
+import PropertiesDialog from '../components/PropertiesDialog.vue';
+import NewStyleDialog from '../components/NewStyleDialog.vue';
+import IndexEntryDialog from '../components/IndexEntryDialog.vue';
 import NavigationPane from '../components/NavigationPane.vue';
-import { tocXml, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
+import { tocXml, indexXml, xeInstr, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { paragraphsOfXml, compareParagraphs, notesOfPackage, compareNotes } from '../editor/compare.js';
@@ -1334,7 +1355,7 @@ import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
-import { updateFields, parseInstr, citationNumbersIn } from '../docx/fieldUpdates.js';
+import { updateFields, parseInstr, citationNumbersIn, bookmarks as bookmarksIn, bookmarkRange, textOf, indexEntries } from '../docx/fieldUpdates.js';
 import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
@@ -2243,9 +2264,10 @@ onMounted(() => {
   // Undo also covers what isn't in the page: comments in headers, footers and notes, and Page setup.
   undoStack = createHistory(page.value, {
     state: {
-      get: () => JSON.stringify([doc.storyState(), doc.pageSetup, doc.hfFlags, doc.styles.styleState()]),
+      get: () => JSON.stringify([doc.storyState(), doc.pageSetup, doc.hfFlags, doc.styles.styleState(), doc.propertyState()]),
       set: (v) => {
-        const [story, setup, flags, styles] = JSON.parse(v);
+        const [story, setup, flags, styles, props] = JSON.parse(v);
+        doc.setPropertyState(props);
         doc.setStoryState(story);
         doc.setPageSetup(setup);
         doc.hfFlags = { ...flags };
@@ -2449,7 +2471,7 @@ function paperName() {
 }
 onMounted(() => {
   pagesObserver = new MutationObserver(() => schedulePages());
-  pagesObserver.observe(page.value, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+  pagesObserver.observe(page.value, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class', 'data-keep-next', 'data-keep-lines', 'data-page-break-before'] });
   window.addEventListener('resize', schedulePages);
   narrow?.addEventListener?.('change', schedulePages);
   document.fonts?.ready.then(() => schedulePages(0));
@@ -4168,6 +4190,7 @@ function indentBlocks(delta) {
 // what is changed in it is written (fields left alone keep coming from the paragraph's style).
 const paraDialog = reactive({
   open: false, x: 0, y: 0, unit: 'cm', left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1,
+  keepNext: false, keepLines: false, pageBreakBefore: false,
   tabs: [], tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
 });
 let paraInitialTabs = '[]';
@@ -4225,6 +4248,7 @@ function dialogValues(f, unit) {
     left: len(f.left - f.hanging), right: len(f.right),
     special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: len(f.hanging || f.firstLine),
     before: toPt(f.before), after: toPt(f.after), rule, at,
+    keepNext: !!f.keepNext, keepLines: !!f.keepLines, pageBreakBefore: !!f.pageBreakBefore,
   };
 }
 
@@ -4297,6 +4321,7 @@ function applyParagraphDialog() {
     else if (d.rule === 'multiple') Object.assign(change, { line: Math.max(1, Math.round(num(d.at) * 240)), lineRule: 'auto' });
     else Object.assign(change, { line: Math.max(20, Math.round(num(d.at) * 20)), lineRule: d.rule });
   }
+  for (const k of ['keepNext', 'keepLines', 'pageBreakBefore']) if (!!d[k] !== i[k]) change[k] = !!d[k];
   // A tab position typed but not Set yet is set, as Word's OK does.
   if (d.tabPos !== '' && Number.isFinite(Number(d.tabPos))) {
     paraDialog.tabs = d.tabs;
@@ -4584,7 +4609,7 @@ function insertCheckbox() {
 // ------------------------------------------------------------------ references: contents, captions, citations
 
 // The References dialogs open from the Insert menu, for the place it was opened at (insertRange).
-const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref'
+const refDialog = ref(null); // 'equation' | 'citation' | 'caption' | 'xref' | 'bookmark' | 'properties' | 'xe' | 'newStyle'
 const captionInfo = reactive({ counts: {}, target: 'the paragraph', table: false });
 const xrefTargets = ref({});
 let xrefEls = {}; // what each cross-reference target is in the page: { Heading: [{ block }], Figure: [{ block, field }] }
@@ -4786,8 +4811,21 @@ function openCrossRef() {
   refocusAt(insertRange);
   const headings = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-notes, .docx-hf-band, .textbox, table')
     && (doc.outlineLevel(el) ?? 9) < 9 && el.textContent.trim());
-  xrefEls = { Heading: headings.map((block) => ({ block })) };
-  const targets = { Heading: headings.map((el) => ({ text: el.textContent.trim(), level: doc.outlineLevel(el) + 1 })) };
+  const numberOf = (el) => (el.classList.contains('list') && doc.listKind(doc.listOf(el)) === 'number' ? (el.dataset.marker || '').trim() : '');
+  const items = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-notes, .docx-hf-band, .textbox')
+    && numberOf(el) && el.textContent.trim() && !headings.includes(el));
+  const marks = [...bookmarksIn(doc, page.value)].filter(([name, m]) => !name.startsWith('_') && !m.start.closest('.docx-notes, .docx-hf-band, .textbox'));
+  const markBlock = (m) => closestBlock(m.start) || (m.start.nextElementSibling?.matches(BLOCK_SELECTOR) ? m.start.nextElementSibling : null);
+  xrefEls = {
+    'Numbered item': items.map((block) => ({ block })),
+    Heading: headings.map((block) => ({ block })),
+    Bookmark: marks.map(([name, m]) => ({ name, mark: m, block: markBlock(m) })),
+  };
+  const targets = {
+    'Numbered item': items.map((el) => ({ text: `${numberOf(el)} ${el.textContent.trim()}` })),
+    Heading: headings.map((el) => ({ text: `${numberOf(el) ? `${numberOf(el)} ` : ''}${el.textContent.trim()}`, level: doc.outlineLevel(el) + 1, numbered: !!numberOf(el) })),
+    Bookmark: marks.map(([name, m], i) => ({ text: `${name}: ${textOf(bookmarkRange(m)) || '(a place)'}`, numbered: !!(xrefEls.Bookmark[i].block && numberOf(xrefEls.Bookmark[i].block)) })),
+  };
   for (const list of Object.values(captionsInText())) {
     const label = capitalized(list[0].label);
     xrefEls[label] = list;
@@ -4814,19 +4852,239 @@ function insertCrossRef({ kind, index, as }) {
   refDialog.value = null;
   const target = xrefEls[kind]?.[index];
   const range = insertSpot('a cross-reference');
-  if (!range || !target?.block.isConnected) return;
+  if (!range || !(kind === 'Bookmark' ? target?.mark.start.isConnected : target?.block.isConnected)) return;
   undoStack.flush();
   const { block, field } = target;
-  const number = kind !== 'Heading' && as === 'number';
-  const name = refBookmark(block, number ? field : null);
-  let text = number ? `${target.label} ${field.textContent.trim()}` : block.textContent.trim();
-  let instr = ` REF ${name} \\h `;
+  const caption = !['Heading', 'Numbered item', 'Bookmark'].includes(kind);
+  const number = caption && as === 'number';
+  // A paragraph's own number (a numbered item, a numbered heading, a bookmark's paragraph): \\r, as
+  // Word's "Paragraph number" writes it, shown as Update fields shows it.
+  const paragraphNumber = !caption && as === 'number';
+  const name = kind === 'Bookmark' ? target.name : refBookmark(block, number ? field : null);
+  let text;
+  if (paragraphNumber) text = (block?.dataset.marker || '').trim().replace(/\.$/, '');
+  else if (number) text = `${target.label} ${field.textContent.trim()}`;
+  else if (kind === 'Bookmark') text = textOf(bookmarkRange(target.mark));
+  else text = block.textContent.trim();
+  let instr = ` REF ${name}${paragraphNumber ? ' \\r' : ''} \\h `;
   if (as === 'position') {
-    text = block.compareDocumentPosition(range.startContainer) & Node.DOCUMENT_POSITION_FOLLOWING ? 'above' : 'below';
+    const at = kind === 'Bookmark' ? target.mark.start : block;
+    text = at.compareDocumentPosition(range.startContainer) & Node.DOCUMENT_POSITION_FOLLOWING ? 'above' : 'below';
     instr = ` REF ${name} \\p \\h `;
   }
+  if (!text) text = name; // an empty bookmark's text: Word shows nothing; something to see and update
   if (!putInline(selectionInPage(), doc.newField(instr, text))) return;
   finishInsert(`Cross-reference inserted: “${text}” – Update (F9) brings it up to date`);
+}
+
+// ------------------------------------------------------------------ indexes
+
+// Word's Mark Index Entry: the selected text (to mark, and to mark everywhere), and how many there are.
+const markEntry = reactive({ text: '', count: 0 });
+
+function openMarkEntry() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  const text = range && !range.collapsed ? range.toString().replace(/\s+/g, ' ').trim() : '';
+  Object.assign(markEntry, { text: text.length <= 200 && !/[\n:"]/.test(text) ? text : '', count: indexEntries(doc, page.value).length });
+  refDialog.value = 'xe';
+}
+
+/**
+ * The page each index entry is on, about, for an index (see updateFields): from the page estimate,
+ * as printed; a document whose pages aren't counted (a phone) puts every entry on page 1.
+ */
+function indexPageOf() {
+  const { breaks } = narrow?.matches ? { breaks: [] } : pagesAt100();
+  const ys = breaks.map((b) => b.y);
+  return (marker) => {
+    const block = closestBlock(marker) || marker.parentElement;
+    const top = block?.getBoundingClientRect().top ?? 0;
+    return 1 + ys.filter((y) => y <= top + 1).length;
+  };
+}
+
+/** Puts an index entry (XE) at the end of `range`, as Word does after the text marked: tracked while tracking. */
+function putEntry(range, instr) {
+  const at = range.cloneRange();
+  at.collapse(false);
+  selectRange(at);
+  return putInline(at, doc.newBareField(instr));
+}
+
+/**
+ * Marks an index entry after the selection (Word's Mark), or with `all` after the selected text in
+ * each paragraph of the text it is in, once a paragraph (Word's Mark All), then brings the indexes
+ * up to date. One undoable step.
+ */
+function markIndexEntry({ main, sub, all }) {
+  refDialog.value = null;
+  const range = insertSpot('an index entry');
+  if (!range) return;
+  const instr = xeInstr(main, sub);
+  undoStack.flush();
+  let marked = 0;
+  if (!all) {
+    if (putEntry(range, instr)) marked = 1;
+  } else {
+    const text = markEntry.text;
+    const blocks = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((b) => !b.closest('.docx-notes, .docx-hf-band, .textbox') && !readOnlyAt(b, page.value));
+    for (const block of blocks) {
+      if (!block.isConnected || !block.textContent.includes(text)) continue;
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.data.indexOf(text);
+        if (i < 0 || inField(n) || readOnlyAt(n.parentElement, page.value)) continue;
+        const r = document.createRange();
+        r.setStart(n, i);
+        r.setEnd(n, i + text.length);
+        if (putEntry(r, instr)) marked++;
+        break;
+      }
+    }
+  }
+  if (!marked) return;
+  const t = updateFields(doc, page.value, { only: ['INDEX'], pageOf: indexPageOf() });
+  if (t.index) doc.updateFields = true;
+  const label = sub ? `${main}: ${sub}` : main;
+  finishInsert(`${marked === 1 ? 'Index entry' : `${marked} index entries`} “${label}” marked${t.index ? ' – the index is up to date' : ' – Insert › Index lists the entries'}`);
+}
+
+/**
+ * Insert Index, as Word's References tab: "Index" and Word's INDEX field, built at once from the
+ * entries marked, an entry a line with the pages it is on, a letter's heading before its entries.
+ * The page numbers are the page estimate's: Word works them out again when it opens the file.
+ */
+function insertIndex() {
+  closeInsertMenu();
+  const spot = insertSpot('an index', { block: true });
+  if (!spot) return;
+  undoStack.flush();
+  placeBlocks(spot, doc.renderXmlParagraphs(indexXml(doc.styles.ensureBuiltin('h1'))));
+  refreshCss();
+  const t = updateFields(doc, page.value, { only: ['INDEX'], pageOf: indexPageOf() });
+  refreshCss(); // the Index styles may be new
+  doc.updateFields = true;
+  finishInsert(t.indexEntries
+    ? `Index inserted: ${t.indexEntries} ${t.indexEntries === 1 ? 'entry' : 'entries'}, on about the pages shown here – Word works the page numbers out when it opens the file; Update (F9) adds entries marked later`
+    : 'Index inserted: no entries marked yet – mark them with Mark index entry… (Alt+Shift+X), then Update (F9)');
+}
+
+// ------------------------------------------------------------------ document properties
+
+function openProperties() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  refDialog.value = 'properties';
+}
+
+/**
+ * Saves the properties given in Document properties… (written into docProps/core.xml and
+ * custom.xml on saving), brings the fields showing them (DOCPROPERTY) up to date at once, and with
+ * `field` puts a field showing that property at the caret. One undoable step.
+ */
+function saveProperties({ core, custom, field }) {
+  refDialog.value = null;
+  let range = null;
+  if (field) {
+    range = insertSpot('a field');
+    if (!range) return;
+  } else refocusAt(insertRange);
+  undoStack.flush();
+  doc.setProperties({ core, custom });
+  const { docproperty } = updateFields(doc, page.value, { only: ['DOCPROPERTY'] });
+  markDirty();
+  if (field) {
+    const name = /\s/.test(field) ? `"${field}"` : field;
+    const value = doc.propertyValue(field) || '';
+    if (!putInline(selectionInPage(), doc.newField(` DOCPROPERTY  ${name}  \\* MERGEFORMAT `, value || field))) return;
+    finishInsert(`${field} inserted as a field: change it in Document property…, and Update (F9) shows it again`);
+    return;
+  }
+  onInput();
+  undoStack.commit();
+  message.value = docproperty ? `Properties saved: ${docproperty} ${docproperty === 1 ? 'field shows' : 'fields show'} them as they now are` : 'Properties saved: they are written into the file when it’s downloaded';
+}
+
+// ------------------------------------------------------------------ bookmarks
+
+// Word's Bookmark dialog: the document's bookmarks (not Word's hidden _Toc and _Ref ones).
+const bookmarkList = ref([]);
+const bookmarkSelection = ref(false);
+
+function listBookmarks() {
+  return [...bookmarksIn(doc, page.value)].filter(([name]) => !name.startsWith('_'))
+    .map(([name, m]) => ({ name, text: textOf(bookmarkRange(m)) }));
+}
+
+function openBookmarks() {
+  closeInsertMenu();
+  if (textLocked.value) return explainLock();
+  refocusAt(insertRange);
+  const range = selectionInPage();
+  bookmarkSelection.value = !!range && !range.collapsed;
+  bookmarkList.value = listBookmarks();
+  refDialog.value = 'bookmark';
+}
+
+/** Takes bookmark `name`'s markers out of the page (its text stays). */
+function dropBookmark(name) {
+  const m = bookmarksIn(doc, page.value).get(name);
+  if (!m) return false;
+  m.start.remove();
+  m.end?.remove();
+  return true;
+}
+
+/**
+ * Adds bookmark `name` around the selection (or at the caret), as Word's Add: a w:bookmarkStart and
+ * w:bookmarkEnd in the text, never tracked (Word doesn't track bookmarks). One already of that name
+ * (in any case) moves here.
+ */
+function addBookmark(name) {
+  refDialog.value = null;
+  const range = insertSpot('a bookmark');
+  if (!range) return;
+  if (!closestBlock(range.startContainer) || !closestBlock(range.endContainer)) {
+    message.value = 'Click in the text, or select some, to mark with a bookmark';
+    return;
+  }
+  undoStack.flush();
+  const same = [...bookmarksIn(doc, page.value).keys()].find((n) => n.toLowerCase() === name.toLowerCase());
+  const moved = same && dropBookmark(same);
+  const [start, end] = doc.newBookmark(name);
+  const r = range.cloneRange();
+  const at = r.cloneRange();
+  at.collapse(false);
+  at.insertNode(end);
+  r.collapse(true);
+  r.insertNode(start);
+  finishInsert(`Bookmark “${name}” ${moved ? 'moved here' : 'added'}: Cross-reference… can point to it`);
+}
+
+/** Selects bookmark `name`'s text (or puts the caret at it), as Word's Go To. */
+function gotoBookmark(name) {
+  refDialog.value = null;
+  const m = bookmarksIn(doc, page.value).get(name);
+  if (!m) return;
+  const r = bookmarkRange(m);
+  page.value.focus();
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+  m.start.parentElement?.scrollIntoView({ block: 'center' });
+  onSelectionChange();
+}
+
+function removeBookmark(name) {
+  refDialog.value = null;
+  undoStack.flush();
+  if (!dropBookmark(name)) return;
+  finishInsert(`Bookmark “${name}” deleted: cross-references to it stay as they are until Word updates them`);
+  refocusAt(insertRange);
 }
 
 // ------------------------------------------------------------------ editing equations
@@ -6790,7 +7048,7 @@ const LIST_LIBRARY = [
   { id: 'outline', label: '1. → 1.1. → 1.1.1.', hint: 'Numbered headings and paragraphs, as a report has them' },
   { id: 'number', label: '1. → a. → i.', hint: 'Word’s numbering' },
 ];
-const listLibrary = reactive({ open: false, x: 0, y: 0 });
+const listLibrary = reactive({ open: false, x: 0, y: 0, headingsNumbered: false });
 const listLibraryEl = ref(null);
 const listLibraryButton = ref(null);
 
@@ -6798,7 +7056,7 @@ function toggleListLibrary() {
   if (listLibrary.open) return closeListLibrary();
   restoreSelection();
   const rect = listLibraryButton.value.getBoundingClientRect();
-  Object.assign(listLibrary, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  Object.assign(listLibrary, { open: true, headingsNumbered: doc.headingsNumbered, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
   nextTick(() => {
     keepInView(listLibrary, listLibraryEl.value);
     listLibraryEl.value?.querySelector('button')?.focus();
@@ -6830,6 +7088,27 @@ function applyListPreset(id) {
     return true;
   });
   if (made) message.value = t('Numbered {list}: Tab and Shift+Tab change the level', { list: t(LIST_LIBRARY.find((p) => p.id === id).label) });
+}
+
+/**
+ * Numbers the document's headings by their styles (Heading 1 → 1, Heading 2 → 1.1…), as Word's
+ * heading numbering does, or takes that numbering off (`on` false). A change to the styles, as
+ * Modify Style is: every heading follows, it isn't tracked, and Ctrl+Z puts the styles back.
+ */
+function numberHeadings(on) {
+  listLibrary.open = false;
+  page.value.focus();
+  if (textLocked.value) return explainLock();
+  undoStack.flush();
+  if (on) doc.numberHeadings();
+  else doc.unnumberHeadings();
+  refreshCss();
+  doc.renumber(page.value);
+  pageChanged();
+  undoStack.commit();
+  markDirty();
+  onSelectionChange();
+  message.value = on ? t('Headings numbered by their styles: 1, 1.1, 1.1.1') : t('Heading numbering removed');
 }
 
 // ------------------------------------------------------------------ sorting a table
@@ -7423,7 +7702,7 @@ function updateAllFields() {
   if (textLocked.value) return explainLock();
   undoStack.flush();
   const before = page.value.innerHTML;
-  const t = updateFields(doc, page.value);
+  const t = updateFields(doc, page.value, { pageOf: indexPageOf() });
   refreshCss(); // a TOC level's style may have been added
   const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
   const done = [
@@ -7432,13 +7711,15 @@ function updateAllFields() {
     t.seq && count(t.seq, 'caption number'),
     t.formula && count(t.formula, 'formula', 'formulas'),
     t.noteref && count(t.noteref, 'note number'),
+    t.docproperty && count(t.docproperty, 'document property', 'document properties'),
+    t.index && (t.index === 1 ? `the index (${count(t.indexEntries, 'entry', 'entries')})` : `${t.index} indexes`),
   ].filter(Boolean);
   const notes = [];
   if (t.missing) notes.push(`${count(t.missing, 'cross-reference')} to text no longer in the document ${t.missing === 1 ? 'was' : 'were'} left as ${t.missing === 1 ? 'it was' : 'they were'}`);
   if (t.skipped) notes.push(`${t.skipped} was left as it was`);
-  if (t.toc) {
+  if (t.toc || t.index) {
     doc.updateFields = true;
-    notes.push('page numbers are Word’s: the file asks Word to update them when it opens it');
+    notes.push(t.toc ? 'page numbers are Word’s: the file asks Word to update them when it opens it' : 'the index’s page numbers are about those here: Word works them out when it opens the file');
   }
   if (page.value.innerHTML !== before) {
     doc.renumber(page.value);
@@ -7989,7 +8270,109 @@ function onStyleMenu(e) {
     openModifyStyle();
     return;
   }
+  if (value === '__new') {
+    e.target.value = state.block;
+    openNewStyle();
+    return;
+  }
   applyBlockStyle(value);
+}
+
+// ------------------------------------------------------------------ new styles
+
+// Word's Create New Style from Formatting: what the dialog needs, and where the selection was.
+const newStyle = reactive({ names: [], basedOn: 'Normal', selection: false });
+let newStyleAt = null; // { range, block }
+
+function openNewStyle() {
+  if (textLocked.value) return explainLock();
+  restoreSelection();
+  const range = selectionInPage();
+  const [block] = range ? selectedBlocks(range) : [];
+  if (!block) {
+    message.value = 'Click in the paragraph (or select the text) whose formatting the new style is to have';
+    return;
+  }
+  const locked = readOnlySelection();
+  if (locked) return explainReadOnly(locked, true);
+  newStyleAt = { range: range.cloneRange(), block };
+  Object.assign(newStyle, {
+    names: [...doc.styles.byId.values()].flatMap((st) => [st.name.toLowerCase(), doc.styles.label(st.id).toLowerCase()]),
+    basedOn: doc.styles.label(block.dataset.style || doc.styles.defaultParagraph) || 'Normal',
+    selection: !range.collapsed && closestBlock(range.startContainer) === closestBlock(range.endContainer),
+  });
+  refDialog.value = 'newStyle';
+}
+
+/** Takes off a run's own properties that say what the new style's `rPr` says (the style gives them now). */
+const absorbRun = (styleRPr) => (rPr) => {
+  if (!styleRPr) return;
+  for (const c of [...styleRPr.children]) {
+    const mine = [...rPr.children].find((x) => x.localName === c.localName);
+    if (mine && doc.sameProperty(mine, c)) rPr.removeChild(mine);
+  }
+};
+
+/**
+ * Creates the style (see doc.newStyleFrom) and gives it to the selection: a paragraph style to the
+ * selected paragraphs, a character style to the selected text, each losing the formatting of its own
+ * that the style now gives, as in Word, so a later Modify style… changes them too. Tracked while
+ * tracking (the new style itself isn't, as in Word); one undoable step.
+ */
+function createStyle({ name, type }) {
+  refDialog.value = null;
+  const at = newStyleAt;
+  newStyleAt = null;
+  if (!at?.block.isConnected) return;
+  page.value.focus();
+  selectRange(at.range);
+  const range = at.range;
+  if (type === 'character' && range.collapsed) {
+    message.value = 'Select the text whose formatting a character style is to have';
+    return;
+  }
+  undoStack.flush();
+  const { id, pPr, rPr } = doc.newStyleFrom(range, at.block, { name, type });
+  refreshCss();
+  styleChoices.value = doc.styleChoices();
+  characterStyles.value = doc.characterStyles();
+  if (type === 'character') {
+    const after = withTrackedRuns(range, () => restyle(doc, range, (r) => {
+      absorbRun(rPr)(r);
+      setCharacterStyle(id)(r);
+    }));
+    if (after) selectRange(after);
+  } else {
+    const tag = doc.tagFor(id);
+    const blocks = selectedBlocks(range);
+    const replaced = new Map();
+    withTrackedParagraphs(blocks, () => {
+      for (const block of blocks) {
+        let el = block;
+        if (block.tagName.toLowerCase() !== tag) {
+          el = document.createElement(tag);
+          for (const attr of block.attributes) el.setAttribute(attr.name, attr.value);
+          while (block.firstChild) el.append(block.firstChild);
+          block.replaceWith(el);
+          replaced.set(block, el);
+        }
+        el.dataset.style = id;
+        doc.absorbParagraph(el, pPr);
+      }
+    }, (b) => replaced.get(b) || b);
+    for (const b of blocks) {
+      const el = replaced.get(b) || b;
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      if (rPr && el.textContent) withTrackedRuns(r, () => restyle(doc, r, absorbRun(rPr)));
+    }
+    placeCaret(replaced.get(blocks[0]) || blocks[0]);
+  }
+  doc.renumber(page.value);
+  undoStack.commit();
+  onSelectionChange();
+  markDirty();
+  message.value = `Style ${name} created: ${type === 'character' ? 'choose it in Character style' : 'choose it in Paragraph style'} for more, and change it with Modify style…`;
 }
 
 // ------------------------------------------------------------------ watermark
@@ -8545,6 +8928,13 @@ function onKeydown(e) {
     updateAllFields();
     return;
   }
+  // Alt+Shift+X: Mark Index Entry, as in Word (by the key's place, for other layouts).
+  if (e.code === 'KeyX' && e.altKey && e.shiftKey && !mod && !e.getModifierState?.('AltGraph')) {
+    e.preventDefault();
+    insertRange = selectionInPage()?.cloneRange() || insertRange;
+    openMarkEntry();
+    return;
+  }
   // The Menu key and Shift+F10 open the right-click menu at the caret; not every browser makes a
   // contextmenu event of them.
   if ((e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) && !mod && !e.altKey) {
@@ -8663,6 +9053,7 @@ function pasteFrom(clipboardData) {
     else deleteSelection();
   }
   const tables = pasteMixed(blocks, tracked);
+  const code = applyPastedCode();
   onInput();
   undoStack.commit();
   const notes = [];
@@ -8672,7 +9063,41 @@ function pasteFrom(clipboardData) {
   if (skippedImages) {
     notes.push(`${skippedImages} ${skippedImages === 1 ? 'picture was' : 'pictures were'} not pasted with the text – copy a picture on its own and paste it, or use Insert picture`);
   }
+  if (code) notes.push(code);
   if (notes.length) message.value = notes.join(' · ');
+}
+
+/**
+ * Pasted code (marked by editor/paste.js) in the document's own code styles where it has them, as
+ * a technical document's "Code" paragraph style and "HTML Code" character style are, else in
+ * Consolas, Word's monospaced font: a code block's lines take the paragraph style (see
+ * pasteBlocks), other code the character style or the font. Returns what to say, or ''.
+ */
+function applyPastedCode() {
+  const marks = [...page.value.querySelectorAll('span[data-paste-code]')];
+  if (!marks.length) return '';
+  const { paragraph, character } = doc.codeStyles();
+  let font = false;
+  const used = new Set();
+  for (const m of marks) {
+    const texts = [...m.childNodes];
+    m.replaceWith(...texts);
+    const text = texts.find((n) => n.nodeType === 3 && n.data);
+    if (!text) continue;
+    if (paragraph && closestBlock(text)?.dataset.style === paragraph) {
+      used.add(paragraph); // the style gives it
+      continue;
+    }
+    const r = document.createRange();
+    r.setStart(text, 0);
+    r.setEnd(text, text.length);
+    restyle(doc, r, character ? setCharacterStyle(character) : setFont('Consolas'));
+    if (character) used.add(character);
+    else font = true;
+  }
+  const names = [paragraph, character].filter((id) => id && used.has(id)).map((id) => doc.styles.label(id));
+  if (names.length) return `Code pasted in the document’s ${names.join(' and ')} ${names.length === 1 ? 'style' : 'styles'}${font ? ', and Consolas' : ''}`;
+  return font ? 'Code pasted in Consolas, Word’s monospaced font (make a Code style with New style… to use one of your own)' : '';
 }
 
 /** The paragraph blocks of parsed clipboard blocks, those in tables' cells too. */
@@ -8799,6 +9224,9 @@ function pasteBlocks(blocks, tracked = null, renumber = true) {
     const here = selectionInPage();
     const el = here && closestBlock(here.startContainer);
     if (el && (i > 0 || destWasEmpty)) applyList(el, block);
+    // A code block's line in its own paragraph: the document's code paragraph style, where it has one.
+    const codeStyle = block.code && el && (i > 0 || destWasEmpty) && el.tagName === 'P' ? doc.codeStyles().paragraph : null;
+    if (codeStyle) el.dataset.style = codeStyle;
     if (tracked && block.runs.length) insertTracked(runNodes(block.runs), tracked);
     else insertAtCaret(runNodes(block.runs));
   });
@@ -9714,6 +10142,34 @@ watch(printComments, (on) => {
 });
 let printedComments = null;
 const pdfBands = ref({}); // what the dialog says about the header and footer
+const pdfPageRefs = ref(''); // what the dialog says about page numbers only Word works out
+
+/**
+ * The page numbers in the text that Word works out and Intact doesn't (it lays out no real pages):
+ * those of tables of contents and lists of figures (TOC), page references (PAGEREF) and indexes
+ * (INDEX). In the PDF they are the numbers the file had, or none for entries added here. Says so,
+ * and how to get them right, or '' if there are none.
+ */
+function pageRefsNote() {
+  const kinds = { toc: 0, figures: 0, pageref: 0, index: 0 };
+  for (const f of page.value.querySelectorAll('span.field[data-instr]')) {
+    if (f.parentElement?.closest('span.field[data-instr]')) continue; // a field inside another (a TOC's PAGEREFs)
+    const { code, args, sw } = parseInstr(f.dataset.instr);
+    if (code === 'PAGEREF' && /^_Toc/i.test(args[0] || '')) continue; // a table of contents' entry
+    if (code === 'TOC') kinds[typeof sw['\\c'] === 'string' ? 'figures' : 'toc']++;
+    else if (code === 'PAGEREF') kinds.pageref++;
+    else if (code === 'INDEX') kinds.index++;
+  }
+  const what = [
+    kinds.toc && (kinds.toc === 1 ? 'the table of contents' : 'the tables of contents'),
+    kinds.figures && (kinds.figures === 1 ? 'the list of figures or tables' : 'the lists of figures and tables'),
+    kinds.index && (kinds.index === 1 ? 'the index' : 'the indexes'),
+    kinds.pageref && (kinds.pageref === 1 ? 'a page reference' : `${kinds.pageref} page references`),
+  ].filter(Boolean);
+  if (!what.length) return '';
+  const list = what.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return `The page numbers in ${list} are those Word worked out when the file was last saved there (entries added here have the number above them), and the pages here break about where Word’s do, not exactly. For a PDF whose page numbers are right, open the downloaded file in Word, update the fields (F9) and save it as a PDF there.`;
+}
 
 /** The header and footer in the PDF, in words: on every page, or once (and why). */
 function describeBands() {
@@ -9810,6 +10266,8 @@ function downloadBlob(blob, name) {
 /** Print (File tab): the browser's print window, as Ctrl+P opens it (see printBands and the print styles). */
 function printDocument() {
   closeChooser();
+  const note = pageRefsNote();
+  if (note) message.value = note;
   window.print();
 }
 
@@ -9818,6 +10276,7 @@ function openPdfDialog() {
   hasHighlight.value = !!page.value.querySelector('mark');
   hasHidden.value = !!page.value.querySelector('[data-hidden]');
   pdfBands.value = describeBands();
+  pdfPageRefs.value = pageRefsNote();
   const rect = saveMenuButton.value?.getBoundingClientRect();
   Object.assign(pdfDialog, { open: true, x: Math.max(8, Math.min((rect?.right ?? window.innerWidth) - 360, window.innerWidth - 368)), y: (rect?.bottom ?? 48) + 4 });
   nextTick(() => pdfDialogEl.value?.querySelector('.confirm')?.focus());
@@ -10212,7 +10671,8 @@ async function close() {
 .save-split .primary:first-child { border-radius: 4px 0 0 4px; }
 .save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
 .save-menu { min-width: 220px; }
-.insert-menu { min-width: 220px; }
+.insert-menu { min-width: 220px; max-height: calc(100vh - 16px); overflow-y: auto; }
+.insert-menu > * { flex-shrink: 0; }
 .insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
 .insert-menu .hint { color: var(--muted); font-size: 12px; }
 .list-library { width: min(460px, calc(100vw - 16px)); }
@@ -10395,7 +10855,9 @@ async function close() {
 .para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
 .page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
 .para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.para-dialog label.check { justify-content: flex-start; }
 .para-dialog input, .para-dialog select { width: 120px; font: inherit; }
+.para-dialog label.check input { width: auto; margin: 0; }
 .para-dialog select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
 .picture-frame { position: absolute; z-index: 6; border: 1px solid var(--accent); pointer-events: none; box-sizing: border-box; }
 .picture-frame .handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; background: #fff; border: 1px solid var(--accent); border-radius: 50%; pointer-events: auto; touch-action: none; }

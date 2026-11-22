@@ -21,7 +21,7 @@ import {
 import { StyleSheet, jcToCss, borderCss } from './styles.js';
 import { textboxInfo, setTextboxText, textboxContents, syncCopies } from './textboxes.js';
 import { loadEmbeddedFonts } from './fonts.js';
-import { Numbering, addList, addPresetList, MAX_LEVEL } from './numbering.js';
+import { Numbering, addList, addPresetList, addHeadingList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import { STARTERS, starterFiles } from './starters.js';
 import {
@@ -51,7 +51,10 @@ import { relsPathOf } from './links.js';
 import { formFieldInfo, formFieldTitle, setFormCheck, setFormDropdown } from './formFields.js';
 import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
 import { PasswordError, decrypt, encrypt, keyForPassword } from './encryption.js';
-import { propertyPaths, readProperties, personalParts, anonymize, updateCore } from './properties.js';
+import {
+  propertyPaths, readProperties, personalParts, anonymize, updateCore, readCore, setCore, setCustom, managedProperty, EDITABLE_CORE,
+  EMPTY_CORE, CUSTOM_PROPS_REL, CUSTOM_PROPS_CT, CORE_PROPS_REL, CORE_PROPS_CT,
+} from './properties.js';
 import {
   rowsOf, cellsOf, layout, cellPosition, gridWidths, lockedParts, insertRows, deleteRows, insertColumns, deleteColumns,
   fixMerges, fitWidths, totalWidth, deleteRowTracked, undeleteRow, newTableXml, mergeArea, areaCells, mergeCells, splitCell,
@@ -163,7 +166,37 @@ const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relatio
 const HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
-const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
+const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp', 'image/svg+xml': 'svg' };
+// Office 2016's extension for an SVG picture (with a PNG for older readers), as Word writes it.
+const SVG_EXT = '{96DAC541-7B7A-43D3-8B79-37D633B846F1}';
+const ASVG = 'http://schemas.microsoft.com/office/drawing/2016/SVG/main';
+/**
+ * A PNG of the SVG picture `img` (loaded) at twice `size` ({ w, h } in pixels), or null if the
+ * browser can't draw it. Drawn from the file in an image, which runs none of its scripts.
+ */
+async function svgToPng(img, { w, h }) {
+  try {
+    const scale = Math.min(2, 4096 / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `el` alone in a new <w:pPr>, for comparing one property with sameProps. */
+function wrapIn(xml, el) {
+  const w = createW(xml, 'pPr');
+  w.appendChild(el.cloneNode(true));
+  return w;
+}
+
+// Word's Line and Page Breaks that the Paragraph dialog sets (on/off paragraph properties).
+const BREAK_PROPS = ['keepNext', 'keepLines', 'pageBreakBefore'];
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
 
 /**
@@ -443,6 +476,10 @@ export class DocxDocument {
     this.updateProperties = true;
     this.modifiedBy = '';
     this.newTitle = null;
+    // Properties edited here (Document properties…): { core: { title, … } or null, custom: [{ name,
+    // value }] or null }, written on saving (see writeCore, writeCustom).
+    this.customOriginal = this.propertyPaths.custom ? await this.text(this.propertyPaths.custom) : null;
+    this.propEdits = { core: null, custom: null };
     this.changed = false; // whether the last write changed the document (see write)
     this.restored = false; // opened from a draft (see drafts.js): it differs from the file first opened
     // The package's parts as opened, to tell whether a save changes anything (see packageChanged).
@@ -870,6 +907,16 @@ export class DocxDocument {
    * A field as Word writes one (begin, instruction `instr`, separate, its result `result`, end), as
    * rendered nodes to put at the caret: a page number, or today's date that Word updates (DATE).
    */
+  /** A field with no result (an index entry, XE), rendered: its begin, instruction and end markers, hidden. */
+  newBareField(instr) {
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const p = parseXml(`<w:p xmlns:w="${W}"><w:r><w:fldChar w:fldCharType="begin"/></w:r>`
+      + `<w:r><w:instrText xml:space="preserve">${esc(instr)}</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`).documentElement;
+    const holder = document.createElement('span');
+    this.renderInlines(this.xml.importNode(p, true), holder);
+    return [...holder.childNodes];
+  }
+
   newField(instr, result) {
     const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const p = parseXml(`<w:p xmlns:w="${W}"><w:r><w:fldChar w:fldCharType="begin"/></w:r>`
@@ -2195,6 +2242,9 @@ export class DocxDocument {
     // Its value is the kind of break (nextPage unless the section says otherwise), for printing.
     if (wChild(pPr, 'sectPr')) el.dataset.sectionEnd = wAttr(wChild(wChild(pPr, 'sectPr'), 'type'), 'val') || 'nextPage';
     if (chainHas('pageBreakBefore')) el.dataset.pageBreakBefore = '';
+    // For the page estimate (editor/pages.js): a paragraph kept with the next, or kept whole.
+    if (chainHas('keepNext')) el.dataset.keepNext = '';
+    if (chainHas('keepLines')) el.dataset.keepLines = '';
     if (chainHas('suppressLineNumbers')) el.dataset.noLineNumbers = '';
     if (pPr) {
       el.dataset.ppr = this.keep(pPr);
@@ -2898,7 +2948,7 @@ export class DocxDocument {
   // ---------------------------------------------------------------- inserting pictures
 
   /**
-   * A picture from a file (PNG, JPEG, GIF or BMP) as Word inserts one: in line with the text, at its
+   * A picture from a file (PNG, JPEG, GIF, BMP, or SVG with a PNG beside it) as Word inserts one: in line with the text, at its
    * own size or narrowed to fit between the margins. Its file goes into word/media when saved (if
    * it is still in the document). Returns { span } (the rendered picture) or { reason }.
    */
@@ -2924,19 +2974,34 @@ export class DocxDocument {
    * inch, keeping its proportions), narrowed to fit between the margins, with alt text `descr`.
    */
   async addPicture(file, { width, descr, part = null } = {}) {
-    const ext = PICTURE_TYPES[file.type];
-    if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF or BMP picture` };
-    const data = new Uint8Array(await file.arrayBuffer());
-    const url = URL.createObjectURL(new Blob([data], { type: file.type }));
-    const size = await new Promise((resolve) => {
-      const img = new Image();
+    const type = file.type || (/\.svg$/i.test(file.name || '') ? 'image/svg+xml' : '');
+    const ext = PICTURE_TYPES[type];
+    if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF, BMP or SVG picture` };
+    let data = new Uint8Array(await file.arrayBuffer());
+    const svg = type === 'image/svg+xml';
+    let url = URL.createObjectURL(new Blob([data], { type }));
+    const img = new Image();
+    let size = await new Promise((resolve) => {
       img.onload = () => resolve(img.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight } : null);
       img.onerror = () => resolve(null);
       img.src = url;
     });
+    // An SVG: shown (and kept for readers before Office 2016) as a PNG drawn from it here, at
+    // twice its size for a sharp print, the SVG itself beside it, as Word inserts one.
+    let svgData = null;
+    if (svg && size) {
+      const png = await svgToPng(img, size);
+      if (!png) size = null;
+      else {
+        URL.revokeObjectURL(url);
+        svgData = data;
+        data = png;
+        url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+      }
+    }
     if (!size) {
       URL.revokeObjectURL(url);
-      return { reason: `${file.name ? `“${file.name}”` : 'This picture'} couldn’t be read` };
+      return { reason: `${file.name ? `“${file.name}”` : 'This picture'} couldn’t be read${svg ? ' (an SVG needs a width and height, or a viewBox)' : ''}` };
     }
     const maxWidth = this.textWidth / 15;
     let { w, h } = size;
@@ -2948,16 +3013,18 @@ export class DocxDocument {
       h = Math.max(1, Math.round((h * maxWidth) / w));
       w = maxWidth;
     }
-    const { rid, n } = this.addMedia(data, file.type, url, part);
+    const { rid, n } = this.addMedia(data, svgData ? 'image/png' : type, url, part);
+    const svgRid = svgData ? this.addMedia(svgData, 'image/svg+xml', URL.createObjectURL(new Blob([svgData], { type })), part).rid : null;
+    const blipExt = svgRid ? `<a:extLst><a:ext uri="${SVG_EXT}"><asvg:svgBlip xmlns:asvg="${ASVG}" r:embed="${svgRid}"/></a:ext></a:extLst>` : '';
     const id = await this.nextDocPrId();
     const cx = Math.round(w * 9525);
     const cy = Math.round(h * 9525);
-    const name = (file.name || `image${n}.${ext}`).replace(/[<>&"]/g, '');
+    const name = (file.name || `image${n}.${svgData ? 'svg' : ext}`).replace(/[<>&"]/g, '');
     const xml = `<w:r xmlns:w="${W}" xmlns:wp="${NS.wp}" xmlns:a="${NS.a}" xmlns:pic="${PIC}" xmlns:r="${NS.r}"><w:drawing>`
       + `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>`
       + `<wp:docPr id="${id}" name="Picture ${id}"${descr ? ` descr="${descr.replace(/[<>&"]/g, '')}"` : ''}/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
       + `<a:graphic><a:graphicData uri="${PIC}"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr>`
-      + `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+      + `<pic:blipFill><a:blip r:embed="${rid}">${blipExt}</a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
       + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`
       + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
     const r = this.xml.importNode(parseXml(xml).documentElement, true);
@@ -3897,6 +3964,123 @@ export class DocxDocument {
     return numId;
   }
 
+  /**
+   * Numbers the document's headings by their styles, as Word's "1 Heading 1, 1.1 Heading 2…"
+   * multilevel list does: a new list whose levels are linked to Heading 1–9, and each heading style
+   * numbered by it (Heading 1–3 added if the document lacks them). The paragraphs aren't changed:
+   * their styles number them, in Word as here. Returns the heading styles' ids by level.
+   */
+  numberHeadings() {
+    if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);
+    for (const key of ['h1', 'h2', 'h3']) this.styles.ensureBuiltin(key);
+    const headings = Array.from({ length: MAX_LEVEL + 1 }, (_, i) => {
+      for (const s of this.styles.byId.values()) if (s.type === 'paragraph' && s.name.toLowerCase() === `heading ${i + 1}`) return s.id;
+      return null;
+    });
+    const numId = addHeadingList(this.numberingXml, headings);
+    headings.forEach((id, i) => id && this.styles.setStyleNumbering(id, numId, i));
+    this.numberingChanged = true;
+    this.kinds = null;
+    return headings;
+  }
+
+  /**
+   * Adds a style made from the formatting at `range` in paragraph `block`, as Word's Create New
+   * Style from Formatting does: a paragraph style (`type` 'paragraph') takes the paragraph's own
+   * formatting and its first run's, based on the paragraph's style; a character style the first
+   * selected run's. Lists, a section, a tracked change's record and a style already applied aren't
+   * taken. Returns { id, pPr, rPr } (what the style was given, for taking it off the text).
+   */
+  newStyleFrom(range, block, { name, type }) {
+    const holder = block.cloneNode(false);
+    const r = range.cloneRange();
+    if (type === 'paragraph' || r.collapsed) r.selectNodeContents(block);
+    holder.append(r.cloneContents());
+    const p = this.paragraphXml(holder);
+    // A character style: the run properties of the first selected text, as it is in the page.
+    const first = (() => {
+      if (type !== 'character') return null;
+      const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+      for (let n = walker.currentNode.nodeType === 3 ? walker.currentNode : walker.nextNode(); n; n = walker.nextNode()) {
+        if (n.data && range.intersectsNode(n)) return n;
+      }
+      return null;
+    })();
+    const run = wChildren(p, 'r').find((x) => wChild(x, 't')) || wChildren(p, 'r')[0];
+    const found = first ? this.rPrOf(first) : run && wChild(run, 'rPr');
+    const rPr = found ? found.cloneNode(true) : null;
+    if (rPr) removeW(rPr, 'rStyle', 'rPrChange', 'ins', 'del', 'moveFrom', 'moveTo');
+    let pPr = null;
+    if (type === 'paragraph' && wChild(p, 'pPr')) {
+      pPr = wChild(p, 'pPr').cloneNode(true);
+      removeW(pPr, 'pStyle', 'numPr', 'rPr', 'sectPr', 'pPrChange', 'framePr', 'cnfStyle');
+    }
+    const basedOn = type === 'paragraph' ? (block.dataset.style || this.styles.defaultParagraph) : this.defaultCharacterStyle();
+    const id = this.styles.addStyle({ name, type, basedOn, pPr, rPr });
+    return { id, pPr, rPr };
+  }
+
+  /** True if two properties (<w:b/>, <w:rFonts …/>) say the same, whatever the order of their attributes. */
+  sameProperty(a, b) {
+    return a.localName === b.localName && this.sameProps(wrapIn(this.xml, a), wrapIn(this.xml, b));
+  }
+
+  /**
+   * The document's own styles for code, by name, as technical documents have them: { paragraph
+   * ("Code", "Code Block", "Source Code", "HTML Preformatted"…), character ("HTML Code", "Inline
+   * Code", "Code Char"…) }, each a style id or null.
+   */
+  codeStyles() {
+    const find = (type, re) => [...this.styles.byId.values()].find((st) => st.type === type && re.test(st.name.trim()))?.id || null;
+    return {
+      paragraph: find('paragraph', /^(code|code ?block|source ?code|source|listing|program listing|html preformatted|preformatted( text)?|code example)$/i),
+      character: find('character', /^(html code|inline ?code|code( char)?|source ?code( char)?|code text|html preformatted char)$/i),
+    };
+  }
+
+  /** Word's Default Paragraph Font (the default character style), or null. */
+  defaultCharacterStyle() {
+    for (const st of this.styles.byId.values()) if (st.type === 'character' && st.isDefault) return st.id;
+    return null;
+  }
+
+  /** True if a style is named `name` (in any case), as Word allows a name once. */
+  styleNamed(name) {
+    const low = name.trim().toLowerCase();
+    return [...this.styles.byId.values()].some((st) => st.name.toLowerCase() === low || this.styles.label(st.id).toLowerCase() === low);
+  }
+
+  /**
+   * Takes paragraph `el`'s own properties that say what `pPr` (a style's) says off it, so the style
+   * gives them, as Word does when a paragraph is made into a new style.
+   */
+  absorbParagraph(el, pPr) {
+    if (!pPr || el.dataset.ppr == null) return;
+    const own = this.rawClone(el.dataset.ppr);
+    for (const c of elementChildren(pPr)) {
+      const mine = wChild(own, c.localName);
+      if (mine && this.sameProperty(mine, c)) own.removeChild(mine);
+    }
+    el.dataset.ppr = this.keep(own);
+    const css = this.styles.pPrCss(own, el.dir === 'rtl');
+    for (const prop of ['margin-top', 'margin-bottom', 'line-height', 'padding-left', 'padding-right', 'text-indent', 'text-align', 'border-top', 'border-bottom', 'border-left', 'border-right', 'background-color']) {
+      el.style.setProperty(prop, css[prop] || '');
+    }
+  }
+
+  /** True if the document's Heading 1 is numbered by its style (see numberHeadings). */
+  get headingsNumbered() {
+    const h1 = this.styles.findBuiltin('h1');
+    return !!(h1 && this.styleList(h1));
+  }
+
+  /** Takes the numbering off the heading styles (numbered by numberHeadings, or in Word). */
+  unnumberHeadings() {
+    for (const s of this.styles.byId.values()) {
+      if (s.type === 'paragraph' && /^heading [1-9]$/.test(s.name.toLowerCase()) && wChild(s.pPr, 'numPr')) this.styles.setStyleNumbering(s.id, null);
+    }
+  }
+
   newList(kind, first = null) {
     if (kind === 'bullet' && !first && this.listDefs.bulletNumId) return this.listDefs.bulletNumId;
     if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);
@@ -4262,8 +4446,9 @@ export class DocxDocument {
     // Whether the document now differs from the one opened: only then are its properties updated.
     // A restored draft already holds edits to the file first opened, so it counts as changed too,
     // and so does a new document made from a template, which is no longer the file opened.
-    this.changed = this.restored || this.removePersonal || this.newTitle != null || this.fromTemplate || await this.packageChanged();
-    this.writeCore();
+    await this.writeCustom();
+    this.changed = this.restored || this.removePersonal || this.newTitle != null || !!this.propEdits.core || this.fromTemplate || await this.packageChanged();
+    await this.writeCore();
     await this.writePersonal();
   }
 
@@ -4273,18 +4458,127 @@ export class DocxDocument {
    * Always worked out from the properties as opened, so saving twice counts one revision; with
    * nothing changed (or updating switched off), the part as opened goes back.
    */
-  writeCore() {
+  async writeCore() {
+    const edits = this.propEdits?.core || null;
+    // Without a core part, one is added for properties given here (as Word adds one on saving).
+    if (!this.propertyPaths?.core && ((edits && Object.values(edits).some(Boolean)) || this.newTitle)) {
+      await this.addPackagePart('docProps/core.xml', CORE_PROPS_REL, CORE_PROPS_CT, EMPTY_CORE);
+      this.propertyPaths.core = 'docProps/core.xml';
+      this.coreOriginal = EMPTY_CORE;
+      this.coreAdded = true;
+    }
     const path = this.propertyPaths?.core;
     if (!path || this.coreOriginal == null) return;
     const update = this.changed && this.updateProperties;
-    if (!update && this.newTitle == null) {
+    if (!update && this.newTitle == null && !edits) {
       if (this.coreWritten && this.zip.files[path] === this.coreWritten) this.zip.file(path, this.coreOriginal);
       this.coreWritten = null;
       return;
     }
-    const xml = updateCore(this.coreOriginal, update ? { modified: new Date(), by: this.modifiedBy, revision: true } : {}, this.newTitle);
+    let xml = updateCore(this.coreOriginal, update ? { modified: new Date(), by: this.modifiedBy, revision: true } : {}, edits ? null : this.newTitle);
+    if (edits) xml = setCore(xml, edits);
     this.zip.file(path, xml);
     this.coreWritten = this.zip.files[path];
+  }
+
+  /**
+   * Writes the custom properties given here (Document properties…) into docProps/custom.xml: in
+   * the part the file had, or a new one (with its relationship and content type); with none given
+   * (or Undo back to none), the part goes back as it was.
+   */
+  async writeCustom() {
+    const list = this.propEdits?.custom;
+    const path = this.propertyPaths?.custom;
+    if (!list) {
+      if (path && this.customWritten && this.zip.files[path] === this.customWritten) {
+        if (this.customOriginal != null) this.zip.file(path, this.customOriginal);
+      }
+      this.customWritten = null;
+      return;
+    }
+    if (!path) {
+      await this.addPackagePart('docProps/custom.xml', CUSTOM_PROPS_REL, CUSTOM_PROPS_CT, setCustom(null, list));
+      this.propertyPaths.custom = 'docProps/custom.xml';
+    } else this.zip.file(path, setCustom(this.customOriginal, list));
+    this.customWritten = this.zip.files[this.propertyPaths.custom];
+  }
+
+  /** Adds a part of the package (not the main part's): its file, its relationship in _rels/.rels and its content type. */
+  async addPackagePart(path, relType, contentType, xml) {
+    this.zip.file(path, xml);
+    const rels = parseXml((await this.text('_rels/.rels')) || `<Relationships xmlns="${NS.pr}"/>`);
+    if (![...rels.documentElement.children].some((r) => r.getAttribute('Type') === relType)) {
+      let id = 1;
+      while ([...rels.documentElement.children].some((r) => r.getAttribute('Id') === `rIdProps${id}`)) id++;
+      const rel = rels.createElementNS(NS.pr, 'Relationship');
+      rel.setAttribute('Id', `rIdProps${id}`);
+      rel.setAttribute('Type', relType);
+      rel.setAttribute('Target', path);
+      rels.documentElement.appendChild(rel);
+      this.zip.file('_rels/.rels', serializeXml(rels));
+    }
+    const ct = parseXml(await this.text('[Content_Types].xml'));
+    if (![...ct.documentElement.children].some((d) => d.getAttribute('PartName') === `/${path}`)) {
+      const ov = ct.createElementNS(NS.ct, 'Override');
+      ov.setAttribute('PartName', `/${path}`);
+      ov.setAttribute('ContentType', contentType);
+      ct.documentElement.appendChild(ov);
+      this.zip.file('[Content_Types].xml', serializeXml(ct));
+    }
+  }
+
+  /**
+   * The properties Document properties… edits, as they are now: { core: { title, subject, keywords,
+   * category, contentStatus, description }, custom: [{ name, value }] } (custom ones Office manages,
+   * a sensitivity label's, left out).
+   */
+  editableProperties() {
+    const core = this.propEdits.core || readCore(this.coreOriginal);
+    if (!this.propEdits.core && this.newTitle != null) core.title = this.newTitle;
+    const custom = this.propEdits.custom || (this.properties?.custom || []).filter((p) => !managedProperty(p.name)).map(({ name, value }) => ({ name, value }));
+    return { core: { ...core }, custom: custom.map((p) => ({ ...p })) };
+  }
+
+  /** Sets the properties to save (see editableProperties); the review's list follows. */
+  setProperties({ core, custom }) {
+    this.propEdits = { core: core ? { ...core } : null, custom: custom ? custom.map((p) => ({ ...p })) : null };
+    if (core) this.newTitle = null;
+    this.refreshPropertyList();
+  }
+
+  /** The properties as they are now in the list the review shows (doc.properties). */
+  refreshPropertyList() {
+    if (!this.propertiesAsOpened) this.propertiesAsOpened = { core: this.properties.core, custom: this.properties.custom };
+    const { core, custom } = this.propEdits;
+    const labels = Object.fromEntries(EDITABLE_CORE.map(([key, , , label]) => [label, key]));
+    this.properties.core = core
+      ? [...this.propertiesAsOpened.core.filter((p) => !(p.label in labels)), ...EDITABLE_CORE.filter(([key]) => core[key]).map(([key, , , label]) => ({ label, value: core[key] }))]
+      : this.propertiesAsOpened.core;
+    this.properties.custom = custom
+      ? [...this.propertiesAsOpened.custom.filter((p) => managedProperty(p.name)), ...custom]
+      : this.propertiesAsOpened.custom;
+  }
+
+  /** For Undo: the properties edited here, as a value (see setPropertyState). */
+  propertyState() {
+    return this.propEdits.core || this.propEdits.custom ? this.propEdits : null;
+  }
+
+  setPropertyState(state) {
+    this.propEdits = { core: state?.core ? { ...state.core } : null, custom: state?.custom ? state.custom.map((p) => ({ ...p })) : null };
+    this.refreshPropertyList();
+  }
+
+  /**
+   * The value a DOCPROPERTY field shows for property `name` (Title, Subject, Keywords, Category,
+   * Comments, or a custom property's name, in any case), or null if the document has none.
+   */
+  propertyValue(name) {
+    const { core, custom } = this.editableProperties();
+    const key = EDITABLE_CORE.find(([, , , , field]) => field && field.toLowerCase() === String(name).toLowerCase())?.[0];
+    if (key) return core[key];
+    const p = custom.find((c) => c.name.toLowerCase() === String(name).toLowerCase());
+    return p ? p.value : null;
   }
 
   /** What saving records in the properties, for the review: { available, on, by, revision, lastBy }. */
@@ -4862,7 +5156,28 @@ export class DocxDocument {
     return {
       before: num(before), after: num(after), line: num(line, 240), lineRule: line == null ? 'auto' : lineRule || 'auto',
       left: num(left ?? start), right: num(right ?? end), firstLine: hanging != null ? 0 : num(firstLine), hanging: num(hanging),
+      ...this.paragraphBreaks(sources),
     };
+  }
+
+  /**
+   * Word's Line and Page Breaks: keepNext, keepLines and pageBreakBefore, true or false, from the
+   * first of `sources` (<w:pPr>s, the paragraph's own first) that says (an on/off property: absent
+   * is off).
+   */
+  paragraphBreaks(sources) {
+    const out = {};
+    for (const local of BREAK_PROPS) {
+      out[local] = false;
+      for (const pPr of sources) {
+        const v = onOff(wChild(pPr, local));
+        if (v !== undefined) {
+          out[local] = v;
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   /**
@@ -4901,6 +5216,26 @@ export class DocxDocument {
     if (has('firstLine') || has('hanging')) dropInd.push('firstLineChars', 'hangingChars', has('firstLine') ? 'hanging' : 'firstLine');
     write('ind', { left: 'left', right: 'right', firstLine: 'firstLine', hanging: 'hanging' }, dropInd);
     if (has('tabs')) this.writeTabs(pPr, change.tabs, this.tabStops(el).inherited);
+    // Line and page breaks: the paragraph's own only where its style (or list level) doesn't say the
+    // same, off as <w:keepNext w:val="0"/> where the style has it on, as Word writes them.
+    if (BREAK_PROPS.some(has)) {
+      const list = this.listOf(el);
+      this.kinds ||= new Numbering(this.numberingXml);
+      const level = list ? this.kinds.levels(list.numId)?.get(list.ilvl)?.pPr : null;
+      const styles = this.styles.chain(el.dataset.style || this.styles.defaultParagraph).map((st) => st.pPr).reverse();
+      const inherited = this.paragraphBreaks([level, ...styles, this.styles.defaultPPr]);
+      for (const local of BREAK_PROPS) {
+        if (!has(local)) continue;
+        removeW(pPr, local);
+        const on = !!change[local];
+        if (on !== inherited[local]) {
+          const e = ensureOrdered(pPr, local, PPR_ORDER);
+          if (!on) e.setAttributeNS(W, 'w:val', '0');
+        }
+        if (on) el.dataset[local] = '';
+        else delete el.dataset[local];
+      }
+    }
     el.dataset.ppr = this.keep(pPr);
     if (['left', 'right', 'firstLine', 'hanging'].some(has) && this.listOf(el)) el.dataset.indSet = '';
     // Show it: the properties these set, from the paragraph's own (its style's come from the stylesheet).

@@ -38,7 +38,7 @@
         <li>A watermark (DRAFT, CONFIDENTIAL or your own text), in Page setup, as Word puts one in the header</li>
         <li>Paper sizes A4, Letter, Legal, A5, A3, Executive, F4 and Folio, or a custom size, in Page setup; page numbers in 1, 2, 3, i, ii, iii and other formats, or from any number, per section (Page number ▾ &gt; Format page numbers…)</li>
         <li>The interface in English or Indonesian (Bahasa Indonesia), chosen on the start page; in Indonesian, starters for official documents (surat dinas, nota dinas, surat undangan, berita acara, keputusan with its lampiran, surat tugas, surat edaran, notula, laporan kegiatan, telaahan staf, surat kuasa)</li>
-        <li>Numbering library (Numbering ▾): Indonesia's legal numbering (Pasal 1 → (1) → a. → 1.; BAB I → Pasal 1), 1. → 1.1. → 1.1.1., and Word's own</li>
+        <li>Numbering library (Numbering ▾): Indonesia's legal numbering (Pasal 1 → (1) → a. → 1.; BAB I → Pasal 1), 1. → 1.1. → 1.1.1., and Word's own; numbered headings (1 Heading 1, 1.1 Heading 2), numbered by their styles as Word numbers them</li>
         <li>Sort a table's rows by a column (text, numbers or dates), and table formulas such as =SUM(ABOVE) with a number format, from the Table layout menu; Update fields (F9) works them out again</li>
         <li>Compare documents (Review): what changed in the text and in the footnotes and endnotes between another version of the document and this one, word by word, read on this device; and a redline of it, a new document with those changes as tracked changes, to send back or to accept and reject in Word</li>
         <li>Print (Ctrl+P): just the document, on its paper size and in its margins, a new page at each page break, with the header and footer, and page numbers, on every page; each section on its own paper, with its own header, footer and page numbers</li>
@@ -48,14 +48,17 @@
         <li>About how many pages, in the status bar, with a dashed line where each page begins</li>
         <li>Several documents at once, each in its own tab: Open (Ctrl+O) opens another beside this one, and a document dropped on the page opens in a new tab</li>
         <li>Show formatting marks (¶): spaces, tabs, line breaks and paragraph ends</li>
-        <li>Paragraph style (Normal, Title, Heading 1–3 and the document's own styles, such as Heading 4, Quote and Caption) and alignment</li>
+        <li>Paragraph style (Normal, Title, Heading 1–3 and the document's own styles, such as Heading 4, Quote and Caption) and alignment; New style… makes a paragraph or character style (a "Code" or "Note" style) from the selection's formatting</li>
+        <li>Keep with next, keep lines together and page break before, in the Paragraph dialog, followed by the page estimate</li>
+        <li>For manuals and specifications: bookmarks, cross-references to headings, numbered items, bookmarks and captions; index entries (Alt+Shift+X) and an index built from them; document properties (a title, a version number) shown in the text as fields that change everywhere when the property does</li>
         <li>Find and replace (Ctrl+F, Ctrl+H)</li>
         <li>The tools in tabs, as Word's ribbon (File, Home, Insert, Layout, References, Review, View), or all of them in one toolbar ("All tools"). On a phone, a document with tracked changes or comments puts Accept, Reject and the comments first in the toolbar</li>
         <li>The toolbar from the keyboard: Alt+F10 goes to it, the arrow keys along it, Esc back to the text</li>
         <li>Track Changes for your own edits, formatting included, with your name, as Word records them</li>
         <li>Review your changes before downloading, with a reminder to update the table of contents, cross-references and bibliography in Word</li>
         <li>Accept and reject tracked changes, one at a time or all at once; show all markup, simple markup, no markup or the original, to read an edited draft clean</li>
-        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links; tables from Excel, Google Sheets and Word paste as tables</li>
+        <li>Paste with bold, italic, underline, strikethrough, superscript, subscript, lists and links; tables from Excel, Google Sheets and Word paste as tables; code from a code editor or a web page in the document's own code style, or in Consolas</li>
+        <li>Pictures in PNG, JPEG, GIF, BMP or SVG (a diagram), an SVG with a PNG beside it for older versions of Word, as Word inserts one</li>
         <li>Links (Ctrl+K) to web pages, e-mail addresses and DOIs: insert, change or remove them</li>
         <li>Word and character count of the document and of the selection; spelling checked in the document's language where the browser can</li>
         <li>Template and form fields: text, check boxes, drop-down lists and dates</li>

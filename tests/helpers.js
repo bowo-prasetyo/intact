@@ -63,6 +63,7 @@ export const KITCHEN_SINK = `
   <w:sdt><w:sdtPr><w:alias w:val="Rows"/><w:id w:val="301"/></w:sdtPr><w:sdtContent><w:tr><w:tc><w:p><w:r><w:t>Row field</w:t></w:r></w:p></w:tc>
   <w:sdt><w:sdtPr><w:alias w:val="Cell"/><w:showingPlcHdr/><w:text/></w:sdtPr><w:sdtContent><w:tc><w:p><w:r><w:rPr><w:rStyle w:val="PlaceholderText"/></w:rPr><w:t>Cell field</w:t></w:r></w:p></w:tc></w:sdtContent></w:sdt></w:tr></w:sdtContent></w:sdt>
 </w:tbl>
+<w:p><w:pPr><w:keepNext/><w:keepLines/></w:pPr><w:bookmarkStart w:id="9" w:name="Seals"/><w:r><w:t xml:space="preserve">Kept with the next, indexed</w:t></w:r><w:bookmarkEnd w:id="9"/><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> XE "Pump:seals" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t xml:space="preserve">, version </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> DOCPROPERTY  Version  \\* MERGEFORMAT </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1.0</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t xml:space="preserve">, see </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> REF Seals \\r \\h </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>
 <w:p><w:r><w:t>Last paragraph</w:t></w:r></w:p>`;
 
 // A 1×1 transparent PNG.

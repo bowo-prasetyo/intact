@@ -7,21 +7,14 @@
     </label>
     <label>Insert reference to
       <select v-model="as" aria-label="Insert reference to">
-        <template v-if="kind === 'Heading'">
-          <option value="text">Heading text</option>
-        </template>
-        <template v-else>
-          <option value="number">Only label and number</option>
-          <option value="text">Entire caption</option>
-        </template>
-        <option value="position">Above/below</option>
+        <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
     </label>
-    <p v-if="!list.length" class="hint">{{ kind === 'Heading' ? 'The document has no headings: give a paragraph a heading style first.' : `The document has no ${kind.toLowerCase()} captions.` }}</p>
+    <p v-if="!list.length" class="hint">{{ EMPTY[kind] || `The document has no ${kind.toLowerCase()} captions.` }}</p>
     <div v-else class="items" role="listbox" :aria-label="`For which ${kind.toLowerCase()}`" tabindex="0" @keydown="onKeys">
       <div v-for="(item, i) in list" :key="i" role="option" :aria-selected="index === i" :class="{ on: index === i, [`level${item.level || 1}`]: true }" @click="index = i" @dblclick="index = i; insert()">{{ item.text }}</div>
     </div>
-    <p class="hint">A field Word updates (REF): Update (F9) brings its text up to date after the heading or caption changes.</p>
+    <p class="hint">A field Word updates (REF): Update (F9) brings its text up to date after what it points to changes.</p>
     <template #actions>
       <button type="submit" class="confirm" :disabled="!list.length">Insert</button>
     </template>
@@ -29,18 +22,37 @@
 </template>
 
 <script setup>
-// Insert Cross-reference, as on Word's References tab: to a heading (its text) or a caption (its
-// label and number, or all of it), or "above"/"below", as a REF field to a bookmark on it.
+// Insert Cross-reference, as on Word's References tab: to a numbered item (its number or text), a
+// heading (its text, or its number when headings are numbered), a bookmark (its text, or the
+// number of its paragraph) or a caption (its label and number, or all of it), or "above"/"below",
+// as a REF field to a bookmark on it (\r for a paragraph's number, \p for above/below).
 import { ref, computed } from 'vue';
 import ModalDialog from './ModalDialog.vue';
 
-// targets: { Heading: [{ text, level }], Figure: [{ text }], … } in the document's order.
+// targets: { 'Numbered item': [{ text }], Heading: [{ text, level, numbered }], Bookmark: [{ text,
+// numbered }], Figure: [{ text }], … } in the document's order.
 const props = defineProps({ targets: { type: Object, required: true } });
-// insert({ kind, index, as }).
+// insert({ kind, index, as }), as: 'text', 'number' or 'position'.
 const emit = defineEmits(['close', 'insert']);
-const kinds = computed(() => ['Heading', ...Object.keys(props.targets).filter((k) => k !== 'Heading')]);
-const kind = ref(Object.keys(props.targets).find((k) => k !== 'Heading' && props.targets[k].length) || 'Heading');
-const defaultAs = () => (kind.value === 'Heading' ? 'text' : 'number');
+const OWN = ['Numbered item', 'Heading', 'Bookmark'];
+const EMPTY = {
+  Heading: 'The document has no headings: give a paragraph a heading style first.',
+  'Numbered item': 'The document has no numbered paragraphs: number a list first.',
+  Bookmark: 'The document has no bookmarks: add one with Insert > Bookmark… first.',
+};
+const kinds = computed(() => [...OWN.filter((k) => k in props.targets), ...Object.keys(props.targets).filter((k) => !OWN.includes(k))]);
+// As before these kinds were offered: a caption kind with captions first, else headings.
+const kind = ref(Object.keys(props.targets).find((k) => !OWN.includes(k) && props.targets[k].length) || 'Heading');
+const options = computed(() => {
+  const anyNumbered = (props.targets[kind.value] || []).some((t) => t.numbered);
+  const out = {
+    'Numbered item': [['number', 'Paragraph number'], ['text', 'Paragraph text']],
+    Heading: [['text', 'Heading text'], ...(anyNumbered ? [['number', 'Heading number']] : [])],
+    Bookmark: [['text', 'Bookmark text'], ...(anyNumbered ? [['number', 'Paragraph number']] : [])],
+  }[kind.value] || [['number', 'Only label and number'], ['text', 'Entire caption']];
+  return [...out, ['position', 'Above/below']].map(([value, label]) => ({ value, label }));
+});
+const defaultAs = () => options.value[0].value;
 const as = ref(defaultAs());
 const index = ref(0);
 const list = computed(() => props.targets[kind.value] || []);

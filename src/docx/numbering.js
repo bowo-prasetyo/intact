@@ -238,3 +238,32 @@ export function addPresetList(doc, preset, cache) {
   root.insertBefore(importW(doc, `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractId}"/></w:num>`), wChild(root, 'numIdMacAtCleanup'));
   return numId;
 }
+
+// ------------------------------------------------------------------ numbered headings
+
+/**
+ * Word's heading numbering (the Multilevel List gallery's "1 Heading 1, 1.1 Heading 2…"): one
+ * multilevel list whose levels are linked to the heading styles (each level's w:pStyle), as Word
+ * writes it, so a heading is numbered by its style and Word's Define New Multilevel List shows the
+ * link. `headings` are the heading styles' ids by level (index 0 for Heading 1; null for a level
+ * without one). Returns the new list's numId.
+ */
+export function addHeadingList(doc, headings) {
+  const root = doc.documentElement;
+  const abstractId = String(nextId(wChildren(root, 'abstractNum'), 'abstractNumId'));
+  let lvls = '';
+  for (let i = 0; i <= MAX_LEVEL; i++) {
+    const text = Array.from({ length: i + 1 }, (_, j) => `%${j + 1}`).join('.');
+    const ind = 432 + 144 * i; // Word's: 0.3 in for Heading 1, a tenth of an inch more for each level
+    const style = headings[i] ? `<w:pStyle w:val="${headings[i]}"/>` : '';
+    lvls += `<w:lvl w:ilvl="${i}"><w:start w:val="1"/><w:numFmt w:val="decimal"/>${style}<w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/>`
+      + `<w:pPr><w:ind w:left="${ind}" w:hanging="${ind}"/></w:pPr></w:lvl>`;
+  }
+  root.insertBefore(
+    importW(doc, `<w:abstractNum w:abstractNumId="${abstractId}"><w:multiLevelType w:val="multilevel"/>${lvls}</w:abstractNum>`),
+    wChild(root, 'num') || wChild(root, 'numIdMacAtCleanup'),
+  );
+  const numId = String(Math.max(1, nextId(wChildren(root, 'num'), 'numId')));
+  root.insertBefore(importW(doc, `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractId}"/></w:num>`), wChild(root, 'numIdMacAtCleanup'));
+  return numId;
+}

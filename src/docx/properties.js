@@ -195,3 +195,105 @@ export function updateCore(xml, { modified, by, revision } = {}, title = null) {
   if (modified) set(DCTERMS, 'dcterms:modified', modified.toISOString().replace(/\.\d+Z$/, 'Z'), [[XSI, 'xsi:type', 'dcterms:W3CDTF']]);
   return serializeXml(doc);
 }
+
+// ------------------------------------------------------------------ editing properties
+
+/**
+ * The core properties edited here, as File > Info > Properties shows them: [key, namespace, qualified
+ * name, label, the DOCPROPERTY field's name (null: not offered as one)].
+ */
+export const EDITABLE_CORE = [
+  ['title', DC, 'dc:title', 'Title', 'Title'],
+  ['subject', DC, 'dc:subject', 'Subject', 'Subject'],
+  ['keywords', CP, 'cp:keywords', 'Keywords', 'Keywords'],
+  ['category', CP, 'cp:category', 'Category', 'Category'],
+  ['contentStatus', CP, 'cp:contentStatus', 'Status', null],
+  ['description', DC, 'dc:description', 'Comments', 'Comments'],
+];
+
+/** The editable core properties' values in core.xml `xml` (or none): { title, subject, … }, '' where unset. */
+export function readCore(xml) {
+  const root = xml ? parseXml(xml).documentElement : null;
+  return Object.fromEntries(EDITABLE_CORE.map(([key, ns, qname]) => [key, root?.getElementsByTagNameNS(ns, qname.split(':')[1])[0]?.textContent || '']));
+}
+
+/** core.xml `xml` with the editable properties in `edits` ({ title: '…' }) set; an empty one taken out. */
+export function setCore(xml, edits) {
+  const doc = parseXml(xml);
+  const root = doc.documentElement;
+  for (const [key, ns, qname] of EDITABLE_CORE) {
+    if (!(key in edits)) continue;
+    let el = root.getElementsByTagNameNS(ns, qname.split(':')[1])[0];
+    if (!edits[key]) {
+      el?.remove();
+      continue;
+    }
+    if (!el) root.append((el = doc.createElementNS(ns, qname)));
+    el.textContent = edits[key];
+  }
+  return serializeXml(doc);
+}
+
+/** A new, empty core.xml, as Word writes one. */
+export const EMPTY_CORE = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="${CP}" xmlns:dc="${DC}" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"></cp:coreProperties>`;
+
+const CUSTOM_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/custom-properties';
+const VT = 'http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes';
+// The format id every custom property has, as Word writes it.
+const FMTID = '{D5CDD505-2E9C-101B-9397-08002B2CF9AE}';
+export const CUSTOM_PROPS_REL = CUSTOM_REL;
+export const CUSTOM_PROPS_CT = 'application/vnd.openxmlformats-officedocument.custom-properties+xml';
+export const CORE_PROPS_REL = CORE_REL;
+export const CORE_PROPS_CT = 'application/vnd.openxmlformats-package.core-properties+xml';
+
+/** True for custom properties kept as they are (a sensitivity label's, which Office manages). */
+export const managedProperty = (name) => /^MSIP_Label_/i.test(name);
+
+/**
+ * custom.xml (`xml`, or none for a new part) holding the custom properties `list` ([{ name, value }],
+ * text): a property already there keeps its type and id with the value given (a number or a date
+ * that no longer reads as one becomes text, vt:lpwstr), one not in `list` is taken out (but for those
+ * Office manages, see managedProperty), and a new one is added as text, as Word's Advanced
+ * Properties > Custom adds one.
+ */
+export function setCustom(xml, list) {
+  const doc = parseXml(xml || `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="${CUSTOM_NS}" xmlns:vt="${VT}"/>`);
+  const root = doc.documentElement;
+  const wanted = new Map(list.map((p) => [p.name.toLowerCase(), p]));
+  const seen = new Set();
+  let pid = 1;
+  for (const p of [...root.children]) {
+    pid = Math.max(pid, Number(p.getAttribute('pid')) || 0);
+    const name = p.getAttribute('name') || '';
+    if (managedProperty(name)) continue;
+    const want = wanted.get(name.toLowerCase());
+    if (!want) {
+      p.remove();
+      continue;
+    }
+    seen.add(name.toLowerCase());
+    const v = p.firstElementChild;
+    if (v && v.textContent === want.value) continue;
+    const fits = v && ({ i4: /^-?\d+$/, r8: /^-?\d+(\.\d+)?$/, bool: /^(true|false)$/, filetime: /^\d{4}-\d\d-\d\dT/ }[v.localName]?.test(want.value) ?? v.localName === 'lpwstr');
+    if (fits) v.textContent = want.value;
+    else {
+      const t = doc.createElementNS(VT, 'vt:lpwstr');
+      t.textContent = want.value;
+      if (v) v.replaceWith(t);
+      else p.append(t);
+    }
+  }
+  for (const want of list) {
+    if (seen.has(want.name.toLowerCase())) continue;
+    const p = doc.createElementNS(CUSTOM_NS, 'property');
+    p.setAttribute('fmtid', FMTID);
+    p.setAttribute('pid', String(Math.max(2, ++pid)));
+    p.setAttribute('name', want.name);
+    const t = doc.createElementNS(VT, 'vt:lpwstr');
+    t.textContent = want.value;
+    p.append(t);
+    root.append(p);
+    pid = Number(p.getAttribute('pid'));
+  }
+  return serializeXml(doc);
+}
