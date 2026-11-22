@@ -164,6 +164,8 @@ const HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/rel
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
 const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
+// Word's Line and Page Breaks that the Paragraph dialog sets (on/off paragraph properties).
+const BREAK_PROPS = ['keepNext', 'keepLines', 'pageBreakBefore'];
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff' };
 
 /**
@@ -2195,6 +2197,9 @@ export class DocxDocument {
     // Its value is the kind of break (nextPage unless the section says otherwise), for printing.
     if (wChild(pPr, 'sectPr')) el.dataset.sectionEnd = wAttr(wChild(wChild(pPr, 'sectPr'), 'type'), 'val') || 'nextPage';
     if (chainHas('pageBreakBefore')) el.dataset.pageBreakBefore = '';
+    // For the page estimate (editor/pages.js): a paragraph kept with the next, or kept whole.
+    if (chainHas('keepNext')) el.dataset.keepNext = '';
+    if (chainHas('keepLines')) el.dataset.keepLines = '';
     if (chainHas('suppressLineNumbers')) el.dataset.noLineNumbers = '';
     if (pPr) {
       el.dataset.ppr = this.keep(pPr);
@@ -4862,7 +4867,28 @@ export class DocxDocument {
     return {
       before: num(before), after: num(after), line: num(line, 240), lineRule: line == null ? 'auto' : lineRule || 'auto',
       left: num(left ?? start), right: num(right ?? end), firstLine: hanging != null ? 0 : num(firstLine), hanging: num(hanging),
+      ...this.paragraphBreaks(sources),
     };
+  }
+
+  /**
+   * Word's Line and Page Breaks: keepNext, keepLines and pageBreakBefore, true or false, from the
+   * first of `sources` (<w:pPr>s, the paragraph's own first) that says (an on/off property: absent
+   * is off).
+   */
+  paragraphBreaks(sources) {
+    const out = {};
+    for (const local of BREAK_PROPS) {
+      out[local] = false;
+      for (const pPr of sources) {
+        const v = onOff(wChild(pPr, local));
+        if (v !== undefined) {
+          out[local] = v;
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   /**
@@ -4901,6 +4927,26 @@ export class DocxDocument {
     if (has('firstLine') || has('hanging')) dropInd.push('firstLineChars', 'hangingChars', has('firstLine') ? 'hanging' : 'firstLine');
     write('ind', { left: 'left', right: 'right', firstLine: 'firstLine', hanging: 'hanging' }, dropInd);
     if (has('tabs')) this.writeTabs(pPr, change.tabs, this.tabStops(el).inherited);
+    // Line and page breaks: the paragraph's own only where its style (or list level) doesn't say the
+    // same, off as <w:keepNext w:val="0"/> where the style has it on, as Word writes them.
+    if (BREAK_PROPS.some(has)) {
+      const list = this.listOf(el);
+      this.kinds ||= new Numbering(this.numberingXml);
+      const level = list ? this.kinds.levels(list.numId)?.get(list.ilvl)?.pPr : null;
+      const styles = this.styles.chain(el.dataset.style || this.styles.defaultParagraph).map((st) => st.pPr).reverse();
+      const inherited = this.paragraphBreaks([level, ...styles, this.styles.defaultPPr]);
+      for (const local of BREAK_PROPS) {
+        if (!has(local)) continue;
+        removeW(pPr, local);
+        const on = !!change[local];
+        if (on !== inherited[local]) {
+          const e = ensureOrdered(pPr, local, PPR_ORDER);
+          if (!on) e.setAttributeNS(W, 'w:val', '0');
+        }
+        if (on) el.dataset[local] = '';
+        else delete el.dataset[local];
+      }
+    }
     el.dataset.ppr = this.keep(pPr);
     if (['left', 'right', 'firstLine', 'hanging'].some(has) && this.listOf(el)) el.dataset.indSet = '';
     // Show it: the properties these set, from the paragraph's own (its style's come from the stylesheet).

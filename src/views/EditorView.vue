@@ -830,6 +830,12 @@
         </label>
         <label v-if="!LINE_PRESETS[paraDialog.rule]">{{ t('At') }} ({{ paraDialog.rule === 'multiple' ? 'lines' : 'pt' }}) <input v-model.number="paraDialog.at" type="number" min="0" :step="paraDialog.rule === 'multiple' ? 0.05 : 1" /></label>
       </fieldset>
+      <fieldset class="line-page-breaks">
+        <legend>{{ t('Line and page breaks') }}</legend>
+        <label class="check"><input v-model="paraDialog.keepNext" type="checkbox" /> {{ t('Keep with next') }}</label>
+        <label class="check"><input v-model="paraDialog.keepLines" type="checkbox" /> {{ t('Keep lines together') }}</label>
+        <label class="check"><input v-model="paraDialog.pageBreakBefore" type="checkbox" /> {{ t('Page break before') }}</label>
+      </fieldset>
       <fieldset class="tab-stops">
         <legend>{{ t('Tab stops') }}</legend>
         <ul v-if="paraDialog.tabs.length" :aria-label="t('Tab stops')">
@@ -2449,7 +2455,7 @@ function paperName() {
 }
 onMounted(() => {
   pagesObserver = new MutationObserver(() => schedulePages());
-  pagesObserver.observe(page.value, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+  pagesObserver.observe(page.value, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class', 'data-keep-next', 'data-keep-lines', 'data-page-break-before'] });
   window.addEventListener('resize', schedulePages);
   narrow?.addEventListener?.('change', schedulePages);
   document.fonts?.ready.then(() => schedulePages(0));
@@ -4168,6 +4174,7 @@ function indentBlocks(delta) {
 // what is changed in it is written (fields left alone keep coming from the paragraph's style).
 const paraDialog = reactive({
   open: false, x: 0, y: 0, unit: 'cm', left: 0, right: 0, special: 'none', by: 0, before: 0, after: 0, rule: 'single', at: 1,
+  keepNext: false, keepLines: false, pageBreakBefore: false,
   tabs: [], tabPos: '', tabAlign: 'left', tabLeader: 'none', tabError: '',
 });
 let paraInitialTabs = '[]';
@@ -4225,6 +4232,7 @@ function dialogValues(f, unit) {
     left: len(f.left - f.hanging), right: len(f.right),
     special: f.hanging ? 'hanging' : f.firstLine ? 'firstLine' : 'none', by: len(f.hanging || f.firstLine),
     before: toPt(f.before), after: toPt(f.after), rule, at,
+    keepNext: !!f.keepNext, keepLines: !!f.keepLines, pageBreakBefore: !!f.pageBreakBefore,
   };
 }
 
@@ -4297,6 +4305,7 @@ function applyParagraphDialog() {
     else if (d.rule === 'multiple') Object.assign(change, { line: Math.max(1, Math.round(num(d.at) * 240)), lineRule: 'auto' });
     else Object.assign(change, { line: Math.max(20, Math.round(num(d.at) * 20)), lineRule: d.rule });
   }
+  for (const k of ['keepNext', 'keepLines', 'pageBreakBefore']) if (!!d[k] !== i[k]) change[k] = !!d[k];
   // A tab position typed but not Set yet is set, as Word's OK does.
   if (d.tabPos !== '' && Number.isFinite(Number(d.tabPos))) {
     paraDialog.tabs = d.tabs;
@@ -10395,7 +10404,9 @@ async function close() {
 .para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
 .page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
 .para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.para-dialog label.check { justify-content: flex-start; }
 .para-dialog input, .para-dialog select { width: 120px; font: inherit; }
+.para-dialog label.check input { width: auto; margin: 0; }
 .para-dialog select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
 .picture-frame { position: absolute; z-index: 6; border: 1px solid var(--accent); pointer-events: none; box-sizing: border-box; }
 .picture-frame .handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; background: #fff; border: 1px solid var(--accent); border-radius: 50%; pointer-events: auto; touch-action: none; }
