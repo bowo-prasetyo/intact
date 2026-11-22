@@ -7,7 +7,7 @@ import { buildDocx, openInEditor, download, W_NS } from './helpers.js';
 
 const para = (text, pPr = '') => `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}<w:r><w:t>${text}</w:t></w:r></w:p>`;
 const lines = (n) => Array.from({ length: n }, (_, i) => para(`Line ${i + 1} of the manual.`)).join('');
-const LONG = 'This step explains in some detail what the operator does before the machine is started. '.repeat(12);
+const LONG = 'This step explains in some detail what the operator does before the machine is started. '.repeat(6);
 const savedParagraph = (xml, text) => xml.match(/<w:p[ >].*?<\/w:p>/gs).find((p) => p.includes(text));
 
 // A style that keeps its paragraphs with the next, as a step's lead-in might.
@@ -68,14 +68,21 @@ test('Page break before starts a new page in the estimate', async ({ page }) => 
 });
 
 test('a paragraph kept together moves to the next page whole, with the one kept with it', async ({ page }) => {
-  // About 40 lines, a lead-in, then a long step that doesn't fit on the first page.
-  await openInEditor(page, await buildDocx(lines(40) + para('Lead in') + para(LONG)));
   const mark = page.locator('.page-breaks-layer .page-estimate').first();
+  // How many lines the first page holds with this browser's fonts: those above the first break.
+  await openInEditor(page, await buildDocx(lines(90)));
+  await expect(mark).toBeVisible();
+  const y = (await mark.boundingBox()).y;
+  const capacity = await page.locator('.docx-page p').evaluateAll((ps, at) => ps.filter((p) => p.getBoundingClientRect().top < at).length, y);
+  expect(capacity).toBeGreaterThan(20);
+  // Lines up to three from the end of the page, a lead-in, then a step of several lines that
+  // starts on the page's last two lines and goes on to the next.
+  await openInEditor(page, await buildDocx(lines(capacity - 3) + para('Lead in') + para(LONG)));
   const topOf = (text) => page.locator('.docx-page p', { hasText: text }).first().evaluate((p) => p.getBoundingClientRect().top);
   await expect(mark).toBeVisible();
   // At first the long step is split across the pages.
   const step = await topOf('This step explains');
-  expect((await mark.boundingBox()).y).toBeGreaterThan(step + 10);
+  await expect.poll(async () => (await mark.boundingBox()).y - step).toBeGreaterThan(10);
 
   let dialog = await openDialog(page, 'This step explains');
   await dialog.getByLabel('Keep lines together').check();
