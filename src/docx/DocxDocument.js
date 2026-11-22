@@ -166,7 +166,28 @@ const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relatio
 const HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink';
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 // Pictures that can be inserted: the formats every version of Word shows.
-const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp' };
+const PICTURE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/gif': 'gif', 'image/bmp': 'bmp', 'image/svg+xml': 'svg' };
+// Office 2016's extension for an SVG picture (with a PNG for older readers), as Word writes it.
+const SVG_EXT = '{96DAC541-7B7A-43D3-8B79-37D633B846F1}';
+const ASVG = 'http://schemas.microsoft.com/office/drawing/2016/SVG/main';
+/**
+ * A PNG of the SVG picture `img` (loaded) at twice `size` ({ w, h } in pixels), or null if the
+ * browser can't draw it. Drawn from the file in an image, which runs none of its scripts.
+ */
+async function svgToPng(img, { w, h }) {
+  try {
+    const scale = Math.min(2, 4096 / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** `el` alone in a new <w:pPr>, for comparing one property with sameProps. */
 function wrapIn(xml, el) {
   const w = createW(xml, 'pPr');
@@ -2917,7 +2938,7 @@ export class DocxDocument {
   // ---------------------------------------------------------------- inserting pictures
 
   /**
-   * A picture from a file (PNG, JPEG, GIF or BMP) as Word inserts one: in line with the text, at its
+   * A picture from a file (PNG, JPEG, GIF, BMP, or SVG with a PNG beside it) as Word inserts one: in line with the text, at its
    * own size or narrowed to fit between the margins. Its file goes into word/media when saved (if
    * it is still in the document). Returns { span } (the rendered picture) or { reason }.
    */
@@ -2943,19 +2964,34 @@ export class DocxDocument {
    * inch, keeping its proportions), narrowed to fit between the margins, with alt text `descr`.
    */
   async addPicture(file, { width, descr, part = null } = {}) {
-    const ext = PICTURE_TYPES[file.type];
-    if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF or BMP picture` };
-    const data = new Uint8Array(await file.arrayBuffer());
-    const url = URL.createObjectURL(new Blob([data], { type: file.type }));
-    const size = await new Promise((resolve) => {
-      const img = new Image();
+    const type = file.type || (/\.svg$/i.test(file.name || '') ? 'image/svg+xml' : '');
+    const ext = PICTURE_TYPES[type];
+    if (!ext) return { reason: `${file.name ? `“${file.name}”` : 'This file'} isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF, BMP or SVG picture` };
+    let data = new Uint8Array(await file.arrayBuffer());
+    const svg = type === 'image/svg+xml';
+    let url = URL.createObjectURL(new Blob([data], { type }));
+    const img = new Image();
+    let size = await new Promise((resolve) => {
       img.onload = () => resolve(img.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight } : null);
       img.onerror = () => resolve(null);
       img.src = url;
     });
+    // An SVG: shown (and kept for readers before Office 2016) as a PNG drawn from it here, at
+    // twice its size for a sharp print, the SVG itself beside it, as Word inserts one.
+    let svgData = null;
+    if (svg && size) {
+      const png = await svgToPng(img, size);
+      if (!png) size = null;
+      else {
+        URL.revokeObjectURL(url);
+        svgData = data;
+        data = png;
+        url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+      }
+    }
     if (!size) {
       URL.revokeObjectURL(url);
-      return { reason: `${file.name ? `“${file.name}”` : 'This picture'} couldn’t be read` };
+      return { reason: `${file.name ? `“${file.name}”` : 'This picture'} couldn’t be read${svg ? ' (an SVG needs a width and height, or a viewBox)' : ''}` };
     }
     const maxWidth = this.textWidth / 15;
     let { w, h } = size;
@@ -2967,16 +3003,18 @@ export class DocxDocument {
       h = Math.max(1, Math.round((h * maxWidth) / w));
       w = maxWidth;
     }
-    const { rid, n } = this.addMedia(data, file.type, url, part);
+    const { rid, n } = this.addMedia(data, svgData ? 'image/png' : type, url, part);
+    const svgRid = svgData ? this.addMedia(svgData, 'image/svg+xml', URL.createObjectURL(new Blob([svgData], { type })), part).rid : null;
+    const blipExt = svgRid ? `<a:extLst><a:ext uri="${SVG_EXT}"><asvg:svgBlip xmlns:asvg="${ASVG}" r:embed="${svgRid}"/></a:ext></a:extLst>` : '';
     const id = await this.nextDocPrId();
     const cx = Math.round(w * 9525);
     const cy = Math.round(h * 9525);
-    const name = (file.name || `image${n}.${ext}`).replace(/[<>&"]/g, '');
+    const name = (file.name || `image${n}.${svgData ? 'svg' : ext}`).replace(/[<>&"]/g, '');
     const xml = `<w:r xmlns:w="${W}" xmlns:wp="${NS.wp}" xmlns:a="${NS.a}" xmlns:pic="${PIC}" xmlns:r="${NS.r}"><w:drawing>`
       + `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>`
       + `<wp:docPr id="${id}" name="Picture ${id}"${descr ? ` descr="${descr.replace(/[<>&"]/g, '')}"` : ''}/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
       + `<a:graphic><a:graphicData uri="${PIC}"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr>`
-      + `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+      + `<pic:blipFill><a:blip r:embed="${rid}">${blipExt}</a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
       + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`
       + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
     const r = this.xml.importNode(parseXml(xml).documentElement, true);

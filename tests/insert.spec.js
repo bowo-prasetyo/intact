@@ -180,7 +180,7 @@ test('while tracking, a picture is a tracked insertion; other files are refused 
   await startTracking(page);
   await caretAfter(page, 'Last.');
   await insertPicture(page, { name: 'notes.webp', mimeType: 'image/webp', buffer: Buffer.from('RIFF') });
-  await expect(status(page)).toHaveText('“notes.webp” isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF or BMP picture');
+  await expect(status(page)).toHaveText('“notes.webp” isn’t a picture Word shows everywhere: insert a PNG, JPEG, GIF, BMP or SVG picture');
   await insertPicture(page, { name: 'dot.png', mimeType: 'image/png', buffer: await png(page, 4, 4) });
   await expect(status(page)).toHaveText('Picture inserted (tracked)');
   await expect(page.locator('.docx-page .tc-ins img')).toHaveCount(1);
