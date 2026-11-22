@@ -161,3 +161,22 @@ test('a narrow paper doesn\'t print in the phone\'s layout', async ({ page }) =>
   await expect(page.locator('.docx-page')).toHaveCSS('padding-left', '0px');
   await expect(page.locator('.docx-page')).toHaveCSS('padding-top', '0px');
 });
+
+test('the PDF dialog says the page numbers of a table of contents and page references are Word\'s, and how to get them right', async ({ page }) => {
+  const toc = '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+    + `<w:r><w:t>Introduction</w:t></w:r><w:r><w:tab/></w:r>${field('PAGEREF _Toc1 \\h', '1')}</w:p><w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>`;
+  const body = toc + '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:bookmarkStart w:id="1" w:name="_Toc1"/><w:r><w:t>Introduction</w:t></w:r><w:bookmarkEnd w:id="1"/></w:p>'
+    + `<w:p><w:r><w:t xml:space="preserve">See page </w:t></w:r>${field('PAGEREF _Ref2 \\h', '3')}</w:p>`;
+  await openInEditor(page, await buildDocx(body));
+  await page.getByRole('button', { name: 'More ways to save' }).click();
+  await page.getByRole('menuitem', { name: /PDF/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Save as PDF' });
+  await expect(dialog.locator('.pdf-pagerefs')).toHaveText(/^The page numbers in the table of contents and a page reference are those Word worked out .* open the downloaded file in Word, update the fields \(F9\) and save it as a PDF there\.$/);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  // Without them, nothing is said.
+  await openInEditor(page, await buildDocx(para('Plain text.')));
+  await page.getByRole('button', { name: 'More ways to save' }).click();
+  await page.getByRole('menuitem', { name: /PDF/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Save as PDF' }).locator('.pdf-pagerefs')).toHaveCount(0);
+});

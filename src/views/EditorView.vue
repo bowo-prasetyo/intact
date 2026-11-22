@@ -631,6 +631,7 @@
       <ul class="pdf-notes">
         <li v-if="pageCount">About {{ pageCount }} {{ pageCount === 1 ? 'page' : 'pages' }} on {{ paperName() }}{{ pdfBands.every ? `, with the ${pdfBands.every} on each` : '' }}.</li>
         <li v-if="pdfBands.once">The {{ pdfBands.once }} {{ pdfBands.once.includes(' and ') ? 'print' : 'prints' }} once, {{ pdfBands.onceWhere }}, as {{ pdfBands.once.includes(' and ') ? 'they show' : 'it shows' }} here: {{ pdfBands.why }}</li>
+        <li v-if="pdfPageRefs" class="warn pdf-pagerefs">{{ pdfPageRefs }}</li>
         <li v-if="changes.total" class="warn">{{ changes.total === 1 ? 'A tracked change prints' : `${changes.total} tracked changes print` }} marked, as {{ changes.total === 1 ? 'it shows' : 'they show' }} here. For a clean copy, accept or reject {{ changes.total === 1 ? 'it' : 'them' }} first.</li>
         <li v-if="hasHighlight" class="warn">Highlighted text prints highlighted.</li>
         <li v-if="hasHidden"><label class="check"><input v-model="printHidden" type="checkbox" /> {{ t('Print hidden text (a test’s answers, for its answer key)') }}</label></li>
@@ -10034,6 +10035,34 @@ watch(printComments, (on) => {
 });
 let printedComments = null;
 const pdfBands = ref({}); // what the dialog says about the header and footer
+const pdfPageRefs = ref(''); // what the dialog says about page numbers only Word works out
+
+/**
+ * The page numbers in the text that Word works out and Intact doesn't (it lays out no real pages):
+ * those of tables of contents and lists of figures (TOC), page references (PAGEREF) and indexes
+ * (INDEX). In the PDF they are the numbers the file had, or none for entries added here. Says so,
+ * and how to get them right, or '' if there are none.
+ */
+function pageRefsNote() {
+  const kinds = { toc: 0, figures: 0, pageref: 0, index: 0 };
+  for (const f of page.value.querySelectorAll('span.field[data-instr]')) {
+    if (f.parentElement?.closest('span.field[data-instr]')) continue; // a field inside another (a TOC's PAGEREFs)
+    const { code, args, sw } = parseInstr(f.dataset.instr);
+    if (code === 'PAGEREF' && /^_Toc/i.test(args[0] || '')) continue; // a table of contents' entry
+    if (code === 'TOC') kinds[typeof sw['\\c'] === 'string' ? 'figures' : 'toc']++;
+    else if (code === 'PAGEREF') kinds.pageref++;
+    else if (code === 'INDEX') kinds.index++;
+  }
+  const what = [
+    kinds.toc && (kinds.toc === 1 ? 'the table of contents' : 'the tables of contents'),
+    kinds.figures && (kinds.figures === 1 ? 'the list of figures or tables' : 'the lists of figures and tables'),
+    kinds.index && (kinds.index === 1 ? 'the index' : 'the indexes'),
+    kinds.pageref && (kinds.pageref === 1 ? 'a page reference' : `${kinds.pageref} page references`),
+  ].filter(Boolean);
+  if (!what.length) return '';
+  const list = what.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return `The page numbers in ${list} are those Word worked out when the file was last saved there (entries added here have the number above them), and the pages here break about where Word’s do, not exactly. For a PDF whose page numbers are right, open the downloaded file in Word, update the fields (F9) and save it as a PDF there.`;
+}
 
 /** The header and footer in the PDF, in words: on every page, or once (and why). */
 function describeBands() {
@@ -10130,6 +10159,8 @@ function downloadBlob(blob, name) {
 /** Print (File tab): the browser's print window, as Ctrl+P opens it (see printBands and the print styles). */
 function printDocument() {
   closeChooser();
+  const note = pageRefsNote();
+  if (note) message.value = note;
   window.print();
 }
 
@@ -10138,6 +10169,7 @@ function openPdfDialog() {
   hasHighlight.value = !!page.value.querySelector('mark');
   hasHidden.value = !!page.value.querySelector('[data-hidden]');
   pdfBands.value = describeBands();
+  pdfPageRefs.value = pageRefsNote();
   const rect = saveMenuButton.value?.getBoundingClientRect();
   Object.assign(pdfDialog, { open: true, x: Math.max(8, Math.min((rect?.right ?? window.innerWidth) - 360, window.innerWidth - 368)), y: (rect?.bottom ?? 48) + 4 });
   nextTick(() => pdfDialogEl.value?.querySelector('.confirm')?.focus());
