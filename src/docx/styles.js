@@ -461,8 +461,7 @@ export class StyleSheet {
   modifyStyle(id, change) {
     const el = this.styleEl(id);
     if (!el) return false;
-    this.originals ||= new Map();
-    if (!this.originals.has(id)) this.originals.set(id, serializeXml(el).replace(/^<\?xml[^>]*\?>\s*/, ''));
+    this.remember(id);
     const has = (k) => change[k] !== undefined;
     const set = (parent, local, order, attrs) => {
       const c = ensureOrdered(parent, local, order);
@@ -520,6 +519,44 @@ export class StyleSheet {
         }
       }
       if (has('align')) set(pPr, 'jc', PPR_ORDER, { val: change.align });
+    }
+    this.changed = true;
+    this.reindex();
+    return true;
+  }
+
+  /** Records style `id` as it was before its first change here, for Undo (see setStyleState). */
+  remember(id) {
+    const el = this.styleEl(id);
+    this.originals ||= new Map();
+    if (el && !this.originals.has(id)) this.originals.set(id, serializeXml(el).replace(/^<\?xml[^>]*\?>\s*/, ''));
+  }
+
+  /**
+   * Numbers paragraph style `id` with list `numId` at level `ilvl` (its w:pPr's w:numPr, as Word
+   * writes a heading style linked to a multilevel list: no w:ilvl for the first level), or takes
+   * its numbering off with numId null. Returns false if there is no such style.
+   */
+  setStyleNumbering(id, numId, ilvl = 0) {
+    const el = this.styleEl(id);
+    if (!el) return false;
+    this.remember(id);
+    let pPr = wChild(el, 'pPr');
+    if (numId == null) {
+      if (pPr) removeW(pPr, 'numPr');
+      if (pPr && !pPr.firstElementChild && !pPr.attributes.length) el.removeChild(pPr);
+    } else {
+      pPr ||= ensureOrdered(el, 'pPr', STYLE_ORDER);
+      removeW(pPr, 'numPr');
+      const numPr = ensureOrdered(pPr, 'numPr', PPR_ORDER);
+      if (ilvl > 0) {
+        const l = this.doc.createElementNS(NS.w, 'w:ilvl');
+        l.setAttributeNS(NS.w, 'w:val', String(ilvl));
+        numPr.appendChild(l);
+      }
+      const n = this.doc.createElementNS(NS.w, 'w:numId');
+      n.setAttributeNS(NS.w, 'w:val', String(numId));
+      numPr.appendChild(n);
     }
     this.changed = true;
     this.reindex();

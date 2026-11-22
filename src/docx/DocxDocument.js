@@ -21,7 +21,7 @@ import {
 import { StyleSheet, jcToCss, borderCss } from './styles.js';
 import { textboxInfo, setTextboxText, textboxContents, syncCopies } from './textboxes.js';
 import { loadEmbeddedFonts } from './fonts.js';
-import { Numbering, addList, addPresetList, MAX_LEVEL } from './numbering.js';
+import { Numbering, addList, addPresetList, addHeadingList, MAX_LEVEL } from './numbering.js';
 import { blankDocxFiles } from './blank.js';
 import { STARTERS, starterFiles } from './starters.js';
 import {
@@ -3900,6 +3900,39 @@ export class DocxDocument {
     this.numberingChanged = true;
     this.kinds = null;
     return numId;
+  }
+
+  /**
+   * Numbers the document's headings by their styles, as Word's "1 Heading 1, 1.1 Heading 2…"
+   * multilevel list does: a new list whose levels are linked to Heading 1–9, and each heading style
+   * numbered by it (Heading 1–3 added if the document lacks them). The paragraphs aren't changed:
+   * their styles number them, in Word as here. Returns the heading styles' ids by level.
+   */
+  numberHeadings() {
+    if (!this.numberingXml) this.numberingXml = parseXml(`<w:numbering xmlns:w="${W}"/>`);
+    for (const key of ['h1', 'h2', 'h3']) this.styles.ensureBuiltin(key);
+    const headings = Array.from({ length: MAX_LEVEL + 1 }, (_, i) => {
+      for (const s of this.styles.byId.values()) if (s.type === 'paragraph' && s.name.toLowerCase() === `heading ${i + 1}`) return s.id;
+      return null;
+    });
+    const numId = addHeadingList(this.numberingXml, headings);
+    headings.forEach((id, i) => id && this.styles.setStyleNumbering(id, numId, i));
+    this.numberingChanged = true;
+    this.kinds = null;
+    return headings;
+  }
+
+  /** True if the document's Heading 1 is numbered by its style (see numberHeadings). */
+  get headingsNumbered() {
+    const h1 = this.styles.findBuiltin('h1');
+    return !!(h1 && this.styleList(h1));
+  }
+
+  /** Takes the numbering off the heading styles (numbered by numberHeadings, or in Word). */
+  unnumberHeadings() {
+    for (const s of this.styles.byId.values()) {
+      if (s.type === 'paragraph' && /^heading [1-9]$/.test(s.name.toLowerCase()) && wChild(s.pPr, 'numPr')) this.styles.setStyleNumbering(s.id, null);
+    }
   }
 
   newList(kind, first = null) {

@@ -1112,6 +1112,7 @@
     <!-- Word's Numbering Library and Multilevel List, with Indonesia's legal numbering (Pasal, ayat, huruf). -->
     <div v-if="listLibrary.open" ref="listLibraryEl" class="change-menu insert-menu list-library" role="menu" :aria-label="t('Numbering library')" :style="{ left: `${listLibrary.x}px`, top: `${listLibrary.y}px` }" @mousedown.prevent @keydown.esc="closeListLibrary(true)" @keydown="onMenuArrows">
       <button v-for="p in LIST_LIBRARY" :key="p.id" type="button" role="menuitem" @click="applyListPreset(p.id)">{{ t(p.label) }}<span class="hint">{{ t(p.hint) }}</span></button>
+      <button type="button" role="menuitem" @click="numberHeadings(!listLibrary.headingsNumbered)">{{ listLibrary.headingsNumbered ? t('Remove heading numbering') : t('1 Heading 1 → 1.1 Heading 2 → 1.1.1 Heading 3') }}<span class="hint">{{ listLibrary.headingsNumbered ? t('The headings’ styles stop numbering them') : t('Numbers every heading by its style, as Word’s heading numbering') }}</span></button>
     </div>
 
     <!-- Word's Sort (Table Layout > Sort): the rows below the heading row, by a column's text, number or date. -->
@@ -6799,7 +6800,7 @@ const LIST_LIBRARY = [
   { id: 'outline', label: '1. → 1.1. → 1.1.1.', hint: 'Numbered headings and paragraphs, as a report has them' },
   { id: 'number', label: '1. → a. → i.', hint: 'Word’s numbering' },
 ];
-const listLibrary = reactive({ open: false, x: 0, y: 0 });
+const listLibrary = reactive({ open: false, x: 0, y: 0, headingsNumbered: false });
 const listLibraryEl = ref(null);
 const listLibraryButton = ref(null);
 
@@ -6807,7 +6808,7 @@ function toggleListLibrary() {
   if (listLibrary.open) return closeListLibrary();
   restoreSelection();
   const rect = listLibraryButton.value.getBoundingClientRect();
-  Object.assign(listLibrary, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
+  Object.assign(listLibrary, { open: true, headingsNumbered: doc.headingsNumbered, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4 });
   nextTick(() => {
     keepInView(listLibrary, listLibraryEl.value);
     listLibraryEl.value?.querySelector('button')?.focus();
@@ -6839,6 +6840,27 @@ function applyListPreset(id) {
     return true;
   });
   if (made) message.value = t('Numbered {list}: Tab and Shift+Tab change the level', { list: t(LIST_LIBRARY.find((p) => p.id === id).label) });
+}
+
+/**
+ * Numbers the document's headings by their styles (Heading 1 → 1, Heading 2 → 1.1…), as Word's
+ * heading numbering does, or takes that numbering off (`on` false). A change to the styles, as
+ * Modify Style is: every heading follows, it isn't tracked, and Ctrl+Z puts the styles back.
+ */
+function numberHeadings(on) {
+  listLibrary.open = false;
+  page.value.focus();
+  if (textLocked.value) return explainLock();
+  undoStack.flush();
+  if (on) doc.numberHeadings();
+  else doc.unnumberHeadings();
+  refreshCss();
+  doc.renumber(page.value);
+  pageChanged();
+  undoStack.commit();
+  markDirty();
+  onSelectionChange();
+  message.value = on ? t('Headings numbered by their styles: 1, 1.1, 1.1.1') : t('Heading numbering removed');
 }
 
 // ------------------------------------------------------------------ sorting a table
