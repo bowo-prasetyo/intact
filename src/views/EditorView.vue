@@ -1267,7 +1267,7 @@
         <button type="button" :title="t('Zoom in (Ctrl+mouse wheel)')" :aria-label="t('Zoom in')" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
       </span>
     </footer>
-    <ContentCreatorDialog v-if="creatorOpen" :text="page?.innerText || ''" :word-count="words" :title="baseName" @close="creatorOpen = false" />
+    <ContentCreatorDialog v-if="creatorOpen" :text="page?.innerText || ''" :word-count="words" :title="baseName" :headings="creatorStructure.headings" :has-links="creatorStructure.hasLinks" :images-without-alt="creatorStructure.imagesWithoutAlt" @close="creatorOpen = false" />
   </div>
 </template>
 
@@ -1369,6 +1369,12 @@ const router = useRouter();
 const doc = currentDoc.value;
 const creatorOpen = ref(false);
 const page = ref(null);
+const creatorStructure = computed(() => {
+  if (!creatorOpen.value || !page.value) return { headings: [], hasLinks: false, imagesWithoutAlt: 0 };
+  const headings = [...page.value.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((el) => el.innerText.trim()).filter(Boolean);
+  const images = [...page.value.querySelectorAll('img')];
+  return { headings, hasLinks: page.value.querySelectorAll('a[href]').length > 0, imagesWithoutAlt: images.filter((img) => !img.getAttribute('alt')?.trim()).length };
+});
 const dirty = ref(!!doc.restored); // a restored draft holds changes not yet downloaded
 const saving = ref(false);
 const message = ref('');
