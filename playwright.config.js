@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // differs between engines, so a DOM emulation would not tell us whether a saved file is faithful.
 // Run one browser with `npm test -- --project=chromium` (or firefox, or webkit).
 // The specs Safari's engine runs (see the webkit project below).
-const WEBKIT_SPECS = ['roundtrip', 'fixtures', 'open', 'editing', 'lists', 'tables', 'track', 'paste', 'starters', 'start-page-size']
+const WEBKIT_SPECS = ['roundtrip', 'fixtures', 'open', 'editing', 'lists', 'tables', 'track', 'paste', 'starters', 'start-page-size', 'webkit-spaces']
   .map((name) => `**/${name}.spec.js`);
 
 export default defineConfig({

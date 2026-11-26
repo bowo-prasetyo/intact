@@ -3197,7 +3197,75 @@ function markDirty() {
   }, 300);
 }
 
+// ------------------------------------------------------------------ WebKit's no-break spaces
+
+// Safari's engine (WebKit) rewrites ordinary spaces as no-break spaces (U+00A0) where editing would
+// leave one at a paragraph's edge: the space before the caret when Enter splits a paragraph, a space
+// typed at the end of one. In a .docx that is another character than the one typed, kept in the file
+// and seen in Word (a line no longer breaks there), so it would change what the user didn't touch.
+// While editing, the browser's changes to the text are watched (with their old values), and where a
+// space became U+00A0, and nothing else there changed, it goes back to a space when the input event
+// comes. A no-break space typed on purpose (Ctrl+Shift+Space) or already in the document is never a
+// space that changed, so it stays. Only in WebKit: Chromium and Firefox leave spaces as they are.
+const REWRITES_SPACES = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Android/.test(navigator.userAgent);
+let spaceWatch = null;
+
+/** Puts back the spaces WebKit made no-break spaces in this input (`e`: the input event). */
+function restoreRewrittenSpaces(e) {
+  const records = spaceWatch?.takeRecords() || [];
+  if (!records.length) return;
+  const first = new Map(); // each text node changed: its text before this input's changes
+  const added = [];
+  for (const r of records) {
+    if (r.type === 'characterData' && !first.has(r.target)) first.set(r.target, r.oldValue ?? '');
+    if (r.type === 'childList') {
+      for (const n of r.addedNodes) {
+        if (n.nodeType === 3) added.push(n);
+        else if (n.nodeType === 1) {
+          const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+          for (let t = w.nextNode(); t; t = w.nextNode()) added.push(t);
+        }
+      }
+    }
+  }
+  const same = (now, was) => now === was || (now === ' ' && was === ' ');
+  const fix = (node, i) => node.replaceData(i, 1, ' '); // same length: the caret stays where it is
+  const typed = typeof e?.data === 'string' ? e.data : '';
+  const remainders = []; // what a split took from the end of a text node, to find in the new one
+  for (const [node, was] of first) {
+    if (!node.isConnected) continue;
+    const now = node.data;
+    let p = 0;
+    while (p < now.length && p < was.length && same(now[p], was[p])) p++;
+    let q = 0;
+    while (q < now.length - p && q < was.length - p && same(now[now.length - 1 - q], was[was.length - 1 - q])) q++;
+    for (let i = 0; i < p; i++) if (now[i] === ' ' && was[i] === ' ') fix(node, i);
+    for (let k = 0; k < q; k++) {
+      const i = now.length - 1 - k;
+      if (now[i] === ' ' && was[was.length - 1 - k] === ' ') fix(node, i);
+    }
+    // What was typed between them: a space typed, written as U+00A0.
+    const middle = now.slice(p, now.length - q);
+    if (typed && middle.length === typed.length) for (let k = 0; k < middle.length; k++) if (middle[k] === ' ' && typed[k] === ' ') fix(node, p + k);
+    if (p === now.length && was.length > now.length) remainders.push(was.slice(p));
+  }
+  // Enter: the text after the caret moved to the new paragraph, a leading space made U+00A0 there.
+  for (const node of added) {
+    if (!node.isConnected || first.has(node)) continue;
+    const was = remainders.find((r) => r.length === node.data.length && [...node.data].every((c, i) => same(c, r[i])));
+    if (was) for (let i = 0; i < was.length; i++) if (node.data[i] === ' ' && was[i] === ' ') fix(node, i);
+  }
+}
+
+onMounted(() => {
+  if (!REWRITES_SPACES || typeof MutationObserver === 'undefined') return;
+  spaceWatch = new MutationObserver(() => {}); // read with takeRecords, when an input comes
+  spaceWatch.observe(page.value, { subtree: true, characterData: true, characterDataOldValue: true, childList: true });
+});
+onBeforeUnmount(() => spaceWatch?.disconnect());
+
 function onInput(e) {
+  restoreRewrittenSpaces(e); // WebKit's no-break spaces, before anything reads the text
   restoreCommentMarkers(markersBefore, page.value);
   markersBefore = [];
   if (pendingJoin) {
