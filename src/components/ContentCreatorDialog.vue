@@ -112,7 +112,8 @@ const tabs = [
   { id: 'repurpose', label: 'Repurpose' },
 ];
 const active = ref('goals');
-const today = new Date().toLocaleDateString('en-CA');
+const now = new Date();
+const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
 const number = (value) => (Number(value) || 0).toLocaleString();
 const progress = (value, goal) => Math.min(100, Math.round((Math.max(0, Number(value) || 0) / Math.max(1, Number(goal) || 1)) * 100));
 const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -148,6 +149,7 @@ function saveGoals() {
   try {
     const log = read('intact.creator.dailyLog', {});
     log[today] = Math.max(0, Number(todayWords.value) || 0);
+    for (const oldDay of Object.keys(log).sort().slice(0, -365)) delete log[oldDay];
     localStorage.setItem('intact.creator.documentGoal', String(Math.max(1, Number(documentGoal.value) || 1)));
     localStorage.setItem('intact.creator.dailyGoal', String(Math.max(1, Number(dailyGoal.value) || 1)));
     localStorage.setItem('intact.creator.dailyLog', JSON.stringify(log));
