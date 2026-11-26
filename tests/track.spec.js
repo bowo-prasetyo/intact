@@ -21,8 +21,14 @@ async function select(page, [a, ao], [b, bo] = [a, ao]) {
     const root = document.querySelector('.docx-page');
     const find = (t) => {
       const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let n = w.nextNode(); n; n = w.nextNode()) if (n.data.includes(t) && !n.parentElement.closest('.tc-del')) return n;
-      throw new Error(`no text "${t}"`);
+      const seen = [];
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (n.data.includes(t) && !n.parentElement.closest('.tc-del')) return n;
+        seen.push(n.data.replace(/[^\x20-\x7e]/g, (c) => `<U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}>`));
+      }
+      // The text nodes there are, other spaces than U+0020 written out: an engine that splits or
+      // re-spaces text when editing (WebKit's non-breaking spaces) shows here, not as a bare miss.
+      throw new Error(`no text "${t}" among ${JSON.stringify(seen)}`);
     };
     const s = find(a);
     const e = find(b);

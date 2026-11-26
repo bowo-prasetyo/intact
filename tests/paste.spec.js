@@ -141,5 +141,7 @@ test('list items with "no space between paragraphs of the same style" sit tight,
   await openInEditor(page, await buildDocx(`<w:p>${styles}<w:r><w:t>One</w:t></w:r></w:p><w:p>${styles}<w:r><w:t>Two</w:t></w:r></w:p><w:p><w:pPr><w:spacing w:after="400"/></w:pPr><w:r><w:t>After</w:t></w:r></w:p>`));
   const margin = (text) => page.locator('.docx-page p', { hasText: text }).evaluate((e) => getComputedStyle(e).marginBottom);
   expect(await margin('One')).toBe('0px'); // next paragraph has the same style
-  expect(await margin('Two')).toBe('26.6667px'); // 20pt: the next paragraph has another style
+  // 20pt (26.667px): the next paragraph has another style. Compared as a number, to within WebKit's
+  // layout unit (1/64 px: it gives 26.65625px where Chromium and Firefox give 26.6667px).
+  expect(parseFloat(await margin('Two'))).toBeCloseTo(80 / 3, 1);
 });
