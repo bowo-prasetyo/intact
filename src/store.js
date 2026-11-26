@@ -34,7 +34,9 @@ export async function newFromStarter(id) {
   const healthcareFiles = healthcareStarterFiles(id);
   if (healthcareFiles) {
     const title = id.replace(/^healthcare-/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    setDocument(await DocxDocument.createBlank(`${title}.docx`, healthcareFiles));
+    const doc = await DocxDocument.createBlank(`${title}.docx`, healthcareFiles);
+    doc.starter = id; // opens Fill in for the template's placeholders, as other starters do
+    setDocument(doc);
     return;
   }
   setDocument(await DocxDocument.createStarter(id));
