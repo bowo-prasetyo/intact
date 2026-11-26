@@ -874,14 +874,20 @@ a version it can't read, and asks for the password of one encrypted with a passw
   text beside it for fields that take only text (list items with their markers, cells apart by
   tabs). The text is as it will read: deleted tracked text and hidden text are left out. Copy as
   Markdown gives the same as Markdown (with GitHub's tables), for Markdown editors, GitHub and
-  Ghost. The status bar says what was copied, and what was left out (pictures, text boxes, notes and
+  Ghost; for the whole document it starts with front matter from the document's own properties
+  (Document properties…: its Title as `title`, its Comments as `description` and its Keywords as
+  `keywords`), as static site generators and many CMSs read a page's title and description.
+  Document properties shows the title's and comments' lengths (search results show about 60
+  characters of a title and 160 of a description). The status bar says what was copied, and what was left out (pictures, text boxes, notes and
   equations, to add in the site's editor). Nothing is saved as a file: it goes to the clipboard
 - Word count, as Word's (a click on the status bar's count): pages (about how many), words,
   characters with and without spaces, paragraphs and sentences, and Word's Readability Statistics:
   sentences per paragraph, words per sentence and characters per word, and for English text the
   share of passive sentences, the Flesch Reading Ease and the Flesch-Kincaid Grade Level, worked out
-  in the browser. Sentences of more than 30 words are counted, and Show selects each in turn, to cut
-  or split it. A length to write to, as a newsroom or a publisher sets one: a target in words, shown
+  in the browser. Sentences of more than 30 words, paragraphs of more than 150 and a word typed twice
+  in a row ("the the"; not "had had", a number or "Well, well") are counted, and each one's Show
+  selects them in turn, to cut, split or delete by hand: suggestions only, read from the text as it
+  will read (deleted tracked text and hidden text left out). A length to write to, as a newsroom or a publisher sets one: a target in words, shown
   in the status bar as "612 / 650 words" (in amber once over it), and a limit for the headline in
   characters, shown as "Headline 52 / 70": the headline is the text's first paragraph when it is in
   a heading style (Title, Heading 1–6). Both stay with the document while it is open and in its
@@ -1355,8 +1361,6 @@ desktop where the system supports it. The service worker caches nothing else: do
 from the device's files and never fetched, cached or stored. A new version replaces the old copy.
 
 The About page shows the version.
-
-- **Content Creator Studio** (Creator tools in the editor): local writing goals and a manually entered daily word log, a reusable content brief and outline, an SEO preparation checklist (title, meta description, keyword placement, headings, links and image alt text), first-pass editorial checks (repeated words and phrases, long sentences and paragraphs), and editable starting drafts for LinkedIn, X, Instagram and newsletters. These checks are heuristics, not grammar or ranking guarantees; every repurposed draft needs the author's review. The brief, goals and daily log stay in this browser; document text is processed locally and is never uploaded (see [Content Creator Essentials](docs/product/CONTENT_CREATOR_ESSENTIALS.md))
 
 ## Limitations
 

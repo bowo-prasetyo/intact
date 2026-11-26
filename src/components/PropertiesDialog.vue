@@ -8,6 +8,7 @@
     <label>Comments
       <textarea v-model="core.description" aria-label="Comments" rows="2" />
     </label>
+    <p class="hint">Title {{ length(core.title) }} characters · Comments {{ length(core.description) }}. For a web page, Copy as Markdown puts the title, the comments (as its description) and the keywords at the top, as front matter; search results show about 60 characters of a title and 160 of a description.</p>
     <fieldset>
       <legend>Custom</legend>
       <p class="hint">Your own properties, such as a product name or a version number, as Word’s Advanced Properties › Custom: change one here and every field showing it follows.</p>
@@ -56,6 +57,8 @@ const insertable = computed(() => [
   ...custom.map((p) => p.name.trim()).filter(Boolean),
 ]);
 const field = ref(custom.find((p) => p.name.trim())?.name.trim() || 'Title');
+
+const length = (v) => [...String(v ?? '')].length;
 
 function addRow() {
   custom.push({ name: '', value: '' });

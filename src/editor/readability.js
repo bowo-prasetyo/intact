@@ -2,7 +2,8 @@
 // show them: the counts, the averages (sentences per paragraph, words per sentence, characters per
 // word), the share of passive sentences and the Flesch Reading Ease and Flesch-Kincaid Grade Level.
 // The scores and the passive voice are worked out for English, as Word's are; other languages get
-// the counts and averages. Long sentences are listed with where they are, to show them one by one.
+// the counts and averages. Long sentences, long paragraphs and a word typed twice in a row ("the
+// the") are listed with where they are, to show them one by one.
 // The headline (the first heading of the text) is found here too, for a headline's character limit.
 // Everything is read from the page as shown: nothing is sent anywhere, and nothing is changed.
 
@@ -12,6 +13,30 @@ export const wordCount = (text) => (text.match(WORD) || []).length;
 
 /** Sentences longer than this many words are listed as long (plain-language guides say 20 to 30). */
 export const LONG_SENTENCE = 30;
+/** Paragraphs longer than this many words are listed as long (a screen's worth, read on the web). */
+export const LONG_PARAGRAPH = 150;
+
+// Words that are often right twice in a row ("had had", "that that", "what it is is"), and so aren't
+// listed as repeated, as Word's spelling check leaves them.
+const DOUBLED_ON_PURPOSE = new Set(['had', 'that', 'is', 'do', 'bye', 'very', 'so', 'no', 'yeah', 'ha', 'la', 'pom', 'tut', 'knock', 'blah', 'chop', 'night', 'cha']);
+
+/**
+ * A word typed twice in a row in `text` ("the the", "of of", across a line break too): [{ start, end }]
+ * over both, the case of each ignored. Numbers and words doubled on purpose aren't listed.
+ */
+export function repeatedWords(text) {
+  const out = [];
+  let prev = null;
+  for (const m of text.matchAll(WORD)) {
+    const word = m[0].toLocaleLowerCase();
+    // Only spaces between them: "Well, well" and "it. It" are written that way on purpose.
+    if (prev && prev.word === word && /^\s+$/u.test(text.slice(prev.end, m.index)) && !/^\p{N}+$/u.test(word) && !DOUBLED_ON_PURPOSE.has(word)) {
+      out.push({ start: prev.start, end: m.index + m[0].length });
+    }
+    prev = { word, start: m.index, end: m.index + m[0].length };
+  }
+  return out;
+}
 
 const BLOCKS = 'p, h1, h2, h3, h4, h5, h6';
 // Text the reader doesn't read: deleted (tracked) text, hidden text, preserved content kept out of
@@ -103,8 +128,9 @@ export function headlineOf(page) {
 
 /**
  * The statistics of the text in `page`: counts, averages and (for `english`) the passive share and
- * the Flesch scores, and the long sentences as [{ block, start, end, words, text }]. Headers,
- * footers and notes aren't read, as in Word.
+ * the Flesch scores, the long sentences as [{ block, start, end, words, text }], the long paragraphs
+ * as [{ block, start, end, words }] and the words typed twice in a row as [{ block, start, end, text }].
+ * Headers, footers and notes aren't read, as in Word, nor deleted or hidden text.
  */
 export function readability(page, { english = true } = {}) {
   let paragraphs = 0;
@@ -114,11 +140,16 @@ export function readability(page, { english = true } = {}) {
   let syllableCount = 0;
   let passive = 0;
   const long = [];
+  const longParagraphs = [];
+  const repeated = [];
   for (const block of page.querySelectorAll(BLOCKS)) {
     if (!inBody(block)) continue;
     const bt = blockText(block);
-    if (!wordCount(bt.text)) continue;
+    const blockWords = wordCount(bt.text);
+    if (!blockWords) continue;
     paragraphs++;
+    if (blockWords > LONG_PARAGRAPH) longParagraphs.push({ block, start: 0, end: bt.text.length, words: blockWords });
+    for (const r of repeatedWords(bt.text)) repeated.push({ block, ...r, text: bt.text.slice(r.start, r.end) });
     for (const s of sentences(bt.text)) {
       const text = bt.text.slice(s.start, s.end);
       const list = text.match(WORD) || [];
@@ -145,7 +176,7 @@ export function readability(page, { english = true } = {}) {
     sentencesPerParagraph: paragraphs ? round(sentenceCount / paragraphs) : 0,
     wordsPerSentence: round(perSentence),
     charactersPerWord: words ? round(letters / words) : 0,
-    english, scores, long,
+    english, scores, long, longParagraphs, repeated,
   };
 }
 

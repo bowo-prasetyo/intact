@@ -10,7 +10,6 @@
           <span class="text">{{ labelChip.text }}</span>
         </span>
       </div>
-      <button class="ghost creator-tools" type="button" title="Open private content planning, SEO and editorial tools" @click="creatorOpen = true">Creator tools</button>
       <span class="save-split">
         <button class="primary" type="button" :disabled="saving" :title="fileHandle ? `Save: write the changes into ${fileHandle.name}, the file opened, on this device (Ctrl+S)` : t('Download (Ctrl+S)')" @click="requestDownload()">
           {{ saving ? t('Saving…') : fileHandle ? t('Save') : t('Download') }}
@@ -1021,7 +1020,7 @@
     <HelpDialog v-if="helpOpen" @close="closeHelp" @check="checkFromHelp" />
     <ThesaurusDialog v-if="thesaurusData" :word="thesaurusData.word" :lang="thesaurusData.lang" :participle="thesaurusData.participle" @close="closeThesaurus" @insert="replaceWithSynonym" />
     <AutoCorrectDialog v-if="autoCorrectDialog" :settings="autoCorrectSettings" :selected="autoCorrectDialog.selected" @close="closeAutoCorrect" @save="saveAutoCorrectSettings" />
-    <WordCountDialog v-if="wordCountData" :words="words" :characters="chars" :pages="pageCount" :stats="wordCountData" :target="lengthTarget" :headline="headline" @close="closeWordCount" @save="setLengthTarget" @show-long="showLongSentence" />
+    <WordCountDialog v-if="wordCountData" :words="words" :characters="chars" :pages="pageCount" :stats="wordCountData" :target="lengthTarget" :headline="headline" @close="closeWordCount" @save="setLengthTarget" @show="showFinding" />
 
     <ReviewDialog v-if="reviewData" :versioning="versioning" @versioning="setVersioning" :action="saveAction" :focus="reviewFocus" @release="releaseAction" @personal="setRemovePersonal" @personal-default="setPersonalDefault" @show-issue="showIssue" @title="setTitle" @update-properties="setUpdateProperties" :review="{ ...reviewData, resolved }" :skip="skipReview" @close="closeReview" @download="downloadReviewed" @skip="setSkipReview" @update-fields="(on) => { doc.updateFields = on; reviewData.fields.updateOnOpen = on; markDirty(); }" />
 
@@ -1267,7 +1266,6 @@
         <button type="button" :title="t('Zoom in (Ctrl+mouse wheel)')" :aria-label="t('Zoom in')" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
       </span>
     </footer>
-    <ContentCreatorDialog v-if="creatorOpen" :text="page?.innerText || ''" :word-count="words" :title="baseName" :headings="creatorStructure.headings" :has-links="creatorStructure.hasLinks" :images-without-alt="creatorStructure.imagesWithoutAlt" @close="creatorOpen = false" />
   </div>
 </template>
 
@@ -1276,7 +1274,6 @@ import { ref, shallowRef, reactive, computed, watch, nextTick, onMounted, onBefo
 import { canPickSaveFile, pickFileToSave, mayWrite, writeFile } from '../editor/fileHandles.js';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
-import ContentCreatorDialog from '../components/ContentCreatorDialog.vue';
 import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
@@ -1316,7 +1313,7 @@ import AutoCorrectDialog from '../components/AutoCorrectDialog.vue';
 import { thesaurusLanguage, matchCase } from '../editor/thesaurus.js';
 import { participleAfter } from '../editor/inflect.js';
 import { loadAutoCorrect, saveAutoCorrect, autoCorrectWord } from '../editor/autoCorrectList.js';
-import { webContent, toHtml, toText, toMarkdown, copyFormats } from '../editor/webCopy.js';
+import { webContent, toHtml, toText, toMarkdown, frontMatter, copyFormats } from '../editor/webCopy.js';
 import { wordCount, readability, headlineOf, blockText, textRange } from '../editor/readability.js';
 import { findMatches, matchRange } from '../editor/find.js';
 import { currentDoc, setDocument } from '../store.js';
@@ -1367,14 +1364,7 @@ import {
 
 const router = useRouter();
 const doc = currentDoc.value;
-const creatorOpen = ref(false);
 const page = ref(null);
-const creatorStructure = computed(() => {
-  if (!creatorOpen.value || !page.value) return { headings: [], hasLinks: false, imagesWithoutAlt: 0 };
-  const headings = [...page.value.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((el) => el.innerText.trim()).filter(Boolean);
-  const images = [...page.value.querySelectorAll('img')];
-  return { headings, hasLinks: page.value.querySelectorAll('a[href]').length > 0, imagesWithoutAlt: images.filter((img) => !img.getAttribute('alt')?.trim()).length };
-});
 const dirty = ref(!!doc.restored); // a restored draft holds changes not yet downloaded
 const saving = ref(false);
 const message = ref('');
@@ -1718,7 +1708,11 @@ function copyForWeb(kind, selection = false) {
     message.value = t('Nothing to copy: the text is empty');
     return;
   }
-  const formats = kind === 'markdown' ? { 'text/plain': toMarkdown(blocks) } : { 'text/html': toHtml(blocks), 'text/plain': toText(blocks) };
+  // The whole document as Markdown starts with its title, description and keywords (its properties),
+  // as front matter for a site's page; a selection is only its text.
+  const properties = kind === 'markdown' && !selection ? doc.editableProperties().core : null;
+  const meta = properties ? frontMatter(properties) : '';
+  const formats = kind === 'markdown' ? { 'text/plain': toMarkdown(blocks, properties) } : { 'text/html': toHtml(blocks), 'text/plain': toText(blocks) };
   if (!copyFormats(formats)) {
     message.value = t('The browser didn’t copy: try again from the menu');
     return;
@@ -1726,7 +1720,7 @@ function copyForWeb(kind, selection = false) {
   const what = [left.pictures && t(left.pictures === 1 ? '1 picture' : '{n} pictures', { n: left.pictures }), left.textBoxes && t(left.textBoxes === 1 ? '1 text box' : '{n} text boxes', { n: left.textBoxes }),
     left.notes && t(left.notes === 1 ? '1 note' : '{n} notes', { n: left.notes }), left.equations && t(left.equations === 1 ? '1 equation' : '{n} equations', { n: left.equations })].filter(Boolean);
   const counted = t(blocks.length === 1 ? '1 paragraph' : '{n} paragraphs', { n: blocks.length });
-  message.value = `${kind === 'markdown' ? t('Copied as Markdown: {what}', { what: counted }) : t('Copied for the web: {what}, with headings, bold, italic, links and lists – paste it into your site’s editor or an e-mail', { what: counted })}${what.length ? t(' · left out: {what}', { what: what.join(', ') }) : ''}`;
+  message.value = `${kind === 'markdown' ? t(meta ? 'Copied as Markdown: {what}, after front matter from the document’s properties (title, description, keywords)' : 'Copied as Markdown: {what}', { what: counted }) : t('Copied for the web: {what}, with headings, bold, italic, links and lists – paste it into your site’s editor or an e-mail', { what: counted })}${what.length ? t(' · left out: {what}', { what: what.join(', ') }) : ''}`;
 }
 
 // ------------------------------------------------------------------ word count and length
@@ -1738,8 +1732,10 @@ const headlineTitle = computed(() => {
   const d = lengthTarget.headline - h.chars;
   return `${t('Headline: {chars} characters, with spaces – “{text}”', { chars: h.chars, text: h.text })}. ${d >= 0 ? t('{n} to spare', { n: d }) : t('{n} over the limit', { n: -d })}`;
 });
-let longSentences = []; // the long sentences found when Word count last opened: [{ block, start, end, words }]
-let longShown = -1; // the one shown last, to show the next each time
+// What Word count found to look at again, when it last opened: { long, longParagraphs, repeated },
+// each [{ block, start, end, words?, text? }], and the one of each shown last, to show the next each time.
+let findings = { long: [], longParagraphs: [], repeated: [] };
+const shownFinding = { long: -1, longParagraphs: -1, repeated: -1 };
 
 /** Word count, as Word's (a click on the status bar's count): counts, length target and readability. */
 function openWordCount() {
@@ -1747,8 +1743,10 @@ function openWordCount() {
   updatePages();
   const language = doc.styles.language() || '';
   const stats = readability(page.value, { english: !language || /^en\b/i.test(language) });
-  longSentences = stats.long; // the page's elements stay here, out of Vue's reach
-  wordCountData.value = { ...stats, long: stats.long.map(({ words: n }) => ({ words: n })) };
+  // The page's elements stay here, out of Vue's reach; the dialog gets how many of each.
+  findings = { long: stats.long, longParagraphs: stats.longParagraphs, repeated: stats.repeated };
+  const bare = (list) => list.map(({ words: n }) => ({ words: n }));
+  wordCountData.value = { ...stats, long: bare(stats.long), longParagraphs: bare(stats.longParagraphs), repeated: bare(stats.repeated) };
 }
 
 function closeWordCount() {
@@ -1766,18 +1764,25 @@ function setLengthTarget({ words: target, headline: limit }) {
   message.value = parts.length ? t('Length: {what}, shown in the status bar', { what: parts.join(t(' and ')) }) : t('No length target');
 }
 
-/** Selects the next long sentence (from Word count), so it can be cut or split. */
-function showLongSentence() {
+/**
+ * Selects the next of Word count's findings of `kind` (a long sentence or paragraph, to cut or split;
+ * a word typed twice in a row, to delete one), so it can be changed by hand.
+ */
+function showFinding(kind) {
   wordCountData.value = null;
-  const live = longSentences.filter((s) => s.block.isConnected);
+  const live = (findings[kind] || []).filter((s) => s.block.isConnected);
   if (!live.length) return;
-  longShown = (longShown + 1) % live.length;
-  const s = live[longShown];
+  shownFinding[kind] = (shownFinding[kind] + 1) % live.length;
+  const i = shownFinding[kind];
+  const s = live[i];
   const range = textRange(blockText(s.block), s.start, s.end);
   page.value.focus();
   selectRange(range);
   s.block.scrollIntoView({ block: 'center' });
-  message.value = t('Long sentence: {n} words ({i} of {count}) – Word count shows the next', { n: s.words, i: longShown + 1, count: live.length });
+  const where = { i: i + 1, count: live.length };
+  message.value = kind === 'long' ? t('Long sentence: {n} words ({i} of {count}) – Word count shows the next', { n: s.words, ...where })
+    : kind === 'longParagraphs' ? t('Long paragraph: {n} words ({i} of {count}) – Word count shows the next', { n: s.words, ...where })
+      : t('Typed twice: “{text}” ({i} of {count}) – Word count shows the next', { text: s.text, ...where });
 }
 
 // ------------------------------------------------------------------ redaction
@@ -10669,11 +10674,7 @@ async function close() {
   .primary { padding: 6px 10px; }
 }
 /* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
-@media (max-width: 560px) {
-  :deep(.brand span) { display: none; }
-  /* Keep the existing compact mobile header layout; creator tools remain available on wider screens. */
-  .creator-tools { display: none; }
-}
+@media (max-width: 420px) { :deep(.brand span) { display: none; } }
 /* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
 @media (max-width: 360px) {
   :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }

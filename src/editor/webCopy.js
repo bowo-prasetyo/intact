@@ -177,8 +177,26 @@ export function toText(blocks) {
 
 const escapeMd = (s) => s.replace(/([\\`*_[\]<>|])/g, '\\$1');
 
-/** The blocks as Markdown (CommonMark, with GitHub's tables and ~~strikethrough~~). */
-export function toMarkdown(blocks) {
+/** A YAML string, double-quoted: on one line, its backslashes and quotes escaped. */
+const yaml = (v) => `"${String(v).replace(/\s+/g, ' ').trim().replace(/[\\"]/g, '\\$&')}"`;
+
+/**
+ * Front matter for a site's page, as static site generators and many CMSs read it: the document's
+ * own properties (File › Info), its Title as `title`, its Comments (Word's description) as
+ * `description` and its Keywords as `keywords`, those that are set. '' when none is.
+ */
+export function frontMatter({ title, description, keywords } = {}) {
+  const lines = [['title', title ?? ''], ['description', description ?? '']].filter(([, v]) => String(v).trim()).map(([k, v]) => `${k}: ${yaml(v)}`);
+  const words = String(keywords ?? '').split(/[;,]/).map((k) => k.trim()).filter(Boolean);
+  if (words.length) lines.push(`keywords: [${words.map(yaml).join(', ')}]`);
+  return lines.length ? `---\n${lines.join('\n')}\n---\n\n` : '';
+}
+
+/**
+ * The blocks as Markdown (CommonMark, with GitHub's tables and ~~strikethrough~~), after front matter
+ * from `properties` (see frontMatter) when any of them is set.
+ */
+export function toMarkdown(blocks, properties = null) {
   const inline = (list) => list.map((x) => {
     if (x.br) return '  \n';
     const lead = x.text.match(/^\s*/)[0];
@@ -211,7 +229,7 @@ export function toMarkdown(blocks) {
       out.push(row(b.rows[0]), `|${' --- |'.repeat(width)}`, ...b.rows.slice(1).map(row));
     }
   });
-  return `${out.join('\n')}\n`;
+  return `${properties ? frontMatter(properties) : ''}${out.join('\n')}\n`;
 }
 
 /**

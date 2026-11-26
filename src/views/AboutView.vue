@@ -104,7 +104,8 @@
         A click on the status bar's word count opens Word count: the counts, a target in words and a limit
         for the headline in characters (the status bar then shows how close you are), and Word's
         readability statistics, worked out in the browser: words per sentence, passive sentences and the
-        Flesch scores for English, with the long sentences to show one by one.
+        Flesch scores for English, with long sentences, long paragraphs and words typed twice in a row
+        (“the the”) to show one by one. Suggestions only: nothing is changed for you.
       </p>
       <h2>Writing tools</h2>
       <p>
@@ -114,7 +115,8 @@
         the word at the caret, in English (Princeton WordNet), in its form (approves: sanctions; took:
         chose), or Indonesian (Wordnet Bahasa's hand-checked words), from the app's own files, offline.
         Copy for the web puts the text on the clipboard as a website's editor or an e-mail takes it:
-        headings, bold, italic, links, lists and tables, without Word's formatting; or as Markdown.
+        headings, bold, italic, links, lists and tables, without Word's formatting; or as Markdown,
+        starting with the document's title, description (its Comments) and keywords as front matter.
       </p>
       <p class="credit">
         WordNet 3.1 Copyright 2006 by Princeton University; all rights reserved. Wordnet Bahasa Copyright
