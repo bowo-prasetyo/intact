@@ -44,7 +44,7 @@ export function editorialChecks(text = '') {
   return { words: tokens.length, paragraphs: paragraphs.length, sentences: sentences.length, issues };
 }
 
-export function seoChecks({ text = '', title = '', description = '', keyword = '' } = {}) {
+export function seoChecks({ text = '', title = '', description = '', keyword = '', headings = null, hasLinks = null, imagesWithoutAlt = null } = {}) {
   const body = String(text);
   const normalized = (value) => String(value).toLocaleLowerCase();
   const key = normalized(keyword).trim();
@@ -57,8 +57,9 @@ export function seoChecks({ text = '', title = '', description = '', keyword = '
     { label: 'Focus keyword provided', ok: !!key, detail: key ? `Focus keyword: “${keyword}”.` : 'Add a focus keyword to check its placement.' },
     { label: 'Keyword in title', ok: !!key && normalized(title).includes(key), detail: 'Include the exact focus keyword naturally in the title.' },
     { label: 'Keyword near the beginning', ok: !!key && normalized(firstWords).includes(key), detail: 'Use the focus keyword naturally in the opening 100 words.' },
-    { label: 'Descriptive structure', ok: headings.length >= 2, detail: `${headings.length} possible headings detected in the supplied text.` },
+    { label: 'Descriptive structure', ok: headingCount >= 2, detail: `${headingCount} headings detected.` },
     { label: 'Links included', ok: links, detail: 'Consider adding useful internal or authoritative external links.' },
+    ...(Number.isInteger(imagesWithoutAlt) ? [{ label: 'Image alt text', ok: imagesWithoutAlt === 0, detail: imagesWithoutAlt ? `${imagesWithoutAlt} image(s) have no descriptive alt text.` : 'All images have alt text, or the document has no images.' }] : []),
   ];
   const occurrences = key ? (normalized(body).split(key).length - 1) : 0;
   return { checks, occurrences, note: 'These are editorial heuristics, not a search-ranking prediction. Search engines may use different lengths and signals.' };
