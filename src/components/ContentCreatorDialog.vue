@@ -98,6 +98,9 @@ const props = defineProps({
   text: { type: String, default: '' },
   wordCount: { type: Number, default: 0 },
   title: { type: String, default: '' },
+  headings: { type: Array, default: () => [] },
+  hasLinks: { type: Boolean, default: false },
+  imagesWithoutAlt: { type: Number, default: 0 },
 });
 const emit = defineEmits(['close']);
 
@@ -124,7 +127,7 @@ const planFeedback = ref('');
 const copyFeedback = ref('');
 const seo = reactive({ title: '', keyword: '', description: '' });
 const editorial = computed(() => editorialChecks(props.text));
-const seoResult = computed(() => seoChecks({ ...seo, text: props.text }));
+const seoResult = computed(() => seoChecks({ ...seo, text: props.text, headings: props.headings, hasLinks: props.hasLinks, imagesWithoutAlt: props.imagesWithoutAlt }));
 const repurposeTitle = ref(props.title);
 const draftEdits = reactive({});
 const repurposeItems = computed(() => {
