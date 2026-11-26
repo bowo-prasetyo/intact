@@ -99,7 +99,7 @@ const props = defineProps({
   wordCount: { type: Number, default: 0 },
   title: { type: String, default: '' },
 });
-defineEmits(['close']);
+const emit = defineEmits(['close']);
 
 const tabs = [
   { id: 'goals', label: 'Writing goals' },
@@ -158,9 +158,8 @@ async function copy(value) {
   try { await navigator.clipboard.writeText(String(value)); copyFeedback.value = 'Copied to clipboard.'; }
   catch { copyFeedback.value = 'Clipboard access unavailable; select and copy the text manually.'; }
 }
-function onKeydown(event) { if (event.key === 'Escape') emitClose(); }
-let emitClose = () => {};
-onMounted(() => { emitClose = () => document.activeElement?.blur(); window.addEventListener('keydown', onKeydown); });
+function onKeydown(event) { if (event.key === 'Escape') emit('close'); }
+onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 </script>
 
