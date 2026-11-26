@@ -16,6 +16,7 @@ test('SEO checks report title, description, keyword, structure and link signals'
     title: 'A practical guide to sustainable urban gardening',
     description: 'Learn how to plan a small urban garden, choose suitable plants, prepare healthy soil and maintain a productive growing space throughout the year.',
     keyword: 'urban gardening',
+    headings: ['Urban gardening', 'Getting started'], hasLinks: true, imagesWithoutAlt: 1,
     text: '# Urban gardening\n\nUrban gardening can make a small space productive.\n\n## Getting started\n\nRead https://example.com for more.',
   });
   expect(result.checks.find((x) => x.label === 'Keyword in title').ok).toBe(true);
