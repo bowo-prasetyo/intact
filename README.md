@@ -1356,6 +1356,8 @@ from the device's files and never fetched, cached or stored. A new version repla
 
 The About page shows the version.
 
+- **Content Creator Studio** (Creator tools in the editor): local writing goals and a manually entered daily word log, a reusable content brief and outline, an SEO preparation checklist (title, meta description, keyword placement, headings and links), first-pass editorial checks (repeated words and phrases, long sentences and paragraphs), and editable starting drafts for LinkedIn, X, Instagram and newsletters. These checks are heuristics, not grammar or ranking guarantees; every repurposed draft needs the author's review. The brief, goals and daily log stay in this browser; document text is processed locally and is never uploaded (see [Content Creator Essentials](docs/product/CONTENT_CREATOR_ESSENTIALS.md))
+
 ## Limitations
 
 - After restoring a draft, the text you had changed while tracking shows as tracked changes kept from
