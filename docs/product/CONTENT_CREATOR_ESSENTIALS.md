@@ -25,7 +25,7 @@ All checks and transformations run in the browser. The open document text is rea
 
 - Check editorial title and meta-description length ranges.
 - Check whether the focus keyword appears in the title and opening 100 words.
-- Count keyword occurrences and look for headings and links in the supplied text.
+- Count keyword occurrences and inspect actual document headings, hyperlinks and image alt text.
 - Clearly describe these as heuristics, not ranking predictions. The current text-only interface does not claim to audit image alt text, live links, canonical tags, structured data or search-engine indexing.
 
 ### 4. Editorial quality checker
