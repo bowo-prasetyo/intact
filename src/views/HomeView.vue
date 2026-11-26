@@ -101,7 +101,7 @@ import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'v
 import { t, lang } from '../i18n.js';
 import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
-import { openFile, newDocument, newFromStarter, openDraft } from '../store.js';
+import { openFile, newDocument, newFromStarter, openDraft, preloadEngine } from '../store.js';
 import { STARTERS, localPaper } from '../docx/starters.js';
 import { listDrafts, deleteDraft, MAX_AGE } from '../drafts.js';
 import { receiveFile, draftsOpenElsewhere } from '../tabs.js';
@@ -132,6 +132,8 @@ onMounted(() => {
   refreshDrafts();
   document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('focus', refreshDrafts);
+  // The page is up: load the document's engine while nobody is waiting for it (see store.js).
+  (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(preloadEngine);
 });
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisible);
