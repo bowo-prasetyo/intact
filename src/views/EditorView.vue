@@ -10,6 +10,7 @@
           <span class="text">{{ labelChip.text }}</span>
         </span>
       </div>
+      <button class="ghost creator-tools" type="button" title="Open private content planning, SEO and editorial tools" @click="creatorOpen = true">Creator tools</button>
       <span class="save-split">
         <button class="primary" type="button" :disabled="saving" :title="fileHandle ? `Save: write the changes into ${fileHandle.name}, the file opened, on this device (Ctrl+S)` : t('Download (Ctrl+S)')" @click="requestDownload()">
           {{ saving ? t('Saving…') : fileHandle ? t('Save') : t('Download') }}
@@ -1266,6 +1267,7 @@
         <button type="button" :title="t('Zoom in (Ctrl+mouse wheel)')" :aria-label="t('Zoom in')" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
       </span>
     </footer>
+    <ContentCreatorDialog v-if="creatorOpen" :text="page?.innerText || ''" :word-count="words" :title="baseName" @close="creatorOpen = false" />
   </div>
 </template>
 
@@ -1274,6 +1276,7 @@ import { ref, shallowRef, reactive, computed, watch, nextTick, onMounted, onBefo
 import { canPickSaveFile, pickFileToSave, mayWrite, writeFile } from '../editor/fileHandles.js';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
+import ContentCreatorDialog from '../components/ContentCreatorDialog.vue';
 import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
@@ -1364,6 +1367,7 @@ import {
 
 const router = useRouter();
 const doc = currentDoc.value;
+const creatorOpen = ref(false);
 const page = ref(null);
 const dirty = ref(!!doc.restored); // a restored draft holds changes not yet downloaded
 const saving = ref(false);
