@@ -109,7 +109,8 @@ Saying no to these keeps the product small enough to keep its promises:
 - Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
 - Add real-world fixture documents (a letter written in Word ✔; reports, memos and minutes written
   by LibreOffice, pandoc and python-docx ✔; Google Docs welcome), each edited in every kind of place
-  by the tests ✔; test Safari
+  by the tests ✔; Safari's engine (WebKit) in CI for the core of the promises ✔, the rest of the
+  suite joining it spec by spec
 
 **Next — do the core job better**
 - Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔
