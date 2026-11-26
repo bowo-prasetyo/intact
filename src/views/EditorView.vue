@@ -10,6 +10,7 @@
           <span class="text">{{ labelChip.text }}</span>
         </span>
       </div>
+      <button class="ghost creator-tools" type="button" title="Open private content planning, SEO and editorial tools" @click="creatorOpen = true">Creator tools</button>
       <span class="save-split">
         <button class="primary" type="button" :disabled="saving" :title="fileHandle ? `Save: write the changes into ${fileHandle.name}, the file opened, on this device (Ctrl+S)` : t('Download (Ctrl+S)')" @click="requestDownload()">
           {{ saving ? t('Saving…') : fileHandle ? t('Save') : t('Download') }}
@@ -1266,6 +1267,7 @@
         <button type="button" :title="t('Zoom in (Ctrl+mouse wheel)')" :aria-label="t('Zoom in')" :disabled="zoomLevel >= ZOOMS[ZOOMS.length - 1]" @click="zoomBy(1)">+</button>
       </span>
     </footer>
+    <ContentCreatorDialog v-if="creatorOpen" :text="page?.innerText || ''" :word-count="words" :title="baseName" :headings="creatorStructure.headings" :has-links="creatorStructure.hasLinks" :images-without-alt="creatorStructure.imagesWithoutAlt" @close="creatorOpen = false" />
   </div>
 </template>
 
@@ -1274,6 +1276,7 @@ import { ref, shallowRef, reactive, computed, watch, nextTick, onMounted, onBefo
 import { canPickSaveFile, pickFileToSave, mayWrite, writeFile } from '../editor/fileHandles.js';
 import { useRouter, onBeforeRouteLeave } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
+import ContentCreatorDialog from '../components/ContentCreatorDialog.vue';
 import FindBar from '../components/FindBar.vue';
 import FillInDialog from '../components/FillInDialog.vue';
 import MoreColors from '../components/MoreColors.vue';
@@ -1364,7 +1367,14 @@ import {
 
 const router = useRouter();
 const doc = currentDoc.value;
+const creatorOpen = ref(false);
 const page = ref(null);
+const creatorStructure = computed(() => {
+  if (!creatorOpen.value || !page.value) return { headings: [], hasLinks: false, imagesWithoutAlt: 0 };
+  const headings = [...page.value.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((el) => el.innerText.trim()).filter(Boolean);
+  const images = [...page.value.querySelectorAll('img')];
+  return { headings, hasLinks: page.value.querySelectorAll('a[href]').length > 0, imagesWithoutAlt: images.filter((img) => !img.getAttribute('alt')?.trim()).length };
+});
 const dirty = ref(!!doc.restored); // a restored draft holds changes not yet downloaded
 const saving = ref(false);
 const message = ref('');
@@ -10659,7 +10669,11 @@ async function close() {
   .primary { padding: 6px 10px; }
 }
 /* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
-@media (max-width: 420px) { :deep(.brand span) { display: none; } }
+@media (max-width: 560px) {
+  :deep(.brand span) { display: none; }
+  /* Keep the existing compact mobile header layout; creator tools remain available on wider screens. */
+  .creator-tools { display: none; }
+}
 /* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
 @media (max-width: 360px) {
   :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }
