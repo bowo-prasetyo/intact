@@ -61,17 +61,43 @@ These are product requirements, not aspirations. A release that breaks one is a 
 
 ## Non-goals
 
-Saying no to these keeps the product small enough to keep its promises:
+Saying no to these keeps the product small enough to keep its promises. Each line is drawn where a
+real request met it; a request on the far side of one needs a very good reason, written into this
+document in the same pull request (see the principles below), as any request that risks the
+promises does.
 
-- **Complex authoring and desktop publishing.** Writing everyday documents is in (see The job);
-  what goes beyond them is out: master and sub-documents, building a style system from nothing,
-  linked text boxes and magazine layouts, mail merge from databases or address books (a CSV, which
-  everyday mail merge needs, is in), macros and add-ins, and anything that only a print shop would
-  need. A request for one of these needs a very good reason, as any request that risks the promises
-  does.
-- **Collaboration and cloud storage.** No accounts, sharing, comment threads or sync: those need
-  a server, and they conflict with "private".
-- **Other formats.** No spreadsheets, slides, PDF or legacy `.doc`. Do one format well.
+- **A workspace beside the document.** Intact works on the file: what it makes goes into the
+  document, or carries the document's own content somewhere (Copy for the web, Copy as Markdown,
+  Share). Out: anything kept beside the file instead, such as writing goals, daily word logs, briefs
+  and outlines, SEO scores, drafts for social media, editorial calendars and publishing
+  integrations. A check that helps the document itself belongs in the tool that already does that
+  job (Word count, the accessibility check, Before you release), reading the text as it will read.
+- **Writing productivity and coaching.** Suggestions that point at the text (a long sentence, a
+  word typed twice, readability) are in, and never change it for you. Out: rewriting for you, tone
+  or style coaching, streaks and goals, and grammar engines that claim an authority they don't have.
+- **Generative AI, and anything else that needs the text to leave the device.** Out, because of
+  "Private": cloud AI, dictation through the browsers' speech recognition (which sends the voice to a
+  server), online grammar or translation services. What runs on the device, from the app's own
+  files, is in (the thesaurus, Read Aloud with the device's voices).
+- **Complex authoring and desktop publishing.** Writing everyday documents is in (see The job), and
+  so are the edits made between Word sessions to long documents that already use Word's references
+  (tables of contents, indexes, cross-references, captions, citations): they are kept, updated and
+  edited here. Out: master and sub-documents, structured authoring (DITA), building a style system
+  from nothing (a new style from the selection's formatting is in), linked text boxes and magazine
+  layouts, mail merge from databases or address books (a CSV, which everyday mail merge needs, is
+  in), macros and add-ins, reference managers' plug-ins (their citations stay theirs, updated in
+  Word), and anything that only a print shop would need.
+- **A system for a profession.** Templates for a kind of work are in when they are ordinary Word
+  documents with placeholders (an office's naskah dinas, a teacher's test, a healthcare policy).
+  The system around them is out: records management and retention, approval or e-signature
+  workflows, clinical forms and decision support, grading, case management, and compliance
+  certification. A template never claims what only that system can.
+- **Collaboration and cloud storage.** No accounts, sharing, sync, or comment threads kept on a
+  server: those need a server, and they conflict with "private". Word's own comments and replies,
+  kept in the file, are in.
+- **Other formats.** No spreadsheets, slides, PDF or legacy `.doc` to open or save. Do one format
+  well. (The print window's Save as PDF, and the clipboard's HTML and Markdown, carry a document
+  out; they aren't formats Intact edits.)
 - **Pixel-perfect pagination.** The editor shows content faithfully, not exact Word page breaks. It
   says about how many pages there are and about where they break, worked out and marked as such
   (≈), because whether a CV or a letter still fits on a page is part of fixing it.
