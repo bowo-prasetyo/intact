@@ -78,7 +78,7 @@
         <div class="repurpose-list">
           <article v-for="item in repurposeItems" :key="item.id">
             <div class="progress-heading"><strong>{{ item.label }}</strong><button type="button" class="text-button" @click="copy(item.text)">Copy</button></div>
-            <textarea :value="item.text" rows="4" readonly :aria-label="item.label + ' draft'" />
+            <textarea :value="item.text" rows="4" :aria-label="item.label + ' draft'" @input="draftEdits[item.id] = $event.target.value" />
             <small v-if="item.id === 'x'">{{ item.text.length }} / 280 characters</small>
           </article>
         </div>
@@ -126,13 +126,14 @@ const seo = reactive({ title: '', keyword: '', description: '' });
 const editorial = computed(() => editorialChecks(props.text));
 const seoResult = computed(() => seoChecks({ ...seo, text: props.text }));
 const repurposeTitle = ref(props.title);
+const draftEdits = reactive({});
 const repurposeItems = computed(() => {
   const drafts = repurpose(props.text, repurposeTitle.value);
   return [
-    { id: 'linkedin', label: 'LinkedIn post', text: drafts.linkedin },
-    { id: 'x', label: 'X post', text: drafts.x },
-    { id: 'instagram', label: 'Instagram caption', text: drafts.instagram },
-    { id: 'newsletter', label: 'Newsletter introduction', text: drafts.newsletter },
+    { id: 'linkedin', label: 'LinkedIn post', text: draftEdits.linkedin ?? drafts.linkedin },
+    { id: 'x', label: 'X post', text: draftEdits.x ?? drafts.x },
+    { id: 'instagram', label: 'Instagram caption', text: draftEdits.instagram ?? drafts.instagram },
+    { id: 'newsletter', label: 'Newsletter introduction', text: draftEdits.newsletter ?? drafts.newsletter },
   ];
 });
 const planText = computed(() => [
