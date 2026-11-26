@@ -91,6 +91,11 @@ Saying no to these keeps the product small enough to keep its promises:
   templates), not adding new kinds of content.
 - **Real documents decide.** Grow the test fixtures with documents written by Word, Google Docs and
   LibreOffice, and check output in Microsoft Word before each release.
+- **This document is the only door.** A change serves an entry in the Direction below, or changes
+  this document in the same pull request, where the change can be reviewed. The pull request
+  template (`.github/pull_request_template.md`) asks for the entry, and checks the promises, the
+  non-goals, translation and the README, About page and Direction. Notes in `docs/product/`
+  describe what this document already accepts; they don't decide what comes next.
 
 ## Direction
 
