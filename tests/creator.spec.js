@@ -22,6 +22,7 @@ test('SEO checks report title, description, keyword, structure and link signals'
   expect(result.checks.find((x) => x.label === 'Keyword near the beginning').ok).toBe(true);
   expect(result.checks.find((x) => x.label === 'Links included').ok).toBe(true);
   expect(result.occurrences).toBe(2);
+  expect(result.checks.find((x) => x.label === 'Image alt text').ok).toBe(false);
 });
 
 test('repurposing produces bounded, editable platform drafts', () => {
@@ -42,6 +43,10 @@ test('Content Creator Studio opens from the editor and persists the daily writin
   await dialog.getByRole('button', { name: 'Save goals and today\'s log' }).click();
   await expect(dialog.getByRole('status')).toContainText('Saved on this device.');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('intact.creator.dailyLog')))).toBeTruthy();
+  await dialog.getByRole('button', { name: 'Brief & outline' }).click();
+  await dialog.getByLabel('Working title').fill('A local content brief');
+  await dialog.getByRole('button', { name: 'Save brief' }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('intact.creator.plan')).title)).toBe('A local content brief');
   await dialog.getByRole('button', { name: 'Quality check' }).click();
   await expect(dialog).toContainText('Editorial quality check');
   await dialog.getByRole('button', { name: 'SEO' }).click();
