@@ -138,8 +138,8 @@ const repurposeItems = computed(() => {
 const planText = computed(() => [
   plan.title && `# ${plan.title}`, plan.audience && `Audience: ${plan.audience}`,
   plan.format && `Format: ${plan.format}`, plan.purpose && `Purpose: ${plan.purpose}`,
-  plan.message && `Key message: ${plan.message}`, plan.outline && `## Outline\\n${plan.outline}`,
-].filter(Boolean).join('\\n\\n'));
+  plan.message && `Key message: ${plan.message}`, plan.outline && `## Outline\n${plan.outline}`,
+].filter(Boolean).join('\n\n'));
 function saveGoals() {
   try {
     const log = read('intact.creator.dailyLog', {});
