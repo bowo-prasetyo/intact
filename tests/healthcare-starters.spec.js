@@ -31,6 +31,6 @@ for (const [title, expectedSection] of TEMPLATES) {
     await expect(document).toContainText(expectedSection);
     await expect(document).toContainText('Before approval or sharing');
     await expect(document).toContainText('Inspect document');
-    await expect(document).toContainText('not a compliance certification');
+    await expect(document).toContainText('not clinical guidance or a compliance certification');
   });
 }
