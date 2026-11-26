@@ -225,7 +225,12 @@ Saying no to these keeps the product small enough to keep its promises:
 - Writing tools a reporter reaches for in Word: AutoCorrect entries of your own and common typos ✔;
   the thesaurus (Shift+F7), in English and Indonesian, on the device ✔; copy for the web (a CMS, an
   e-mail) or as Markdown, to the clipboard rather than as another file format ✔; synonyms in the form
-  of the word they replace ✔; AutoCorrect entries exported and imported as a CSV file ✔
+  of the word they replace ✔; AutoCorrect entries exported and imported as a CSV file ✔; long
+  paragraphs and words typed twice in a row in Word count, beside the long sentences ✔; a web page's
+  title, description and keywords from the document's own properties, as Markdown front matter ✔.
+  Not a workspace beside the document (a brief, writing goals, a daily word log, SEO scores or
+  social-media drafts): what doesn't go into the document doesn't serve either job, and a separate
+  Content Creator Studio was taken out for that reason
 - Managers and executives who review and approve confidential papers (board papers, contracts,
   HR files): open documents encrypted with a password, decrypted on the device, and download them
   encrypted again, or protect any document with one ✔ (the password never leaves the device, so

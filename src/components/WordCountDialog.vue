@@ -39,10 +39,11 @@
       </dl>
       <p v-if="!stats.scores" class="hint">{{ t('The passive voice and the Flesch scores are worked out for English text, as in Word.') }}</p>
       <p v-else class="hint">{{ t('Reading Ease runs from 0 to 100: higher is easier (60–70 is plain English). The grade is the years of school a reader needs.') }}</p>
-      <div class="long">
-        <span>{{ stats.long.length ? t(stats.long.length === 1 ? '1 long sentence (more than {limit} words)' : '{n} long sentences (more than {limit} words)', { n: stats.long.length, limit: LONG_SENTENCE }) : t('No sentences of more than {limit} words', { limit: LONG_SENTENCE }) }}</span>
-        <button v-if="stats.long.length" type="button" @click="$emit('show-long')">{{ t('Show') }}</button>
+      <div v-for="f in findings" :key="f.kind" class="long">
+        <span>{{ f.label }}</span>
+        <button v-if="f.count" type="button" :aria-label="`${t('Show')}: ${f.label}`" @click="$emit('show', f.kind)">{{ t('Show') }}</button>
       </div>
+      <p class="hint">{{ t('Suggestions only: nothing is changed. Deleted and hidden text aren’t read.') }}</p>
     </fieldset>
 
     <template #actions>
@@ -54,11 +55,12 @@
 <script setup>
 // Word's Word Count dialog (a click on the status bar's count): the document's counts, a length to
 // write to (a target in words, and a limit for the headline in characters) and Word's Readability
-// Statistics, with the long sentences to show one by one. Nothing here changes the document.
+// Statistics, with what to look at again (long sentences, long paragraphs and a word typed twice in a
+// row) to show one by one. Nothing here changes the document.
 import { computed, ref } from 'vue';
 import ModalDialog from './ModalDialog.vue';
 import { t } from '../i18n.js';
-import { easeLabel, LONG_SENTENCE } from '../editor/readability.js';
+import { easeLabel, LONG_SENTENCE, LONG_PARAGRAPH } from '../editor/readability.js';
 
 const props = defineProps({
   words: { type: Number, required: true },
@@ -68,13 +70,24 @@ const props = defineProps({
   target: { type: Object, required: true }, // { words, headline }: numbers or null
   headline: { type: Object, default: null }, // { text, chars }
 });
-const emit = defineEmits(['close', 'save', 'show-long']);
+// show(kind): select the next of the findings of `kind` ('long', 'longParagraphs' or 'repeated').
+const emit = defineEmits(['close', 'save', 'show']);
 
 const wordsTarget = ref(props.target.words ?? '');
 const headlineLimit = ref(props.target.headline ?? '');
 const n = (x) => x.toLocaleString();
 const short = (s) => (s.length > 60 ? `${s.slice(0, 60)}…` : s);
 const whole = (v) => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : null);
+
+// What to look at again, each with how many there are (the counts come from readability()).
+const findings = computed(() => {
+  const { long, longParagraphs = [], repeated = [] } = props.stats;
+  return [
+    { kind: 'long', count: long.length, label: long.length ? t(long.length === 1 ? '1 long sentence (more than {limit} words)' : '{n} long sentences (more than {limit} words)', { n: long.length, limit: LONG_SENTENCE }) : t('No sentences of more than {limit} words', { limit: LONG_SENTENCE }) },
+    { kind: 'longParagraphs', count: longParagraphs.length, label: longParagraphs.length ? t(longParagraphs.length === 1 ? '1 long paragraph (more than {limit} words)' : '{n} long paragraphs (more than {limit} words)', { n: longParagraphs.length, limit: LONG_PARAGRAPH }) : t('No paragraphs of more than {limit} words', { limit: LONG_PARAGRAPH }) },
+    { kind: 'repeated', count: repeated.length, label: repeated.length ? t(repeated.length === 1 ? '1 word typed twice in a row' : '{n} words typed twice in a row', { n: repeated.length }) : t('No words typed twice in a row') },
+  ];
+});
 
 const toGo = computed(() => {
   const target = whole(wordsTarget.value);
