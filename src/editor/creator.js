@@ -49,8 +49,8 @@ export function seoChecks({ text = '', title = '', description = '', keyword = '
   const normalized = (value) => String(value).toLocaleLowerCase();
   const key = normalized(keyword).trim();
   const firstWords = body.split(/\s+/).slice(0, 100).join(' ');
-  const headings = body.split('\n').filter((line) => /^\s{0,3}#{1,6}\s+|^\s*\S.{0,80}$/.test(line));
-  const links = /https?:\/\//i.test(body);
+  const headingCount = Array.isArray(headings) ? headings.length : body.split('\n').filter((line) => /^\s{0,3}#{1,6}\s+/.test(line)).length;
+  const links = typeof hasLinks === 'boolean' ? hasLinks : /https?:\/\//i.test(body);
   const checks = [
     { label: 'SEO title length', ok: title.length >= 30 && title.length <= 60, detail: `${title.length} characters (recommended editorial range: 30–60).` },
     { label: 'Meta description length', ok: description.length >= 120 && description.length <= 160, detail: `${description.length} characters (recommended editorial range: 120–160).` },
