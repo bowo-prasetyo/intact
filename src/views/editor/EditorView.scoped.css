@@ -1,0 +1,414 @@
+/* The editor's own styles (scoped to EditorView.vue: Vue adds its data attribute to each selector). */
+.editor-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+/* The file's name gives way (cut off) before the header's buttons do, so a narrow screen never
+   scrolls sideways, whatever the fonts. */
+.file { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow: hidden; }
+.filename {
+  min-width: 0; max-width: 100%; font: inherit; color: #fff; background: transparent;
+  border: 1px solid transparent; border-radius: 4px; padding: 4px 6px;
+}
+.filename:hover, .filename:focus { border-color: rgb(255 255 255 / 50%); outline: none; background: rgb(255 255 255 / 10%); }
+.ext { opacity: .7; }
+/* The sensitivity label, as Office shows it beside the name: read-only. */
+.label-chip {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 2px 9px; min-width: 0; max-width: 40ch;
+  border: 1px solid rgb(255 255 255 / 55%); border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: default; white-space: nowrap;
+}
+.label-chip svg { flex: none; }
+.label-chip .text { overflow: hidden; text-overflow: ellipsis; }
+.label-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.dirty { color: #ffd166; margin-left: 6px; }
+.primary { background: #fff; color: var(--brand); border: 0; border-radius: 4px; padding: 6px 14px; font-weight: 600; cursor: pointer; }
+.primary:disabled { opacity: .6; }
+.open-tab { display: inline-flex; align-items: center; gap: 6px; }
+.close-doc { display: inline-flex; align-items: center; gap: 6px; }
+.close-doc svg { display: none; }
+.chooser.drop-offer { left: 50%; top: 72px; transform: translateX(-50%); width: 340px; max-width: calc(100vw - 16px); max-height: none; font-size: 13px; }
+.drop-offer p { margin: 0; line-height: 1.45; }
+.password-dialog { display: flex; flex-direction: column; gap: 6px; }
+.password-dialog .pw-note { color: var(--muted); }
+.password-dialog label { font-weight: 600; margin-top: 4px; }
+.password-dialog .pw-error { color: var(--danger); }
+.password-dialog .pw-error:empty { display: none; }
+/* A phone: Open and Close are their icons, so the file's name has room to be read. */
+@media (max-width: 560px) {
+  .open-tab, .close-doc { padding: 5px 8px; }
+  .open-tab .label, .close-doc .label { display: none; }
+  .close-doc svg { display: block; }
+  .primary { padding: 6px 10px; }
+}
+/* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
+@media (max-width: 420px) { :deep(.brand span) { display: none; } }
+/* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
+@media (max-width: 360px) {
+  :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }
+  .primary { padding: 6px 10px; }
+  .save-split .primary.arrow { padding: 6px 5px; }
+  .ghost { padding: 5px 8px; }
+}
+.save-split { display: inline-flex; gap: 1px; }
+.save-split .primary:first-child { border-radius: 4px 0 0 4px; }
+.save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
+.save-menu { min-width: 220px; }
+.insert-menu { min-width: 220px; max-height: calc(100vh - 16px); overflow-y: auto; }
+.insert-menu > * { flex-shrink: 0; }
+.insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
+.insert-menu .hint { color: var(--muted); font-size: 12px; }
+.list-library { width: min(460px, calc(100vw - 16px)); }
+.list-library button > :first-child, .list-library button { white-space: nowrap; }
+.list-library .hint { white-space: normal; text-align: right; }
+.formula-dialog input[type="text"] { font-family: ui-monospace, Consolas, monospace; min-width: 14em; }
+.formula-dialog .note.error { color: var(--danger); }
+.insert-menu .auto-date { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
+.insert-menu .auto-date .hint { flex-basis: 100%; padding-left: 20px; }
+.page-number-menu { min-width: 260px; }
+.page-number-menu .menu-sep { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; }
+.insert-menu .menu-label { margin: 6px 8px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.chooser.share-ready { left: 50%; top: 72px; transform: translateX(-50%); width: 300px; max-width: calc(100vw - 16px); padding: 12px; gap: 10px; font-size: 14px; }
+.share-ready p { margin: 0; overflow-wrap: anywhere; }
+.share-ready .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.share-ready .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 6px 14px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.share-ready .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
+.save-menu button { display: flex; justify-content: space-between; gap: 16px; }
+.save-menu .shortcut { color: var(--muted); font-size: 12px; }
+.chooser.pdf-dialog { width: 360px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); font-size: 13px; }
+.pdf-dialog h2 { margin: 0; font-size: 15px; }
+.pdf-dialog p { margin: 0; line-height: 1.45; }
+.pdf-dialog .pdf-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.4; }
+.pdf-dialog .pdf-notes .warn::marker { color: #b26a00; }
+.pdf-dialog .pdf-word { color: var(--muted); }
+@media (max-width: 560px) { .ext, :deep(.nav) { display: none; } }
+.ghost { background: transparent; color: #fff; border: 1px solid rgb(255 255 255 / 50%); border-radius: 4px; padding: 5px 12px; cursor: pointer; }
+
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+/* The ribbon's tabs, above its tools: one tab's tools at a time (a wider screen than a phone's). */
+.ribbon-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 12px 0; background: var(--surface); }
+.ribbon-tabs [role="tab"] {
+  position: relative; padding: 6px 12px 7px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 4px 4px 0 0;
+}
+.ribbon-tabs [role="tab"]:hover { background: var(--hover); color: var(--text); }
+.ribbon-tabs [role="tab"][aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.ribbon-tabs [role="tab"]:focus-visible, .ribbon-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* In a table, the Layout tab (which has Table layout) is marked, as Word shows its table tabs. */
+.ribbon-tabs [role="tab"].context::after { content: ''; position: absolute; top: 5px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.ribbon-tabs .tab-badge { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--active); color: var(--accent); font-size: 11px; }
+.ribbon-spacer { flex: 1; }
+.ribbon-mode { margin-bottom: 4px; padding: 3px 10px; border: 1px solid var(--border) !important; border-radius: 4px; background: var(--surface); color: var(--muted); font: inherit; font-size: 12px !important; cursor: pointer; }
+.ribbon-mode:hover { background: var(--hover) !important; color: var(--text); }
+.toolbar .ribbon-mode { margin: 0 0 0 auto; height: 28px !important; }
+.toolbar.ribbon { min-height: 45px; box-sizing: border-box; }
+/* One tab's tools on one row of a laptop's width: the style and font boxes a little narrower. */
+.toolbar.ribbon select.style-choice { min-width: 0; width: 118px; }
+.toolbar.ribbon select.font-choice { width: 120px; }
+.toolbar.ribbon .sep { margin: 0 2px; }
+/* The File and View tabs' own tools are the ribbon's: Download's menu (▾) and the status bar (zoom,
+   Headings) have them in "All tools" and on a phone. */
+.toolbar:not(.ribbon) [data-tab="file"], .toolbar:not(.ribbon) [data-tab="view"] { display: none !important; }
+@media (max-width: 720px) { .toolbar [data-tab="file"], .toolbar [data-tab="view"] { display: none !important; } }
+.toolbar select.zoom-choice { width: 78px; min-width: 0; }
+@media (min-width: 721px) {
+  /* A tool shows in the tabs data-tab names (a space-separated list, as ¶ is in Home and View). */
+  .toolbar.ribbon[data-active="file"] [data-tab]:not([data-tab~="file"]),
+  .toolbar.ribbon[data-active="home"] [data-tab]:not([data-tab~="home"]),
+  .toolbar.ribbon[data-active="insert"] [data-tab]:not([data-tab~="insert"]),
+  .toolbar.ribbon[data-active="layout"] [data-tab]:not([data-tab~="layout"]),
+  .toolbar.ribbon[data-active="references"] [data-tab]:not([data-tab~="references"]),
+  .toolbar.ribbon[data-active="review"] [data-tab]:not([data-tab~="review"]),
+  .toolbar.ribbon[data-active="view"] [data-tab]:not([data-tab~="view"]) { display: none !important; }
+  .toolbar.ribbon .help-toggle { margin-left: auto; }
+}
+/* A phone: its one row of every tool, scrolling sideways, whatever the choice here. */
+@media (max-width: 720px) {
+  .ribbon-tabs, .toolbar .ribbon-mode { display: none; }
+}
+.toolbar button {
+  min-width: 30px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font-size: 15px; cursor: pointer;
+}
+.toolbar button:hover:not(:disabled) { background: var(--hover); }
+/* Groups of tools turned off together by a restriction; they don't change the layout. */
+.toolbar fieldset.group { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
+.toolbar select:disabled { opacity: .4; }
+
+/* Word's message bar for restricted and signed documents. */
+.restriction-bar {
+  --bar: #fff4ce; --bar-line: #e8d48a;
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 13px; line-height: 1.4;
+  background: var(--bar); border-bottom: 1px solid var(--bar-line); color: var(--text);
+}
+.restriction-bar.unlocked { --bar: var(--hover); --bar-line: var(--border); }
+.restriction-bar svg { flex: none; }
+.restriction-bar p { margin: 0; flex: 1; }
+.restriction-bar button { flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
+.restriction-bar button:hover { background: var(--hover); }
+/* The template bar's two buttons go below its text where there isn't room beside it (phones). */
+.template-bar { flex-wrap: wrap; row-gap: 6px; }
+.template-bar p { flex: 1 1 280px; min-width: 0; }
+@media (prefers-color-scheme: dark) { .restriction-bar:not(.unlocked) { --bar: #3a3216; --bar-line: #5c4f20; } }
+.toolbar button:disabled { opacity: .4; cursor: default; }
+.toolbar button.on { background: var(--active); border-color: var(--border); }
+.toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }
+.sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+/* Editing tools, then finding and reviewing: one row of controls, wrapping where it must. */
+.tb-group { display: contents; }
+
+.workspace { flex: 1; min-height: 0; display: flex; }
+.canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
+.docx-sheet {
+  position: relative; isolation: isolate; /* pictures behind the text stay on the page */ box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%);
+  display: flex; flex-direction: column;
+}
+.docx-page {
+  flex: 1; box-sizing: border-box; outline: none; min-width: 0;
+  white-space: pre-wrap; overflow-wrap: break-word; tab-size: 36pt; /* Word's default stops, half an inch apart; a paragraph's own: see doc.applyTabStops */ caret-color: #000;
+  /* What lies past the page's edges (a floating picture placed partly off the page, or one placed
+     for a wider page than a phone's) is cut off there, as Word cuts it off at the edge of the paper,
+     rather than making the document scroll sideways. Clip, not hidden: nothing becomes scrollable. */
+  overflow-x: clip;
+}
+.hf-tabs {
+  position: absolute; z-index: 3; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px;
+  font: 11px/1.4 system-ui, sans-serif; white-space: normal;
+}
+.hf-tabs.header { top: 6px; }
+.hf-tabs.footer { bottom: 6px; }
+.hf-tabs button {
+  padding: 1px 8px; border: 1px solid #c9d1de; border-radius: 9px; background: #fff; color: #44516a; cursor: pointer;
+}
+.hf-tabs button[aria-selected="true"] { background: var(--sheet-accent); border-color: var(--sheet-accent); color: #fff; }
+.comments-toggle { gap: 3px; padding: 0 6px; }
+.fill-in-toggle { gap: 3px; padding: 0 6px; }
+.script { font-size: 14px; line-height: 1; }
+.fonts-missing { cursor: help; text-decoration: underline dotted; }
+.draft-status { cursor: help; }
+.script sup, .script sub { font-size: 9px; }
+.split { display: inline-flex; }
+.split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
+.changes-group { display: inline-flex; align-items: center; gap: 2px; }
+.labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
+/* Icon buttons' text labels, shown where the toolbar has room for them (see editor/toolbar.js fitLabels). */
+.toolbar .short-label { display: none; }
+.toolbar button.with-label { gap: 4px; padding: 0 6px; }
+.toolbar button.with-label .short-label { display: inline; font-size: 13px; white-space: nowrap; }
+.change-menu {
+  position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.context-menu { min-width: 230px; }
+.context-menu button { display: flex; justify-content: space-between; gap: 16px; }
+.context-menu button:disabled { opacity: .45; cursor: default; }
+.context-menu .key { color: var(--muted); font-size: 12px; }
+.context-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.context-menu .menu-note { margin: 4px 0 0; padding: 6px 10px 2px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); max-width: 230px; }
+.change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
+.spacing-menu button { padding-left: 28px; position: relative; }
+.spacing-menu button[aria-checked="true"]::before { content: '✓'; position: absolute; left: 10px; }
+.chooser.para-dialog { width: 300px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
+.para-dialog fieldset { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 10px 10px; border: 1px solid var(--border); border-radius: 4px; }
+.para-dialog .tab-stops ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.para-dialog .tab-stops li { display: grid; grid-template-columns: 64px 60px 1fr 24px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.para-dialog .tab-stops li button { width: 24px; height: 22px; padding: 0; border: 0; background: none; color: inherit; border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1; }
+.para-dialog .tab-stops li button:hover { background: var(--hover); }
+.para-dialog .tab-stops .leader { color: var(--muted); }
+.para-dialog .tab-stops .hint { margin: 0; color: var(--muted); font-size: 12px; }
+.para-dialog .tab-add { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.para-dialog .tab-buttons { display: flex; gap: 6px; justify-content: flex-end; }
+.page-dialog .apply-to { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.para-dialog .check { justify-content: flex-start !important; gap: 6px !important; }
+.para-dialog .check input { width: auto; }
+.modify-dialog { width: 340px; }
+.modify-dialog h2 { margin: 0 0 8px; font-size: 15px; }
+.modify-dialog .note { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.modify-dialog .checks { display: flex; gap: 16px; }
+.modify-dialog .color-pick { display: flex; align-items: center; gap: 8px; }
+.modify-dialog .color-pick input[type=color] { width: 40px; height: 26px; padding: 0 2px; }
+/* Two lines, so a first-line or hanging indent shows (clamped inside the padding). */
+.modify-dialog .preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.modify-dialog .preview span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
+.page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
+.para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.para-dialog label.check { justify-content: flex-start; }
+.para-dialog input, .para-dialog select { width: 120px; font: inherit; }
+.para-dialog label.check input { width: auto; margin: 0; }
+.para-dialog select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
+.picture-frame { position: absolute; z-index: 6; border: 1px solid var(--accent); pointer-events: none; box-sizing: border-box; }
+.picture-frame .handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; background: #fff; border: 1px solid var(--accent); border-radius: 50%; pointer-events: auto; touch-action: none; }
+.picture-frame .nw { left: 0; top: 0; cursor: nwse-resize; }
+.picture-frame .n { left: 50%; top: 0; cursor: ns-resize; }
+.picture-frame .ne { left: 100%; top: 0; cursor: nesw-resize; }
+.picture-frame .e { left: 100%; top: 50%; cursor: ew-resize; }
+.picture-frame .se { left: 100%; top: 100%; cursor: nwse-resize; }
+.picture-frame .s { left: 50%; top: 100%; cursor: ns-resize; }
+.picture-frame .sw { left: 0; top: 100%; cursor: nesw-resize; }
+.picture-frame .w { left: 0; top: 50%; cursor: ew-resize; }
+.picture-frame .rotate { left: 50%; top: -22px; cursor: grab; }
+.picture-frame.cropping { border: 1px dashed #000; }
+.picture-frame.cropping .handle { width: 10px; height: 10px; border-radius: 0; background: #000; border-color: #fff; }
+.picture-panel details { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+.picture-panel details[open] { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+.picture-panel summary { cursor: pointer; font-weight: 600; }
+.picture-panel .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+.picture-panel .buttons button[aria-pressed="true"] { background: var(--active); }
+.picture-panel input[type=color] { width: 100%; height: 26px; padding: 0 2px; }
+.picture-panel fieldset.sub { border-style: dashed; }
+.picture-panel .note { margin: 0; color: var(--muted); font-size: 12px; }
+.layout-options {
+  position: absolute; z-index: 6; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
+}
+.picture-panel {
+  position: fixed; z-index: 10; width: 300px; box-sizing: border-box; max-height: calc(100vh - 16px); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%); font-size: 13px;
+}
+.picture-panel fieldset { margin: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; gap: 4px; }
+.picture-panel fieldset:disabled { opacity: .5; }
+.picture-panel legend { font-weight: 600; padding: 0 4px; }
+.picture-panel .wraps { display: grid; grid-template-columns: 1fr 1fr; }
+.picture-panel label { display: flex; flex-direction: column; gap: 2px; }
+.picture-panel .wraps label, .picture-panel label.inline { flex-direction: row; align-items: center; gap: 4px; }
+.picture-panel input[type=number], .picture-panel select, .picture-panel textarea { font: inherit; padding: 2px 4px; width: 100%; min-width: 0; box-sizing: border-box; }
+.picture-panel .size-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.picture-panel button { font: inherit; padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; align-self: flex-start; }
+.picture-panel .actions { display: flex; justify-content: flex-end; }
+.change-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
+.split-dialog label { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.split-dialog input { width: 64px; }
+.change-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.table-picker {
+  position: fixed; z-index: 10; padding: 8px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.table-picker .size { margin: 0; font-size: 13px; color: var(--muted); }
+.table-picker .grid { display: grid; grid-template-columns: repeat(10, 18px); gap: 3px; }
+.table-picker .cell { width: 18px; height: 18px; padding: 0; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); cursor: pointer; }
+.table-picker .cell.on { background: color-mix(in srgb, var(--accent) 25%, transparent); border-color: var(--accent); }
+.table-picker .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.table-picker .custom { display: flex; gap: 6px; align-items: center; font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
+.table-picker .custom label { display: flex; gap: 4px; align-items: center; }
+.table-picker .custom input { width: 48px; font: inherit; padding: 2px 4px; }
+.table-picker .custom button { font: inherit; padding: 2px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; }
+.palette {
+  position: fixed; z-index: 10; width: 190px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.swatch { height: 24px; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; cursor: pointer; padding: 0; }
+.swatch.current, .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.case-icon, .symbol-icon { display: inline-block; min-width: 16px; font-size: 14px; line-height: 16px; text-align: center; }
+.case-icon { font-weight: 600; letter-spacing: -.02em; }
+.symbol-icon { font-family: 'Times New Roman', Times, serif; font-size: 16px; }
+/* The Format Painter's brush, over the page while it is on. */
+.docx-page.painting, .docx-page.painting * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M3 2v14' stroke='%23000' stroke-width='1.5'/%3E%3Crect x='7' y='3' width='9' height='4' rx='.8' fill='%23fff' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M16 5h2v3h-6.5v2.5' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Crect x='10.2' y='10.5' width='2.6' height='6' rx='.6' fill='%23000'/%3E%3C/svg%3E") 3 2, text;
+}
+.palette-label { margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
+.color-palette { width: 220px; }
+.cell-format { width: 280px; max-height: calc(100vh - 16px); overflow-y: auto; }
+.border-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.border-choices button { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.border-choices button:hover, .border-choices button:focus-visible { background: var(--hover); }
+.toolbar select.font-choice { min-width: 0; width: 132px; }
+.toolbar select.size-choice { min-width: 0; width: 58px; }
+.toolbar select.char-style { min-width: 0; width: 124px; }
+.toolbar select.markup-choice { min-width: 0; width: 128px; }
+.toolbar .comment-nav { display: inline-flex; }
+.page-count, .smart-typing, .nav-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
+.nav-toggle[aria-pressed="true"] { color: var(--accent); }
+/* The Headings pane is for a wider screen (it is hidden on a phone, and so is its button). */
+@media (max-width: 700px) { .nav-toggle { display: none; } }
+.no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
+.marks-toggle { font-size: 16px !important; }
+.track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
+@media (max-width: 720px) { .track-toggle .label, .review-toggle .label, .labelled .label { display: none; } }
+/* Phones: the toolbar is one row that scrolls sideways rather than four rows over the text, faded at
+   the edge where more controls are (see editor/toolbar.js); the status bar is one line too. */
+@media (max-width: 720px) {
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding: 4px 8px; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar > *, .toolbar .tb-group > *, .toolbar .group > * { flex: none; }
+  .toolbar[data-more="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+  .toolbar[data-more="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+  .toolbar[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+  .statusbar { gap: 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .statusbar > * { flex: none; }
+  /* What just happened ("Signature inserted", "Shared letter.docx") comes first in the one line,
+     rather than out of sight to the right; a long message ends in "…" (its tooltip, and screen
+     readers, have all of it), and the counts follow, a swipe away. */
+  .statusbar [role="status"] { order: -1; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .statusbar [role="status"]:empty { display: none; }
+  /* The page already fits the screen's width, and the phone pinches to zoom. */
+  .statusbar > span.zoom { display: none; }
+  /* The tools a phone is used for first: undo, bold, italic, underline, highlight, lists, check box
+     or date, signature, picture and comment; the rest follow, a swipe away. */
+  .toolbar .ph { order: -1; }
+  .toolbar .sep { display: none; }
+  /* A document with tracked changes or comments to go through: Undo and Redo, then the review's
+     tools (previous and next change, Accept and Reject, with their names, and the comments), then
+     the rest, as approving a document between meetings needs them. */
+  .toolbar.review-first .ur { order: -4; }
+  .toolbar.review-first .changes-group.rv { order: -3; }
+  .toolbar.review-first .rv { order: -2; }
+  .toolbar.review-first .changes-group .labelled .label { display: inline; }
+}
+/* Touch: targets a finger can hit. */
+@media (pointer: coarse) {
+  .toolbar button { min-width: 40px; height: 40px; }
+  .toolbar .split .arrow { min-width: 24px !important; }
+  .toolbar select { height: 40px; }
+}
+/* The word count opens Word count (a length target, readability); over the target, or the headline
+   over its limit, it says so in amber (7:1 on the surface in both themes). */
+.word-count, .headline-count { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.word-count:hover, .headline-count { text-decoration: underline dotted; }
+.word-count.over, .headline-count.over { color: #8a5300; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .word-count.over, .headline-count.over { color: #ffcf80; } }
+.tracking-status { border: 0; background: none; color: var(--own-change); font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
+.author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
+.link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }
+.link-dialog .error { margin: 0; color: #b3261e; font-size: 12px; }
+.author-dialog label, .link-dialog label { font-size: 13px; }
+.author-dialog input, .link-dialog input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+.author-dialog .actions, .link-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.author-dialog .actions button, .link-dialog .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; text-align: center; }
+.author-dialog .actions .confirm, .link-dialog .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
+.badge { font-size: 11px; color: var(--muted); }
+.badge.zero { opacity: .6; }
+.changes-group .badge { min-width: 3ch; margin-left: 4px; padding: 1px 5px; border-radius: 9px; background: var(--hover); text-align: center; font-variant-numeric: tabular-nums; } /* the count changing moves nothing */
+.chooser {
+  position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;
+  display: flex; flex-direction: column; padding: 4px; background: var(--surface); color: inherit;
+  border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+.chooser button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chooser button:hover, .chooser button:focus-visible, .chooser button[aria-selected="true"] { background: var(--hover); }
+.chooser input { font: inherit; padding: 4px; }
+.chooser .empty { margin: 6px 10px; color: var(--muted); }
+.statusbar {
+  display: flex; gap: 24px; padding: 4px 16px; font-size: 12px; color: var(--muted);
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+.statusbar .zoom { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.statusbar .zoom button {
+  min-width: 24px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px; background: none;
+  color: inherit; font: inherit; line-height: 18px; cursor: pointer;
+}
+.statusbar .zoom button:hover:not(:disabled) { background: var(--hover); }
+.statusbar .zoom button:disabled { opacity: .4; cursor: default; }
+.statusbar .zoom .zoom-level { min-width: 44px; font-variant-numeric: tabular-nums; }
+
+@media screen and (max-width: 860px) {
+  .canvas { padding: 0; }
+  .docx-sheet { min-height: 100% !important; width: 100% !important; box-shadow: none; }
+  .docx-page { padding: 24px 16px !important; }
+  /* The page's own margins (inline) give way to the phone's. */
+  .docx-sheet .docx-page { --hf-header: 12px !important; --hf-top: 0px !important; --hf-footer: 12px !important; --hf-bottom: 0px !important; --hf-left: 16px !important; --hf-right: 16px !important; }
+  .docx-sheet:has(.hf-tabs.header) .docx-page { --hf-header: 34px !important; }
+  .docx-sheet:has(.hf-tabs.footer) .docx-page { --hf-footer: 34px !important; }
+}

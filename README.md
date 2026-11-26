@@ -1265,7 +1265,7 @@ a version it can't read, and asks for the password of one encrypted with a passw
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # production build in dist/
-npm test         # round-trip and editing tests in headless Chromium and Firefox
+npm test         # round-trip and editing tests in headless Chromium, Firefox and WebKit
 ```
 
 The thesaurus's data (`src/data/thesaurus-*.txt`) is built from the open wordnets, with their
@@ -1287,7 +1287,7 @@ README, About page and Direction. A feature without a VISION entry isn't ready f
 
 ## Testing
 
-`tests/` drives the production build in real browsers (Chromium and Firefox) with
+`tests/` drives the production build in real browsers (Chromium, Firefox and Safari's engine, WebKit) with
 [Playwright](https://playwright.dev/), because editing depends on the browser's `contenteditable`,
 which differs between engines. Fixtures are built from XML in the
 tests themselves (`tests/helpers.js`). The core checks are:
@@ -1309,8 +1309,11 @@ or note, pressing Enter or making a word bold changes only that block of that pa
 change where the document has Track Changes on), the typed text in the formatting around it; the
 saved package stays sound (well-formed XML, content types, relationship targets); and the page logs
 no errors. A `.docx` added there is tested automatically.
-First run: `npx playwright install chromium firefox`. To run one browser:
-`npm test -- --project=chromium` (or `firefox`).
+First run: `npx playwright install chromium firefox webkit`. To run one browser:
+`npm test -- --project=chromium` (or `firefox`, or `webkit`). WebKit, Safari's engine, runs the core
+of the promises (round-trip, the real-world fixtures, opening, typing, lists, tables, tracked changes,
+pasting and the starters: `WEBKIT_SPECS` in `playwright.config.js`); the rest of the suite joins it
+spec by spec, as each passes there.
 
 Checked by hand as well: documents edited in Intact open correctly in Microsoft Word, and the
 editor works in Firefox (November 2026).
@@ -1343,6 +1346,9 @@ network with no internet at all: it is static files with no server code and no e
    commit. The SBOM (CycloneDX) lists what the build contains (Vue, Vue Router, JSZip).
 3. Unzip it into any directory your server serves, at any path. Serve `.webmanifest` as
    `application/manifest+json`.
+   The About page has a Feedback link to this project's public form on GitHub (a plain link the
+   person follows; Intact sends nothing). To send people to your own form instead, or show no link,
+   build from source with `FEEDBACK_URL=https://your.form npm run build`, or `FEEDBACK_URL= npm run build`.
 4. Recommended response headers for its path (the page already carries the Content Security
    Policy in a `<meta>` tag; a header adds `frame-ancestors`, which a `<meta>` can't set):
 

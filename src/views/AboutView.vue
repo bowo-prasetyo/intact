@@ -180,6 +180,15 @@
         Organisations can host it themselves: each release is a zip of static files, with checksums, a
         software bill of materials and a build attestation.
       </p>
+      <template v-if="feedbackUrl">
+        <h2 id="feedback">Feedback</h2>
+        <p>
+          Did it work? Did whoever received the file notice anything? Tell us with
+          <a :href="feedbackUrl" target="_blank" rel="noopener noreferrer">a short public form</a>.
+          It is a plain link: Intact sends nothing, then or ever, and the form never asks for your
+          document. Describe what happened instead of pasting text from it.
+        </p>
+      </template>
       <p class="version">Version {{ version }}</p>
       <p><RouterLink to="/">← Back to start</RouterLink></p>
     </main>
@@ -191,6 +200,8 @@ import AppHeader from '../components/AppHeader.vue';
 import { SHORTCUTS } from '../editor/shortcuts.js';
 
 const version = __APP_VERSION__; // eslint-disable-line no-undef -- set by vite.config.js
+// Where Feedback goes (vite.config.js); empty in a self-hosted build that shows no link.
+const feedbackUrl = __FEEDBACK_URL__; // eslint-disable-line no-undef -- set by vite.config.js
 </script>
 
 <style scoped>

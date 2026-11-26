@@ -1329,6 +1329,7 @@ import {
   onlyHiddenMarkers, beyondHiddenMarkers,
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
+import { useTableSort } from './editor/tableSort.js';
 import { ommlToLatex } from '../editor/mathOutput.js';
 import { printCommentsSection } from '../editor/printComments.js';
 import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
@@ -3196,7 +3197,93 @@ function markDirty() {
   }, 300);
 }
 
+// ------------------------------------------------------------------ WebKit's no-break spaces
+
+// Safari's engine (WebKit) rewrites ordinary spaces as no-break spaces (U+00A0) where editing would
+// leave one at a paragraph's edge: the space before the caret when Enter splits a paragraph, a space
+// typed at the end of one. In a .docx that is another character than the one typed, kept in the file
+// and seen in Word (a line no longer breaks there), so it would change what the user didn't touch.
+// While editing, the browser's changes to the text are watched (with their old values), and where a
+// space became U+00A0, and nothing else there changed, it goes back to a space when the input event
+// comes. A no-break space typed on purpose (Ctrl+Shift+Space) or already in the document is never a
+// space that changed, so it stays. Only in WebKit: Chromium and Firefox leave spaces as they are.
+const REWRITES_SPACES = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg|Android/.test(navigator.userAgent);
+let spaceWatch = null;
+
+/** Puts back the spaces WebKit made no-break spaces in this input (`e`: the input event). */
+function restoreRewrittenSpaces(e) {
+  const records = spaceWatch?.takeRecords() || [];
+  if (!records.length) return;
+  const first = new Map(); // each text node changed: its text before this input's changes
+  const added = [];
+  const removed = []; // the text of text nodes this input took out (WebKit replaces nodes when it splits)
+  const textsIn = (n) => {
+    if (n.nodeType === 3) return [n];
+    if (n.nodeType !== 1) return [];
+    const out = [];
+    const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+    for (let t = w.nextNode(); t; t = w.nextNode()) out.push(t);
+    return out;
+  };
+  for (const r of records) {
+    if (r.type === 'characterData' && !first.has(r.target)) first.set(r.target, r.oldValue ?? '');
+    if (r.type === 'childList') {
+      for (const n of r.addedNodes) added.push(...textsIn(n));
+      for (const n of r.removedNodes) for (const t of textsIn(n)) removed.push(first.get(t) ?? t.data);
+    }
+  }
+  const same = (now, was) => now === was || (now === '\u00a0' && was === ' ');
+  const fix = (node, i) => node.replaceData(i, 1, ' '); // same length: the caret stays where it is
+  const typed = typeof e?.data === 'string' ? e.data : '';
+  const sources = [...removed]; // texts a new text node may have been made from
+  for (const [node, was] of first) {
+    sources.push(was);
+    if (!node.isConnected) continue;
+    const now = node.data;
+    let p = 0;
+    while (p < now.length && p < was.length && same(now[p], was[p])) p++;
+    let q = 0;
+    while (q < now.length - p && q < was.length - p && same(now[now.length - 1 - q], was[was.length - 1 - q])) q++;
+    for (let i = 0; i < p; i++) if (now[i] === '\u00a0' && was[i] === ' ') fix(node, i);
+    for (let k = 0; k < q; k++) {
+      const i = now.length - 1 - k;
+      if (now[i] === '\u00a0' && was[was.length - 1 - k] === ' ') fix(node, i);
+    }
+    // What was typed between them: a space typed, written as U+00A0.
+    const middle = now.slice(p, now.length - q);
+    if (typed && middle.length === typed.length) for (let k = 0; k < middle.length; k++) if (middle[k] === '\u00a0' && typed[k] === ' ') fix(node, p + k);
+  }
+  // A text node this input made (Enter: the text before or after the caret, in a node of its own):
+  // matched with the start or the end of the text it was made from, a space made U+00A0 goes back.
+  // One of only spaces (a no-break space typed on its own) is left as it is.
+  const matches = (d, c) => d.length <= c.length && [...d].every((ch, i) => same(ch, c[i]));
+  for (const node of added) {
+    if (!node.isConnected || first.has(node) || !node.data.includes('\u00a0')) continue;
+    // A space typed into a node of its own: as typed (an ordinary space, so it is one).
+    if (typed && node.data.length === typed.length) {
+      for (let k = 0; k < typed.length; k++) if (node.data[k] === '\u00a0' && typed[k] === ' ') fix(node, k);
+      continue;
+    }
+    if (!/[^\s\u00a0]/.test(node.data)) continue;
+    const d = node.data;
+    for (const c of sources) {
+      const from = matches(d, c) ? c.slice(0, d.length) : matches(d, c.slice(c.length - d.length)) ? c.slice(c.length - d.length) : null;
+      if (from == null) continue;
+      for (let i = 0; i < d.length; i++) if (node.data[i] === '\u00a0' && from[i] === ' ') fix(node, i);
+      break;
+    }
+  }
+}
+
+onMounted(() => {
+  if (!REWRITES_SPACES || typeof MutationObserver === 'undefined') return;
+  spaceWatch = new MutationObserver(() => {}); // read with takeRecords, when an input comes
+  spaceWatch.observe(page.value, { subtree: true, characterData: true, characterDataOldValue: true, childList: true });
+});
+onBeforeUnmount(() => spaceWatch?.disconnect());
+
 function onInput(e) {
+  restoreRewrittenSpaces(e); // WebKit's no-break spaces, before anything reads the text
   restoreCommentMarkers(markersBefore, page.value);
   markersBefore = [];
   if (pendingJoin) {
@@ -7128,141 +7215,13 @@ function numberHeadings(on) {
 
 // ------------------------------------------------------------------ sorting a table
 
-// Word's Sort for a table: the rows below the heading row, by one column's text (as the document's
-// language orders it), number (as it writes them) or date; empty cells last. One undoable step.
-const sortDialog = reactive({ open: false, x: 0, y: 0, col: 0, type: 'text', desc: false, header: true, columns: [] });
-const sortDialogEl = ref(null);
-let sortTarget = null;
-
-/** The cell of grid column `col` in row `tr` (a merged cell for each column it spans), or null. */
-function cellInColumn(tr, col) {
-  for (const td of tr.cells) {
-    const pos = doc.cellPosition(td);
-    if (pos && col >= pos.start && col < pos.start + pos.span) return td;
-  }
-  return null;
-}
-
-function refreshSortColumns() {
-  const rows = sortTarget ? doc.tableRows(sortTarget.table) : [];
-  const count = Math.max(0, ...rows.map((r) => [...r.cells].reduce((n, td) => n + (doc.cellPosition(td)?.span || 1), 0)));
-  sortDialog.columns = Array.from({ length: count }, (_, c) => {
-    const head = sortDialog.header && rows[0] ? cellInColumn(rows[0], c)?.textContent.trim() : '';
-    return { value: c, label: head ? head.slice(0, 40) : t('Column {n}', { n: c + 1 }) };
-  });
-  if (sortDialog.col >= count) sortDialog.col = 0;
-}
-
-function openSortDialog() {
-  tableMenu.open = false;
-  const sel = tableSelection();
-  if (!sel) {
-    message.value = t('Click in a table first');
-    return;
-  }
-  sortTarget = { table: sel.table };
-  const rect = anchorRect(layoutButton.value);
-  const rows = doc.tableRows(sel.table);
-  // A heading row: a row Word repeats on each page, or a first row that doesn't hold numbers where the next does.
-  const pos = doc.cellPosition(sel.cell);
-  Object.assign(sortDialog, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 300)), y: rect.bottom + 4, col: pos?.start ?? 0, type: 'text', desc: false, header: rows.length > 1 });
-  refreshSortColumns();
-  // Numbers in the column: sort them as numbers.
-  const seps = separators(doc.styles.language() || navigator.language);
-  const values = rows.slice(sortDialog.header ? 1 : 0).map((r) => cellInColumn(r, sortDialog.col)?.textContent.trim()).filter(Boolean);
-  if (values.length && values.every((v) => parseCellNumber(v, seps) != null)) sortDialog.type = 'number';
-  nextTick(() => {
-    keepInView(sortDialog, sortDialogEl.value);
-    sortDialogEl.value?.querySelector('select')?.focus();
-  });
-}
-
-function closeSortDialog() {
-  sortDialog.open = false;
-  refocus();
-}
-
-/** A date written in a cell ("17/08/1945", "17 Agustus 1945", "2026-11-20"), as a time, or null. */
-function cellDate(text) {
-  const s = text.trim();
-  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
-  m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/.exec(s);
-  if (m) {
-    const lang = doc.styles.language() || navigator.language || 'en';
-    const us = /^en-US$/i.test(lang);
-    const [d, mo] = us ? [+m[2], +m[1]] : [+m[1], +m[2]];
-    const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
-    return Date.UTC(y, mo - 1, d);
-  }
-  // Month names in the document's language or English.
-  const lang = doc.styles.language() || navigator.language || 'en';
-  for (const l of [lang, 'en']) {
-    for (let mo = 0; mo < 12; mo++) {
-      for (const width of ['long', 'short']) {
-        const name = new Intl.DateTimeFormat(l, { month: width }).format(new Date(2001, mo, 1)).replace('.', '').toLowerCase();
-        const re = new RegExp(`(\\d{1,2})\\s+${name}\\.?\\s+(\\d{4})|${name}\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})`, 'i');
-        m = re.exec(s);
-        if (m) return m[1] ? Date.UTC(+m[2], mo, +m[1]) : Date.UTC(+m[4], mo, +m[3]);
-      }
-    }
-  }
-  const t2 = Date.parse(s);
-  return Number.isNaN(t2) ? null : t2;
-}
-
-function sortTable() {
-  const d = { ...sortDialog };
-  sortDialog.open = false;
-  refocus();
-  const table = sortTarget?.table;
-  if (!table?.isConnected) return;
-  const why = doc.tableLocked(table);
-  if (why) {
-    message.value = why;
-    return;
-  }
-  const locked = readOnlyAt(table, page.value);
-  if (locked) return explainReadOnly(locked, true);
-  if (tracking.value) {
-    message.value = t('Sorting isn’t tracked: turn Track Changes off to sort the table, or move the rows by hand');
-    return;
-  }
-  const rows = doc.tableRows(table);
-  const body = rows.filter((r, i) => !(d.header && i === 0));
-  if (body.some((r) => r.dataset.revRow || [...r.cells].some((td) => td.classList.contains('vmerge') || td.dataset.revCell || td.dataset.revMerge))) {
-    message.value = t('Rows with cells merged down, or with tracked changes to their rows or cells, can’t be sorted: split those cells, or accept or reject the changes first');
-    return;
-  }
-  if (body.length < 2) return;
-  const lang = doc.styles.language() || navigator.language || 'en';
-  const seps = separators(lang);
-  const collator = new Intl.Collator(lang, { numeric: true, sensitivity: 'base' });
-  const keyed = body.map((tr, i) => {
-    const text = cellInColumn(tr, d.col)?.textContent.trim() || '';
-    const key = d.type === 'number' ? parseCellNumber(text, seps) : d.type === 'date' ? cellDate(text) : text || null;
-    return { tr, i, key };
-  });
-  const order = [...keyed].sort((a, b) => {
-    if (a.key == null || b.key == null) return a.key == null && b.key == null ? a.i - b.i : a.key == null ? 1 : -1; // empty last
-    const c = d.type === 'text' ? collator.compare(a.key, b.key) : a.key - b.key;
-    return (d.desc ? -c : c) || a.i - b.i;
-  });
-  if (order.every((o, i) => o.i === i)) {
-    message.value = t('The rows are already in that order');
-    return;
-  }
-  undoStack.flush();
-  // Moved as they are, in their new order after the heading row (rows are kept whole, with their cells' properties).
-  const after = body[body.length - 1].nextElementSibling;
-  const parent = body[0].parentElement;
-  for (const { tr } of order) parent.insertBefore(tr, after);
-  doc.renumber(page.value);
-  onInput();
-  undoStack.commit();
-  markDirty();
-  message.value = t('Sorted {n} rows by {column}, {order}', { n: body.length, column: d.columns[d.col]?.label || '', order: t(d.desc ? 'descending' : 'ascending') });
-}
+// Word's Sort for a table: see editor/tableSort.js. The shared state is read when used (getters),
+// as some of it (the undo stack) is set after this runs.
+const { sortDialog, sortDialogEl, openSortDialog, closeSortDialog, refreshSortColumns, sortTable } = useTableSort({
+  doc, page, message, tracking, tableMenu, layoutButton,
+  get undoStack() { return undoStack; },
+  tableSelection, anchorRect, keepInView, refocus, explainReadOnly, onInput, markDirty,
+});
 
 // ------------------------------------------------------------------ table formulas
 
@@ -10634,687 +10593,5 @@ async function close() {
 }
 </script>
 
-<style scoped>
-.editor-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-/* The file's name gives way (cut off) before the header's buttons do, so a narrow screen never
-   scrolls sideways, whatever the fonts. */
-.file { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow: hidden; }
-.filename {
-  min-width: 0; max-width: 100%; font: inherit; color: #fff; background: transparent;
-  border: 1px solid transparent; border-radius: 4px; padding: 4px 6px;
-}
-.filename:hover, .filename:focus { border-color: rgb(255 255 255 / 50%); outline: none; background: rgb(255 255 255 / 10%); }
-.ext { opacity: .7; }
-/* The sensitivity label, as Office shows it beside the name: read-only. */
-.label-chip {
-  display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 2px 9px; min-width: 0; max-width: 40ch;
-  border: 1px solid rgb(255 255 255 / 55%); border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: default; white-space: nowrap;
-}
-.label-chip svg { flex: none; }
-.label-chip .text { overflow: hidden; text-overflow: ellipsis; }
-.label-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.dirty { color: #ffd166; margin-left: 6px; }
-.primary { background: #fff; color: var(--brand); border: 0; border-radius: 4px; padding: 6px 14px; font-weight: 600; cursor: pointer; }
-.primary:disabled { opacity: .6; }
-.open-tab { display: inline-flex; align-items: center; gap: 6px; }
-.close-doc { display: inline-flex; align-items: center; gap: 6px; }
-.close-doc svg { display: none; }
-.chooser.drop-offer { left: 50%; top: 72px; transform: translateX(-50%); width: 340px; max-width: calc(100vw - 16px); max-height: none; font-size: 13px; }
-.drop-offer p { margin: 0; line-height: 1.45; }
-.password-dialog { display: flex; flex-direction: column; gap: 6px; }
-.password-dialog .pw-note { color: var(--muted); }
-.password-dialog label { font-weight: 600; margin-top: 4px; }
-.password-dialog .pw-error { color: var(--danger); }
-.password-dialog .pw-error:empty { display: none; }
-/* A phone: Open and Close are their icons, so the file's name has room to be read. */
-@media (max-width: 560px) {
-  .open-tab, .close-doc { padding: 5px 8px; }
-  .open-tab .label, .close-doc .label { display: none; }
-  .close-doc svg { display: block; }
-  .primary { padding: 6px 10px; }
-}
-/* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
-@media (max-width: 420px) { :deep(.brand span) { display: none; } }
-/* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
-@media (max-width: 360px) {
-  :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }
-  .primary { padding: 6px 10px; }
-  .save-split .primary.arrow { padding: 6px 5px; }
-  .ghost { padding: 5px 8px; }
-}
-.save-split { display: inline-flex; gap: 1px; }
-.save-split .primary:first-child { border-radius: 4px 0 0 4px; }
-.save-split .primary.arrow { border-radius: 0 4px 4px 0; padding: 6px 7px; font-weight: 400; }
-.save-menu { min-width: 220px; }
-.insert-menu { min-width: 220px; max-height: calc(100vh - 16px); overflow-y: auto; }
-.insert-menu > * { flex-shrink: 0; }
-.insert-menu button { display: flex; justify-content: space-between; gap: 16px; }
-.insert-menu .hint { color: var(--muted); font-size: 12px; }
-.list-library { width: min(460px, calc(100vw - 16px)); }
-.list-library button > :first-child, .list-library button { white-space: nowrap; }
-.list-library .hint { white-space: normal; text-align: right; }
-.formula-dialog input[type="text"] { font-family: ui-monospace, Consolas, monospace; min-width: 14em; }
-.formula-dialog .note.error { color: var(--danger); }
-.insert-menu .auto-date { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
-.insert-menu .auto-date .hint { flex-basis: 100%; padding-left: 20px; }
-.page-number-menu { min-width: 260px; }
-.page-number-menu .menu-sep { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0; }
-.insert-menu .menu-label { margin: 6px 8px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-.chooser.share-ready { left: 50%; top: 72px; transform: translateX(-50%); width: 300px; max-width: calc(100vw - 16px); padding: 12px; gap: 10px; font-size: 14px; }
-.share-ready p { margin: 0; overflow-wrap: anywhere; }
-.share-ready .actions { display: flex; gap: 8px; justify-content: flex-end; }
-.share-ready .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 6px 14px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
-.share-ready .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
-.save-menu button { display: flex; justify-content: space-between; gap: 16px; }
-.save-menu .shortcut { color: var(--muted); font-size: 12px; }
-.chooser.pdf-dialog { width: 360px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); font-size: 13px; }
-.pdf-dialog h2 { margin: 0; font-size: 15px; }
-.pdf-dialog p { margin: 0; line-height: 1.45; }
-.pdf-dialog .pdf-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.4; }
-.pdf-dialog .pdf-notes .warn::marker { color: #b26a00; }
-.pdf-dialog .pdf-word { color: var(--muted); }
-@media (max-width: 560px) { .ext, :deep(.nav) { display: none; } }
-.ghost { background: transparent; color: #fff; border: 1px solid rgb(255 255 255 / 50%); border-radius: 4px; padding: 5px 12px; cursor: pointer; }
-
-.toolbar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 12px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
-}
-/* The ribbon's tabs, above its tools: one tab's tools at a time (a wider screen than a phone's). */
-.ribbon-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 12px 0; background: var(--surface); }
-.ribbon-tabs [role="tab"] {
-  position: relative; padding: 6px 12px 7px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted);
-  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 4px 4px 0 0;
-}
-.ribbon-tabs [role="tab"]:hover { background: var(--hover); color: var(--text); }
-.ribbon-tabs [role="tab"][aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
-.ribbon-tabs [role="tab"]:focus-visible, .ribbon-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* In a table, the Layout tab (which has Table layout) is marked, as Word shows its table tabs. */
-.ribbon-tabs [role="tab"].context::after { content: ''; position: absolute; top: 5px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.ribbon-tabs .tab-badge { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--active); color: var(--accent); font-size: 11px; }
-.ribbon-spacer { flex: 1; }
-.ribbon-mode { margin-bottom: 4px; padding: 3px 10px; border: 1px solid var(--border) !important; border-radius: 4px; background: var(--surface); color: var(--muted); font: inherit; font-size: 12px !important; cursor: pointer; }
-.ribbon-mode:hover { background: var(--hover) !important; color: var(--text); }
-.toolbar .ribbon-mode { margin: 0 0 0 auto; height: 28px !important; }
-.toolbar.ribbon { min-height: 45px; box-sizing: border-box; }
-/* One tab's tools on one row of a laptop's width: the style and font boxes a little narrower. */
-.toolbar.ribbon select.style-choice { min-width: 0; width: 118px; }
-.toolbar.ribbon select.font-choice { width: 120px; }
-.toolbar.ribbon .sep { margin: 0 2px; }
-/* The File and View tabs' own tools are the ribbon's: Download's menu (▾) and the status bar (zoom,
-   Headings) have them in "All tools" and on a phone. */
-.toolbar:not(.ribbon) [data-tab="file"], .toolbar:not(.ribbon) [data-tab="view"] { display: none !important; }
-@media (max-width: 720px) { .toolbar [data-tab="file"], .toolbar [data-tab="view"] { display: none !important; } }
-.toolbar select.zoom-choice { width: 78px; min-width: 0; }
-@media (min-width: 721px) {
-  /* A tool shows in the tabs data-tab names (a space-separated list, as ¶ is in Home and View). */
-  .toolbar.ribbon[data-active="file"] [data-tab]:not([data-tab~="file"]),
-  .toolbar.ribbon[data-active="home"] [data-tab]:not([data-tab~="home"]),
-  .toolbar.ribbon[data-active="insert"] [data-tab]:not([data-tab~="insert"]),
-  .toolbar.ribbon[data-active="layout"] [data-tab]:not([data-tab~="layout"]),
-  .toolbar.ribbon[data-active="references"] [data-tab]:not([data-tab~="references"]),
-  .toolbar.ribbon[data-active="review"] [data-tab]:not([data-tab~="review"]),
-  .toolbar.ribbon[data-active="view"] [data-tab]:not([data-tab~="view"]) { display: none !important; }
-  .toolbar.ribbon .help-toggle { margin-left: auto; }
-}
-/* A phone: its one row of every tool, scrolling sideways, whatever the choice here. */
-@media (max-width: 720px) {
-  .ribbon-tabs, .toolbar .ribbon-mode { display: none; }
-}
-.toolbar button {
-  min-width: 30px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font-size: 15px; cursor: pointer;
-}
-.toolbar button:hover:not(:disabled) { background: var(--hover); }
-/* Groups of tools turned off together by a restriction; they don't change the layout. */
-.toolbar fieldset.group { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
-.toolbar select:disabled { opacity: .4; }
-
-/* Word's message bar for restricted and signed documents. */
-.restriction-bar {
-  --bar: #fff4ce; --bar-line: #e8d48a;
-  display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 13px; line-height: 1.4;
-  background: var(--bar); border-bottom: 1px solid var(--bar-line); color: var(--text);
-}
-.restriction-bar.unlocked { --bar: var(--hover); --bar-line: var(--border); }
-.restriction-bar svg { flex: none; }
-.restriction-bar p { margin: 0; flex: 1; }
-.restriction-bar button { flex: none; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
-.restriction-bar button:hover { background: var(--hover); }
-/* The template bar's two buttons go below its text where there isn't room beside it (phones). */
-.template-bar { flex-wrap: wrap; row-gap: 6px; }
-.template-bar p { flex: 1 1 280px; min-width: 0; }
-@media (prefers-color-scheme: dark) { .restriction-bar:not(.unlocked) { --bar: #3a3216; --bar-line: #5c4f20; } }
-.toolbar button:disabled { opacity: .4; cursor: default; }
-.toolbar button.on { background: var(--active); border-color: var(--border); }
-.toolbar select { height: 32px; min-width: 130px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 0 6px; }
-.sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-/* Editing tools, then finding and reviewing: one row of controls, wrapping where it must. */
-.tb-group { display: contents; }
-
-.workspace { flex: 1; min-height: 0; display: flex; }
-.canvas { flex: 1; min-width: 0; overflow: auto; background: var(--canvas); padding: 24px 16px 48px; }
-.docx-sheet {
-  position: relative; isolation: isolate; /* pictures behind the text stay on the page */ box-sizing: border-box; margin: 0 auto; max-width: 100%; background: #fff; color: #000;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 20%), 0 4px 16px rgb(0 0 0 / 8%);
-  display: flex; flex-direction: column;
-}
-.docx-page {
-  flex: 1; box-sizing: border-box; outline: none; min-width: 0;
-  white-space: pre-wrap; overflow-wrap: break-word; tab-size: 36pt; /* Word's default stops, half an inch apart; a paragraph's own: see doc.applyTabStops */ caret-color: #000;
-  /* What lies past the page's edges (a floating picture placed partly off the page, or one placed
-     for a wider page than a phone's) is cut off there, as Word cuts it off at the edge of the paper,
-     rather than making the document scroll sideways. Clip, not hidden: nothing becomes scrollable. */
-  overflow-x: clip;
-}
-.hf-tabs {
-  position: absolute; z-index: 3; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px;
-  font: 11px/1.4 system-ui, sans-serif; white-space: normal;
-}
-.hf-tabs.header { top: 6px; }
-.hf-tabs.footer { bottom: 6px; }
-.hf-tabs button {
-  padding: 1px 8px; border: 1px solid #c9d1de; border-radius: 9px; background: #fff; color: #44516a; cursor: pointer;
-}
-.hf-tabs button[aria-selected="true"] { background: var(--sheet-accent); border-color: var(--sheet-accent); color: #fff; }
-.comments-toggle { gap: 3px; padding: 0 6px; }
-.fill-in-toggle { gap: 3px; padding: 0 6px; }
-.script { font-size: 14px; line-height: 1; }
-.fonts-missing { cursor: help; text-decoration: underline dotted; }
-.draft-status { cursor: help; }
-.script sup, .script sub { font-size: 9px; }
-.split { display: inline-flex; }
-.split .arrow { min-width: 16px !important; padding: 0 2px; font-size: 10px !important; }
-.changes-group { display: inline-flex; align-items: center; gap: 2px; }
-.labelled { gap: 4px; padding: 0 6px !important; font-size: 13px !important; }
-/* Icon buttons' text labels, shown where the toolbar has room for them (see editor/toolbar.js fitLabels). */
-.toolbar .short-label { display: none; }
-.toolbar button.with-label { gap: 4px; padding: 0 6px; }
-.toolbar button.with-label .short-label { display: inline; font-size: 13px; white-space: nowrap; }
-.change-menu {
-  position: fixed; z-index: 10; min-width: 200px; padding: 4px; display: flex; flex-direction: column;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
-}
-.change-menu button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.context-menu { min-width: 230px; }
-.context-menu button { display: flex; justify-content: space-between; gap: 16px; }
-.context-menu button:disabled { opacity: .45; cursor: default; }
-.context-menu .key { color: var(--muted); font-size: 12px; }
-.context-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
-.context-menu .menu-note { margin: 4px 0 0; padding: 6px 10px 2px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); max-width: 230px; }
-.change-menu button:hover, .change-menu button:focus-visible { background: var(--hover); }
-.spacing-menu button { padding-left: 28px; position: relative; }
-.spacing-menu button[aria-checked="true"]::before { content: '✓'; position: absolute; left: 10px; }
-.chooser.para-dialog { width: 300px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; }
-.para-dialog fieldset { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 6px 10px 10px; border: 1px solid var(--border); border-radius: 4px; }
-.para-dialog .tab-stops ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.para-dialog .tab-stops li { display: grid; grid-template-columns: 64px 60px 1fr 24px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.para-dialog .tab-stops li button { width: 24px; height: 22px; padding: 0; border: 0; background: none; color: inherit; border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1; }
-.para-dialog .tab-stops li button:hover { background: var(--hover); }
-.para-dialog .tab-stops .leader { color: var(--muted); }
-.para-dialog .tab-stops .hint { margin: 0; color: var(--muted); font-size: 12px; }
-.para-dialog .tab-add { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
-.para-dialog .tab-buttons { display: flex; gap: 6px; justify-content: flex-end; }
-.page-dialog .apply-to { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
-.para-dialog .check { justify-content: flex-start !important; gap: 6px !important; }
-.para-dialog .check input { width: auto; }
-.modify-dialog { width: 340px; }
-.modify-dialog h2 { margin: 0 0 8px; font-size: 15px; }
-.modify-dialog .note { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
-.modify-dialog .checks { display: flex; gap: 16px; }
-.modify-dialog .color-pick { display: flex; align-items: center; gap: 8px; }
-.modify-dialog .color-pick input[type=color] { width: 40px; height: 26px; padding: 0 2px; }
-/* Two lines, so a first-line or hanging indent shows (clamped inside the padding). */
-.modify-dialog .preview { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
-.modify-dialog .preview span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-.para-dialog legend { font-size: 12px; font-weight: 600; padding: 0 4px; }
-.page-dialog .note { margin: 0; font-size: 12px; color: var(--muted); }
-.para-dialog label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.para-dialog label.check { justify-content: flex-start; }
-.para-dialog input, .para-dialog select { width: 120px; font: inherit; }
-.para-dialog label.check input { width: auto; margin: 0; }
-.para-dialog select { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; }
-.picture-frame { position: absolute; z-index: 6; border: 1px solid var(--accent); pointer-events: none; box-sizing: border-box; }
-.picture-frame .handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; background: #fff; border: 1px solid var(--accent); border-radius: 50%; pointer-events: auto; touch-action: none; }
-.picture-frame .nw { left: 0; top: 0; cursor: nwse-resize; }
-.picture-frame .n { left: 50%; top: 0; cursor: ns-resize; }
-.picture-frame .ne { left: 100%; top: 0; cursor: nesw-resize; }
-.picture-frame .e { left: 100%; top: 50%; cursor: ew-resize; }
-.picture-frame .se { left: 100%; top: 100%; cursor: nwse-resize; }
-.picture-frame .s { left: 50%; top: 100%; cursor: ns-resize; }
-.picture-frame .sw { left: 0; top: 100%; cursor: nesw-resize; }
-.picture-frame .w { left: 0; top: 50%; cursor: ew-resize; }
-.picture-frame .rotate { left: 50%; top: -22px; cursor: grab; }
-.picture-frame.cropping { border: 1px dashed #000; }
-.picture-frame.cropping .handle { width: 10px; height: 10px; border-radius: 0; background: #000; border-color: #fff; }
-.picture-panel details { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
-.picture-panel details[open] { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
-.picture-panel summary { cursor: pointer; font-weight: 600; }
-.picture-panel .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
-.picture-panel .buttons button[aria-pressed="true"] { background: var(--active); }
-.picture-panel input[type=color] { width: 100%; height: 26px; padding: 0 2px; }
-.picture-panel fieldset.sub { border-style: dashed; }
-.picture-panel .note { margin: 0; color: var(--muted); font-size: 12px; }
-.layout-options {
-  position: absolute; z-index: 6; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
-}
-.picture-panel {
-  position: fixed; z-index: 10; width: 300px; box-sizing: border-box; max-height: calc(100vh - 16px); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px;
-  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%); font-size: 13px;
-}
-.picture-panel fieldset { margin: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; display: flex; flex-direction: column; gap: 4px; }
-.picture-panel fieldset:disabled { opacity: .5; }
-.picture-panel legend { font-weight: 600; padding: 0 4px; }
-.picture-panel .wraps { display: grid; grid-template-columns: 1fr 1fr; }
-.picture-panel label { display: flex; flex-direction: column; gap: 2px; }
-.picture-panel .wraps label, .picture-panel label.inline { flex-direction: row; align-items: center; gap: 4px; }
-.picture-panel input[type=number], .picture-panel select, .picture-panel textarea { font: inherit; padding: 2px 4px; width: 100%; min-width: 0; box-sizing: border-box; }
-.picture-panel .size-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.picture-panel button { font: inherit; padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; align-self: flex-start; }
-.picture-panel .actions { display: flex; justify-content: flex-end; }
-.change-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
-.split-dialog label { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-.split-dialog input { width: 64px; }
-.change-menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
-.table-picker {
-  position: fixed; z-index: 10; padding: 8px; display: flex; flex-direction: column; gap: 8px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
-}
-.table-picker .size { margin: 0; font-size: 13px; color: var(--muted); }
-.table-picker .grid { display: grid; grid-template-columns: repeat(10, 18px); gap: 3px; }
-.table-picker .cell { width: 18px; height: 18px; padding: 0; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); cursor: pointer; }
-.table-picker .cell.on { background: color-mix(in srgb, var(--accent) 25%, transparent); border-color: var(--accent); }
-.table-picker .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.table-picker .custom { display: flex; gap: 6px; align-items: center; font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
-.table-picker .custom label { display: flex; gap: 4px; align-items: center; }
-.table-picker .custom input { width: 48px; font: inherit; padding: 2px 4px; }
-.table-picker .custom button { font: inherit; padding: 2px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; cursor: pointer; }
-.palette {
-  position: fixed; z-index: 10; width: 190px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
-}
-.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-.swatch { height: 24px; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; cursor: pointer; padding: 0; }
-.swatch.current, .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.case-icon, .symbol-icon { display: inline-block; min-width: 16px; font-size: 14px; line-height: 16px; text-align: center; }
-.case-icon { font-weight: 600; letter-spacing: -.02em; }
-.symbol-icon { font-family: 'Times New Roman', Times, serif; font-size: 16px; }
-/* The Format Painter's brush, over the page while it is on. */
-.docx-page.painting, .docx-page.painting * {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M3 2v14' stroke='%23000' stroke-width='1.5'/%3E%3Crect x='7' y='3' width='9' height='4' rx='.8' fill='%23fff' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M16 5h2v3h-6.5v2.5' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Crect x='10.2' y='10.5' width='2.6' height='6' rx='.6' fill='%23000'/%3E%3C/svg%3E") 3 2, text;
-}
-.palette-label { margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
-.color-palette { width: 220px; }
-.cell-format { width: 280px; max-height: calc(100vh - 16px); overflow-y: auto; }
-.border-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.border-choices button { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
-.border-choices button:hover, .border-choices button:focus-visible { background: var(--hover); }
-.toolbar select.font-choice { min-width: 0; width: 132px; }
-.toolbar select.size-choice { min-width: 0; width: 58px; }
-.toolbar select.char-style { min-width: 0; width: 124px; }
-.toolbar select.markup-choice { min-width: 0; width: 128px; }
-.toolbar .comment-nav { display: inline-flex; }
-.page-count, .smart-typing, .nav-toggle { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; }
-.nav-toggle[aria-pressed="true"] { color: var(--accent); }
-/* The Headings pane is for a wider screen (it is hidden on a phone, and so is its button). */
-@media (max-width: 700px) { .nav-toggle { display: none; } }
-.no-color { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: inherit; padding: 4px; font: inherit; font-size: 13px; cursor: pointer; }
-.marks-toggle { font-size: 16px !important; }
-.track-toggle, .review-toggle { gap: 6px; padding: 0 8px !important; font-size: 13px !important; }
-@media (max-width: 720px) { .track-toggle .label, .review-toggle .label, .labelled .label { display: none; } }
-/* Phones: the toolbar is one row that scrolls sideways rather than four rows over the text, faded at
-   the edge where more controls are (see editor/toolbar.js); the status bar is one line too. */
-@media (max-width: 720px) {
-  .toolbar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding: 4px 8px; }
-  .toolbar::-webkit-scrollbar { display: none; }
-  .toolbar > *, .toolbar .tb-group > *, .toolbar .group > * { flex: none; }
-  .toolbar[data-more="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
-  .toolbar[data-more="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
-  .toolbar[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
-  .statusbar { gap: 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-  .statusbar > * { flex: none; }
-  /* What just happened ("Signature inserted", "Shared letter.docx") comes first in the one line,
-     rather than out of sight to the right; a long message ends in "…" (its tooltip, and screen
-     readers, have all of it), and the counts follow, a swipe away. */
-  .statusbar [role="status"] { order: -1; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .statusbar [role="status"]:empty { display: none; }
-  /* The page already fits the screen's width, and the phone pinches to zoom. */
-  .statusbar > span.zoom { display: none; }
-  /* The tools a phone is used for first: undo, bold, italic, underline, highlight, lists, check box
-     or date, signature, picture and comment; the rest follow, a swipe away. */
-  .toolbar .ph { order: -1; }
-  .toolbar .sep { display: none; }
-  /* A document with tracked changes or comments to go through: Undo and Redo, then the review's
-     tools (previous and next change, Accept and Reject, with their names, and the comments), then
-     the rest, as approving a document between meetings needs them. */
-  .toolbar.review-first .ur { order: -4; }
-  .toolbar.review-first .changes-group.rv { order: -3; }
-  .toolbar.review-first .rv { order: -2; }
-  .toolbar.review-first .changes-group .labelled .label { display: inline; }
-}
-/* Touch: targets a finger can hit. */
-@media (pointer: coarse) {
-  .toolbar button { min-width: 40px; height: 40px; }
-  .toolbar .split .arrow { min-width: 24px !important; }
-  .toolbar select { height: 40px; }
-}
-/* The word count opens Word count (a length target, readability); over the target, or the headline
-   over its limit, it says so in amber (7:1 on the surface in both themes). */
-.word-count, .headline-count { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
-.word-count:hover, .headline-count { text-decoration: underline dotted; }
-.word-count.over, .headline-count.over { color: #8a5300; font-weight: 600; }
-@media (prefers-color-scheme: dark) { .word-count.over, .headline-count.over { color: #ffcf80; } }
-.tracking-status { border: 0; background: none; color: var(--own-change); font: inherit; padding: 0; cursor: pointer; text-decoration: underline dotted; }
-.author-dialog { gap: 8px; padding: 12px; min-width: 260px; }
-.link-dialog { gap: 6px; padding: 12px; width: 320px; max-width: calc(100vw - 16px); max-height: none; }
-.link-dialog .error { margin: 0; color: #b3261e; font-size: 12px; }
-.author-dialog label, .link-dialog label { font-size: 13px; }
-.author-dialog input, .link-dialog input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
-.author-dialog .actions, .link-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
-.author-dialog .actions button, .link-dialog .actions button { border: 1px solid var(--border); border-radius: 4px; padding: 5px 12px; background: var(--surface); color: inherit; cursor: pointer; text-align: center; }
-.author-dialog .actions .confirm, .link-dialog .actions .confirm { background: var(--brand); border-color: var(--brand); color: #fff; }
-.badge { font-size: 11px; color: var(--muted); }
-.badge.zero { opacity: .6; }
-.changes-group .badge { min-width: 3ch; margin-left: 4px; padding: 1px 5px; border-radius: 9px; background: var(--hover); text-align: center; font-variant-numeric: tabular-nums; } /* the count changing moves nothing */
-.chooser {
-  position: fixed; z-index: 10; min-width: 160px; max-width: 280px; max-height: 280px; overflow: auto;
-  display: flex; flex-direction: column; padding: 4px; background: var(--surface); color: inherit;
-  border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
-}
-.chooser button { text-align: left; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.chooser button:hover, .chooser button:focus-visible, .chooser button[aria-selected="true"] { background: var(--hover); }
-.chooser input { font: inherit; padding: 4px; }
-.chooser .empty { margin: 6px 10px; color: var(--muted); }
-.statusbar {
-  display: flex; gap: 24px; padding: 4px 16px; font-size: 12px; color: var(--muted);
-  background: var(--surface); border-top: 1px solid var(--border);
-}
-.statusbar .zoom { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; flex: none; }
-.statusbar .zoom button {
-  min-width: 24px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px; background: none;
-  color: inherit; font: inherit; line-height: 18px; cursor: pointer;
-}
-.statusbar .zoom button:hover:not(:disabled) { background: var(--hover); }
-.statusbar .zoom button:disabled { opacity: .4; cursor: default; }
-.statusbar .zoom .zoom-level { min-width: 44px; font-variant-numeric: tabular-nums; }
-
-@media screen and (max-width: 860px) {
-  .canvas { padding: 0; }
-  .docx-sheet { min-height: 100% !important; width: 100% !important; box-shadow: none; }
-  .docx-page { padding: 24px 16px !important; }
-  /* The page's own margins (inline) give way to the phone's. */
-  .docx-sheet .docx-page { --hf-header: 12px !important; --hf-top: 0px !important; --hf-footer: 12px !important; --hf-bottom: 0px !important; --hf-left: 16px !important; --hf-right: 16px !important; }
-  .docx-sheet:has(.hf-tabs.header) .docx-page { --hf-header: 34px !important; }
-  .docx-sheet:has(.hf-tabs.footer) .docx-page { --hf-footer: 34px !important; }
-}
-</style>
-
-<style>
-/* Unscoped: applies to the generated document HTML. */
-/* Printing (Ctrl+P) prints the document, not the editor around it: on the document's paper size, in
-   its margins (the @page rule is set from the document when it opens), with its page breaks. Headers
-   and footers go on every page where they can (set just before printing: editor/printBands.js);
-   otherwise they are printed once, at the start and the end, as the page shows them. */
-@media print {
-  html, body { background: #fff !important; }
-  .editor-shell { display: block !important; height: auto !important; }
-  .editor-shell > :not(.workspace), .workspace > :not(.canvas), .docx-sheet > :not(.docx-page) { display: none !important; }
-  .workspace { display: block !important; }
-  .canvas { overflow: visible !important; padding: 0 !important; background: none !important; }
-  .docx-sheet { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; box-shadow: none !important; zoom: 1 !important; }
-  .docx-page { padding: 0 !important; overflow: visible !important; }
-  .docx-page, .docx-sheet [contenteditable] { caret-color: transparent !important; }
-  .docx-sheet .docx-hf-band.header { padding-top: 0; min-height: 0; }
-  .docx-sheet .docx-hf-band.footer { position: static; padding: 12pt 0 0; min-height: 0; }
-  .docx-sheet .docx-hf-part { opacity: 1 !important; box-shadow: none !important; }
-  .docx-sheet .docx-hf-part::after { display: none !important; }
-  .docx-sheet .raw-inline.page-break { border: 0 !important; margin: 0 !important; break-after: page; }
-  .docx-sheet [data-page-break-before] { break-before: page; }
-  /* Hidden text (w:vanish) isn't printed, as in Word, unless Print hidden text is chosen. */
-  .docx-sheet [data-hidden] { display: none !important; }
-  .print-hidden-text .docx-sheet [data-hidden] { display: inline !important; opacity: 1 !important; text-decoration: none !important; }
-  .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
-  /* Comments: their numbers in the text, and the list after the document, only when asked for. */
-  :root:not(.print-comments-on) .docx-sheet .comment-ref::before { content: none !important; display: none !important; }
-  .print-comments-on .docx-sheet .comment-ref::before { background: none !important; color: #000 !important; border: 1px solid #555; }
-  .docx-sheet > .print-comments { display: block !important; break-before: page; color: #000; font-family: inherit; }
-}
-.docx-sheet > .print-comments { display: none; }
-/* Its own look, not the document's paragraph and heading styles. */
-.docx-sheet > .print-comments h2 { font-size: 14pt; font-weight: 700; margin: 0 0 10pt; }
-.docx-sheet > .print-comments ol { list-style: none; margin: 0; padding: 0; }
-.docx-sheet > .print-comments li { margin: 0 0 9pt; break-inside: avoid; }
-.docx-sheet > .print-comments p { margin: 0 0 2pt; padding: 0; text-indent: 0; line-height: 1.3; }
-.print-comments .n { display: inline-block; min-width: 1.4em; margin-right: 6pt; padding: 0 3pt; border: 1px solid #555; border-radius: 6pt; font-size: 8pt; text-align: center; vertical-align: 1pt; }
-.print-comments .on { color: #444; font-style: italic; }
-.print-comments .reply { margin: 3pt 0 0 2.2em; padding-left: 6pt; border-left: 2px solid #bbb; }
-.docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
-.docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
-.docx-sheet .cs-before { margin-top: 0 !important; }
-.docx-sheet .cs-after { margin-bottom: 0 !important; }
-.docx-sheet .list::before {
-  content: attr(data-marker); position: absolute; transform: translateX(calc(-100% - 0.5em));
-  text-indent: 0; white-space: nowrap;
-}
-/* A list level centred on its own line ("Pasal 1", "BAB I"): its number in the line. */
-/* Clicks go through it to the paragraph: Firefox puts no caret where generated text is clicked, and
-   an empty "Pasal 1" line is all number. */
-.docx-sheet .list[data-marker-inline]::before { position: static; transform: none; margin-right: .3em; pointer-events: none; }
-.docx-sheet a { color: #0563c1; }
-.docx-sheet img { max-width: 100%; vertical-align: bottom; }
-/* Hidden markers (comment ranges, bookmarks, field codes) are empty: shown inline, not display:none,
-   because the browser's editing drops unrendered nodes when it moves text, as in merging paragraphs. */
-.docx-sheet .raw-hidden { display: none; }
-.docx-sheet span.raw-hidden { display: inline; }
-/* Legacy form fields (docx/formFields.js): the box or chosen entry is drawn from the marker's
-   attributes, so the paragraph's text is unchanged; grey as Word shades form fields. */
-.docx-sheet span.raw-hidden.ff-check::before { content: '\2610'; font-family: 'Segoe UI Symbol', 'MS Gothic', 'DejaVu Sans', sans-serif; }
-.docx-sheet span.raw-hidden.ff-check[data-checked="1"]::before { content: '\2612'; }
-.docx-sheet span.raw-hidden.ff-drop::before { content: attr(data-ff-text); }
-.docx-sheet span.raw-hidden.ff-drop::after { content: ' \25BE'; font-size: 0.8em; opacity: 0.6; }
-.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop) { background: #e6e6e6; cursor: pointer; border-radius: 2px; }
-.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop):hover { background: var(--sheet-tint); }
-.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop):focus-visible { outline: 2px solid var(--sheet-accent); outline-offset: 1px; }
-.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop)[data-ff-off] { cursor: default; opacity: 0.6; }
-.docx-sheet .ff-text { background: #e6e6e6; }
-.docx-sheet .ff-text[data-ff-host] { outline: none; }
-.docx-sheet .ff-text[data-ff-host]:focus { box-shadow: 0 0 0 2px var(--sheet-accent); }
-.docx-sheet .ff-shadow { display: none; }
-.docx-sheet .raw-block, .docx-sheet .raw-inline:not(:has(img)) {
-  background: #f1f3f6; color: #555; border-radius: 3px; cursor: default; user-select: none;
-}
-.docx-sheet .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
-.docx-sheet .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
-.docx-sheet .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
-/* Formatting marks (editor/marks.js): a layer over the page that never takes clicks. */
-.docx-sheet .marks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
-/* Line numbers in the margin, as Word prints them: drawn over the sheet, never part of the page. */
-.docx-sheet .line-numbers-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
-/* The watermark: behind the text (the page comes after it), in the middle of each page. */
-/* A section break, named with its section's paper, where the document has several. */
-.docx-sheet .docx-page [data-section-note]::after {
-  content: attr(data-section-note); display: block; margin-top: 4px; padding-top: 2px; border-top: 1px dashed var(--sheet-line);
-  font: 600 10px/14px system-ui, sans-serif; color: var(--sheet-accent); text-indent: 0; text-align: left; letter-spacing: 0;
-  user-select: none; pointer-events: none;
-}
-@media print { .docx-sheet .docx-page [data-section-note]::after { content: none; } }
-/* Hidden text (w:vanish): shown faintly (see styles.rPrCss), with Word's dotted line under it. */
-.docx-sheet [data-hidden] { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: currentColor; }
-.docx-sheet .watermark-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
-.docx-sheet .watermark-mark {
-  position: absolute; left: 50%; transform: translate(-50%, -50%); font-weight: 700; line-height: 1; opacity: .5;
-  white-space: nowrap; user-select: none;
-}
-.docx-sheet .watermark-mark.diagonal { transform: translate(-50%, -50%) rotate(-45deg); }
-.docx-sheet .page-breaks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
-/* Where a page would begin, about (editor/pages.js): a dashed line across the sheet, numbered in the margin. */
-.docx-sheet .page-estimate { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--sheet-line); }
-.docx-sheet .page-estimate span {
-  position: absolute; right: 6px; top: -8px; padding: 0 4px; border-radius: 3px; background: #fff;
-  font: 600 10px/16px system-ui, sans-serif; color: var(--sheet-accent); white-space: nowrap; user-select: none;
-}
-.docx-sheet .line-number { position: absolute; font-size: 9pt; color: #6b6b6b; text-align: right; white-space: nowrap; user-select: none; }
-.docx-sheet .fmark { position: absolute; color: #4f74b3; font-family: system-ui, sans-serif; white-space: pre; user-select: none; }
-.docx-sheet .fmark.space { transform: translateX(-50%); }
-/* Highlight, in Word's colours. */
-.docx-sheet mark { background: #ffff00; color: inherit; }
-.docx-sheet mark[data-color="green"] { background: #00ff00; } .docx-sheet mark[data-color="cyan"] { background: #00ffff; }
-.docx-sheet mark[data-color="magenta"] { background: #ff00ff; } .docx-sheet mark[data-color="blue"] { background: #0000ff; }
-.docx-sheet mark[data-color="red"] { background: #ff0000; } .docx-sheet mark[data-color="darkBlue"] { background: #000080; }
-.docx-sheet mark[data-color="darkCyan"] { background: #008080; } .docx-sheet mark[data-color="darkGreen"] { background: #008000; }
-.docx-sheet mark[data-color="darkMagenta"] { background: #800080; } .docx-sheet mark[data-color="darkRed"] { background: #800000; }
-.docx-sheet mark[data-color="darkYellow"] { background: #808000; } .docx-sheet mark[data-color="darkGray"] { background: #808080; }
-.docx-sheet mark[data-color="lightGray"] { background: #c0c0c0; } .docx-sheet mark[data-color="black"] { background: #000000; }
-.docx-sheet mark[data-color="white"] { background: #ffffff; }
-/* This session's tracked changes. */
-/* The insertion's underline is drawn, not a text-decoration: the browser reads a text-decoration as
-   the text being underlined, so the Underline button showed as on and Ctrl+U did nothing in it. */
-.docx-sheet .tc-ins {
-  color: #6f2dbd;
-  background-image: linear-gradient(currentColor, currentColor);
-  background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 1px;
-}
-.docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }
-.docx-sheet [data-tc-mark]::after { content: '¶'; color: #6f2dbd; margin-left: 1px; }
-.docx-sheet [data-tc-mark="del"]::after { text-decoration: line-through; }
-/* Tracked formatting changes (of a run: dashed underline; of a paragraph: a bar in the margin) and
-   tracked table rows, as Word marks them. */
-.docx-sheet [data-fmt="run"] { border-bottom: 1px dashed #8e44ad; }
-.docx-sheet [data-fmt-para] { box-shadow: -10px 0 0 -8px #8e44ad; }
-.docx-sheet table.docx-table[data-fmt-table] { outline: 2px dashed #8e5cc7; outline-offset: 2px; }
-.docx-sheet tr[data-fmt-row] > td:first-child { box-shadow: inset 3px 0 0 #8e5cc7; }
-.docx-sheet table.docx-table td[data-rev-merge] { box-shadow: inset 0 0 0 2px rgb(111 45 189 / 45%); }
-.docx-sheet table.docx-table td[data-fmt-cell] { box-shadow: inset 0 0 0 1px #8e5cc7; }
-.docx-sheet tr[data-rev-row="ins"] > td { background-color: #e8f5ea; }
-.docx-sheet tr[data-rev-row="del"] > td { background-color: #fbe9e7; text-decoration: line-through; }
-/* Someone else's tracked paragraph break, in the colours of their insertions and deletions. */
-.docx-sheet [data-rev-mark]::after { content: '¶'; margin-left: 1px; }
-.docx-sheet [data-rev-mark="ins"]::after { color: #1e6b34; }
-.docx-sheet [data-rev-mark="del"]::after { color: #b3261e; text-decoration: line-through; }
-/* Simple and no markup (Review > Show markup), as Word's Display for Review: the text as it will be
-   once the changes are accepted. Deletions are hidden, insertions look like the text around them and
-   formatting changes aren't marked; nothing in the page or the file changes, only how it shows.
-   The original is the other way round: insertions hidden, deletions as ordinary text. */
-.docx-sheet:is([data-markup="simple"], [data-markup="none"]) :is(.tc-del, .raw-inline.deleted, tr[data-rev-row="del"]),
-.docx-sheet[data-markup="original"] :is(.tc-ins, .raw-inline.inserted, tr[data-rev-row="ins"]) { display: none; }
-.docx-sheet[data-markup] .tc-ins, .docx-sheet[data-markup] .tc-del { color: inherit; background-image: none; text-decoration: none; }
-.docx-sheet[data-markup] .raw-inline.inserted, .docx-sheet[data-markup] .raw-inline.deleted { color: inherit; text-decoration: none; }
-.docx-sheet[data-markup] tr[data-rev-row="del"] > td { background-color: transparent; text-decoration: none; }
-.docx-sheet[data-markup] [data-tc-mark]::after, .docx-sheet[data-markup] [data-rev-mark]::after { content: none; }
-.docx-sheet[data-markup] [data-fmt="run"] { border-bottom: 0; }
-.docx-sheet[data-markup] [data-fmt-para], .docx-sheet[data-markup] tr[data-fmt-row] > td:first-child,
-.docx-sheet[data-markup] table.docx-table td[data-rev-merge], .docx-sheet[data-markup] table.docx-table td[data-fmt-cell] { box-shadow: none; }
-.docx-sheet[data-markup] table.docx-table[data-fmt-table] { outline: 0; }
-.docx-sheet[data-markup] tr[data-rev-row="ins"] > td { background-color: transparent; }
-/* Simple markup: a red line in the margin beside each paragraph with a change, as Word draws it (a
-   2px line 10px out, the white shadow over the red one's inner part). */
-.docx-sheet[data-markup="simple"] .docx-page :is(p, h1, h2, h3, h4, h5, h6):is(:has(.tc-ins, .tc-del, .raw-inline.inserted, .raw-inline.deleted, [data-fmt]), [data-tc-mark], [data-rev-mark], [data-fmt-para]) {
-  box-shadow: -10px 0 0 0 #fff, -12px 0 0 0 #b3261e;
-}
-/* No markup hides the comments' highlights too, as Word does; the panel still lists them. */
-.docx-sheet:is([data-markup="none"], [data-markup="original"]) ::highlight(comment), .docx-sheet:is([data-markup="none"], [data-markup="original"]) ::highlight(comment-active) { background-color: transparent; }
-.docx-sheet .raw-inline.picture { cursor: pointer; }
-.docx-sheet .raw-inline.picture img { display: block; }
-.docx-sheet .raw-inline.picture::selection, .docx-sheet .raw-inline.picture img::selection { background: transparent; } /* the frame shows it is selected */
-.docx-sheet .raw-inline.picture[data-wrap="inline"] { display: inline-block; vertical-align: bottom; }
-.docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
-.docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: var(--sheet-accent); }
-.docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
-.docx-sheet .raw-inline.note-ref[data-note-ref], .docx-sheet .raw-inline.note-mark { cursor: pointer; }
-.docx-sheet .raw-inline.note-ref[data-note-ref]:hover, .docx-sheet .raw-inline.note-mark:hover { text-decoration: underline; }
-/* Footnotes and endnotes, below the text (as in Word's draft view): each note is edited in place. */
-/* Headers and footers: in the page, in its margins, dimmed until you work in them, as in Word. */
-.docx-sheet .docx-hf-band { cursor: default; overflow-x: clip; } /* cut off at the page's edges, as the page is */
-.docx-sheet .docx-hf-band.header { padding-top: var(--hf-header); min-height: var(--hf-top); margin-bottom: 6px; }
-.docx-sheet .docx-hf-band.footer {
-  position: absolute; left: var(--hf-left); right: var(--hf-right); bottom: 0;
-  padding-bottom: var(--hf-footer); padding-top: 6px; min-height: var(--hf-bottom);
-  display: flex; flex-direction: column; justify-content: flex-end;
-}
-.docx-sheet .docx-hf-part { outline: none; border-radius: 2px; cursor: text; opacity: .6; position: relative; }
-.docx-sheet .docx-hf-part:hover { opacity: .85; box-shadow: 0 0 0 1px var(--sheet-line); }
-.docx-sheet .docx-hf-part:focus-within { opacity: 1; box-shadow: 0 0 0 1px var(--sheet-accent); }
-.docx-sheet .docx-hf-part:is(:hover, :focus-within)::after {
-  content: attr(data-label); position: absolute; left: 0; font: 600 10px/1.6 system-ui, sans-serif;
-  padding: 0 6px; border-radius: 3px; background: var(--sheet-tint); color: var(--sheet-accent); pointer-events: none; white-space: nowrap;
-}
-.docx-sheet .header .docx-hf-part::after { top: 100%; margin-top: 3px; }
-.docx-sheet .footer .docx-hf-part::after { bottom: 100%; margin-bottom: 3px; }
-/* Text boxes and shapes with text: a frame holding text you edit. */
-.docx-sheet .textbox {
-  display: inline-flex; flex-direction: column; box-sizing: border-box; vertical-align: top;
-  text-indent: 0; white-space: pre-wrap; cursor: default; overflow-wrap: break-word; max-width: 100%;
-}
-.docx-sheet .textbox[data-wrap="topAndBottom"] { display: flex; }
-.docx-sheet .textbox-content { outline: none; cursor: text; min-height: 1em; }
-.docx-sheet .textbox:hover { box-shadow: 0 0 0 1px var(--sheet-line); }
-.docx-sheet .textbox:focus-within { box-shadow: 0 0 0 2px var(--sheet-accent); }
-.docx-sheet .textbox-content :is(p, h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
-/* A drop cap: its paragraph floats, and the next lines flow around it. */
-.docx-sheet .drop-cap { float: left; margin-top: 0 !important; margin-bottom: 0 !important; }
-.docx-sheet .drop-cap + * { margin-top: 0; }
-.docx-sheet .docx-columns { margin: 0; }
-.docx-sheet .docx-columns > :first-child { margin-top: 0; }
-.docx-sheet .docx-notes { margin-top: 24px; padding-top: 6px; cursor: default; }
-.docx-sheet .docx-notes::before {
-  content: attr(data-label); display: block; width: 33%; border-top: 1px solid #9aa0aa; padding-top: 4px; margin-bottom: 2px;
-  font: 600 11px/1.4 system-ui, sans-serif; color: #6b7280; letter-spacing: .02em; text-transform: uppercase; user-select: none;
-}
-.docx-sheet .docx-note { outline: none; border-radius: 2px; cursor: text; }
-.docx-sheet .docx-note:focus-within { background: var(--sheet-tint); box-shadow: 0 0 0 2px var(--sheet-tint); }
-.docx-sheet .raw-inline.symbol { background: transparent; color: inherit; }
-/* Equations, drawn as MathML (docx/omml.js): read-only, so they look like the text around them. */
-.docx-sheet .raw-inline.equation { background: transparent; color: inherit; border-radius: 3px; }
-.docx-sheet .raw-inline.equation:hover { background: var(--sheet-tint); }
-.docx-sheet .raw-inline.equation.display { display: block; margin: 4px 0; }
-.docx-sheet .equation math { font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', math; }
-.docx-sheet .raw-inline.comment-ref { display: inline; cursor: pointer; user-select: none; background: transparent; padding: 0; }
-.docx-sheet .comment-ref::before {
-  content: attr(data-n); display: inline-block; min-width: 1.3em; margin: 0 1px; padding: 0 3px; border-radius: 7px;
-  font: 600 10px/1.4 system-ui, sans-serif; text-align: center; vertical-align: super; background: #d0705c; color: #fff;
-}
-.docx-sheet .field { border-bottom: 1px dotted #9aa6b8; }
-/* A page number shows # (each page has its own) and the page count about how many pages there
-   are: drawn over the number the file holds, which stays in the page as it is. */
-.docx-sheet .field.page-field[data-show]:not([data-show=""]) { position: relative; -webkit-text-fill-color: transparent; }
-/* Inline (an inline-block would take Home and End off the line): room made for a longer count. */
-.docx-sheet .field.page-field[data-digits="2"] { padding-right: .6em; }
-.docx-sheet .field.page-field[data-digits="3"] { padding-right: 1.2em; }
-.docx-sheet .field.page-field[data-show]:not([data-show=""])::after { content: attr(data-show); position: absolute; left: 0; top: 0; -webkit-text-fill-color: currentColor; white-space: nowrap; }
-/* A page number without a result (see markBarePageField): # as the others show, printed numbered
-   where headers and footers print on every page, and blank where they print once. */
-.docx-sheet span.raw-hidden.page-field-bare::after { content: "#"; }
-@media print {
-  .docx-sheet span.raw-hidden.page-field-bare::after { content: none; }
-  /* Where the caret is (a table cell's, a content control's outline) isn't part of the page. */
-  .docx-sheet table.docx-table td:focus-within, .docx-sheet .sdt:focus-within { box-shadow: none !important; }
-  .docx-sheet .sdt:not(.sdt-locked):focus-within { background: none !important; }
-  .docx-sheet .field.page-field[data-show] { -webkit-text-fill-color: inherit; padding-right: 0; }
-  .docx-sheet .field.page-field[data-show]::after { content: none; }
-}
-::highlight(comment) { background-color: #fbe3dc; }
-/* Read aloud: the paragraph being read, and its word. */
-::highlight(read-aloud) { background-color: var(--sheet-tint); }
-::highlight(read-aloud-word) { background-color: var(--sheet-line); color: #000; }
-::highlight(field-near) { background-color: var(--sheet-tint); }
-::highlight(comment-active) { background-color: #f6b9a8; }
-.docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
-.docx-sheet div.sdt { box-shadow: 0 0 0 1px transparent; }
-.docx-sheet .sdt:not(.sdt-locked):hover, .docx-sheet .sdt:not(.sdt-locked):focus-within { background: var(--sheet-tint); box-shadow: 0 0 0 1px var(--sheet-line); }
-.docx-sheet .sdt-content { outline: none; }
-.docx-sheet span.sdt-content:empty { padding: 0 1ch; }
-.docx-sheet .showing-placeholder { color: #767676; }
-.docx-sheet :is(.sdt-checkbox, .sdt-dropdown, .sdt-date) { cursor: pointer; }
-.docx-sheet :is(span.sdt-dropdown, span.sdt-combo, span.sdt-date)::after { content: '▾'; font-size: .8em; color: #5b6b85; margin-left: 2px; cursor: pointer; }
-.docx-sheet .sdt-locked { cursor: default; user-select: none; background: #f1f3f6; }
-.docx-sheet table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
-.docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
-.docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px rgb(14 100 103 / 33%); }
-/* A cell merged with the one above: no line between them. "hidden" wins over every other border in
-   the collapsing model, the bottom border of the cell above (drawn there, as its own) included. */
-.docx-sheet table.docx-table td.vmerge { border-top-style: hidden !important; }
-.docx-sheet table.docx-table td[data-rev-cell="ins"] { background-color: rgb(30 107 52 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(30 107 52 / 45%); }
-.docx-sheet table.docx-table td[data-rev-cell="del"] { background-color: rgb(179 38 30 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(179 38 30 / 45%); }
-.docx-sheet table.docx-table td.vmerge > * { visibility: hidden; }
-</style>
+<style scoped src="./editor/EditorView.scoped.css"></style>
+<style src="./editor/EditorView.css"></style>

@@ -27,7 +27,7 @@ jobs:
       - run: npm ci
       - name: The tag matches the package version
         run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      - run: npx playwright install --with-deps chromium firefox
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm test
       - run: npm run build
       - name: Package

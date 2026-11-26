@@ -1,0 +1,52 @@
+name: Feedback
+description: Tell us how Intact worked for you. Never paste or attach a document, or text from one.
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. This form is public, and Intact never sends anything itself: only what you type here
+        reaches us. **Don't paste or attach a document, or any text, name or number from one.** Describe
+        what happened instead ("a numbered list in a contract", "a table with merged cells").
+  - type: dropdown
+    id: job
+    attributes:
+      label: What did you use Intact for?
+      options:
+        - Fixing a document I was sent (a change, then sent back)
+        - Writing a new document (from a template or a blank page)
+        - Both
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: noticed
+    attributes:
+      label: Did whoever received the file notice anything unusual about it?
+      description: The test Intact holds itself to is that they can't tell another tool was used.
+      options:
+        - No, nothing
+        - Yes, something looked or behaved differently
+        - I don't know yet
+        - I didn't send it to anyone
+    validations:
+      required: true
+  - type: dropdown
+    id: time
+    attributes:
+      label: About how long from opening Intact to downloading the file?
+      options:
+        - Under a minute
+        - 1 to 5 minutes
+        - More than 5 minutes
+        - I didn't download it
+  - type: textarea
+    id: what
+    attributes:
+      label: What worked, what didn't, or what was missing?
+      description: If something changed that you didn't touch, say what kind of content it was, and which program opened it (Word, LibreOffice, Google Docs…).
+  - type: input
+    id: setup
+    attributes:
+      label: Browser and device (optional)
+      placeholder: e.g. Safari on an iPhone, Chrome on a Chromebook
