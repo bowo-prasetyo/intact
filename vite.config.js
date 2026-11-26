@@ -70,5 +70,11 @@ function hardening() {
 export default defineConfig({
   base: './',
   plugins: [vue(), hardening()],
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // FEEDBACK_URL: where the About page's Feedback link goes (the project's public issue form). A
+  // self-hosted build can send people to its own form instead, or show no link, with an empty value:
+  // FEEDBACK_URL= npm run build. The link is a plain link the person follows; Intact sends nothing.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __FEEDBACK_URL__: JSON.stringify(process.env.FEEDBACK_URL ?? 'https://github.com/bowo-prasetyo/intact/issues/new?template=feedback.yml'),
+  },
 });

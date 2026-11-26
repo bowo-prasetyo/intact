@@ -1346,6 +1346,9 @@ network with no internet at all: it is static files with no server code and no e
    commit. The SBOM (CycloneDX) lists what the build contains (Vue, Vue Router, JSZip).
 3. Unzip it into any directory your server serves, at any path. Serve `.webmanifest` as
    `application/manifest+json`.
+   The About page has a Feedback link to this project's public form on GitHub (a plain link the
+   person follows; Intact sends nothing). To send people to your own form instead, or show no link,
+   build from source with `FEEDBACK_URL=https://your.form npm run build`, or `FEEDBACK_URL= npm run build`.
 4. Recommended response headers for its path (the page already carries the Content Security
    Policy in a `<meta>` tag; a header adds `frame-ancestors`, which a `<meta>` can't set):
 

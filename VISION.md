@@ -278,6 +278,13 @@ Saying no to these keeps the product small enough to keep its promises:
 - **Writing:** a document started here (from a template or a blank page) opens in Word looking as
   it did here, and its recipient can't tell another tool made it.
 
+Intact measures nothing itself: no analytics, ever ("Private"). Trust, speed and writing are heard
+from the people who use it, through the feedback form the About page links to
+(`.github/ISSUE_TEMPLATE/feedback.yml`), whose questions are these: which job, did the recipient
+notice anything, how long it took. It is a plain link: the form never asks for a document, and a
+self-hosted build can point it elsewhere or leave it out. **Speed** of the page itself is held by
+a test: the start page loads within its budget, without the document's engine.
+
 ## Name
 
 The product is called **Intact**, with the descriptor **"private .docx editor"** wherever there is
