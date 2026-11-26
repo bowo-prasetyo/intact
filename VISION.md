@@ -251,6 +251,14 @@ Saying no to these keeps the product small enough to keep its promises:
   their PNG ✔; Save as PDF saying when page numbers are Word's to work out ✔; index entries and an
   index ✔. Not master documents, structured authoring (DITA) or a style system built from nothing
 
+- Administrators in hospitals, clinics and care services, who keep controlled documents that must
+  not be uploaded: starters for a policy, an SOP, a patient administration form, a discharge
+  administration checklist, an incident report, a complaint record, a quality audit and a CAPA,
+  each with its organisation, ID and version in the header, numbered pages, Word's own check boxes
+  and a sign-off table, and placeholders that each name one thing ✔. Administrative, not clinical:
+  not clinical forms or decision support, an electronic signature or approval workflow, a records
+  system or a compliance certification. Last on the start page, after the everyday templates
+
 ## How we'll know it's working
 
 - **Fidelity:** zero known round-trip regressions; the fixture set keeps growing.

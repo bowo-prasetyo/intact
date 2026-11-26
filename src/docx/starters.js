@@ -1,5 +1,5 @@
 // Starter documents for the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV,
-// a report, a board paper and a manuscript, each a Word document written as Word writes one, in Word's own styles (Title,
+// a report, a board paper and a manuscript (and groups for teachers and healthcare administration), each a Word document written as Word writes one, in Word's own styles (Title,
 // Heading 1 and 2, Table Grid, List Paragraph, Footer), with placeholders such as [Your name] that
 // Fill in fills in once for every place they appear. Nothing here is fetched: each is built in the
 // browser from the blank document's parts (see blank.js).
@@ -1268,8 +1268,178 @@ function untukGuru() {
     },
   ];
 }
-// Added here, after what they are made of (constants above), as the start page's teachers' group.
-STARTERS.push(...forTeachers(), ...untukGuru());
+// Healthcare administration: controlled documents and administrative records for hospitals,
+// clinics and care services (a policy, an SOP, an incident report, a CAPA…). Administrative, not
+// clinical: the forms say what belongs in the clinical record instead. Each is a controlled document
+// as quality teams keep them: its organisation, ID and version in the header on every page, numbered
+// pages, a document-control table, real check boxes (content controls, as Word's Developer tab
+// inserts them) and a sign-off table. Every placeholder names one thing, so Fill in never puts one
+// answer in two places that need two ("[Effective date]" and "[Next review date]", "[Prepared by]"
+// and "[Reviewed by]"); rows after a table's first are left empty to fill in. Nothing in the text
+// names this editor: whatever is left in is the organisation's own.
+let checkboxId = 0x48430000; // w:id of each check box: unique in a document, the same each build
+/** A check box (☐, ticked ☒, in MS Gothic, as Word writes it), a space and its `text`: a paragraph. */
+const check = (text) => p([
+  `<w:sdt><w:sdtPr><w:id w:val="${checkboxId++}"/><w14:checkbox><w14:checked w14:val="0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox></w:sdtPr>`
+    + '<w:sdtContent><w:r><w:rPr><w:rFonts w:ascii="MS Gothic" w:eastAsia="MS Gothic" w:hAnsi="MS Gothic" w:hint="eastAsia"/></w:rPr><w:t>☐</w:t></w:r></w:sdtContent></w:sdt>',
+  run(` ${text}`),
+], { after: 60 });
+/** Labelled details in a table, labels bold: `rows` of [label, value] pairs (two pairs a row when four). */
+const facts = (paper, rows) => table(paper, rows[0].length === 4 ? [1.5, 2.2, 1.5, 2.2] : [2, 4], rows.map((r) => r.map((c, i) => (i % 2 ? c : `**${c}**`))), { heading: false });
+/** A note to whoever fills the form in, in italics: what doesn't belong in it. */
+const boundary = (text) => p(text, { before: 240, run: { i: true, color: '595959' } });
+
+/**
+ * A healthcare administration starter: `title`, `description`, its file name, and `sections(paper)`,
+ * between the document control and the checks before release and the sign-off that end each one.
+ */
+function controlled(id, title, description, sections) {
+  return {
+    id,
+    title,
+    description,
+    file: title,
+    group: 'health',
+    build: (paper) => {
+      checkboxId = 0x48430000;
+      return {
+        styles: ['tableGrid'],
+        footer: true,
+        header: p('[Organisation] · [Document ID] · Version [Version]', { style: 'Header', jc: 'right', run: { color: '595959' } }),
+        body: [
+          p(title, { style: 'Title', after: 160 }),
+          facts(paper, [
+            ['Organisation', '[Organisation]', 'Document ID', '[Document ID]'],
+            ['Department', '[Department or service]', 'Version', '[Version]'],
+            ['Owner', '[Document owner]', 'Effective date', '[Effective date]'],
+            ['Status', '[Draft or approved]', 'Next review', '[Next review date]'],
+          ]),
+          ...sections(paper),
+          p('Before approval or sharing', { style: 'Heading1', keepNext: true }),
+          check('The owner, version, effective date and next review date are correct'),
+          check('The recipients and the distribution list are authorised'),
+          check('Only the patient and staff information needed is included, and its disclosure is authorised'),
+          check('Comments, tracked changes and hidden text are resolved or removed'),
+          check('The document is filed under the records-retention schedule'),
+          p('Sign-off', { style: 'Heading1', keepNext: true }),
+          table(paper, [2, 4, 2], [
+            ['Role', 'Name and job title', 'Date'],
+            ['Prepared by', '[Prepared by]', '[Date prepared]'],
+            ['Reviewed by', '[Reviewed by]', '[Date reviewed]'],
+            ['Approved by', '[Approved by]', '[Date approved]'],
+          ]),
+        ].join(''),
+      };
+    },
+  };
+}
+
+/** The healthcare administration templates, as the start page's group of their own. */
+function forHealthcare() {
+  const h1 = (text) => p(text, { style: 'Heading1', keepNext: true });
+  return [
+    controlled('policy', 'Healthcare policy', 'A controlled policy: purpose, scope, responsibilities, monitoring and review', (paper) => [
+      h1('Purpose'), p('[The administrative purpose of this policy and the outcome it is for.]'),
+      h1('Scope'), p('[The departments, roles, sites and processes this policy covers.]'),
+      h1('Policy statement'), p('[What the organisation requires.]'),
+      h1('Roles and responsibilities'),
+      table(paper, [1, 2], [['Role', 'Responsibilities'], ['[First role]', '[First role’s responsibilities]'], ['', ''], ['', '']]),
+      h1('Procedure and related documents'), p('[The approved process, and the controlled documents it refers to.]'),
+      h1('Monitoring and review'), p('[Who checks this policy works, how often, with what evidence, and where problems are escalated.]'),
+    ]),
+    controlled('sop', 'Standard operating procedure', 'An administrative SOP: steps, roles, records and escalation', (paper) => [
+      h1('Purpose and scope'), p('[What this procedure covers, and when it applies.]'),
+      h1('Before you start'),
+      check('[Authorisation needed]'), check('[Systems or equipment needed]'), check('[Forms or reference documents needed]'),
+      h1('Procedure'),
+      table(paper, [0.7, 4, 2, 2.3], [['Step', 'Action', 'Responsible role', 'Record or evidence'], ['1', '[First step]', '[First step’s role]', '[First step’s record]'], ['2', '', '', ''], ['3', '', '', '']]),
+      h1('Exceptions and escalation'), p('[Exceptions, whom to contact, and how an escalation is recorded.]'),
+      h1('Records'), p('[The records this procedure creates, where they are kept, who can see them and for how long.]'),
+    ]),
+    controlled('patient-admin-form', 'Patient administration form', 'Registration and contact details, and administrative checks; nothing clinical', (paper) => [
+      h1('Registration'),
+      facts(paper, [['Patient or record reference', '[Record reference]'], ['Date received', '[Date received]'], ['Registration type', '[New, update or other]']]),
+      h1('Contact and representative'),
+      facts(paper, [['Preferred contact method', '[Preferred contact method]'], ['Authorised representative', '[Authorised representative, if any]'], ['Interpreter or access needs', '[Interpreter or access needs, if any]']]),
+      h1('Administrative checks'),
+      check('Identity checked as the approved procedure says'),
+      check('Authority to act checked, where a representative acts'),
+      check('Required administrative documents received'),
+      check('Contact preferences recorded'),
+      check('Outstanding items recorded, each with an owner'),
+      h1('Outstanding items'),
+      table(paper, [3, 2, 1.5, 1.5], [['Item', 'Owner', 'Due', 'Status'], ['[First outstanding item]', '[Item owner]', '[Item due date]', '[Open or complete]'], ['', '', '', ''], ['', '', '', '']]),
+      boundary('Do not record diagnoses, treatment decisions or other clinical assessments on this form: they belong in the clinical record.'),
+    ]),
+    controlled('discharge-checklist', 'Discharge administration checklist', 'The administrative handover and records at discharge; not clinical readiness', (paper) => [
+      h1('Reference'),
+      facts(paper, [['Patient or record reference', '[Record reference]'], ['Discharge date', '[Discharge date]'], ['Responsible administrative role', '[Responsible administrative role]']]),
+      h1('Checklist'),
+      check('Administrative discharge details completed'),
+      check('Destination, and anyone authorised to receive documents, confirmed'),
+      check('Approved documents prepared and checked'),
+      check('Follow-up appointments passed to the team responsible'),
+      check('Equipment, property and belongings recorded, where applicable'),
+      check('Outstanding tasks assigned, each with a due date'),
+      check('Records filed as the retention schedule says'),
+      h1('Outstanding actions'),
+      table(paper, [3, 2, 1.5, 2], [['Action', 'Owner', 'Due', 'Evidence of completion'], ['[First outstanding action]', '[Action owner]', '[Action due date]', '[Evidence of completion]'], ['', '', '', ''], ['', '', '', '']]),
+      facts(paper, [['Handover confirmed by', '[Handover confirmed by]']]),
+      boundary('This checklist does not decide whether a patient is clinically ready for discharge: clinical staff decide that, and record it in the clinical record.'),
+    ]),
+    controlled('incident-report', 'Incident report', 'A factual, blame-free record of an incident and its follow-up', (paper) => [
+      h1('Incident'),
+      facts(paper, [['Reference', '[Incident reference]'], ['Date and time', '[Date, time and time zone]'], ['Location or service', '[Location or service]'], ['Category', '[Incident category]']]),
+      h1('People and immediate response'),
+      facts(paper, [['People involved', '[People involved, by approved identifier]'], ['Reported by', '[Reported by]'], ['Immediate actions', '[Immediate actions taken]'], ['Notified', '[Manager or safety lead notified, and when]']]),
+      h1('Factual account'),
+      p('[What was seen or reported, keeping facts apart from what others said. No blame, guesses, or personal or clinical details beyond what is needed.]'),
+      h1('Follow-up'),
+      table(paper, [3, 2, 1.5, 1.5], [['Action', 'Responsible role', 'Due', 'Status'], ['[First follow-up action]', '[Follow-up owner]', '[Follow-up due date]', '[Open or closed]'], ['', '', '', ''], ['', '', '', '']]),
+      facts(paper, [['Related incident or risk', '[Related reference, if any]']]),
+    ]),
+    controlled('complaint-record', 'Patient complaint record', 'A complaint, its acknowledgement, handling, actions and outcome', (paper) => [
+      h1('Complaint'),
+      facts(paper, [['Reference', '[Complaint reference]'], ['Date received', '[Date received]'], ['Received by', '[In person, phone, letter or online]'], ['Preferred response', '[Preferred response method]']]),
+      h1('Summary'),
+      p('[The concern, in the complainant’s own words where you can. Only what is relevant, and factual.]'),
+      h1('Acknowledgement and handling'),
+      facts(paper, [['Acknowledged on', '[Date acknowledged]'], ['Case owner', '[Case owner]'], ['Respond by', '[Target response date]'], ['Escalation route', '[Escalation route]']]),
+      h1('Actions and outcome'),
+      table(paper, [3, 2, 1.5, 1.5], [['Action or response', 'Owner', 'Date', 'Status'], ['[First action]', '[Action owner]', '[Action date]', '[Open or closed]'], ['', '', '', ''], ['', '', '', '']]),
+      facts(paper, [['Outcome told on', '[Date outcome communicated]'], ['How to reopen or appeal given', '[Yes, no or not applicable]']]),
+    ]),
+    controlled('quality-audit', 'Healthcare quality audit', 'Audit scope and criteria, evidence, findings and recommendations', (paper) => [
+      h1('Audit plan'),
+      facts(paper, [['Scope', '[Audit scope]'], ['Period', '[Audit period]'], ['Audit lead', '[Audit lead]'], ['Criteria', '[Audit criteria and their source]']]),
+      h1('Findings'),
+      table(paper, [2.5, 2.5, 1.7, 3], [['Criterion', 'Evidence reviewed', 'Result', 'Finding or gap'], ['[First criterion]', '[Evidence reference]', '[Met, partly met or not met]', '[Finding]'], ['', '', '', ''], ['', '', '', '']]),
+      h1('Summary and limitations'),
+      p('[What the evidence shows, and its limits. Cite access-controlled evidence references rather than patients’ details.]'),
+      h1('Recommendations'),
+      p('[Each recommendation, in proportion to the finding, with an owner and a date.]'),
+    ]),
+    controlled('capa', 'Corrective action record (CAPA)', 'A problem, its causes, corrective and preventive actions, and whether they worked', (paper) => [
+      h1('Issue and source'),
+      facts(paper, [['CAPA reference', '[CAPA reference]'], ['Source', '[Audit, incident, complaint or other]'], ['Date raised', '[Date raised]'], ['Process owner', '[Process owner]']]),
+      h1('Problem and containment'),
+      p('[The problem, with its evidence, and what was done straight away to contain it.]'),
+      h1('Cause analysis'),
+      p('[The method used, the evidence, and the contributing factors it confirmed.]'),
+      h1('Action plan'),
+      table(paper, [1.7, 3, 1.8, 1.5, 2], [['Type', 'Action', 'Owner', 'Due', 'Evidence'],
+        ['Containment', '[Containment action]', '[Containment owner]', '[Containment due date]', ''],
+        ['Corrective', '[Corrective action]', '[Corrective action owner]', '[Corrective due date]', ''],
+        ['Preventive', '[Preventive action]', '[Preventive action owner]', '[Preventive due date]', '']]),
+      h1('Effectiveness review'),
+      facts(paper, [['Review date', '[Effectiveness review date]'], ['Measure', '[Measure and what counts as effective]'], ['Result', '[Effective, or more action needed]'], ['Reviewed by', '[Effectiveness reviewed by]']]),
+    ]),
+  ];
+}
+
+// Added here, after what they are made of (constants above), as the start page's teachers' and
+// healthcare administration groups.
+STARTERS.push(...forTeachers(), ...untukGuru(), ...forHealthcare());
 
 // Countries that use Letter paper rather than A4 (the United States, Canada, Mexico, the
 // Philippines and others in the Americas), by the region of the browser's language.
