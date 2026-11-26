@@ -1,0 +1,267 @@
+/* The editor's global styles: the document as rendered on the page, and what the editor puts in it. */
+/* Unscoped: applies to the generated document HTML. */
+/* Printing (Ctrl+P) prints the document, not the editor around it: on the document's paper size, in
+   its margins (the @page rule is set from the document when it opens), with its page breaks. Headers
+   and footers go on every page where they can (set just before printing: editor/printBands.js);
+   otherwise they are printed once, at the start and the end, as the page shows them. */
+@media print {
+  html, body { background: #fff !important; }
+  .editor-shell { display: block !important; height: auto !important; }
+  .editor-shell > :not(.workspace), .workspace > :not(.canvas), .docx-sheet > :not(.docx-page) { display: none !important; }
+  .workspace { display: block !important; }
+  .canvas { overflow: visible !important; padding: 0 !important; background: none !important; }
+  .docx-sheet { width: auto !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; box-shadow: none !important; zoom: 1 !important; }
+  .docx-page { padding: 0 !important; overflow: visible !important; }
+  .docx-page, .docx-sheet [contenteditable] { caret-color: transparent !important; }
+  .docx-sheet .docx-hf-band.header { padding-top: 0; min-height: 0; }
+  .docx-sheet .docx-hf-band.footer { position: static; padding: 12pt 0 0; min-height: 0; }
+  .docx-sheet .docx-hf-part { opacity: 1 !important; box-shadow: none !important; }
+  .docx-sheet .docx-hf-part::after { display: none !important; }
+  .docx-sheet .raw-inline.page-break { border: 0 !important; margin: 0 !important; break-after: page; }
+  .docx-sheet [data-page-break-before] { break-before: page; }
+  /* Hidden text (w:vanish) isn't printed, as in Word, unless Print hidden text is chosen. */
+  .docx-sheet [data-hidden] { display: none !important; }
+  .print-hidden-text .docx-sheet [data-hidden] { display: inline !important; opacity: 1 !important; text-decoration: none !important; }
+  .docx-sheet [data-section-end="nextPage"], .docx-sheet [data-section-end="oddPage"], .docx-sheet [data-section-end="evenPage"] { break-after: page; }
+  /* Comments: their numbers in the text, and the list after the document, only when asked for. */
+  :root:not(.print-comments-on) .docx-sheet .comment-ref::before { content: none !important; display: none !important; }
+  .print-comments-on .docx-sheet .comment-ref::before { background: none !important; color: #000 !important; border: 1px solid #555; }
+  .docx-sheet > .print-comments { display: block !important; break-before: page; color: #000; font-family: inherit; }
+}
+.docx-sheet > .print-comments { display: none; }
+/* Its own look, not the document's paragraph and heading styles. */
+.docx-sheet > .print-comments h2 { font-size: 14pt; font-weight: 700; margin: 0 0 10pt; }
+.docx-sheet > .print-comments ol { list-style: none; margin: 0; padding: 0; }
+.docx-sheet > .print-comments li { margin: 0 0 9pt; break-inside: avoid; }
+.docx-sheet > .print-comments p { margin: 0 0 2pt; padding: 0; text-indent: 0; line-height: 1.3; }
+.print-comments .n { display: inline-block; min-width: 1.4em; margin-right: 6pt; padding: 0 3pt; border: 1px solid #555; border-radius: 6pt; font-size: 8pt; text-align: center; vertical-align: 1pt; }
+.print-comments .on { color: #444; font-style: italic; }
+.print-comments .reply { margin: 3pt 0 0 2.2em; padding-left: 6pt; border-left: 2px solid #bbb; }
+.docx-sheet :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
+.docx-sheet :is(p, h1, h2, h3, h4, h5, h6) { position: relative; }
+.docx-sheet .cs-before { margin-top: 0 !important; }
+.docx-sheet .cs-after { margin-bottom: 0 !important; }
+.docx-sheet .list::before {
+  content: attr(data-marker); position: absolute; transform: translateX(calc(-100% - 0.5em));
+  text-indent: 0; white-space: nowrap;
+}
+/* A list level centred on its own line ("Pasal 1", "BAB I"): its number in the line. */
+/* Clicks go through it to the paragraph: Firefox puts no caret where generated text is clicked, and
+   an empty "Pasal 1" line is all number. */
+.docx-sheet .list[data-marker-inline]::before { position: static; transform: none; margin-right: .3em; pointer-events: none; }
+.docx-sheet a { color: #0563c1; }
+.docx-sheet img { max-width: 100%; vertical-align: bottom; }
+/* Hidden markers (comment ranges, bookmarks, field codes) are empty: shown inline, not display:none,
+   because the browser's editing drops unrendered nodes when it moves text, as in merging paragraphs. */
+.docx-sheet .raw-hidden { display: none; }
+.docx-sheet span.raw-hidden { display: inline; }
+/* Legacy form fields (docx/formFields.js): the box or chosen entry is drawn from the marker's
+   attributes, so the paragraph's text is unchanged; grey as Word shades form fields. */
+.docx-sheet span.raw-hidden.ff-check::before { content: '\2610'; font-family: 'Segoe UI Symbol', 'MS Gothic', 'DejaVu Sans', sans-serif; }
+.docx-sheet span.raw-hidden.ff-check[data-checked="1"]::before { content: '\2612'; }
+.docx-sheet span.raw-hidden.ff-drop::before { content: attr(data-ff-text); }
+.docx-sheet span.raw-hidden.ff-drop::after { content: ' \25BE'; font-size: 0.8em; opacity: 0.6; }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop) { background: #e6e6e6; cursor: pointer; border-radius: 2px; }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop):hover { background: var(--sheet-tint); }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop):focus-visible { outline: 2px solid var(--sheet-accent); outline-offset: 1px; }
+.docx-sheet span.raw-hidden:is(.ff-check, .ff-drop)[data-ff-off] { cursor: default; opacity: 0.6; }
+.docx-sheet .ff-text { background: #e6e6e6; }
+.docx-sheet .ff-text[data-ff-host] { outline: none; }
+.docx-sheet .ff-text[data-ff-host]:focus { box-shadow: 0 0 0 2px var(--sheet-accent); }
+.docx-sheet .ff-shadow { display: none; }
+.docx-sheet .raw-block, .docx-sheet .raw-inline:not(:has(img)) {
+  background: #f1f3f6; color: #555; border-radius: 3px; cursor: default; user-select: none;
+}
+.docx-sheet .raw-block { padding: 4px 8px; margin: 4px 0; border-left: 3px solid #c3c9d4; white-space: pre-wrap; }
+.docx-sheet .raw-inline.deleted { text-decoration: line-through; color: #b3261e; background: transparent; }
+.docx-sheet .raw-inline.inserted { text-decoration: underline; color: #1e6b34; background: transparent; }
+/* Formatting marks (editor/marks.js): a layer over the page that never takes clicks. */
+.docx-sheet .marks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+/* Line numbers in the margin, as Word prints them: drawn over the sheet, never part of the page. */
+.docx-sheet .line-numbers-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+/* The watermark: behind the text (the page comes after it), in the middle of each page. */
+/* A section break, named with its section's paper, where the document has several. */
+.docx-sheet .docx-page [data-section-note]::after {
+  content: attr(data-section-note); display: block; margin-top: 4px; padding-top: 2px; border-top: 1px dashed var(--sheet-line);
+  font: 600 10px/14px system-ui, sans-serif; color: var(--sheet-accent); text-indent: 0; text-align: left; letter-spacing: 0;
+  user-select: none; pointer-events: none;
+}
+@media print { .docx-sheet .docx-page [data-section-note]::after { content: none; } }
+/* Hidden text (w:vanish): shown faintly (see styles.rPrCss), with Word's dotted line under it. */
+.docx-sheet [data-hidden] { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: currentColor; }
+.docx-sheet .watermark-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
+.docx-sheet .watermark-mark {
+  position: absolute; left: 50%; transform: translate(-50%, -50%); font-weight: 700; line-height: 1; opacity: .5;
+  white-space: nowrap; user-select: none;
+}
+.docx-sheet .watermark-mark.diagonal { transform: translate(-50%, -50%) rotate(-45deg); }
+.docx-sheet .page-breaks-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+/* Where a page would begin, about (editor/pages.js): a dashed line across the sheet, numbered in the margin. */
+.docx-sheet .page-estimate { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--sheet-line); }
+.docx-sheet .page-estimate span {
+  position: absolute; right: 6px; top: -8px; padding: 0 4px; border-radius: 3px; background: #fff;
+  font: 600 10px/16px system-ui, sans-serif; color: var(--sheet-accent); white-space: nowrap; user-select: none;
+}
+.docx-sheet .line-number { position: absolute; font-size: 9pt; color: #6b6b6b; text-align: right; white-space: nowrap; user-select: none; }
+.docx-sheet .fmark { position: absolute; color: #4f74b3; font-family: system-ui, sans-serif; white-space: pre; user-select: none; }
+.docx-sheet .fmark.space { transform: translateX(-50%); }
+/* Highlight, in Word's colours. */
+.docx-sheet mark { background: #ffff00; color: inherit; }
+.docx-sheet mark[data-color="green"] { background: #00ff00; } .docx-sheet mark[data-color="cyan"] { background: #00ffff; }
+.docx-sheet mark[data-color="magenta"] { background: #ff00ff; } .docx-sheet mark[data-color="blue"] { background: #0000ff; }
+.docx-sheet mark[data-color="red"] { background: #ff0000; } .docx-sheet mark[data-color="darkBlue"] { background: #000080; }
+.docx-sheet mark[data-color="darkCyan"] { background: #008080; } .docx-sheet mark[data-color="darkGreen"] { background: #008000; }
+.docx-sheet mark[data-color="darkMagenta"] { background: #800080; } .docx-sheet mark[data-color="darkRed"] { background: #800000; }
+.docx-sheet mark[data-color="darkYellow"] { background: #808000; } .docx-sheet mark[data-color="darkGray"] { background: #808080; }
+.docx-sheet mark[data-color="lightGray"] { background: #c0c0c0; } .docx-sheet mark[data-color="black"] { background: #000000; }
+.docx-sheet mark[data-color="white"] { background: #ffffff; }
+/* This session's tracked changes. */
+/* The insertion's underline is drawn, not a text-decoration: the browser reads a text-decoration as
+   the text being underlined, so the Underline button showed as on and Ctrl+U did nothing in it. */
+.docx-sheet .tc-ins {
+  color: #6f2dbd;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 1px;
+}
+.docx-sheet .tc-del { color: #6f2dbd; text-decoration: line-through; cursor: default; }
+.docx-sheet [data-tc-mark]::after { content: '¶'; color: #6f2dbd; margin-left: 1px; }
+.docx-sheet [data-tc-mark="del"]::after { text-decoration: line-through; }
+/* Tracked formatting changes (of a run: dashed underline; of a paragraph: a bar in the margin) and
+   tracked table rows, as Word marks them. */
+.docx-sheet [data-fmt="run"] { border-bottom: 1px dashed #8e44ad; }
+.docx-sheet [data-fmt-para] { box-shadow: -10px 0 0 -8px #8e44ad; }
+.docx-sheet table.docx-table[data-fmt-table] { outline: 2px dashed #8e5cc7; outline-offset: 2px; }
+.docx-sheet tr[data-fmt-row] > td:first-child { box-shadow: inset 3px 0 0 #8e5cc7; }
+.docx-sheet table.docx-table td[data-rev-merge] { box-shadow: inset 0 0 0 2px rgb(111 45 189 / 45%); }
+.docx-sheet table.docx-table td[data-fmt-cell] { box-shadow: inset 0 0 0 1px #8e5cc7; }
+.docx-sheet tr[data-rev-row="ins"] > td { background-color: #e8f5ea; }
+.docx-sheet tr[data-rev-row="del"] > td { background-color: #fbe9e7; text-decoration: line-through; }
+/* Someone else's tracked paragraph break, in the colours of their insertions and deletions. */
+.docx-sheet [data-rev-mark]::after { content: '¶'; margin-left: 1px; }
+.docx-sheet [data-rev-mark="ins"]::after { color: #1e6b34; }
+.docx-sheet [data-rev-mark="del"]::after { color: #b3261e; text-decoration: line-through; }
+/* Simple and no markup (Review > Show markup), as Word's Display for Review: the text as it will be
+   once the changes are accepted. Deletions are hidden, insertions look like the text around them and
+   formatting changes aren't marked; nothing in the page or the file changes, only how it shows.
+   The original is the other way round: insertions hidden, deletions as ordinary text. */
+.docx-sheet:is([data-markup="simple"], [data-markup="none"]) :is(.tc-del, .raw-inline.deleted, tr[data-rev-row="del"]),
+.docx-sheet[data-markup="original"] :is(.tc-ins, .raw-inline.inserted, tr[data-rev-row="ins"]) { display: none; }
+.docx-sheet[data-markup] .tc-ins, .docx-sheet[data-markup] .tc-del { color: inherit; background-image: none; text-decoration: none; }
+.docx-sheet[data-markup] .raw-inline.inserted, .docx-sheet[data-markup] .raw-inline.deleted { color: inherit; text-decoration: none; }
+.docx-sheet[data-markup] tr[data-rev-row="del"] > td { background-color: transparent; text-decoration: none; }
+.docx-sheet[data-markup] [data-tc-mark]::after, .docx-sheet[data-markup] [data-rev-mark]::after { content: none; }
+.docx-sheet[data-markup] [data-fmt="run"] { border-bottom: 0; }
+.docx-sheet[data-markup] [data-fmt-para], .docx-sheet[data-markup] tr[data-fmt-row] > td:first-child,
+.docx-sheet[data-markup] table.docx-table td[data-rev-merge], .docx-sheet[data-markup] table.docx-table td[data-fmt-cell] { box-shadow: none; }
+.docx-sheet[data-markup] table.docx-table[data-fmt-table] { outline: 0; }
+.docx-sheet[data-markup] tr[data-rev-row="ins"] > td { background-color: transparent; }
+/* Simple markup: a red line in the margin beside each paragraph with a change, as Word draws it (a
+   2px line 10px out, the white shadow over the red one's inner part). */
+.docx-sheet[data-markup="simple"] .docx-page :is(p, h1, h2, h3, h4, h5, h6):is(:has(.tc-ins, .tc-del, .raw-inline.inserted, .raw-inline.deleted, [data-fmt]), [data-tc-mark], [data-rev-mark], [data-fmt-para]) {
+  box-shadow: -10px 0 0 0 #fff, -12px 0 0 0 #b3261e;
+}
+/* No markup hides the comments' highlights too, as Word does; the panel still lists them. */
+.docx-sheet:is([data-markup="none"], [data-markup="original"]) ::highlight(comment), .docx-sheet:is([data-markup="none"], [data-markup="original"]) ::highlight(comment-active) { background-color: transparent; }
+.docx-sheet .raw-inline.picture { cursor: pointer; }
+.docx-sheet .raw-inline.picture img { display: block; }
+.docx-sheet .raw-inline.picture::selection, .docx-sheet .raw-inline.picture img::selection { background: transparent; } /* the frame shows it is selected */
+.docx-sheet .raw-inline.picture[data-wrap="inline"] { display: inline-block; vertical-align: bottom; }
+.docx-sheet .raw-inline.page-break { display: block; height: 0; border-top: 1px dashed #aab; margin: 8px 0; background: none; }
+.docx-sheet .raw-inline.note-ref { vertical-align: super; font-size: smaller; background: transparent; color: var(--sheet-accent); }
+.docx-sheet .raw-inline.note-ref::before { content: attr(data-n); }
+.docx-sheet .raw-inline.note-ref[data-note-ref], .docx-sheet .raw-inline.note-mark { cursor: pointer; }
+.docx-sheet .raw-inline.note-ref[data-note-ref]:hover, .docx-sheet .raw-inline.note-mark:hover { text-decoration: underline; }
+/* Footnotes and endnotes, below the text (as in Word's draft view): each note is edited in place. */
+/* Headers and footers: in the page, in its margins, dimmed until you work in them, as in Word. */
+.docx-sheet .docx-hf-band { cursor: default; overflow-x: clip; } /* cut off at the page's edges, as the page is */
+.docx-sheet .docx-hf-band.header { padding-top: var(--hf-header); min-height: var(--hf-top); margin-bottom: 6px; }
+.docx-sheet .docx-hf-band.footer {
+  position: absolute; left: var(--hf-left); right: var(--hf-right); bottom: 0;
+  padding-bottom: var(--hf-footer); padding-top: 6px; min-height: var(--hf-bottom);
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+.docx-sheet .docx-hf-part { outline: none; border-radius: 2px; cursor: text; opacity: .6; position: relative; }
+.docx-sheet .docx-hf-part:hover { opacity: .85; box-shadow: 0 0 0 1px var(--sheet-line); }
+.docx-sheet .docx-hf-part:focus-within { opacity: 1; box-shadow: 0 0 0 1px var(--sheet-accent); }
+.docx-sheet .docx-hf-part:is(:hover, :focus-within)::after {
+  content: attr(data-label); position: absolute; left: 0; font: 600 10px/1.6 system-ui, sans-serif;
+  padding: 0 6px; border-radius: 3px; background: var(--sheet-tint); color: var(--sheet-accent); pointer-events: none; white-space: nowrap;
+}
+.docx-sheet .header .docx-hf-part::after { top: 100%; margin-top: 3px; }
+.docx-sheet .footer .docx-hf-part::after { bottom: 100%; margin-bottom: 3px; }
+/* Text boxes and shapes with text: a frame holding text you edit. */
+.docx-sheet .textbox {
+  display: inline-flex; flex-direction: column; box-sizing: border-box; vertical-align: top;
+  text-indent: 0; white-space: pre-wrap; cursor: default; overflow-wrap: break-word; max-width: 100%;
+}
+.docx-sheet .textbox[data-wrap="topAndBottom"] { display: flex; }
+.docx-sheet .textbox-content { outline: none; cursor: text; min-height: 1em; }
+.docx-sheet .textbox:hover { box-shadow: 0 0 0 1px var(--sheet-line); }
+.docx-sheet .textbox:focus-within { box-shadow: 0 0 0 2px var(--sheet-accent); }
+.docx-sheet .textbox-content :is(p, h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+/* A drop cap: its paragraph floats, and the next lines flow around it. */
+.docx-sheet .drop-cap { float: left; margin-top: 0 !important; margin-bottom: 0 !important; }
+.docx-sheet .drop-cap + * { margin-top: 0; }
+.docx-sheet .docx-columns { margin: 0; }
+.docx-sheet .docx-columns > :first-child { margin-top: 0; }
+.docx-sheet .docx-notes { margin-top: 24px; padding-top: 6px; cursor: default; }
+.docx-sheet .docx-notes::before {
+  content: attr(data-label); display: block; width: 33%; border-top: 1px solid #9aa0aa; padding-top: 4px; margin-bottom: 2px;
+  font: 600 11px/1.4 system-ui, sans-serif; color: #6b7280; letter-spacing: .02em; text-transform: uppercase; user-select: none;
+}
+.docx-sheet .docx-note { outline: none; border-radius: 2px; cursor: text; }
+.docx-sheet .docx-note:focus-within { background: var(--sheet-tint); box-shadow: 0 0 0 2px var(--sheet-tint); }
+.docx-sheet .raw-inline.symbol { background: transparent; color: inherit; }
+/* Equations, drawn as MathML (docx/omml.js): read-only, so they look like the text around them. */
+.docx-sheet .raw-inline.equation { background: transparent; color: inherit; border-radius: 3px; }
+.docx-sheet .raw-inline.equation:hover { background: var(--sheet-tint); }
+.docx-sheet .raw-inline.equation.display { display: block; margin: 4px 0; }
+.docx-sheet .equation math { font-family: 'Cambria Math', 'STIX Two Math', 'Latin Modern Math', math; }
+.docx-sheet .raw-inline.comment-ref { display: inline; cursor: pointer; user-select: none; background: transparent; padding: 0; }
+.docx-sheet .comment-ref::before {
+  content: attr(data-n); display: inline-block; min-width: 1.3em; margin: 0 1px; padding: 0 3px; border-radius: 7px;
+  font: 600 10px/1.4 system-ui, sans-serif; text-align: center; vertical-align: super; background: #d0705c; color: #fff;
+}
+.docx-sheet .field { border-bottom: 1px dotted #9aa6b8; }
+/* A page number shows # (each page has its own) and the page count about how many pages there
+   are: drawn over the number the file holds, which stays in the page as it is. */
+.docx-sheet .field.page-field[data-show]:not([data-show=""]) { position: relative; -webkit-text-fill-color: transparent; }
+/* Inline (an inline-block would take Home and End off the line): room made for a longer count. */
+.docx-sheet .field.page-field[data-digits="2"] { padding-right: .6em; }
+.docx-sheet .field.page-field[data-digits="3"] { padding-right: 1.2em; }
+.docx-sheet .field.page-field[data-show]:not([data-show=""])::after { content: attr(data-show); position: absolute; left: 0; top: 0; -webkit-text-fill-color: currentColor; white-space: nowrap; }
+/* A page number without a result (see markBarePageField): # as the others show, printed numbered
+   where headers and footers print on every page, and blank where they print once. */
+.docx-sheet span.raw-hidden.page-field-bare::after { content: "#"; }
+@media print {
+  .docx-sheet span.raw-hidden.page-field-bare::after { content: none; }
+  /* Where the caret is (a table cell's, a content control's outline) isn't part of the page. */
+  .docx-sheet table.docx-table td:focus-within, .docx-sheet .sdt:focus-within { box-shadow: none !important; }
+  .docx-sheet .sdt:not(.sdt-locked):focus-within { background: none !important; }
+  .docx-sheet .field.page-field[data-show] { -webkit-text-fill-color: inherit; padding-right: 0; }
+  .docx-sheet .field.page-field[data-show]::after { content: none; }
+}
+::highlight(comment) { background-color: #fbe3dc; }
+/* Read aloud: the paragraph being read, and its word. */
+::highlight(read-aloud) { background-color: var(--sheet-tint); }
+::highlight(read-aloud-word) { background-color: var(--sheet-line); color: #000; }
+::highlight(field-near) { background-color: var(--sheet-tint); }
+::highlight(comment-active) { background-color: #f6b9a8; }
+.docx-sheet .sdt { border-radius: 2px; transition: background-color .1s, box-shadow .1s; }
+.docx-sheet div.sdt { box-shadow: 0 0 0 1px transparent; }
+.docx-sheet .sdt:not(.sdt-locked):hover, .docx-sheet .sdt:not(.sdt-locked):focus-within { background: var(--sheet-tint); box-shadow: 0 0 0 1px var(--sheet-line); }
+.docx-sheet .sdt-content { outline: none; }
+.docx-sheet span.sdt-content:empty { padding: 0 1ch; }
+.docx-sheet .showing-placeholder { color: #767676; }
+.docx-sheet :is(.sdt-checkbox, .sdt-dropdown, .sdt-date) { cursor: pointer; }
+.docx-sheet :is(span.sdt-dropdown, span.sdt-combo, span.sdt-date)::after { content: '▾'; font-size: .8em; color: #5b6b85; margin-left: 2px; cursor: pointer; }
+.docx-sheet .sdt-locked { cursor: default; user-select: none; background: #f1f3f6; }
+.docx-sheet table.docx-table { border-collapse: collapse; width: 100%; margin: 4px 0; }
+.docx-sheet table.docx-table td { border: 1px solid #bfbfbf; padding: 2px 6px; vertical-align: top; outline: none; }
+.docx-sheet table.docx-table td:focus-within { box-shadow: inset 0 0 0 2px rgb(14 100 103 / 33%); }
+/* A cell merged with the one above: no line between them. "hidden" wins over every other border in
+   the collapsing model, the bottom border of the cell above (drawn there, as its own) included. */
+.docx-sheet table.docx-table td.vmerge { border-top-style: hidden !important; }
+.docx-sheet table.docx-table td[data-rev-cell="ins"] { background-color: rgb(30 107 52 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(30 107 52 / 45%); }
+.docx-sheet table.docx-table td[data-rev-cell="del"] { background-color: rgb(179 38 30 / 8%) !important; box-shadow: inset 0 0 0 1px rgb(179 38 30 / 45%); }
+.docx-sheet table.docx-table td.vmerge > * { visibility: hidden; }
