@@ -1277,6 +1277,14 @@ git clone --depth 1 https://github.com/open-language/id-wordnet   # Wordnet Baha
 node scripts/thesaurus.mjs package/dict id-wordnet/database/1.2/wn-msa-all.tab
 ```
 
+### Pull requests
+
+Each pull request fills in the template (`.github/pull_request_template.md`): the entry in
+[VISION.md](VISION.md)'s Direction it serves (or the change to VISION.md it makes, in the same pull
+request), and a checklist of the promises (private, faithful, instant, honest), the non-goals, the
+Word checks for anything it writes, where a new tool lives, translation into Indonesian, and the
+README, About page and Direction. A feature without a VISION entry isn't ready for review.
+
 ## Testing
 
 `tests/` drives the production build in real browsers (Chromium and Firefox) with
