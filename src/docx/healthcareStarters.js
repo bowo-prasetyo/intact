@@ -25,7 +25,7 @@ const document = (title, description, sections) => ({
     styles: ['tableGrid'],
     body: [
       p(title, 'Title'),
-      p('HEALTHCARE ADMINISTRATION • TEMPLATE', 'Subtitle'),
+      p('HEALTHCARE ADMINISTRATION • TEMPLATE'),
       field('Organisation', '[Organisation / facility name]'),
       field('Department', '[Department / service]'),
       field('Document ID', '[Unique document ID]'),
