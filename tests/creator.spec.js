@@ -4,7 +4,7 @@ import { buildDocx, openInEditor } from './helpers.js';
 
 test('editorial checks identify repeated words, long sentences and paragraphs', () => {
   const longSentence = `This sentence is deliberately long and contains enough individual words to cross the thirty word threshold so that the editor can suggest splitting it into smaller and clearer sentences for readers.`;
-  const result = editorialChecks(`A useful useful introduction. ${longSentence}\\n\\n${'paragraph '.repeat(155)}`);
+  const result = editorialChecks(`A useful useful introduction. ${longSentence}\n\n${'paragraph '.repeat(155)}`);
   expect(result.issues.map((issue) => issue.type)).toContain('Repeated word');
   expect(result.issues.map((issue) => issue.type)).toContain('Long sentence');
   expect(result.issues.map((issue) => issue.type)).toContain('Long paragraph');
@@ -16,7 +16,7 @@ test('SEO checks report title, description, keyword, structure and link signals'
     title: 'A practical guide to sustainable urban gardening',
     description: 'Learn how to plan a small urban garden, choose suitable plants, prepare healthy soil and maintain a productive growing space throughout the year.',
     keyword: 'urban gardening',
-    text: '# Urban gardening\\n\\nUrban gardening can make a small space productive.\\n\\n## Getting started\\n\\nRead https://example.com for more.',
+    text: '# Urban gardening\n\nUrban gardening can make a small space productive.\n\n## Getting started\n\nRead https://example.com for more.',
   });
   expect(result.checks.find((x) => x.label === 'Keyword in title').ok).toBe(true);
   expect(result.checks.find((x) => x.label === 'Keyword near the beginning').ok).toBe(true);
