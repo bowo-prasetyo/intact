@@ -4,6 +4,8 @@
 import { XML_HEADER } from './xml.js';
 import { BUILTIN_STYLES } from './styles.js';
 
+// Word 2010's namespace, for a starter's check boxes (w14:checkbox), ignorable by older readers.
+const W14_NS = ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" mc:Ignorable="w14"';
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 
 // Word's Table Grid (as styles.ensureTableGrid adds it) and a bulleted list's numbering (Word's
@@ -132,7 +134,7 @@ ${numbered ? '<Override PartName="/word/numbering.xml" ContentType="application/
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
 ${numbered ? '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>\n' : ''}${footer ? '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>\n' : ''}${header ? '<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>\n' : ''}</Relationships>`,
     'word/settings.xml': XML_HEADER + `<w:settings ${W_NS}><w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`,
-    'word/document.xml': XML_HEADER + `<w:document ${W_NS}><w:body>${body}
+    'word/document.xml': XML_HEADER + `<w:document ${W_NS}${body.includes('<w14:') ? W14_NS : ''}><w:body>${body}
 <w:sectPr>${sectionXml({ paper, margins, ...section, refs: `${header ? HEADER_REF : ''}${footer ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}`, titlePg })}</w:sectPr>
 </w:body></w:document>`,
     'word/styles.xml': XML_HEADER + `<w:styles ${W_NS}>

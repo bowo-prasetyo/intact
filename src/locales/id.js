@@ -37,6 +37,8 @@ export default {
   'Other templates (in English)': 'Templat lain (dalam bahasa Inggris)',
   'For teachers': 'Untuk guru',
   'For teachers (Kurikulum Merdeka)': 'Untuk guru (Kurikulum Merdeka)',
+  'Healthcare administration': 'Administrasi layanan kesehatan (dalam bahasa Inggris)',
+  'Administrative templates, not clinical forms or a compliance certification: follow your organisation’s policies and privacy rules. Before sharing one, File > Inspect document checks for comments, tracked changes, hidden text and personal information.': 'Templat administratif, bukan formulir klinis atau sertifikasi kepatuhan: ikuti kebijakan dan aturan privasi organisasi Anda. Sebelum membagikannya, File > Periksa dokumen memeriksa komentar, perubahan terlacak, teks tersembunyi, dan informasi pribadi.',
   'A4 paper. The test numbers its questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.': 'Kertas A4. Nomor soal dan pilihan jawabannya dibuat seperti di Word; surat untuk orang tua siap untuk gabung surat (Mail merge) dari daftar kelas.',
   'Tests number their questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.': 'Nomor soal dan pilihan jawabannya dibuat seperti di Word; surat untuk orang tua siap untuk gabung surat (Mail merge) dari daftar kelas.',
   '{paper} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.': 'Kertas {paper}, seperti yang digunakan di tempat Anda. Isi [placeholder] sekali saja, untuk setiap tempat ia muncul.',

@@ -11,6 +11,7 @@
       <h2>What you can edit</h2>
       <ul>
         <li>Start from a template on the start page: a letter, a memo, meeting minutes, a quote, an invoice, a CV, a report, a board paper (the decision sought first, then options, costs, risks and next steps) or a novel's manuscript (standard manuscript format), with placeholders that Fill in fills in once for everywhere they appear</li>
+        <li>Healthcare administration templates, in a group of their own: a policy, an SOP, a patient administration form, a discharge administration checklist, an incident report, a complaint record, a quality audit and a CAPA, each a controlled document (organisation, ID and version in the header, numbered pages, check boxes, a sign-off table). Administrative, not clinical forms or a compliance certification</li>
         <li>Mail merge from a list (a CSV from Excel or Google Sheets): a letter for each row, in one document or a .zip of documents, from Download's menu or Fill in</li>
         <li>Text of paragraphs, headings and table cells; Tab in the last cell adds a row</li>
         <li>Footnotes and endnotes, below the text: click a note's number in the text to go to it; insert a footnote (Ctrl+Alt+F) or an endnote (Ctrl+Alt+D)</li>

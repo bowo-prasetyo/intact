@@ -125,6 +125,22 @@ a version it can't read, and asks for the password of one encrypted with a passw
   inti, lampiran), a rubrik penilaian and a surat untuk orang tua for Mail merge, on A4 in Times New
   Roman 12 pt with 2 cm margins (the letter as an official letter, in Arial). Answer lines are a
   table whose cells have a line under them, so Word and Intact draw them alike
+- Templates for healthcare administration, as a group of their own, last on the start page (in
+  English): a healthcare policy, a standard operating procedure, a patient administration form, a
+  discharge administration checklist, an incident report, a patient complaint record, a quality
+  audit and a corrective action record (CAPA). Each is a controlled document as quality teams keep
+  them: the organisation, document ID and version in the header on every page, numbered pages, a
+  document-control table (owner, status, effective and next review dates), check boxes that are
+  Word's own (content controls, ticked with a click), tables across the text width and a sign-off
+  table (prepared, reviewed and approved by, each with its date). Every placeholder names one thing,
+  so Fill in never puts one answer in two places that need two ([Effective date] and [Next review
+  date], [Prepared by] and [Reviewed by]); only [Organisation], [Document ID] and [Version] repeat,
+  in the body and the header. They are administrative, not clinical: the patient administration
+  form and the discharge checklist say that diagnoses and clinical readiness belong in the clinical
+  record. Nothing in them names this editor; the start page's note says to check a document with
+  File > Inspect document before sharing it. Not clinical forms, an electronic signature or approval
+  workflow, or a compliance certification (see
+  [docs/product/HEALTHCARE_ADMINISTRATION_ESSENTIALS.md](docs/product/HEALTHCARE_ADMINISTRATION_ESSENTIALS.md))
 - Mail merge from a list, as Word's Mailings tab does it (Download ▾ > Mail merge…, or From a list…
   in Fill in): choose a CSV saved from Excel or Google Sheets (its first row names the columns;
   commas, semicolons or tabs between fields, quoted fields with commas and line breaks, UTF-8 or
