@@ -3,6 +3,7 @@
 import { shallowRef } from 'vue';
 import { DocxDocument } from './docx/DocxDocument.js';
 import { blankDocxFiles } from './docx/blank.js';
+import { healthcareStarterFiles } from './docx/healthcareStarters.js';
 import { lang, t } from './i18n.js';
 
 export const currentDoc = shallowRef(null);
@@ -28,8 +29,16 @@ export async function newDocument() {
   setDocument(await DocxDocument.createBlank(`${t('Untitled')}.docx`, blankDocxFiles({ language })));
 }
 
-/** A new document from a starter (see docx/starters.js): a letter, a memo, minutes, a quote… */
+/** A new document from a starter: the healthcare administration set is built locally too. */
 export async function newFromStarter(id) {
+  const healthcareFiles = healthcareStarterFiles(id);
+  if (healthcareFiles) {
+    const title = id.replace(/^healthcare-/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const doc = await DocxDocument.createBlank(`${title}.docx`, healthcareFiles);
+    doc.starter = id; // opens Fill in for the template's placeholders, as other starters do
+    setDocument(doc);
+    return;
+  }
   setDocument(await DocxDocument.createStarter(id));
 }
 

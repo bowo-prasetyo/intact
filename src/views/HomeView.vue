@@ -103,6 +103,7 @@ import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '../components/AppHeader.vue';
 import { openFile, newDocument, newFromStarter, openDraft } from '../store.js';
 import { STARTERS, localPaper } from '../docx/starters.js';
+import { HEALTHCARE_STARTERS } from '../docx/healthcareStarters.js';
 import { listDrafts, deleteDraft, MAX_AGE } from '../drafts.js';
 import { receiveFile, draftsOpenElsewhere } from '../tabs.js';
 import { canOpenWithHandle, pickFileToOpen, handleOfDropped } from '../editor/fileHandles.js';
@@ -287,13 +288,15 @@ const paper = localPaper();
 // The starters, in groups: in Indonesian, the official documents first, then those for teachers in
 // Indonesian, then the English ones; else the English ones, then the English ones for teachers.
 const starterGroups = computed(() => {
+  const healthcare = { id: 'healthcare', title: 'Healthcare administration', starters: HEALTHCARE_STARTERS, note: t('Administrative templates only. Follow your organisation’s approved policies, privacy rules and clinical governance; these are not clinical forms or compliance certifications.') };
   const english = { id: 'en', title: lang.value === 'id' ? 'Other templates (in English)' : 'Or start from a template', starters: STARTERS.filter((s) => !s.lang && !s.group), note: t('{paper} paper, as used where you are. Fill in the [placeholders] once, for everywhere they appear.', { paper }) };
   if (lang.value !== 'id') {
-    return [english, { id: 'teach', title: 'For teachers', starters: STARTERS.filter((s) => !s.lang && s.group === 'teach'), note: t('Tests number their questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.') }];
+    return [healthcare, english, { id: 'teach', title: 'For teachers', starters: STARTERS.filter((s) => !s.lang && s.group === 'teach'), note: t('Tests number their questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.') }];
   }
   return [
     { id: 'id', title: 'Official documents (Tata Naskah Dinas)', starters: STARTERS.filter((s) => s.lang === 'id' && !s.group), note: t('A4 paper, as the rules for official documents ask; F4 and Folio are in Page setup. Fill in the [placeholders] once, for everywhere they appear.') },
     { id: 'guru', title: 'For teachers (Kurikulum Merdeka)', starters: STARTERS.filter((s) => s.lang === 'id' && s.group === 'teach'), note: t('A4 paper. The test numbers its questions and choices as Word does; the letter to parents is ready for Mail merge from a class list.') },
+    healthcare,
     english,
   ];
 });
@@ -301,6 +304,14 @@ const starterGroups = computed(() => {
 // Line drawings for the starters, on a page outline (24 × 24, stroked).
 const PAGE = 'M6.5 3h11A1.5 1.5 0 0 1 19 4.5v15a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z';
 const STARTER_ICONS = {
+  'healthcare-policy': [PAGE, 'M8 7h8M8 10h8M8 13h6M8 16h8'],
+  'healthcare-standard-operating-procedure': [PAGE, 'M8 7h8M8 10h8M8 13h8M8 16h5'],
+  'healthcare-patient-administration-form': [PAGE, 'M8 7h8M8 10h5M8 13h8M8 16h8'],
+  'healthcare-discharge-administration-checklist': [PAGE, 'M7.5 8l1.2 1.2L11 7M12.5 8h4M7.5 13l1.2 1.2L11 12M12.5 13h4M8 17h8'],
+  'healthcare-incident-report': [PAGE, 'M12 6v6M12 15v.1M8 18h8'],
+  'healthcare-patient-complaint-record': [PAGE, 'M8 7h8M8 10h8M8 13h6M8 16h8'],
+  'healthcare-quality-audit': ['M3.5 6h17v12h-17z', 'M3.5 10h17M8 6v12M14 6v12'],
+  'healthcare-corrective-action-record-capa': [PAGE, 'M8 7h8M8 10h5M8 13h8M8 16h5'],
   letter: ['M3.5 6.5h17v11h-17z', 'M3.5 6.5l8.5 6.5 8.5-6.5'],
   memo: [PAGE, 'M8 7.5h3M8 10h8M8 12.5h8M8 15h5'],
   minutes: [PAGE, 'M8 8h.01M8 12h.01M8 16h.01M10.5 8h5.5M10.5 12h5.5M10.5 16h5.5'],
