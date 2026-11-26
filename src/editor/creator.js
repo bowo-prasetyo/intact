@@ -27,6 +27,15 @@ export function editorialChecks(text = '') {
     const count = wordsIn(paragraph);
     if (count > 150) issues.push({ type: 'Long paragraph', detail: `This paragraph has ${count} words; consider adding a break.`, excerpt: paragraph.slice(0, 180) + (paragraph.length > 180 ? '…' : '') });
   });
+  const phraseCounts = new Map();
+  for (let i = 0; i <= lower.length - 3; i++) {
+    const phrase = lower.slice(i, i + 3).join(' ');
+    if (/^(the|and|for|with|from|that|this|you|your) /.test(phrase)) continue;
+    phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
+  }
+  [...phraseCounts].filter(([, count]) => count >= 2).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([phrase, count]) => {
+    issues.push({ type: 'Repeated phrase', detail: `“${phrase}” appears ${count} times. Check whether this repetition is intentional.`, excerpt: '' });
+  });
   const counts = new Map();
   lower.filter((w) => w.length > 4).forEach((w) => counts.set(w, (counts.get(w) || 0) + 1));
   [...counts].filter(([, count]) => count >= 6).sort((a, b) => b[1] - a[1]).slice(0, 5).forEach(([word, count]) => {
