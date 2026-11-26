@@ -3216,44 +3216,62 @@ function restoreRewrittenSpaces(e) {
   if (!records.length) return;
   const first = new Map(); // each text node changed: its text before this input's changes
   const added = [];
+  const removed = []; // the text of text nodes this input took out (WebKit replaces nodes when it splits)
+  const textsIn = (n) => {
+    if (n.nodeType === 3) return [n];
+    if (n.nodeType !== 1) return [];
+    const out = [];
+    const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+    for (let t = w.nextNode(); t; t = w.nextNode()) out.push(t);
+    return out;
+  };
   for (const r of records) {
     if (r.type === 'characterData' && !first.has(r.target)) first.set(r.target, r.oldValue ?? '');
     if (r.type === 'childList') {
-      for (const n of r.addedNodes) {
-        if (n.nodeType === 3) added.push(n);
-        else if (n.nodeType === 1) {
-          const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
-          for (let t = w.nextNode(); t; t = w.nextNode()) added.push(t);
-        }
-      }
+      for (const n of r.addedNodes) added.push(...textsIn(n));
+      for (const n of r.removedNodes) for (const t of textsIn(n)) removed.push(first.get(t) ?? t.data);
     }
   }
-  const same = (now, was) => now === was || (now === ' ' && was === ' ');
+  const same = (now, was) => now === was || (now === '\u00a0' && was === ' ');
   const fix = (node, i) => node.replaceData(i, 1, ' '); // same length: the caret stays where it is
   const typed = typeof e?.data === 'string' ? e.data : '';
-  const remainders = []; // what a split took from the end of a text node, to find in the new one
+  const sources = [...removed]; // texts a new text node may have been made from
   for (const [node, was] of first) {
+    sources.push(was);
     if (!node.isConnected) continue;
     const now = node.data;
     let p = 0;
     while (p < now.length && p < was.length && same(now[p], was[p])) p++;
     let q = 0;
     while (q < now.length - p && q < was.length - p && same(now[now.length - 1 - q], was[was.length - 1 - q])) q++;
-    for (let i = 0; i < p; i++) if (now[i] === ' ' && was[i] === ' ') fix(node, i);
+    for (let i = 0; i < p; i++) if (now[i] === '\u00a0' && was[i] === ' ') fix(node, i);
     for (let k = 0; k < q; k++) {
       const i = now.length - 1 - k;
-      if (now[i] === ' ' && was[was.length - 1 - k] === ' ') fix(node, i);
+      if (now[i] === '\u00a0' && was[was.length - 1 - k] === ' ') fix(node, i);
     }
     // What was typed between them: a space typed, written as U+00A0.
     const middle = now.slice(p, now.length - q);
-    if (typed && middle.length === typed.length) for (let k = 0; k < middle.length; k++) if (middle[k] === ' ' && typed[k] === ' ') fix(node, p + k);
-    if (p === now.length && was.length > now.length) remainders.push(was.slice(p));
+    if (typed && middle.length === typed.length) for (let k = 0; k < middle.length; k++) if (middle[k] === '\u00a0' && typed[k] === ' ') fix(node, p + k);
   }
-  // Enter: the text after the caret moved to the new paragraph, a leading space made U+00A0 there.
+  // A text node this input made (Enter: the text before or after the caret, in a node of its own):
+  // matched with the start or the end of the text it was made from, a space made U+00A0 goes back.
+  // One of only spaces (a no-break space typed on its own) is left as it is.
+  const matches = (d, c) => d.length <= c.length && [...d].every((ch, i) => same(ch, c[i]));
   for (const node of added) {
-    if (!node.isConnected || first.has(node)) continue;
-    const was = remainders.find((r) => r.length === node.data.length && [...node.data].every((c, i) => same(c, r[i])));
-    if (was) for (let i = 0; i < was.length; i++) if (node.data[i] === ' ' && was[i] === ' ') fix(node, i);
+    if (!node.isConnected || first.has(node) || !node.data.includes('\u00a0')) continue;
+    // A space typed into a node of its own: as typed (an ordinary space, so it is one).
+    if (typed && node.data.length === typed.length) {
+      for (let k = 0; k < typed.length; k++) if (node.data[k] === '\u00a0' && typed[k] === ' ') fix(node, k);
+      continue;
+    }
+    if (!/[^\s\u00a0]/.test(node.data)) continue;
+    const d = node.data;
+    for (const c of sources) {
+      const from = matches(d, c) ? c.slice(0, d.length) : matches(d, c.slice(c.length - d.length)) ? c.slice(c.length - d.length) : null;
+      if (from == null) continue;
+      for (let i = 0; i < d.length; i++) if (node.data[i] === '\u00a0' && from[i] === ' ') fix(node, i);
+      break;
+    }
   }
 }
 

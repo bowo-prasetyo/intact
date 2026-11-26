@@ -32,7 +32,7 @@ test('Enter after a space, and a space typed at the end, are saved as ordinary s
   expect(xml).toContain('>Second </w:t>');
   expect(xml).toContain('>paragraph.</w:t>');
   expect(xml).toContain('>Last </w:t>');
-  expect(xml).not.toContain(' ');
+  expect(xml).not.toContain('\u00a0');
 });
 
 test.describe('with WebKit\'s rewriting', () => {
@@ -43,7 +43,7 @@ test.describe('with WebKit\'s rewriting', () => {
     const w = document.createTreeWalker(document.querySelector('.docx-page'), NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       if (!n.data.includes(f)) continue;
-      n.replaceData(n.data.indexOf(f) + i, 1, ' ');
+      n.replaceData(n.data.indexOf(f) + i, 1, '\u00a0');
       document.querySelector('.docx-page').dispatchEvent(new InputEvent('input', { inputType: type, data: d, bubbles: true }));
       return n.data;
     }
@@ -55,11 +55,35 @@ test.describe('with WebKit\'s rewriting', () => {
     expect(await rewrite(page, 'Second ', 6, 'insertParagraph')).toBe('Second paragraph.');
   });
 
+  /** Replaces the text node holding `find` with new nodes (`parts`), as WebKit splits text, then sends the input. */
+  const replaceNode = (page, find, parts, inputType, data = null) => page.evaluate(([f, ps, type, d]) => {
+    const w = document.createTreeWalker(document.querySelector('.docx-page'), NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      if (!n.data.includes(f)) continue;
+      const made = ps.map((x) => document.createTextNode(x));
+      n.replaceWith(...made);
+      document.querySelector('.docx-page').dispatchEvent(new InputEvent('input', { inputType: type, data: d, bubbles: true }));
+      return made.map((m) => m.data);
+    }
+    throw new Error(`no text "${f}"`);
+  }, [find, parts, inputType, data]);
+
+  test('a split into new text nodes: the space WebKit made U+00A0 in the new node goes back', async ({ page }) => {
+    await openInEditor(page, await buildDocx(para('Second paragraph.')));
+    expect(await replaceNode(page, 'Second paragraph.', ['Second\u00a0', 'paragraph.'], 'insertParagraph')).toEqual(['Second ', 'paragraph.']);
+  });
+
+  test('a space typed into a node of its own goes back to a space; a no-break space typed so stays', async ({ page }) => {
+    await openInEditor(page, await buildDocx(para('Last') + para('Page')));
+    expect(await replaceNode(page, 'Last', ['Last', '\u00a0'], 'insertText', ' ')).toEqual(['Last', ' ']);
+    expect(await replaceNode(page, 'Page', ['Page', '\u00a0'], 'insertText', '\u00a0')).toEqual(['Page', '\u00a0']);
+  });
+
   test('a no-break space already in the document stays one, also when the text around it is edited', async ({ page }) => {
-    await openInEditor(page, await buildDocx(para('Page 12 of the report')));
+    await openInEditor(page, await buildDocx(para('Page\u00a012 of the report')));
     await caretAt(page, 'report', 6);
     await page.keyboard.type('s');
     const { xml } = await download(page);
-    expect(xml).toContain('Page 12 of the reports');
+    expect(xml).toContain('Page\u00a012 of the reports');
   });
 });
