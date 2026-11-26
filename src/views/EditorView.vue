@@ -10669,7 +10669,11 @@ async function close() {
   .primary { padding: 6px 10px; }
 }
 /* On a phone the mark alone is the way to the start page, leaving room for the file and its buttons. */
-@media (max-width: 420px) { :deep(.brand span) { display: none; } }
+@media (max-width: 560px) {
+  :deep(.brand span) { display: none; }
+  /* Keep the existing compact mobile header layout; creator tools remain available on wider screens. */
+  .creator-tools { display: none; }
+}
 /* A narrow phone: the header's gaps and buttons tighten, so its buttons keep fitting with wider fonts. */
 @media (max-width: 360px) {
   :deep(.app-header) { gap: 8px; padding-left: 10px; padding-right: 10px; }
