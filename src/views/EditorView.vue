@@ -1293,8 +1293,6 @@ import NavigationPane from '../components/NavigationPane.vue';
 import { tocXml, indexXml, xeInstr, tableOfFiguresXml, captionXml, bibliographyXml, citationXml, citationStyle, CITATION_STYLES } from '../docx/references.js';
 import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
-import { paragraphsOfXml, compareParagraphs, notesOfPackage, compareNotes } from '../editor/compare.js';
-import { redlinePackage } from '../docx/redline.js';
 import { nextVersionName, initialsOf } from '../editor/versionName.js';
 import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
 import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
@@ -1315,7 +1313,6 @@ import { participleAfter } from '../editor/inflect.js';
 import { loadAutoCorrect, saveAutoCorrect, autoCorrectWord } from '../editor/autoCorrectList.js';
 import { webContent, toHtml, toText, toMarkdown, frontMatter, copyFormats } from '../editor/webCopy.js';
 import { wordCount, readability, headlineOf, blockText, textRange } from '../editor/readability.js';
-import { findMatches, matchRange } from '../editor/find.js';
 import { currentDoc, setDocument } from '../store.js';
 import { saveDraft, deleteDraft, newDraftId, MAX_AGE } from '../drafts.js';
 import { openStartInNewTab, openFileInNewTab, holdDraft } from '../tabs.js';
@@ -1330,9 +1327,11 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { useTableSort } from './editor/tableSort.js';
+import { useRedaction } from './editor/redaction.js';
+import { useCompare } from './editor/compare.js';
 import { ommlToLatex } from '../editor/mathOutput.js';
 import { printCommentsSection } from '../editor/printComments.js';
-import { PROTECTION_LABELS, sniffFile } from '../docx/package.js';
+import { PROTECTION_LABELS } from '../docx/package.js';
 import { decrypt } from '../docx/encryption.js';
 import { checkAccessibility } from '../editor/accessibility.js';
 import { drawLineNumbers } from '../editor/lineNumbers.js';
@@ -1788,134 +1787,13 @@ function showFinding(kind) {
 
 // ------------------------------------------------------------------ redaction
 
-// Redact: the selected text replaced with █, one for each character, as a page is blacked out before
-// it is released (a source's name, an address in a leaked document). Never tracked, even while
-// tracking: a tracked deletion keeps the text in the file, for anyone to read in Word. A link in it
-// goes, address and all (see doc.forgetLink). What was redacted is remembered in this session only
-// (never in a draft or the file), so "Before you release" can say where it still is.
-const REDACTION = '█';
-const redactedTexts = new Set();
-const DELETIONS = '[data-tc="del"], .raw-inline.deleted, [data-tracked]';
-
-/** A tracked change in `range` (anyone's), whose earlier wording would stay in the file, or null. */
-function trackedIn(range) {
-  return [...page.value.querySelectorAll(DELETIONS)].find((el) => range.intersectsNode(el)) || null;
-}
-
-/** Read-only content with text inside `range` (a field, an equation, kept content), which can't be redacted here. */
-function lockedTextIn(range) {
-  if (readOnlyAt(range.startContainer, page.value)) return readOnlyAt(range.startContainer, page.value);
-  if (readOnlyAt(range.endContainer, page.value)) return readOnlyAt(range.endContainer, page.value);
-  return [...page.value.querySelectorAll('[contenteditable="false"]')].find((el) => range.intersectsNode(el)
-    && !el.contains(range.commonAncestorContainer) && !el.matches('.note-ref, .comment-ref, .picture, .picture *')
-    && el.textContent.trim()) || null;
-}
-
-/** Blacks out the editable text of `range` (see portions); returns how many characters. */
-function redactRange(range) {
-  const pieces = portions(range);
-  const links = new Set();
-  let n = 0;
-  for (let i = pieces.length - 1; i >= 0; i--) {
-    const { node, s, e } = pieces[i];
-    node.data = node.data.slice(0, s) + node.data.slice(s, e).replace(/[^\t\n\r]/gu, REDACTION) + node.data.slice(e);
-    n += e - s;
-    const a = node.parentElement.closest('a[href]');
-    if (a && page.value.contains(a)) links.add(a);
-  }
-  for (const a of links) {
-    doc.forgetLink(a);
-    a.replaceWith(...a.childNodes);
-  }
-  return n;
-}
-
-/** Redact (Review tab, right-click menu): blacks out the selected text for good. */
-function redactSelection() {
-  if (textLocked.value) return explainLock();
-  restoreSelection();
-  const range = selectionInPage() || savedRange;
-  if (!range || range.collapsed || !page.value.contains(range.commonAncestorContainer)) {
-    message.value = t('Select the text to redact first, such as a source’s name');
-    page.value.focus();
-    return;
-  }
-  const tracked = trackedIn(range);
-  if (tracked) {
-    message.value = t('The selection holds tracked changes: accept or reject them first (Review › Accept), so no earlier wording stays in the file');
-    flash(tracked);
-    return;
-  }
-  const locked = lockedTextIn(range);
-  if (locked) return explainReadOnly(locked, true);
-  const text = range.toString().replace(/\s+/g, ' ').trim();
-  const pictures = [...page.value.querySelectorAll('.picture')].some((el) => range.intersectsNode(el));
-  undoStack.flush();
-  const end = [range.endContainer, range.endOffset];
-  const n = redactRange(range);
-  if (!n) return;
-  page.value.normalize();
-  undoStack.commit();
-  markDirty();
-  if (text.replaceAll(REDACTION, '').trim().length >= 2) redactedTexts.add(text);
-  try { getSelection().collapse(...end); } catch { /* the end moved: the caret stays where it is */ }
-  const left = redactedLeftovers().find((l) => l.text === text);
-  const more = left ? left.redactable + left.tracked + left.locked : 0;
-  message.value = [
-    t('Redacted{tracked} – Undo (Ctrl+Z) brings it back', { tracked: tracking.value ? t(' (not tracked: a tracked deletion would keep the text in the file)') : '' }),
-    pictures && t('pictures in it stay: delete them'),
-    more && t('“{text}” is in the document {n} more times: Before you release (Review) redacts them all', { text: text.length > 40 ? `${text.slice(0, 40)}…` : text, n: more }),
-  ].filter(Boolean).join(' · ');
-}
-
-/**
- * Where what was redacted this session still is: [{ text, redactable, tracked, locked, comments,
- * properties }], counts of the places in the text (and its headers, footers and notes) that can be
- * redacted here, in tracked changes, in read-only content; comments and properties that hold it.
- */
-function redactedLeftovers() {
-  const comments = threads.value.flatMap((th) => [th, ...th.replies]).map((c) => (c.paragraphs || []).join('\n'));
-  const p = doc.properties || {};
-  const values = [...(p.core || []), ...(p.app || []), ...(p.custom || [])].map((x) => String(x.value ?? ''));
-  const out = [];
-  for (const text of redactedTexts) {
-    const where = { text, redactable: 0, tracked: 0, locked: 0, comments: 0, properties: 0 };
-    for (const m of findMatches(page.value, text)) {
-      const el = m.segment.nodes[0].node.parentElement;
-      if (el.closest(DELETIONS)) where.tracked++;
-      else if (m.editable && !readOnlyAt(el, page.value)) where.redactable++;
-      else where.locked++;
-    }
-    const lower = text.toLowerCase();
-    where.comments = comments.filter((c) => c.toLowerCase().includes(lower)).length;
-    where.properties = values.filter((v) => v.toLowerCase().includes(lower)).length;
-    if (where.redactable || where.tracked || where.locked || where.comments || where.properties) out.push(where);
-  }
-  return out;
-}
-
-/** Before you release › Redact them all: every place a redacted text is still in editable text. */
-function redactLeftovers() {
-  undoStack.flush();
-  let n = 0;
-  for (const text of redactedTexts) {
-    const ranges = findMatches(page.value, text)
-      .filter((m) => m.editable && !m.segment.nodes[0].node.parentElement.closest(DELETIONS) && !readOnlyAt(m.segment.nodes[0].node.parentElement, page.value))
-      .map(matchRange);
-    // From the last back, so that the earlier ones keep their offsets.
-    for (const range of ranges.reverse()) n += redactRange(range) ? 1 : 0;
-  }
-  page.value.normalize();
-  undoStack.commit();
-  markDirty();
-  countWords();
-  message.value = t('Redacted {n} more places{tracked} – Undo (Ctrl+Z) brings them back', { n, tracked: tracking.value ? t(' (not tracked)') : '' });
-}
-
-/** Redacted passages in the page: runs of █ (also from an earlier session, or another tool). */
-function redactedPassages() {
-  return (page.value.textContent.match(/█+/g) || []).length;
-}
+// Redact: see editor/redaction.js.
+const { redactSelection, redactLeftovers, redactedLeftovers, redactedPassages } = useRedaction({
+  countWords, doc, explainLock, explainReadOnly, flash, markDirty, message, page, restoreSelection, selectionInPage, textLocked, threads, tracking,
+  get changes() { return changes; },
+  get savedRange() { return savedRange; },
+  get undoStack() { return undoStack; },
+});
 
 // ------------------------------------------------------------------ before you release
 
@@ -7370,176 +7248,11 @@ function insertFormula() {
 
 // ------------------------------------------------------------------ comparing documents
 
-const compare = reactive({ result: null, other: '', blocks: [], otherXml: '', redline: null });
-const compareInput = ref(null);
-
-function startCompare() {
-  compareInput.value.value = '';
-  compareInput.value.click();
-}
-
-/** The page's paragraphs (not headers, footers or notes), with text, as the XML's are read. */
-function pageParagraphs() {
-  const blocks = [...page.value.querySelectorAll(BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-hf-band, .docx-notes, .textbox') && !el.parentElement.closest(BLOCK_SELECTOR));
-  const texts = blocks.map((el) => {
-    const copy = el.cloneNode(true);
-    for (const x of copy.querySelectorAll('[data-tc="del"], .raw-hidden, .note-ref')) x.remove();
-    for (const x of copy.querySelectorAll('.raw-inline[data-raw]')) {
-      if (['del', 'moveFrom'].includes(doc.raw[Number(x.dataset.raw)]?.localName)) x.remove();
-    }
-    return copy.textContent;
-  });
-  const kept = texts.map((tx, i) => [tx, blocks[i]]).filter(([tx]) => tx.replace(/[\s\u00a0]+/g, ''));
-  return { texts: kept.map(([tx]) => tx), blocks: kept.map(([, b]) => b) };
-}
-
-/**
- * The page's paragraph for each of the XML's (`texts`), to go to a change: the same one where the
- * page has as many, else the next whose text is the same (without spaces), else the nearest.
- */
-function blocksFor(texts) {
-  const { texts: shown, blocks } = pageParagraphs();
-  if (shown.length === texts.length) return blocks;
-  const squash = (x) => x.replace(/[\s\u00a0\u2029⧉]+/g, '');
-  const out = [];
-  let j = 0;
-  for (const text of texts) {
-    const k = shown.findIndex((x, i) => i >= j && i < j + 8 && squash(x) === squash(text));
-    if (k >= 0) j = k;
-    out.push(blocks[Math.min(j, blocks.length - 1)]);
-    if (k >= 0) j += 1;
-  }
-  return out;
-}
-
-async function onCompareFile(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  // Encrypted with a password: asked for (see the password dialog), then compared.
-  if (sniffFile(bytes)?.kind === 'password') {
-    openPasswordDialog('compare', { name: file.name, bytes });
-    return;
-  }
-  await compareWith(file.name, bytes);
-}
-
-/**
- * Compares the other version (`bytes`, a .docx package, named `name`) with this document. Both are
- * read from their XML the same way (this one as Download would write it), so a document compared
- * with itself is the same.
- */
-async function compareWith(name, bytes) {
-  const file = { name };
-  try {
-    // A .doc, or a file encrypted by rights management: say which, as opening one does.
-    const unreadable = sniffFile(bytes);
-    if (unreadable) throw new Error(t('{name} can’t be compared: {why}', { name: file.name, why: unreadable.message }));
-    const zip = await JSZip.loadAsync(bytes);
-    const main = Object.keys(zip.files).find((f) => /^word\/document\d*\.xml$/i.test(f));
-    if (!main) throw new Error(t('{name} isn’t a Word document (.docx)', { name: file.name }));
-    const otherXml = await zip.file(main).async('string');
-    const before = paragraphsOfXml(otherXml);
-    await draftSettled();
-    await withHostsUnlocked(() => doc.write(page.value));
-    const thisXml = await doc.zip.file(doc.mainPath).async('string');
-    const after = paragraphsOfXml(thisXml);
-    // Footnotes and endnotes too, each kind in the order the text refers to them, numbered as shown.
-    const thisNotes = await notesOfPackage(doc.zip, doc.mainPath, thisXml);
-    const notes = compareNotes(await notesOfPackage(zip, main, otherXml), thisNotes).map((c) => ({
-      ...c, n: c.at < thisNotes[c.note].length ? doc.noteNumber(c.note, c.at + 1) : null,
-    }));
-    compare.blocks = blocksFor(after);
-    compare.other = file.name;
-    compare.otherXml = otherXml;
-    compare.result = { ...compareParagraphs(before, after), notes };
-    // The redline is made now, while the result is read, so that opening it in a new tab follows
-    // the click at once (a browser opens a tab only straight after a click).
-    compare.redline = compare.result.changes.length ? makeRedline().catch((e) => e) : null;
-  } catch (err) {
-    message.value = /zip|central directory|End of data/i.test(err.message)
-      ? t('{name} can’t be compared: it isn’t a .docx (an older .doc can’t be read here)', { name: file.name })
-      : err.message;
-  }
-}
-
-function closeCompare() {
-  compare.result = null;
-  compare.redline = null;
-  refocus();
-}
-
-/** Goes to a change in this document: its paragraph (or, for text taken out, where it was). */
-function goToChange(change) {
-  if (change.note) {
-    goToNoteChange(change);
-    return;
-  }
-  const block = compare.blocks[Math.min(change.at, compare.blocks.length - 1)];
-  compare.result = null;
-  compare.redline = null;
-  if (!block?.isConnected) return;
-  page.value.focus();
-  placeCaret(block, change.at < compare.blocks.length);
-  block.scrollIntoView({ block: 'center' });
-  message.value = change.kind === 'removed' ? t('Text taken out was here') : change.kind === 'added' ? t('Added in this document') : t('Changed in this document');
-}
-
-/** Goes to a change in a footnote or endnote: the note (or, for one taken out, the note after it, or the last). */
-function goToNoteChange(change) {
-  compare.result = null;
-  compare.redline = null;
-  const notes = [...page.value.querySelectorAll(`.docx-note[data-note="${change.note}"]:not([hidden])`)];
-  const el = (change.n && notes.find((x) => x.dataset.n === change.n)) || notes[notes.length - 1];
-  if (!el) return;
-  const block = el.querySelector(BLOCK_SELECTOR) || el;
-  el.focus();
-  placeCaret(block, change.kind !== 'removed' || !!change.n);
-  el.scrollIntoView({ block: 'center' });
-  const name = change.note === 'footnote' ? t('footnote') : t('endnote');
-  message.value = change.kind === 'removed' ? t('A {note} taken out was here', { note: name })
-    : change.kind === 'added' ? t('Added in this document: {note} {n}', { note: name, n: change.n }) : t('Changed in this document: {note} {n}', { note: name, n: change.n });
-}
-
-/**
- * The redline, as Word's Compare makes one: a new document, this one as Download would write it,
- * with the changes since the other version as tracked changes in your name (see docx/redline.js).
- * Encrypted with this document's password, if it has one. { blob, name, accepted }.
- */
-async function makeRedline() {
-  await draftSettled();
-  const saved = await withHostsUnlocked(() => doc.save(page.value, { plain: true }));
-  const { zip, accepted } = await redlinePackage(JSZip, await saved.arrayBuffer(), doc.mainPath, compare.otherXml, { author: author.value, date: new Date() });
-  const mime = doc.format.mime;
-  const plain = await zip.generateAsync({ type: 'blob', mimeType: mime, compression: 'DEFLATE' });
-  const blob = await doc.sealed(plain, true);
-  const base = baseName.value.trim() || 'document';
-  return { blob: new Blob([blob], { type: mime }), name: `${base} (redline).${fileExt.value}`, accepted };
-}
-
-/** The redline: opened in a new tab beside this document (`how` 'open'), or downloaded. */
-async function sendRedline(how) {
-  const made = await compare.redline;
-  if (!made || made instanceof Error) {
-    message.value = `The redline couldn’t be made: ${made?.message || 'nothing changed'}`;
-    return;
-  }
-  const accepted = made.accepted ? ` – the ${count(made.accepted, 'tracked change')} already in this document ${made.accepted === 1 ? 'is' : 'are'} accepted in it, as Word’s Compare does` : '';
-  const locked = passwordProtected.value ? ', encrypted with this document’s password' : '';
-  if (how === 'open') {
-    const result = openFileInNewTab(new File([made.blob], made.name, { type: made.blob.type }));
-    message.value = {
-      opened: `The redline is opening in a new tab${locked}${accepted}`,
-      blocked: 'The browser didn’t open a new tab: allow pop-ups for this site, or download the redline',
-      unsupported: `A new tab is open: download the redline and choose it there${locked}`,
-    }[result];
-    if (result === 'opened') closeCompare();
-    return;
-  }
-  downloadBlob(made.blob, made.name);
-  message.value = `Redline downloaded: ${made.name}${locked}${accepted}`;
-  closeCompare();
-}
+// Compare documents (Review › Compare): see editor/compare.js.
+const { compare, compareInput, startCompare, onCompareFile, compareWith, closeCompare, goToChange, sendRedline } = useCompare({
+  BLOCK_SELECTOR, doc, page, openPasswordDialog, draftSettled, withHostsUnlocked, message, refocus, placeCaret, author, baseName, fileExt, count, downloadBlob,
+  get passwordProtected() { return passwordProtected; },
+});
 
 // ------------------------------------------------------------------ password
 
