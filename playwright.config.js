@@ -3,9 +3,15 @@ import { defineConfig, devices } from '@playwright/test';
 // The tests drive the production build in real browsers: editing relies on contenteditable, which
 // differs between engines, so a DOM emulation would not tell us whether a saved file is faithful.
 // Run one browser with `npm test -- --project=chromium` (or firefox, or webkit).
-// The specs Safari's engine runs (see the webkit project below).
-const WEBKIT_SPECS = ['roundtrip', 'fixtures', 'open', 'editing', 'lists', 'tables', 'track', 'paste', 'starters', 'start-page-size', 'webkit-spaces']
-  .map((name) => `**/${name}.spec.js`);
+// The specs Safari's engine (WebKit) doesn't run yet, each with why: the rest of the suite runs in
+// it, as in Chromium and Firefox. A spec joins once it passes there; a case is never skipped in an
+// engine to get it in, only for a capability that engine lacks (and the case says which).
+const WEBKIT_PENDING = {
+  // The toolbar's text labels find no room for themselves: WebKit's font metrics.
+  'dates-labels': 'the toolbar labels\' room, by WebKit\'s font metrics',
+  // The header's file name measures 107px for the 110 it is held to: WebKit's font metrics.
+  'phone-share-insert': 'the phone header\'s widths, by WebKit\'s font metrics',
+};
 
 export default defineConfig({
   testDir: 'tests',
@@ -23,14 +29,11 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    // Safari's engine (WebKit), for the core of the promises: documents come back as they went in
-    // (round-trip and the real-world fixtures), open, take typing, lists, tables, tracked changes and
-    // pasting, and starters are written as Word writes them. The rest of the suite follows spec by
-    // spec, as each passes here: add it to this list, never skip a case to get it in.
+    // Safari's engine (WebKit): the whole suite but the specs pending above.
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: WEBKIT_SPECS,
+      testIgnore: Object.keys(WEBKIT_PENDING).map((name) => `**/${name}.spec.js`),
     },
   ],
   webServer: {

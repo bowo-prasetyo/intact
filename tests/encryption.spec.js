@@ -157,7 +157,11 @@ test('a protected document’s unsaved changes are kept encrypted, and restoring
     const req = indexedDB.open('intact');
     req.onsuccess = () => {
       const all = req.result.transaction('drafts').objectStore('drafts').getAll();
-      all.onsuccess = async () => resolve([...new Uint8Array(await all.result[0].blob.arrayBuffer()).subarray(0, 8)]);
+      // Kept as its bytes (see drafts.js), or as a Blob by an earlier version.
+      all.onsuccess = async () => {
+        const kept = all.result[0];
+        resolve([...new Uint8Array(kept.bytes || await kept.blob.arrayBuffer()).subarray(0, 8)]);
+      };
     };
   }));
   expect(head).toEqual(CFB);

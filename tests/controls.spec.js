@@ -191,7 +191,11 @@ test('a drop-down list is chosen from with the keyboard, and typing carries on a
   expect(await control(page, 'Plan').evaluate((el) => el.nextSibling?.textContent?.startsWith('!'))).toBe(true);
 });
 
-test('a typed date is taken on Enter, not halfway through the year', async ({ page }) => {
+test('a typed date is taken on Enter, not halfway through the year', async ({ page, browserName }) => {
+  // Playwright's WebKit for Linux takes no typing in a date input at all (its value stays empty);
+  // Safari on a Mac does, as Chromium and Firefox do. Picking a date from the picker is tested
+  // above, in WebKit too.
+  test.skip(browserName === 'webkit', 'the date input of WebKit for Linux takes no typed digits');
   await openInEditor(page, await buildDocx(FORM));
   await caretBy(page, 'Start date');
   await page.keyboard.press('Alt+ArrowDown');

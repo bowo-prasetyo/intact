@@ -3,7 +3,7 @@
 // ("Report v2", "Report_v5_JD") rather than as the browser's "Report (1)", when asked for; the
 // choice is remembered, and the header's name follows, so the next download is the version after.
 import { test, expect } from '@playwright/test';
-import { buildDocx, openInEditor } from './helpers.js';
+import { buildDocx, openInEditor, downloadNames } from './helpers.js';
 import { nextVersionName, initialsOf } from '../src/editor/versionName.js';
 
 test('the next version of a name: its number one up, written as it is, or v2 added', () => {
@@ -48,7 +48,7 @@ async function downloadName(page) {
   return dl.suggestedFilename();
 }
 
-test('a changed document downloads as its next version when asked, and the name follows', async ({ page }) => {
+test('a changed document downloads as its next version when asked, and the name follows', async ({ page, browserName }) => {
   await page.addInitScript(() => localStorage.setItem('intact.author', 'Dana Executive'));
   await openInEditor(page, await buildDocx(BODY), 'Lease.docx');
   await edit(page, ' Rent is reviewed yearly.');
@@ -57,7 +57,7 @@ test('a changed document downloads as its next version when asked, and the name 
   await expect(names).toContainText('Downloads as Lease.docx'); // off until asked for
   await names.getByLabel(/Name it as a new version/).check();
   await expect(names).toContainText('Downloads as Lease v2.docx');
-  expect(await downloadName(page)).toBe('Lease v2.docx');
+  expect(downloadNames('Lease v2.docx', browserName)).toContain(await downloadName(page));
   await expect(page.getByRole('textbox', { name: 'File name' })).toHaveValue('Lease v2');
   await expect(page.locator('.statusbar [role=status]')).toContainText('Saved Lease v2.docx');
 
@@ -68,7 +68,7 @@ test('a changed document downloads as its next version when asked, and the name 
   await expect(names).toContainText('Downloads as Lease v3.docx');
   await names.getByLabel('With my initials (DE)').check();
   await expect(names).toContainText('Downloads as Lease v3 DE.docx');
-  expect(await downloadName(page)).toBe('Lease v3 DE.docx');
+  expect(downloadNames('Lease v3 DE.docx', browserName)).toContain(await downloadName(page));
 
   // Nothing changed since: the file is the same, and so is its name; nothing is offered.
   await page.locator('.app-header').getByRole('button', { name: 'Download' }).click();

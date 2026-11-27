@@ -55,7 +55,8 @@ test('a right tab with a dot leader: the page number ends at the stop, the dots 
 
 test('a decimal tab: the price lined up at its point', async ({ page }) => {
   await openInEditor(page, await buildDocx(PRICE));
-  await expect.poll(async () => (await edges(page, 'Price', '.')).left).toBeCloseTo(300, 0); // 4500 twips
+  // 4500 twips (300px), to within a pixel: WebKit places the text at a whole pixel (299).
+  await expect.poll(async () => Math.abs((await edges(page, 'Price', '.')).left - 300)).toBeLessThanOrEqual(1);
 });
 
 test('Insert > Answer line: an underlined tab to a right stop at the margin, drawn and printed', async ({ page }) => {

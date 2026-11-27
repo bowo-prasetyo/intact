@@ -5,7 +5,7 @@
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import fs from 'node:fs';
-import { buildDocx } from './helpers.js';
+import { buildDocx, downloadNames } from './helpers.js';
 
 const RIBBON = { cookies: [], origins: [{ origin: 'http://localhost:4173', localStorage: [{ name: 'intact.ribbon', value: '1' }] }] };
 
@@ -63,7 +63,7 @@ test.describe('in Indonesian', () => {
     await expect(page.locator('.statusbar [role=status]')).toHaveText('Nomor halaman: i, ii, iii untuk seluruh dokumen');
   });
 
-  test('a blank document started in Indonesian is in Indonesian, named "Tanpa judul"', async ({ page }) => {
+  test('a blank document started in Indonesian is in Indonesian, named "Tanpa judul"', async ({ page, browserName }) => {
     await page.goto('./');
     await page.getByRole('button', { name: /Dokumen kosong/ }).click();
     await expect(page.getByRole('textbox', { name: 'Nama berkas' })).toHaveValue('Tanpa judul');
@@ -72,7 +72,7 @@ test.describe('in Indonesian', () => {
     await page.locator('.app-header').getByRole('button', { name: 'Unduh' }).click();
     const review = page.getByRole('dialog', { name: 'Review your changes' });
     const [dl] = await Promise.all([page.waitForEvent('download'), review.getByRole('button', { name: 'Download' }).click()]);
-    expect(dl.suggestedFilename()).toBe('Tanpa judul.docx');
+    expect(downloadNames('Tanpa judul.docx', browserName)).toContain(dl.suggestedFilename());
     const zip = await JSZip.loadAsync(fs.readFileSync(await dl.path()));
     expect(await zip.file('word/styles.xml').async('string')).toContain('<w:lang w:val="id-ID"/>');
   });

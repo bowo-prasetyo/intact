@@ -79,6 +79,20 @@ test.describe('with WebKit\'s rewriting', () => {
     expect(await replaceNode(page, 'Page', ['Page', '\u00a0'], 'insertText', '\u00a0')).toEqual(['Page', '\u00a0']);
   });
 
+  test('a no-break space typed beside a space WebKit also rewrote: the typed one stays, the other goes back', async ({ page }) => {
+    await openInEditor(page, await buildDocx(para('Alpha paragraph')));
+    await caretAt(page, 'Alpha paragraph', 5);
+    // As WebKit does when U+00A0 is typed before a space: both are U+00A0, the caret after the first.
+    const data = await page.evaluate(() => {
+      const n = getSelection().anchorNode;
+      n.replaceData(5, 1, '\u00a0\u00a0');
+      getSelection().collapse(n, 6);
+      document.querySelector('.docx-page').dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: '\u00a0', bubbles: true }));
+      return n.data;
+    });
+    expect(data).toBe('Alpha\u00a0 paragraph');
+  });
+
   test('a no-break space already in the document stays one, also when the text around it is edited', async ({ page }) => {
     await openInEditor(page, await buildDocx(para('Page\u00a012 of the report')));
     await caretAt(page, 'report', 6);

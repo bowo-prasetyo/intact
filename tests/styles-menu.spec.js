@@ -53,7 +53,8 @@ test('applying one of the document’s styles writes only the paragraph’s styl
   const quoted = page.locator('.docx-page p[data-style="Quote"]');
   await expect(quoted).toHaveText('Plain paragraph');
   // Shown in the style: Quote's indentation.
-  expect(await quoted.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe('57.6px');
+  // 57.6px, to within WebKit's layout precision (it gives 57.599998px).
+  expect(parseFloat(await quoted.evaluate((el) => getComputedStyle(el).paddingLeft))).toBeCloseTo(57.6, 3);
   await page.getByText('In Block Text').click();
   await menu(page).selectOption({ label: 'Heading 4' });
   await expect(page.locator('.docx-page h4[data-style="Heading4"]')).toHaveText('In Block Text');

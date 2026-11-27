@@ -73,11 +73,12 @@ test('paragraph borders and shading, character spacing, raised text and theme co
     const cs = getComputedStyle(el);
     return {
       top: [cs.borderTopStyle, cs.borderTopColor], bottom: [cs.borderBottomStyle, cs.borderBottomWidth, cs.borderBottomColor],
-      paddingBottom: cs.paddingBottom, background: cs.backgroundColor,
+      // 4pt (5.333px): rounded to 5 places in Chromium and Firefox, 6 in WebKit.
+      paddingBottom: Math.round(parseFloat(cs.paddingBottom) * 1000) / 1000, background: cs.backgroundColor,
     };
   });
   expect(banded).toEqual({
-    top: ['double', 'rgb(46, 117, 182)'], bottom: ['solid', '2px', 'rgb(197, 90, 17)'], paddingBottom: '5.33333px', background: 'rgb(251, 228, 213)',
+    top: ['double', 'rgb(46, 117, 182)'], bottom: ['solid', '2px', 'rgb(197, 90, 17)'], paddingBottom: 5.333, background: 'rgb(251, 228, 213)',
   });
   const spaced = page.locator('.docx-page span', { hasText: 'SPACED' });
   expect(await spaced.evaluate((el) => [getComputedStyle(el).letterSpacing, getComputedStyle(el).color])).toEqual(['4px', 'rgb(128, 0, 0)']);
