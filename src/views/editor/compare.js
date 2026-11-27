@@ -22,7 +22,7 @@ export function useCompare(ctx) {
     compareInput.value.click();
   }
 
-  /** The ctx.page's paragraphs (not headers, footers or notes), with text, as the XML's are read. */
+  /** The page's paragraphs (not headers, footers or notes), with text, as the XML's are read. */
   function pageParagraphs() {
     const blocks = [...ctx.page.value.querySelectorAll(ctx.BLOCK_SELECTOR)].filter((el) => !el.closest('.docx-hf-band, .docx-notes, .textbox') && !el.parentElement.closest(ctx.BLOCK_SELECTOR));
     const texts = blocks.map((el) => {
@@ -38,8 +38,8 @@ export function useCompare(ctx) {
   }
 
   /**
-   * The ctx.page's paragraph for each of the XML's (`texts`), to go to a change: the same one where the
-   * ctx.page has as many, else the next whose text is the same (without spaces), else the nearest.
+   * The page's paragraph for each of the XML's (`texts`), to go to a change: the same one where the
+   * page has as many, else the next whose text is the same (without spaces), else the nearest.
    */
   function blocksFor(texts) {
     const { texts: shown, blocks } = pageParagraphs();

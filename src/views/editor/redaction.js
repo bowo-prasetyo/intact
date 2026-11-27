@@ -12,10 +12,10 @@ import { readOnlyAt } from '../../editor/readonly.js';
  * Returns { redactSelection, redactLeftovers, redactedLeftovers, redactedPassages }.
  */
 export function useRedaction(ctx) {
-  // Redact: the selected text replaced with █, one for each character, as a ctx.page is blacked out before
+  // Redact: the selected text replaced with █, one for each character, as a page is blacked out before
   // it is released (a source's name, an address in a leaked document). Never tracked, even while
-  // ctx.tracking: a tracked deletion keeps the text in the file, for anyone to read in Word. A link in it
-  // goes, address and all (see ctx.doc.forgetLink). What was redacted is remembered in this session only
+  // tracking: a tracked deletion keeps the text in the file, for anyone to read in Word. A link in it
+  // goes, address and all (see doc.forgetLink). What was redacted is remembered in this session only
   // (never in a draft or the file), so "Before you release" can say where it still is.
   const REDACTION = '█';
   const redactedTexts = new Set();
@@ -66,7 +66,7 @@ export function useRedaction(ctx) {
     }
     const tracked = trackedIn(range);
     if (tracked) {
-      ctx.message.value = t('The selection holds tracked ctx.changes: accept or reject them first (Review › Accept), so no earlier wording stays in the file');
+      ctx.message.value = t('The selection holds tracked changes: accept or reject them first (Review › Accept), so no earlier wording stays in the file');
       ctx.flash(tracked);
       return;
     }
@@ -95,7 +95,7 @@ export function useRedaction(ctx) {
   /**
    * Where what was redacted this session still is: [{ text, redactable, tracked, locked, comments,
    * properties }], counts of the places in the text (and its headers, footers and notes) that can be
-   * redacted here, in tracked ctx.changes, in read-only content; comments and properties that hold it.
+   * redacted here, in tracked changes, in read-only content; comments and properties that hold it.
    */
   function redactedLeftovers() {
     const comments = ctx.threads.value.flatMap((th) => [th, ...th.replies]).map((c) => (c.paragraphs || []).join('\n'));
@@ -136,7 +136,7 @@ export function useRedaction(ctx) {
     ctx.message.value = t('Redacted {n} more places{tracked} – Undo (Ctrl+Z) brings them back', { n, tracked: ctx.tracking.value ? t(' (not tracked)') : '' });
   }
 
-  /** Redacted passages in the ctx.page: runs of █ (also from an earlier session, or another tool). */
+  /** Redacted passages in the page: runs of █ (also from an earlier session, or another tool). */
   function redactedPassages() {
     return (ctx.page.value.textContent.match(/█+/g) || []).length;
   }

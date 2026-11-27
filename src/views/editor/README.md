@@ -33,8 +33,9 @@ A section becomes a module here that exports one `use…(ctx)` function:
 Moving a section is mechanical: prefix each name it reads from the editor with `ctx.` (not a
 property such as `x.page`, nor an object's key such as `{ author: … }`, but a name after a spread,
 `[...page.value]`, or in a ternary, `a ? page : b`), pass as a getter what is declared after the
-section or set later, and take out the editor's imports only the section used. Names a dependency
-listing finds in comments or strings aren't `ctx`.
+section or set later, and take out the editor's imports only the section used. Never inside a
+comment or a string: "tracked changes" in a message is words, not the editor's `changes` (a move
+once wrote "tracked ctx.changes" to the status bar; the tests caught it).
 
 To see what a section needs before moving it, list the names it uses that are declared elsewhere
 in the script (its `ctx`) and the names of its own that the template and the rest of the script use
