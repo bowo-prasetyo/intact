@@ -7,9 +7,8 @@ import { defineConfig, devices } from '@playwright/test';
 // it, as in Chromium and Firefox. A spec joins once it passes there; a case is never skipped in an
 // engine to get it in, only for a capability that engine lacks (and the case says which).
 const WEBKIT_PENDING = {
-  // In a long document, a click on the footer's text doesn't land in the footer being saved, so
-  // the text typed there is lost from the file; and the toolbar's text labels measure no room.
-  'dates-labels': 'footer clicks in a long document; the toolbar labels\' room',
+  // The toolbar's text labels find no room for themselves: WebKit's font metrics.
+  'dates-labels': 'the toolbar labels\' room, by WebKit\'s font metrics',
   // The header's file name measures 107px for the 110 it is held to: WebKit's font metrics.
   'phone-share-insert': 'the phone header\'s widths, by WebKit\'s font metrics',
 };

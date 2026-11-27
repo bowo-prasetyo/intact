@@ -8527,6 +8527,34 @@ function endOfLine(extend) {
  * caret, and before the field's hidden marks, so text typed goes before the field. True if it was
  * dealt with; only lines with a page number (elsewhere the browser's Home works), not right to left.
  */
+/**
+ * A caret (the selection's focus) at a place between a paragraph's elements, not in its text, moved
+ * to the same place in the text next to it. Safari's engine leaves it there after a click beside a
+ * comment's marks, and Home from there goes to the start of the paragraph before.
+ */
+function caretIntoText() {
+  const sel = window.getSelection();
+  const node = sel.focusNode;
+  if (!sel.rangeCount || node?.nodeType !== 1 || !page.value.contains(node) || !node.isContentEditable) return;
+  const textIn = (n, last) => {
+    if (n?.nodeType === 3) return n;
+    if (n?.nodeType !== 1 || n.isContentEditable === false) return null;
+    const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT, { acceptNode: (t) => (t.parentElement.isContentEditable ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    let t = w.nextNode();
+    if (last) for (let x = t; x; x = w.nextNode()) t = x;
+    return t;
+  };
+  // The text before it, past marks that can't be typed into (a comment's, a note's number), else after it.
+  let before = null;
+  for (let i = sel.focusOffset - 1; i >= 0 && !before; i--) before = textIn(node.childNodes[i], true);
+  let after = null;
+  for (let i = sel.focusOffset; i < node.childNodes.length && !before && !after; i++) after = textIn(node.childNodes[i], false);
+  const [text, offset] = before ? [before, before.length] : after ? [after, 0] : [null, 0];
+  if (!text) return;
+  if (sel.isCollapsed) sel.collapse(text, offset);
+  else sel.extend(text, offset);
+}
+
 function startOfLine(extend) {
   const sel = window.getSelection();
   if (!sel.rangeCount || !sel.focusNode || !page.value?.contains(sel.focusNode)) return false;
@@ -8617,6 +8645,7 @@ function onKeydown(e) {
     if (range) caretOutOfMarker(range);
   }
   if (formKeydown(e)) return;
+  if ((e.key === 'Home' || e.key === 'End') && !e.ctrlKey && !e.metaKey && !e.altKey) caretIntoText();
   if (e.key === 'End' && !e.ctrlKey && !e.metaKey && !e.altKey && endOfLine(e.shiftKey)) {
     e.preventDefault();
     return;

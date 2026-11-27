@@ -1312,12 +1312,13 @@ no errors. A `.docx` added there is tested automatically.
 First run: `npx playwright install chromium firefox webkit`. To run one browser:
 `npm test -- --project=chromium` (or `firefox`, or `webkit`). WebKit, Safari's engine, runs the
 whole suite but the specs listed in `WEBKIT_PENDING` in `playwright.config.js`, each with why (a
-footer clicked in a long document; widths by WebKit's font metrics). A case is skipped in one engine
+case in each that measures widths by WebKit's font metrics). A case is skipped in one engine
 only for a capability it lacks, and says which (Playwright's WebKit for Linux takes no typing in a
 date input). Running it found what Safari did to documents and editing, now fixed: spaces written as
 no-break spaces, drafts not kept in a private window, the editor's own edits handled twice (WebKit
 fires beforeinput for execCommand), a list typed as "1. " losing its paragraph, a tab wrapped in a
-span of its own, and formatting applied inside a plain text field.
+span of its own, formatting applied inside a plain text field, and Home after a click at a line's end
+going to the paragraph before.
 
 Checked by hand as well: documents edited in Intact open correctly in Microsoft Word, and the
 editor works in Firefox (November 2026).
