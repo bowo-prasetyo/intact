@@ -8841,6 +8841,13 @@ function pastLockedAtEnd(block, node, offset, line) {
 
 function onKeydown(e) {
   selectedChange = null;
+  // A caret left at the edge of read-only text (someone's tracked change) is moved just outside it
+  // when the selection changes, but browsers send selectionchange later, and a key typed before it
+  // comes would go where the browser can type, the paragraph's start: move it now, before the key.
+  if (isEditingKey(e)) {
+    const range = selectionInPage();
+    if (range) caretOutOfMarker(range);
+  }
   if (formKeydown(e)) return;
   if (e.key === 'End' && !e.ctrlKey && !e.metaKey && !e.altKey && endOfLine(e.shiftKey)) {
     e.preventDefault();
