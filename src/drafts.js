@@ -34,13 +34,21 @@ async function run(mode, work) {
 
 const quietly = (promise, fallback) => promise.catch((e) => { console.warn('Drafts:', e); return fallback; });
 
+// The document is kept as its bytes (an ArrayBuffer), not as a Blob: Safari's engine can't keep a
+// Blob in IndexedDB in a private window (the transaction aborts), and bytes are kept everywhere. A
+// draft read back has its Blob again; one kept as a Blob by an earlier version is read as it is.
+async function stored({ blob, ...draft }) {
+  return blob ? { ...draft, bytes: await blob.arrayBuffer(), type: blob.type } : draft;
+}
+const withBlob = ({ bytes, type, ...draft }) => (bytes ? { ...draft, blob: new Blob([bytes], { type: type || '' }) } : draft);
+
 /**
- * Keeps a draft: { id, name, blob, savedAt, firstNewId, unlocked, length (a length target), protected
+ * Keeps a draft: { id, name, blob (kept as its bytes: see stored), savedAt, firstNewId, unlocked, length (a length target), protected
  * (encrypted with the document's password: see DocxDocument.draft) }. Older drafts beyond the most
  * recent few go. Resolves to whether it was kept.
  */
 export function saveDraft(draft) {
-  return quietly(run('readwrite', (store) => store.put({ ...draft, savedAt: Date.now() })).then(async () => {
+  return quietly(stored(draft).then((record) => run('readwrite', (store) => store.put({ ...record, savedAt: Date.now() }))).then(async () => {
     const all = await listDrafts();
     await Promise.all(all.slice(MAX_DRAFTS).map((d) => deleteDraft(d.id)));
     return true;
@@ -53,7 +61,7 @@ export function listDrafts() {
     const now = Date.now();
     const old = all.filter((d) => !(now - d.savedAt < MAX_AGE));
     await Promise.all(old.map((d) => deleteDraft(d.id)));
-    return all.filter((d) => !old.includes(d)).sort((a, b) => b.savedAt - a.savedAt);
+    return all.filter((d) => !old.includes(d)).sort((a, b) => b.savedAt - a.savedAt).map(withBlob);
   }), []);
 }
 

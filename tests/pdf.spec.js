@@ -98,9 +98,11 @@ test('a header and footer the same on every page are printed on every page', asy
   expect(css).toMatch(/@page \{ size: [\d.]+px [\d.]+px; margin: 0px [\d.]+px 0px/);
   await page.emulateMedia({ media: 'print' });
   for (const which of ['header', 'footer']) await expect(page.locator(`.docx-hf-band.${which}`)).toHaveCSS('position', 'fixed');
-  await expect(page.locator('.docx-hf-band.header')).toHaveCSS('top', '47.2px'); // 708 twips
+  // 708 twips: 47.2px, to within WebKit's layout precision (it gives 47.200001px).
+  expect(parseFloat(await page.locator('.docx-hf-band.header').evaluate((el) => getComputedStyle(el).top))).toBeCloseTo(47.2, 3);
   await expect(page.locator('.docx-page')).toHaveCSS('padding-top', '96px');
-  await expect(page.locator('.docx-page')).toHaveCSS('box-decoration-break', 'clone');
+  // WebKit has it as -webkit-box-decoration-break only (the print styles set both).
+  expect(await page.locator('.docx-page').evaluate((el) => { const cs = getComputedStyle(el); return cs.boxDecorationBreak || cs.webkitBoxDecorationBreak; })).toBe('clone');
   await expect(page.locator('.docx-hf-band .docx-hf-part').first()).toHaveCSS('opacity', '1');
   await page.emulateMedia({ media: 'screen' });
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));

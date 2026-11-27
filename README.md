@@ -1310,10 +1310,14 @@ change where the document has Track Changes on), the typed text in the formattin
 saved package stays sound (well-formed XML, content types, relationship targets); and the page logs
 no errors. A `.docx` added there is tested automatically.
 First run: `npx playwright install chromium firefox webkit`. To run one browser:
-`npm test -- --project=chromium` (or `firefox`, or `webkit`). WebKit, Safari's engine, runs the core
-of the promises (round-trip, the real-world fixtures, opening, typing, lists, tables, tracked changes,
-pasting and the starters: `WEBKIT_SPECS` in `playwright.config.js`); the rest of the suite joins it
-spec by spec, as each passes there.
+`npm test -- --project=chromium` (or `firefox`, or `webkit`). WebKit, Safari's engine, runs the
+whole suite but the specs listed in `WEBKIT_PENDING` in `playwright.config.js`, each with why (a
+footer clicked in a long document; widths by WebKit's font metrics). A case is skipped in one engine
+only for a capability it lacks, and says which (Playwright's WebKit for Linux takes no typing in a
+date input). Running it found what Safari did to documents and editing, now fixed: spaces written as
+no-break spaces, drafts not kept in a private window, the editor's own edits handled twice (WebKit
+fires beforeinput for execCommand), a list typed as "1. " losing its paragraph, a tab wrapped in a
+span of its own, and formatting applied inside a plain text field.
 
 Checked by hand as well: documents edited in Intact open correctly in Microsoft Word, and the
 editor works in Firefox (November 2026).

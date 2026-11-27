@@ -2914,10 +2914,15 @@ function focusEnd() {
 
 const CHAR_FORMATS = new Set(['bold', 'italic', 'underline', 'strikeThrough']);
 
-/** Plain-text fields (as in Word) take no character formatting. */
+/**
+ * Plain-text fields (as in Word) take no character formatting: true (and says so) if the selection
+ * is in one, or takes in part of one (Safari's engine lets Shift+Home select from inside a field to
+ * the text before it).
+ */
 function inPlainField() {
   const range = selectionInPage();
-  const box = range && controlAt(range.startContainer, page.value)?.querySelector(':scope > [data-plain]');
+  const box = range && (controlAt(range.startContainer, page.value)?.querySelector(':scope > [data-plain]')
+    || (!range.collapsed && [...page.value.querySelectorAll('.sdt > [data-plain]')].find((b) => range.intersectsNode(b))));
   if (box) message.value = 'Plain text fields can’t be formatted';
   return !!box;
 }
@@ -3236,10 +3241,28 @@ function restoreRewrittenSpaces(e) {
   const fix = (node, i) => node.replaceData(i, 1, ' '); // same length: the caret stays where it is
   const typed = typeof e?.data === 'string' ? e.data : '';
   const sources = [...removed]; // texts a new text node may have been made from
+  const caret = selectionInPage();
   for (const [node, was] of first) {
     sources.push(was);
     if (!node.isConnected) continue;
     const now = node.data;
+    // Typed here, the caret just after it: the typed text is exactly before the caret, and the rest
+    // must be the text as it was. (Matching from the ends instead would mistake a no-break space
+    // typed next to a space WebKit also rewrote for that space.)
+    const c = caret?.collapsed && caret.startContainer === node ? caret.startOffset : -1;
+    const start = c - typed.length;
+    if (typed && start >= 0 && now.length === was.length + typed.length) {
+      const rest = now.slice(0, start) + now.slice(c);
+      const inTyped = [...now.slice(start, c)].every((ch, k) => ch === typed[k] || (typed[k] === ' ' && ch === '\u00a0'));
+      if (inTyped && [...rest].every((ch, i) => same(ch, was[i]))) {
+        for (let i = 0; i < was.length; i++) {
+          const at = i < start ? i : i + typed.length;
+          if (now[at] === '\u00a0' && was[i] === ' ') fix(node, at);
+        }
+        for (let k = 0; k < typed.length; k++) if (now[start + k] === '\u00a0' && typed[k] === ' ') fix(node, start + k);
+        continue;
+      }
+    }
     let p = 0;
     while (p < now.length && p < was.length && same(now[p], was[p])) p++;
     let q = 0;
@@ -3344,7 +3367,25 @@ function moveIntoParagraph(text) {
   sel.addRange(range);
 }
 
+// Safari's engine (WebKit) fires beforeinput for document.execCommand; Chromium and Firefox don't,
+// and the editor's handlers are written for that: they call execCommand to make the edit they mean
+// (a list from "1. ", a curly quote, a tracked insertion). In WebKit that call came back here as a
+// new beforeinput and was handled again, over and over. The editor's own execCommand calls are
+// marked while they run, and the beforeinput they cause is left to the browser, as in the others.
+let ownExec = 0;
+function markedExecCommand(...args) {
+  ownExec++;
+  try {
+    return Document.prototype.execCommand.apply(document, args);
+  } finally {
+    ownExec--;
+  }
+}
+onMounted(() => { document.execCommand = markedExecCommand; });
+onBeforeUnmount(() => { delete document.execCommand; }); // the browser's own again
+
 function onBeforeInput(e) {
+  if (ownExec) return; // caused by the editor's own execCommand (WebKit): see markedExecCommand
   // Undo/redo from the browser's Edit or context menu: use our history, not the native stack.
   if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
     e.preventDefault();
@@ -6067,10 +6108,17 @@ function insertAnswerLine() {
     selectRange(range);
   }
   typeText('\t');
-  // The tab just typed, underlined: a run of its own.
+  // The tab just typed, underlined: a run of its own. Found as the character before the caret, also
+  // when the caret is beside the element it was typed into (Safari's engine wraps a typed tab in a
+  // span of its own).
   const sel = window.getSelection();
-  const node = sel.focusNode;
-  const at = sel.focusOffset;
+  let node = sel.focusNode;
+  let at = sel.focusOffset;
+  if (node?.nodeType === 1 && at > 0) {
+    let prev = node.childNodes[at - 1];
+    while (prev && prev.nodeType === 1 && prev.lastChild) prev = prev.lastChild;
+    if (prev?.nodeType === 3) [node, at] = [prev, prev.length];
+  }
   if (node?.nodeType !== 3 || node.data[at - 1] !== '\t') return;
   const tab = document.createRange();
   tab.setStart(node, at - 1);
@@ -6964,7 +7012,14 @@ function autoList(e, block, range, before) {
   const opts = trackedBy(at);
   selectRange(text);
   if (opts) deleteTracked(text, false, opts);
-  else deleteSelection();
+  else {
+    // Taken out of the text node itself: the typed text is all it holds, and the browser's delete
+    // (Safari's engine) would take the paragraph Enter just made with it.
+    text.deleteContents();
+    const caret = document.createRange();
+    caret.setStart(at, Math.min(text.startOffset, at.length));
+    selectRange(caret);
+  }
   const { kind, first } = trigger;
   withTrackedParagraphs([block], () => {
     const above = continuedList(block, trigger);
