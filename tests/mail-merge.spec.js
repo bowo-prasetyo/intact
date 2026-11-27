@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
-import { buildDocx, openInEditor } from './helpers.js';
+import { buildDocx, openInEditor, downloadNames } from './helpers.js';
 
 const LETTER = '<w:p><w:r><w:t>[Recipient name]</w:t></w:r></w:p>'
   + '<w:p><w:r><w:t>[Address]</w:t></w:r></w:p>'
@@ -28,7 +28,7 @@ async function merge(page, dialog) {
   return { name: dl.suggestedFilename(), bytes: fs.readFileSync(await dl.path()) };
 }
 
-test('a list fills the letter once for each row, in one document, each copy on a new page', async ({ page }) => {
+test('a list fills the letter once for each row, in one document, each copy on a new page', async ({ page, browserName }) => {
   await openInEditor(page, await buildDocx(LETTER), 'letter.docx');
   const dialog = await openMerge(page);
   await chooseList(dialog, CSV);
@@ -42,7 +42,7 @@ test('a list fills the letter once for each row, in one document, each copy on a
   await expect(dialog.locator('.map .value').first()).toHaveText('Ana, S.E.');
 
   const out = await merge(page, dialog);
-  expect(out.name).toBe('letter (merged).docx');
+  expect(downloadNames('letter (merged).docx', browserName)).toContain(out.name);
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.statusbar [role=status]')).toHaveText('Merged 2 rows: letter (merged).docx');
   // The document itself is as it was.
@@ -67,14 +67,14 @@ test('a list fills the letter once for each row, in one document, each copy on a
   expect(xml).toContain('Your order B-2 is ready.');
 });
 
-test('a separate document for each row comes in a .zip, named by a column', async ({ page }) => {
+test('a separate document for each row comes in a .zip, named by a column', async ({ page, browserName }) => {
   await openInEditor(page, await buildDocx(LETTER), 'letter.docx');
   const dialog = await openMerge(page);
   await chooseList(dialog, CSV);
   await dialog.getByRole('radio', { name: /separate document for each row/ }).check();
   await expect(dialog.getByRole('combobox', { name: 'Name each file by' })).toHaveValue('0'); // "Recipient name"
   const out = await merge(page, dialog);
-  expect(out.name).toBe('letter (merged).zip');
+  expect(downloadNames('letter (merged).zip', browserName)).toContain(out.name);
   const zip = await JSZip.loadAsync(out.bytes);
   expect(Object.keys(zip.files).sort()).toEqual(['Ana, S.E..docx', 'Budi Santoso.docx']);
   const one = await JSZip.loadAsync(await zip.file('Budi Santoso.docx').async('uint8array'));

@@ -123,6 +123,15 @@ ${rels}</Relationships>`);
 }
 
 /** Opens a .docx buffer in the editor via the file picker. */
+/**
+ * The names a download given `expected` may arrive under in `browserName`. WebKit's build for Linux
+ * on CI writes the spaces of a suggested file name as underscores ("Lease_v2.docx"); elsewhere, and
+ * in Safari on a Mac, the name is as the page gave it. Anything else is still a wrong name.
+ */
+export function downloadNames(expected, browserName) {
+  return browserName === 'webkit' ? [expected, expected.replace(/ /g, '_')] : [expected];
+}
+
 export async function openInEditor(page, buffer, name = 'fixture.docx') {
   page.on('dialog', (d) => d.accept());
   await page.goto('./');

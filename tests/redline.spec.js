@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { test, expect } from '@playwright/test';
-import { buildDocx, openInEditor } from './helpers.js';
+import { buildDocx, openInEditor, downloadNames } from './helpers.js';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const p = (text, pPr = '') => `<w:p>${pPr}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
@@ -48,14 +48,14 @@ async function reopen(page, buffer, name) {
 const named = (page, name) => page.addInitScript((n) => localStorage.setItem('intact.author', n), name);
 const bodyText = (page) => page.locator('.docx-page').evaluate((el) => [...el.querySelectorAll('p')].map((x) => x.textContent).filter((x) => x.trim()));
 
-test('a redline marks the changes since the other version as tracked changes, in your name', async ({ page }) => {
+test('a redline marks the changes since the other version as tracked changes, in your name', async ({ page, browserName }) => {
   await named(page, 'Dana Executive');
   await openInEditor(page, await buildDocx(NEW), 'Lease v2.docx');
   const dialog = await compareWith(page, await buildDocx(OLD));
   await expect(dialog.getByRole('status')).toHaveText('1 changed, 1 added, 1 taken out (paragraphs)');
   await expect(dialog).toContainText('marked as tracked changes by Dana Executive');
   const { bytes, name } = await downloadRedline(page, dialog);
-  expect(name).toBe('Lease v2 (redline).docx');
+  expect(downloadNames('Lease v2 (redline).docx', browserName)).toContain(name);
   await expect(dialog).toBeHidden();
   await expect(page.locator('.statusbar [role=status]')).toHaveText('Redline downloaded: Lease v2 (redline).docx');
   // This document itself is unchanged.
