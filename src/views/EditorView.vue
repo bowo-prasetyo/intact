@@ -10046,6 +10046,7 @@ function setSkipReview(on) {
 async function save(action = 'download') {
   if (saving.value) return;
   saving.value = true;
+  let target = null; // the file written to, if any (see the failure's message)
   try {
     // The next version's name, where asked for (see versioning): the header's name follows it, so
     // the download after the next edits is the version after that.
@@ -10054,7 +10055,6 @@ async function save(action = 'download') {
     // A file renamed in the header is a new file: Save as…, where the browser can.
     if (action === 'save' && fileHandle.value.name !== name) action = canSaveAs ? 'saveAs' : 'download';
     // First, while the click still counts as asking: the file to write to, and leave to write it.
-    let target = null;
     if (action === 'saveAs') {
       target = await pickFileToSave(name, fileExt.value);
       if (!target) {
@@ -10093,8 +10093,11 @@ async function save(action = 'download') {
       + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '')
       + (passwordProtected.value ? ' – encrypted with its password' : '');
   } catch (e) {
+    // A write that fails part way (a full disk, a file taken away) is abandoned: the browser writes
+    // to a copy and puts it in the file's place only when it is whole (see writeFile), so the file is
+    // as it was. Nothing is marked saved, and the draft of the changes stays.
     console.error(e);
-    message.value = `Save failed: ${e.message}`;
+    message.value = `Not saved: ${e.message || e.name || 'the browser couldn’t write the file'} – ${target ? `${target.name} is as it was` : 'nothing was downloaded'}, and your changes are still here: try again, or Download a copy (▾)`;
   } finally {
     saving.value = false;
   }
