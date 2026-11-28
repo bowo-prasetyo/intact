@@ -254,3 +254,22 @@ test('a picture still can’t go in a text box, also one in a footer', async ({ 
   await expect(status(page)).toHaveText('A picture can’t go in a text box here: add it in Word');
   await expect(page.locator('.docx-page img')).toHaveCount(0);
 });
+
+test('a picture goes where the caret is, also before the browser has said the selection moved', async ({ page }) => {
+  await openInEditor(page, await buildDocx(BODY, HEADED));
+  await page.locator('.docx-page > p').first().click();
+  await page.keyboard.press('End');
+  await insertPicture(page, { name: 'a.png', mimeType: 'image/png', buffer: await png(page, 10, 10) });
+  // As on a busy machine: the click into the footer is made, but selectionchange hasn't reached the
+  // editor yet when Insert picture is pressed (a capturing listener on the document runs first).
+  await page.evaluate(() => {
+    window.holdSelection = (e) => e.stopImmediatePropagation();
+    document.addEventListener('selectionchange', window.holdSelection, true);
+  });
+  await footer(page).getByText('1 High Street').click();
+  await page.keyboard.press('End');
+  await insertPicture(page, { name: 'b.png', mimeType: 'image/png', buffer: await png(page, 20, 10) });
+  await page.evaluate(() => document.removeEventListener('selectionchange', window.holdSelection, true));
+  await expect(footer(page).locator('img')).toHaveCount(1);
+  await expect(page.locator('.docx-page > p img')).toHaveCount(1);
+});

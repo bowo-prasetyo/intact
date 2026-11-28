@@ -2732,8 +2732,19 @@ function restoreSelection() {
   }
 }
 
+/**
+ * The selection a tool will act on, taken from the page as it is now: selectionchange, which keeps
+ * savedRange, comes later, and a tool used straight after a click elsewhere (into a footer) would
+ * act where the caret was before it.
+ */
+function takeLiveSelection() {
+  const live = selectionInPage();
+  if (live) savedRange = live.cloneRange();
+}
+
 function keepFocus(e) {
   // Keep the caret in the document when clicking toolbar buttons (but let <select> open).
+  takeLiveSelection();
   if (e.target.closest('button')) e.preventDefault();
 }
 
@@ -5453,6 +5464,7 @@ function moveHeadingBefore(from, to) {
 }
 
 function pickPicture() {
+  takeLiveSelection(); // also when the button is pressed from the keyboard, without a mousedown
   pictureInput.value.value = '';
   pictureInput.value.click();
 }
