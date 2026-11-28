@@ -3,7 +3,7 @@
 `src/views/EditorView.vue` was one file of 11,305 lines: the template (about 1,270 lines), the
 script (about 9,360, in some 78 sections marked `// ------ name`) and the styles (about 680). Every
 change to the editor touched it, and two people working on two features met in it. It is being split
-here, a section at a time, without changing what the editor does: 10,110 lines are left in it.
+here, a section at a time, without changing what the editor does: 9,686 lines are left in it.
 
 ## Done
 
@@ -16,6 +16,7 @@ here, a section at a time, without changing what the editor does: 10,110 lines a
 | AutoCorrect entries | `autoCorrect.js` (`useAutoCorrect`) | `tests/autocorrect.spec.js`, `proofing.spec.js`, `smart-typing.spec.js`, the full suite |
 | Change case | `changeCase.js` (`useChangeCase`) | `tests/case-painter-symbols.spec.js`, the full suite |
 | Format Painter | `formatPainter.js` (`useFormatPainter`) | `tests/case-painter-symbols.spec.js`, `format.spec.js`, the full suite |
+| Picture layout | `pictureLayout.js` (`usePictureLayout`) | `tests/picture-*.spec.js`, `insert.spec.js`, `brand.spec.js`, `zoom.spec.js`, the full suite |
 
 ## The pattern
 
@@ -37,7 +38,9 @@ Moving a section is mechanical: prefix each name it reads from the editor with `
 property such as `x.page`, nor an object's key such as `{ author: … }`, but a name after a spread,
 `[...page.value]`, or in a ternary, `a ? page : b`), pass as a getter what is declared after the
 section or set later, and a setter as well for what the section assigns (`ctx.pendingSplit = opts`
-must reach the editor's variable, not the `ctx` object). Import into the module every one of the
+must reach the editor's variable, not the `ctx` object). A local of the section that shares an
+editor name (`const page = doc.page`, the page set up) is renamed first, in place (`paper`), or it
+would be prefixed too. Import into the module every one of the
 editor's imports the section uses, also those only a rarer path takes (Change case lost its tracked
 path's `replaceTracked` until a test caught it), and take out the editor's imports only the section
 used. Never inside a
@@ -53,10 +56,9 @@ events, selection and toolbar state) is the editor's core: move it last, if at a
 
 Sections used mostly by the template, with a small `ctx`, first:
 
-1. Picture layout (about 440 lines) → `pictureLayout.js`
-2. Before you release (about 380) → `release.js`
-3. References: citations, captions, indexes, tables of contents (about 500 in four sections) → `references.js`
-4. Page numbers, notes and page setup (about 560, sharing much of the page's state: after the others)
-5. The dialogs' template blocks, each with its section, as components in `src/components/`
+1. Before you release (about 380 lines) → `release.js`
+2. References: citations, captions, indexes, tables of contents (about 500 in four sections) → `references.js`
+3. Page numbers, notes and page setup (about 560, sharing much of the page's state: after the others)
+4. The dialogs' template blocks, each with its section, as components in `src/components/`
 
 Each is its own pull request, with the full suite green in Chromium, Firefox and WebKit.
