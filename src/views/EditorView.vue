@@ -9060,6 +9060,8 @@ function onWindowKeydown(e) {
   }
   if (e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault(); // to the toolbar, as in Word and WAI-ARIA's toolbar pattern; Esc comes back
+    // where the caret is now: selectionchange, which keeps it, may not have come yet.
+    takeLiveSelection();
     toolbarNav?.focus();
     return;
   }
