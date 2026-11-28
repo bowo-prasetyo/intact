@@ -1388,6 +1388,9 @@ The About page shows the version.
 
 ## Limitations
 
+- Pictures in Windows' own formats, EMF and WMF (an embedded spreadsheet's or document's preview
+  usually is one), can't be drawn by a browser: each is shown as a box of its size naming what it is
+  ("Embedded Excel spreadsheet (EMF picture)"), and kept as it is
 - After restoring a draft, the text you had changed while tracking shows as tracked changes kept from
   the file (accept or reject them; they can't be edited inside), and "Review your changes" lists only
   what changed since restoring. A draft is kept per browser: another browser or device doesn't see it

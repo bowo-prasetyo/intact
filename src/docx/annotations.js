@@ -156,8 +156,14 @@ export function describe(node) {
   if (/chart/.test(uri)) return 'Chart';
   if (/diagram/.test(uri)) return 'SmartArt graphic';
   if (/wordprocessingShape|wordprocessingGroup/.test(uri)) return 'Shape or text box';
+  // An embedded object, by what made it (its ProgID), before its picture, which is only its preview.
+  const ole = [...node.getElementsByTagName('o:OLEObject')][0];
+  if (has(W, 'object') || ole) {
+    const progId = ole?.getAttribute('ProgID') || '';
+    const kind = [[/^Excel\./, 'Excel spreadsheet'], [/^Word\./, 'Word document'], [/^PowerPoint\./, 'PowerPoint slide'], [/^Visio\./, 'Visio drawing'], [/^Equation\./, 'equation'], [/^Package/, 'file']].find(([re]) => re.test(progId))?.[1];
+    return kind ? `Embedded ${kind}` : 'Embedded object';
+  }
   if (has(NS.a, 'blip') || has(NS.v, 'imagedata')) return 'Picture';
-  if (has(W, 'object')) return 'Embedded object';
   if (has(W, 'pict') || has(NS.v, 'shape')) return 'Shape';
   const MATH = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
   if (has(MATH, 'oMath') || (node.namespaceURI === MATH && /^oMath(Para)?$/.test(node.localName))) return 'Equation';

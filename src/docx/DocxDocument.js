@@ -2534,6 +2534,25 @@ export class DocxDocument {
         span.append(img);
         break;
       }
+      // A picture in a format browsers can't draw (EMF or WMF: Windows' own, as an embedded object's
+      // preview usually is): a box of its size saying what it is, in place of a gap; kept as it is.
+      if (!span.childNodes.length) {
+        const rid = blips[0].getAttributeNS(NS.r, 'embed') || blips[0].getAttributeNS(NS.r, 'id');
+        const format = this.rels.get(rid)?.path?.match(/\.(emf|wmf)$/i)?.[1]?.toUpperCase();
+        if (format) {
+          const what = describe(node);
+          span.classList.add('picture-placeholder');
+          span.dataset.format = format;
+          span.dataset.label = what;
+          span.title = `${what} – its picture is ${format}, which browsers can't show; kept as it is, edit it in Word`;
+          const extent = node.getElementsByTagNameNS(NS.wp, 'extent')[0];
+          const style = node.getElementsByTagNameNS(NS.v, 'shape')[0]?.getAttribute('style') || '';
+          const pt = (key) => Number(new RegExp(`(?:^|;)\\s*${key}:\\s*([\\d.]+)pt`).exec(style)?.[1]);
+          const [w, h] = extent ? [Number(extent.getAttribute('cx')) / 9525, Number(extent.getAttribute('cy')) / 9525] : [pt('width') * 4 / 3, pt('height') * 4 / 3];
+          if (w > 0 && h > 0) Object.assign(span.style, { width: `${w}px`, height: `${h}px` });
+          return span;
+        }
+      }
       if (span.childNodes.length) {
         const info = local === 'r' && pictureInfo(node);
         if (info) {
