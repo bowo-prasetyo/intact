@@ -229,7 +229,13 @@ for (const name of FIXTURES) {
         }
       }
       const pictures = ((await zip.file(main).async('string')).match(/<a:blip [^>]*r:embed=|<v:imagedata [^>]*r:id=/g) || []).length;
-      expect(await page$(page).locator('img').filter({ hasNot: page.locator('xpath=ancestor::*[contains(@class, "docx-hf-band")]') }).count(), 'every picture in the text is shown').toBe(pictures);
+      // Shown as itself, or, in a format browsers can't draw (EMF, WMF), as a box of its size saying what it is.
+      const inText = (selector) => page$(page).locator(selector).filter({ hasNot: page.locator('xpath=ancestor::*[contains(@class, "docx-hf-band")]') }).count();
+      expect(await inText('img') + await inText('.picture-placeholder'), 'every picture in the text is shown').toBe(pictures);
+      for (const box of await page$(page).locator('.picture-placeholder').all()) {
+        expect(await box.getAttribute('title')).toMatch(/its picture is (EMF|WMF), which browsers can't show; kept as it is/);
+        expect((await box.boundingBox()).width).toBeGreaterThan(20);
+      }
     });
 
     test('downloading without edits changes nothing', async ({ page }) => {

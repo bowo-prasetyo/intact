@@ -71,6 +71,25 @@ test('the toolbar is one Tab stop: arrows move along it, Esc goes back to the te
   await expect(page.locator('.docx-page p').first()).toHaveText('PlaXin bold');
 });
 
+test('Alt+F10 straight after the caret moves: Esc comes back where it is, not where it was', async ({ page }) => {
+  // The editor keeps the caret on selectionchange, which comes later; a key pressed before it came
+  // took Esc back to the caret before (WebKit in CI was slow enough to show it).
+  await openInEditor(page, await buildDocx(BODY));
+  await caretIn(page, 'Plain', 0);
+  await expect.poll(() => page.evaluate(() => getSelection().anchorOffset)).toBe(0);
+  await page.waitForTimeout(100); // the editor has kept this caret
+  await page.evaluate(() => {
+    const root = document.querySelector('.docx-page');
+    const text = document.createTreeWalker(root, NodeFilter.SHOW_TEXT).nextNode();
+    getSelection().setBaseAndExtent(text, 3, text, 3);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', altKey: true, bubbles: true, cancelable: true }));
+  });
+  await expect(toolbar(page).getByRole('button', { name: 'Undo', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await page.keyboard.type('X');
+  await expect(page.locator('.docx-page p').first()).toHaveText('PlaXin bold');
+});
+
 test('the controls stay where they are when the first tracked change appears, Accept and Reject labelled', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openInEditor(page, await buildDocx(BODY));

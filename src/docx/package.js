@@ -12,6 +12,14 @@ export class UnreadableFileError extends Error {
   }
 }
 
+const DAMAGED_ADVICE = 'Nothing was opened, and the file is as it was. Ask for it again, or open it in Word, which can sometimes repair a damaged document.';
+
+/** A damaged ZIP package (cut short, or its bytes changed: a checksum doesn't match). */
+export const damagedPackage = (name) => new UnreadableFileError('damaged', `${name} is damaged: its package is incomplete or its contents don't match their checksums, as happens when a file is cut short while downloading or copying. ${DAMAGED_ADVICE}`);
+
+/** A damaged part: `part` (its path in the package) isn't well-formed XML. */
+export const damagedPart = (name, part) => new UnreadableFileError('damaged', `${name} is damaged: its part ${part} isn't well-formed XML, so it can't be read as Word wrote it. ${DAMAGED_ADVICE}`);
+
 const CFB_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const ZIP_MAGIC = [0x50, 0x4b];
 

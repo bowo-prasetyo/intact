@@ -16,6 +16,8 @@ async function fakePickers(page, { permission = 'granted' } = {}) {
   await page.addInitScript((perm) => {
     window.__written = {};
     window.__asked = 0;
+    window.__fail = null; // 'write' or 'close': the next write fails there, as with a full disk
+    window.__aborted = 0;
     const handle = (name, bytes) => ({
       kind: 'file',
       name,
@@ -23,11 +25,18 @@ async function fakePickers(page, { permission = 'granted' } = {}) {
       queryPermission: async () => 'prompt',
       requestPermission: async () => { window.__asked += 1; return perm; },
       createWritable: async () => {
+        // As the browser's: written to a copy, which takes the file's place only when closed whole.
         const parts = [];
         return {
-          write: async (blob) => parts.push(new Uint8Array(await blob.arrayBuffer())),
-          close: async () => { window.__written[name] = parts.flatMap((p) => [...p]); },
-          abort: async () => {},
+          write: async (blob) => {
+            if (window.__fail === 'write') throw new DOMException('The disk is full', 'QuotaExceededError');
+            parts.push(new Uint8Array(await blob.arrayBuffer()));
+          },
+          close: async () => {
+            if (window.__fail === 'close') throw new DOMException('The file could not be written', 'InvalidStateError');
+            window.__written[name] = parts.flatMap((p) => [...p]);
+          },
+          abort: async () => { window.__aborted += 1; },
         };
       },
     });
@@ -136,3 +145,41 @@ test('without the browser’s pickers (Firefox, Safari, phones), Open and Downlo
   await header(page).getByRole('button', { name: 'More ways to save' }).click();
   await expect(page.getByRole('menu', { name: 'Save' }).getByRole('menuitem', { name: /Save as…|Download a copy/ })).toHaveCount(0);
 });
+
+for (const where of ['write', 'close']) {
+  test(`a save that fails part way (at ${where}) leaves the file as it was, and the changes still here`, async ({ page }) => {
+    await fakePickers(page);
+    await openPicked(page, 'novel.docx', await buildDocx(BODY));
+    // A first Save writes the file, so there is a version to keep.
+    await page.locator('.docx-page p').first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' Saved.');
+    await header(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await review(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(status(page)).toContainText('Saved novel.docx on this device');
+    expect(await written(page, 'novel.docx')).toContain('Chapter one draft. Saved.');
+
+    // The next Save fails part way: the copy is thrown away, the file stays as it was.
+    await page.keyboard.type(' Lost?');
+    await expect(page.locator('.statusbar .draft-status')).toHaveText('Changes kept on this device');
+    await page.evaluate((w) => { window.__fail = w; }, where);
+    await header(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await review(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(status(page)).toContainText('Not saved:');
+    await expect(status(page)).toContainText('novel.docx is as it was, and your changes are still here');
+    expect(await page.evaluate(() => window.__aborted)).toBe(1);
+    const kept = await written(page, 'novel.docx');
+    expect(kept).toContain('Chapter one draft. Saved.');
+    expect(kept).not.toContain('Lost?');
+    // The changes are still here, still unsaved, and still kept in this browser.
+    await expect(page.locator('.docx-page p').first()).toContainText('Saved. Lost?');
+    await expect(page.locator('.statusbar .draft-status')).toHaveText('Changes kept on this device');
+
+    // Once writing works again, Save writes them.
+    await page.evaluate(() => { window.__fail = null; });
+    await header(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await review(page).getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(status(page)).toContainText('Saved novel.docx on this device');
+    expect(await written(page, 'novel.docx')).toContain('Saved. Lost?');
+  });
+}

@@ -138,13 +138,13 @@ promises does.
   by the tests ✔; Safari's engine (WebKit) in CI ✔, the whole suite ✔
 - Reliability, before any new feature (what each must show: [docs/RELIABILITY.md](docs/RELIABILITY.md)):
   a damaged file (truncated, a bad checksum, malformed XML) refused with a plain reason, never
-  half-opened; a save interrupted part way never leaves a broken file where the opened one was, and
-  its draft survives; fixtures for charts, SmartArt, OLE objects, custom XML, alternate content,
-  nested tables, unusual numbering and sections with several headers, each with its producer; open
-  and save times of large documents recorded in CI before any budget is set; the editor's own
-  interface accessible (keyboard, focus order and its return from dialogs, names, zoom and reflow,
-  contrast, reduced motion, screen-reader announcements), checked automatically and with a screen
-  reader by hand; a self-hosted deployment's response headers checked, not only documented
+  half-opened ✔; a save interrupted part way never leaves a broken file where the opened one was,
+  and its draft survives ✔; fixtures for charts, OLE objects, custom XML, alternate content, nested
+  tables, unusual numbering and sections with several headers, each with its producer ✔ (SmartArt
+  and Google Docs still wanted: only Word, and Google, write them); open and save times of large
+  documents recorded in CI before any budget is set ✔; the editor's own interface accessible,
+  checked automatically (axe-core, WCAG 2.1 AA) ✔ and with a screen reader by hand (still to do);
+  a self-hosted deployment's response headers checked, not only documented ✔
 
 **Next — do the core job better**
 - Edit text inside content controls (templates and forms); tick boxes, pick from lists and dates ✔

@@ -131,8 +131,8 @@
       <button data-tab="home" type="button" :title="t('Italic (Ctrl+I)')" :aria-label="t('Italic')" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
       <button data-tab="home" type="button" :title="t('Underline (Ctrl+U)')" :aria-label="t('Underline')" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
       <button data-tab="home" type="button" :title="t('Strikethrough')" :aria-label="t('Strikethrough')" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
-      <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
-      <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script" aria-hidden="true"><span class="glyph" data-glyph="x"></span><sup class="glyph" data-glyph="2"></sup></span></button>
+      <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script" aria-hidden="true"><span class="glyph" data-glyph="x"></span><sub class="glyph" data-glyph="2"></sub></span></button>
       <span data-tab="home" class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
@@ -185,13 +185,13 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">{{ t('Insert') }}</span>
       </button>
       <button data-tab="insert" type="button" :title="t('Insert a symbol: ©, €, ✓, →, ½ and others, by group or name')" :aria-label="t('Insert symbol')" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
-        <span class="symbol-icon" aria-hidden="true">Ω</span><span class="short-label">{{ t('Symbol') }}</span>
+        <span class="symbol-icon glyph" aria-hidden="true" data-glyph="Ω"></span><span class="short-label">{{ t('Symbol') }}</span>
       </button>
       <button data-tab="insert" type="button" class="ph" :title="t('Insert picture')" :aria-label="t('Insert picture')" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Picture') }}</span>
       </button>
       <button data-tab="insert" type="button" class="ph" :title="t('Draw signature: sign with your finger, a pen or the mouse, and put it at the caret')" :aria-label="t('Draw signature')" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Sign') }}</span>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Signature') }}</span>
       </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/svg+xml,.svg" multiple hidden @change="onPicturesPicked" />
       <button data-tab="insert" ref="tableButton" type="button" :title="t('Insert table')" :aria-label="t('Insert table')" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
@@ -211,7 +211,7 @@
       </button>
       <span data-tab="layout" class="split">
         <button type="button" :title="t('Page number: in the header or footer at the caret, or a footer with the page number')" :aria-label="t('Page number')" @click="insertPageNumber()">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Page no.') }}</span>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Page number') }}</span>
         </button>
         <button ref="pageNumberButton" type="button" class="arrow" :title="t('Page number at the top or bottom of the page; edit the header or footer')" :aria-label="t('Page number and header options')" aria-haspopup="menu" :aria-expanded="pageNumberMenu.open" @click="togglePageNumberMenu">▾</button>
       </span>
@@ -263,9 +263,9 @@
       <button data-tab="home" type="button" :title="t('Find and replace (Ctrl+F, Ctrl+H)')" :aria-label="t('Find and replace')" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg><span class="short-label">{{ t('Find') }}</span>
       </button>
-      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" :aria-label="t('Fill in placeholders')" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
+      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" :aria-label="placeholderCount ? `${t('Fill in placeholders')} (${placeholderCount})` : t('Fill in placeholders')" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Fill in') }}</span>
-        <span v-if="placeholderCount" class="badge">{{ placeholderCount }}</span>
+        <span v-if="placeholderCount" class="badge count-glyph" :data-count="placeholderCount" aria-hidden="true"></span>
       </button>
       <button data-tab="home view" type="button" class="marks-toggle" :title="t('Show formatting marks (Ctrl+Shift+8)')" :aria-label="t('Show formatting marks')" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
       <span class="sep" data-tab="review" />
@@ -390,6 +390,7 @@
             class="docx-page"
             :class="{ painting: painter.active }"
             contenteditable="true"
+            tabindex="0"
             spellcheck="true"
             :style="pageStyle"
             @beforeinput="onBeforeInput"
@@ -1249,7 +1250,7 @@
     <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
 
     <footer class="statusbar">
-      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="t('Word count, length and readability')" @click="openWordCount">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : lengthTarget.words ? `${words} / ${lengthTarget.words}` : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</button></span>
+      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="`${wordCountText} – ${t('Word count, length and readability')}`" @click="openWordCount">{{ wordCountText }}</button></span>
       <button v-if="lengthTarget.headline && headline" type="button" class="headline-count" :class="{ over: headline.chars > lengthTarget.headline }" :title="headlineTitle" @click="openWordCount">{{ t('Headline {chars} / {limit}', { chars: headline.chars, limit: lengthTarget.headline }) }}</button>
       <button type="button" class="nav-toggle" :aria-pressed="navOpen" :title="t('Headings: move around the document by its headings, as Word’s Navigation pane')" @click="toggleNav">{{ t('Headings') }}</button>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? t('page') : t('pages') }}</button>
@@ -1325,6 +1326,7 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { useTableSort } from './editor/tableSort.js';
+import { usePictureLayout } from './editor/pictureLayout.js';
 import { useFormatPainter } from './editor/formatPainter.js';
 import { useChangeCase } from './editor/changeCase.js';
 import { useAutoCorrect } from './editor/autoCorrect.js';
@@ -1344,20 +1346,17 @@ import { shortcutFor } from '../editor/shortcuts.js';
 import { HIGHLIGHT_COLORS, setVertAlign, setHighlight, formatState, portions } from '../editor/inline.js';
 import { drawMarks } from '../editor/marks.js';
 import { rovingToolbar, fitLabels } from '../editor/toolbar.js';
-import { fitPictures, pictureZoom } from '../editor/fitPictures.js';
+import { fitPictures } from '../editor/fitPictures.js';
 import { changeItems, changesAt, adjacentChange, itemRange, mergeGroup } from '../editor/changes.js';
 import { HIGHLIGHT } from '../docx/styles.js';
 import { WRAPS, PICTURE_STYLES, SHAPES, BEVELS, CAMERAS, ARTISTIC, MATERIALS, LIGHTS } from '../docx/pictures.js';
-import { CAMERA_ANGLES } from '../docx/lighting.js';
-import { renderArtistic } from '../editor/artistic.js';
-import { pictureOutline } from '../editor/outline.js';
 import { missingFonts } from '../docx/fonts.js';
 import { createReader } from '../editor/readAloud.js';
 import { restyle, noteRuns, trackRuns, setFont, setSize, setColor, setHidden, setUnderline, setCharacterStyle, clearDirect, changeSize, nextFontSize } from '../editor/runs.js';
 import { smartQuote, smartReplacement, listTrigger, autoCorrect, linkTrigger } from '../editor/smartTyping.js';
 import { formatNumber } from '../docx/numbering.js';
 import { updateFields, parseInstr, citationNumbersIn, bookmarks as bookmarksIn, bookmarkRange, textOf, indexEntries } from '../docx/fieldUpdates.js';
-import { UNIT_NAMES, EMU_PER, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
+import { UNIT_NAMES, unitFor, saveUnit, fromTwips, toTwips, switchUnit } from '../editor/units.js';
 import {
   revisionDate, typeTracked, typeUntracked, insertTracked, deleteTracked, unitRange, markSplit, wrapInsertedBreak, wrapComposedText,
   inField, replaceTracked,
@@ -1641,6 +1640,11 @@ function copyForWeb(kind, selection = false) {
 
 // ------------------------------------------------------------------ word count and length
 
+// What the status bar's word count shows, which starts its name too (the name holds what is seen).
+const wordCountText = computed(() => t('{words} words · {chars} characters', {
+  words: selectedWords.value != null ? t('{n} of {total}', { n: selectedWords.value, total: words.value }) : lengthTarget.words ? `${words.value} / ${lengthTarget.words}` : words.value,
+  chars: selectedChars.value != null ? t('{n} of {total}', { n: selectedChars.value, total: chars.withSpaces }) : chars.withSpaces,
+}));
 const overTarget = computed(() => selectedWords.value == null && !!lengthTarget.words && words.value > lengthTarget.words);
 const headlineTitle = computed(() => {
   const h = headline.value;
@@ -3288,445 +3292,14 @@ function addRow(cell) {
 
 // ------------------------------------------------------------------ picture layout
 
-const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-const PX = 9525; // EMU per pixel
-const picture = reactive({ el: null, x: 0, y: 0, w: 0, h: 0, wrap: 'inline', cropping: false, shape: false });
-const picturePanel = reactive({
-  unit: 'cm', // lengths in centimetres or inches (see editor/units.js)
-  open: false, x: 0, y: 0, wrap: 'inline', hAlign: 'left', hOffset: 0, vAlign: 'offset', vOffset: 0, width: 0, height: 0, lock: true, alt: '',
-  cropL: 0, cropT: 0, cropR: 0, cropB: 0, rot: 0, flipH: false, flipV: false,
-  border: 'none', borderColor: '#000000', shadow: false, glow: false, softEdge: false, reflection: false, colour: 'normal', brightness: 0, contrast: 0,
-  style: '', shape: 'rect', bevel: '', camera: '', artistic: '', drawing: false,
-  bevelW: 6, bevelH: 2, material: '', lightRig: 'threePt', lightAngle: 0, rotX: 0, rotY: 0, rotZ: 0, perspective: 0, amount: 50,
+// Pictures laid out as Word lays them out: see editor/pictureLayout.js.
+const { HANDLES, apply3D, applyAlt, applyArtistic, applyCameraPreset, applyCrop, applyEffects, applyPosition, applyRotation, applyShape, applySize, applyStyle, applyWrap, closePicturePanel, flip, layoutOptionsButton, picture, picturePanel, picturePanelEl, resetPictureSize, rotateBy, round, startCrop, startResize, startRotate, toggleCropping, togglePicturePanel, onPictureMousedown, pictureInSelection, selectPicture, showPicture, updatePictureFrame } = usePictureLayout({
+  BLOCK_SELECTOR, doc, lockMode, markDirty, message, page, sheetZoom,
+  get changes() { return changes; },
+  get docUnit() { return docUnit; },
+  get savedRange() { return savedRange; }, set savedRange(v) { savedRange = v; },
+  get undoStack() { return undoStack; },
 });
-const BORDERS = { thin: 0.75, medium: 1.5, thick: 3 };
-const picturePanelEl = ref(null);
-const layoutOptionsButton = ref(null);
-const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
-
-/** The picture a selection is on: exactly one picture and nothing else (as a click selects it). */
-function pictureInSelection(range) {
-  if (!range || range.collapsed) return null;
-  const frag = range.cloneContents();
-  if (frag.textContent.trim() || frag.querySelectorAll('.picture').length !== 1) return null;
-  return [...page.value.querySelectorAll('.picture')].find((p) => range.intersectsNode(p)) || null;
-}
-
-/** Selects a picture, as a click does in Word: the frame with its handles shows around it. */
-function selectPicture(span) {
-  const range = document.createRange();
-  range.selectNode(span);
-  page.value.focus({ preventScroll: true });
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-  savedRange = range.cloneRange();
-  showPicture(span);
-}
-
-function showPicture(span) {
-  if (span && lockMode.value) {
-    // Resizing or moving a picture isn't tracked: under "tracked changes only" it can't be done either.
-    picture.el = null;
-    return;
-  }
-  if (picture.el !== span) {
-    picturePanel.open = false;
-    picture.cropping = false;
-  }
-  picture.el = span;
-  picture.shape = span?.dataset.shape != null;
-  updatePictureFrame();
-  if (span) message.value = picture.shape ? 'Shape: drag it to move it, a handle to resize it, or open Layout Options to turn it' : 'Picture: drag a corner to resize, or open Layout Options for wrapping and position';
-}
-
-/** Puts the frame over the selected picture (in the sheet's coordinates). */
-function updatePictureFrame() {
-  const span = picture.el;
-  if (!span?.isConnected) {
-    picture.el = null;
-    picturePanel.open = false;
-    return;
-  }
-  const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
-  const r = span.getBoundingClientRect(); // the picture's frame (what shows of it, cropped)
-  const z = sheetZoom.value; // the frame is drawn in the page's own pixels
-  Object.assign(picture, { x: (r.left - sheet.left) / z, y: (r.top - sheet.top) / z, w: r.width / z, h: r.height / z, wrap: span.dataset.wrap || 'inline' });
-}
-
-/** Applies a change to the selected picture as one undoable step, keeping it selected. */
-function changePicture(change, done) {
-  const span = picture.el;
-  if (!span?.isConnected) return;
-  undoStack.flush();
-  change(span);
-  undoStack.commit();
-  markDirty();
-  nextTick(() => {
-    if (span.isConnected) selectPicture(span);
-    fillPicturePanel();
-    // A line, arrow or shape is changed as a picture is, and called what it is.
-    if (done) message.value = picture.shape ? done.replace(/^Picture\b/, 'Shape') : done;
-  });
-}
-
-/** Drag a handle: corners keep the proportions, sides stretch, as in Word. */
-function startResize(e, handle) {
-  const span = picture.el;
-  const info = span && doc.pictureLayout(span);
-  if (!info) return;
-  const look = doc.pictureLookOf(span);
-  const start = { x: e.clientX, y: e.clientY, w: info.cx / PX, h: info.cy / PX };
-  const zoom = pictureZoom(span) * sheetZoom.value; // shown smaller (or zoomed): the pointer moves in shown pixels
-  const target = e.currentTarget;
-  target.setPointerCapture(e.pointerId);
-  let size = { w: start.w, h: start.h };
-  const move = (ev) => {
-    const dx = ((ev.clientX - start.x) / zoom) * (handle.includes('w') ? -1 : handle.includes('e') ? 1 : 0);
-    const dy = ((ev.clientY - start.y) / zoom) * (handle.includes('n') ? -1 : handle.includes('s') ? 1 : 0);
-    let w = start.w + dx;
-    let h = start.h + dy;
-    if (handle.length === 2) {
-      const scale = Math.max(w / start.w, h / start.h);
-      w = start.w * scale;
-      h = start.h * scale;
-    }
-    size = { w: Math.max(8, w), h: Math.max(8, h) };
-    doc.stylePicture(span, { ...info, cx: size.w * PX, cy: size.h * PX }, look); // a preview until it is let go
-    updatePictureFrame();
-  };
-  const up = () => {
-    target.removeEventListener('pointermove', move);
-    target.removeEventListener('pointerup', up);
-    target.removeEventListener('pointercancel', up);
-    if (size.w === start.w && size.h === start.h) return;
-    const unit = docUnit();
-    changePicture((s) => doc.setPictureSize(s, size.w * PX, size.h * PX), `Picture resized to ${round(size.w * PX / EMU_PER[unit], 1)} × ${round(size.h * PX / EMU_PER[unit], 1)} ${unit}`);
-  };
-  target.addEventListener('pointermove', move);
-  target.addEventListener('pointerup', up);
-  target.addEventListener('pointercancel', up);
-}
-
-/**
- * A press on a picture selects it; dragging a selected floating picture moves it, its new place
- * measured from the left margin and from its paragraph (so it moves with the text, as by default
- * in Word).
- */
-function onPictureMousedown(e, span) {
-  e.preventDefault();
-  const wasSelected = picture.el === span;
-  selectPicture(span);
-  if (!wasSelected || (span.dataset.wrap || 'inline') === 'inline' || e.button !== 0) return;
-  const start = { x: e.clientX, y: e.clientY };
-  let moved = false;
-  const move = (ev) => {
-    const dx = ev.clientX - start.x;
-    const dy = ev.clientY - start.y;
-    if (!moved && Math.hypot(dx, dy) < 4) return;
-    moved = true;
-    const z = sheetZoom.value; // moved in shown pixels, placed in the page's own
-    span.style.transform = `translate(${dx / z}px, ${dy / z}px) ${span.dataset.turn || ''}`;
-    updatePictureFrame();
-  };
-  const up = (ev) => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
-    if (!moved) return;
-    const r = span.getBoundingClientRect(); // where it was dropped
-    span.style.transform = span.dataset.turn || '';
-    const sheet = page.value.closest('.docx-sheet').getBoundingClientRect();
-    const block = span.closest(BLOCK_SELECTOR) || span.parentElement;
-    const z = sheetZoom.value;
-    const left = (r.left - sheet.left) / z - doc.page.left;
-    const top = (r.top - block.getBoundingClientRect().top) / z;
-    changePicture((s) => doc.setPicturePosition(s, {
-      h: { relativeFrom: 'margin', offset: Math.round(left) * PX },
-      v: { relativeFrom: 'paragraph', offset: Math.round(top) * PX },
-    }), 'Picture moved');
-    void ev;
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
-}
-
-/** Fills the Layout Options panel from the selected picture. */
-function fillPicturePanel() {
-  if (!picture.el) return;
-  const info = doc.pictureLayout(picture.el);
-  if (!info) return;
-  const page = doc.page;
-  const unit = docUnit();
-  const PER_UNIT = EMU_PER[unit]; // EMU per unit shown: a centimetre or an inch
-  const h = info.h || { relativeFrom: 'margin', align: 'left' };
-  const v = info.v || { relativeFrom: 'paragraph', offset: 0 };
-  let hAlign = 'word';
-  let hOffset = 0;
-  if (h.align && ['left', 'center', 'right'].includes(h.align) && ['margin', 'column'].includes(h.relativeFrom)) hAlign = h.align;
-  else if (h.align == null && ['margin', 'column', 'page'].includes(h.relativeFrom)) {
-    hAlign = 'offset';
-    hOffset = round(((h.offset || 0) / PX - (h.relativeFrom === 'page' ? page.left : 0)) * PX / PER_UNIT);
-  }
-  let vAlign = 'word';
-  if (v.align && ['top', 'center', 'bottom'].includes(v.align) && v.relativeFrom === 'margin') vAlign = v.align;
-  else if (v.align == null && ['paragraph', 'line'].includes(v.relativeFrom)) vAlign = 'offset';
-  const look = doc.pictureLookOf(picture.el);
-  const border = look.border ? (look.border.width <= 1 ? 'thin' : look.border.width <= 2 ? 'medium' : 'thick') : 'none';
-  Object.assign(picturePanel, {
-    unit, wrap: info.wrap, hAlign, hOffset, vAlign, vOffset: vAlign === 'offset' ? round((v.offset || 0) / PER_UNIT) : 0,
-    width: round(info.cx / PER_UNIT), height: round(info.cy / PER_UNIT), alt: info.descr,
-    cropL: round(look.crop.l * 100, 1), cropT: round(look.crop.t * 100, 1), cropR: round(look.crop.r * 100, 1), cropB: round(look.crop.b * 100, 1),
-    rot: round(look.rot, 1), flipH: look.flipH, flipV: look.flipV,
-    border, borderColor: `#${look.border?.color || '000000'}`.toLowerCase(), shadow: !!look.shadow, glow: !!look.glow, softEdge: !!look.softEdge,
-    reflection: !!look.reflection, colour: look.greyscale ? 'greyscale' : 'normal', brightness: round(look.brightness * 100), contrast: round(look.contrast * 100),
-    style: '', shape: look.geometry, bevel: look.bevel?.prst || '', camera: look.camera || '', artistic: look.artistic?.effect || '',
-    amount: look.artistic?.amount ?? 50,
-    bevelW: round((look.bevel?.w ?? 76200) / 12700, 1), bevelH: round((look.bevel?.h ?? 25400) / 12700, 1),
-    material: look.material || '', lightRig: look.light?.rig || 'threePt', lightAngle: round(look.light?.angle || 0),
-    ...(() => {
-      const [x, y, z, fov] = look.rotation3d ? [look.rotation3d.x, look.rotation3d.y, look.rotation3d.z, look.rotation3d.perspective] : CAMERA_ANGLES[look.camera] || [0, 0, 0, 0];
-      return { rotX: round(x, 1), rotY: round(y, 1), rotZ: round(z, 1), perspective: round(fov, 1) };
-    })(),
-  });
-}
-
-function togglePicturePanel() {
-  if (picturePanel.open) return closePicturePanel();
-  fillPicturePanel();
-  const r = layoutOptionsButton.value.getBoundingClientRect();
-  Object.assign(picturePanel, { open: true, x: Math.max(8, Math.min(r.right + 6, window.innerWidth - 310)), y: Math.max(8, r.top) });
-  nextTick(() => {
-    const el = picturePanelEl.value;
-    if (!el) return;
-    picturePanel.y = Math.max(8, Math.min(picturePanel.y, window.innerHeight - el.offsetHeight - 8)); // all of it on screen
-    el.querySelector('input:checked, input')?.focus();
-  });
-}
-
-function closePicturePanel() {
-  picturePanel.open = false;
-  if (picture.el?.isConnected) selectPicture(picture.el);
-  else page.value.focus();
-}
-
-const WRAP_NAMES = Object.fromEntries(WRAPS);
-
-function applyWrap(wrap) {
-  // Tight and Through: the text wraps to the picture's outline (what isn't transparent), as in Word.
-  const outline = (wrap === 'tight' || wrap === 'through') && picture.el
-    ? pictureOutline(picture.el.querySelector('img'), doc.pictureLookOf(picture.el).crop) : null;
-  changePicture((s) => doc.setPictureWrap(s, wrap, outline), `Text wrapping: ${WRAP_NAMES[wrap]}${outline ? ', around its outline' : ''}`);
-}
-
-function applyPosition(which) {
-  const p = picturePanel;
-  const PER_UNIT = EMU_PER[p.unit];
-  const h = which === 'h' && p.hAlign !== 'word'
-    ? (p.hAlign === 'offset' ? { relativeFrom: 'margin', offset: (Number(p.hOffset) || 0) * PER_UNIT } : { relativeFrom: 'margin', align: p.hAlign })
-    : null;
-  const v = which === 'v' && p.vAlign !== 'word'
-    ? (p.vAlign === 'offset' ? { relativeFrom: 'paragraph', offset: (Number(p.vOffset) || 0) * PER_UNIT } : { relativeFrom: 'margin', align: p.vAlign })
-    : null;
-  if (!h && !v) return;
-  changePicture((s) => doc.setPicturePosition(s, { h, v }), 'Picture positioned');
-}
-
-function applySize(which) {
-  const info = doc.pictureLayout(picture.el);
-  if (!info) return;
-  const PER_UNIT = EMU_PER[picturePanel.unit];
-  let w = Math.max(0.1, Number(picturePanel.width) || 0.1) * PER_UNIT;
-  let h = Math.max(0.1, Number(picturePanel.height) || 0.1) * PER_UNIT;
-  if (picturePanel.lock) {
-    if (which === 'width') h = (w * info.cy) / info.cx;
-    else w = (h * info.cx) / info.cy;
-  }
-  changePicture((s) => doc.setPictureSize(s, w, h), `Picture resized to ${round(w / PER_UNIT, 1)} × ${round(h / PER_UNIT, 1)} ${picturePanel.unit}`);
-}
-
-/** Back to the picture's own size (at 96 pixels an inch), narrowed to fit between the margins. */
-function resetPictureSize() {
-  const img = picture.el?.querySelector('img');
-  if (!img?.naturalWidth) return;
-  const max = doc.page.width - doc.page.left - doc.page.right;
-  const scale = Math.min(1, max / img.naturalWidth);
-  changePicture((s) => doc.setPictureSize(s, img.naturalWidth * scale * PX, img.naturalHeight * scale * PX), 'Picture back to its own size');
-}
-
-/** Crop with the handles, as Word's Crop button: dragging a handle cuts (or uncuts) that side. */
-function toggleCropping() {
-  picture.cropping = !picture.cropping;
-  message.value = picture.cropping ? 'Crop: drag the handles to cut the picture; Esc or Done cropping when finished' : 'Picture cropped';
-}
-
-function startCrop(e, handle) {
-  const span = picture.el;
-  const info = span && doc.pictureLayout(span);
-  if (!info) return;
-  const look = doc.pictureLookOf(span);
-  const c0 = look.crop;
-  const fullW = info.cx / PX / (1 - c0.l - c0.r);
-  const fullH = info.cy / PX / (1 - c0.t - c0.b);
-  const start = { x: e.clientX, y: e.clientY };
-  const zoom = pictureZoom(span) * sheetZoom.value;
-  const target = e.currentTarget;
-  target.setPointerCapture(e.pointerId);
-  let crop = c0;
-  const move = (ev) => {
-    const dx = (ev.clientX - start.x) / zoom / fullW;
-    const dy = (ev.clientY - start.y) / zoom / fullH;
-    crop = {
-      l: handle.includes('w') ? c0.l + dx : c0.l,
-      r: handle.includes('e') ? c0.r - dx : c0.r,
-      t: handle.includes('n') ? c0.t + dy : c0.t,
-      b: handle.includes('s') ? c0.b - dy : c0.b,
-    };
-    for (const side of ['l', 'r', 't', 'b']) crop[side] = Math.max(-0.5, Math.min(0.9, crop[side]));
-    if (crop.l + crop.r > 0.95 || crop.t + crop.b > 0.95) return;
-    const w = fullW * (1 - crop.l - crop.r);
-    const h = fullH * (1 - crop.t - crop.b);
-    doc.stylePicture(span, { ...info, cx: w * PX, cy: h * PX }, { ...look, crop });
-    updatePictureFrame();
-  };
-  const up = () => {
-    target.removeEventListener('pointermove', move);
-    target.removeEventListener('pointerup', up);
-    if (crop === c0) return;
-    changePicture((s) => doc.setPictureCrop(s, crop), 'Picture cropped');
-    nextTick(() => { picture.cropping = true; });
-  };
-  target.addEventListener('pointermove', move);
-  target.addEventListener('pointerup', up);
-}
-
-/** Drag the round handle above a picture to rotate it (Shift: in steps of 15°), as in Word. */
-function startRotate(e) {
-  const span = picture.el;
-  const info = span && doc.pictureLayout(span);
-  if (!info) return;
-  const look = doc.pictureLookOf(span);
-  const r = span.getBoundingClientRect();
-  const center = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  const target = e.currentTarget;
-  target.setPointerCapture(e.pointerId);
-  let rot = look.rot;
-  const move = (ev) => {
-    let deg = (Math.atan2(ev.clientY - center.y, ev.clientX - center.x) * 180) / Math.PI + 90;
-    if (ev.shiftKey) deg = Math.round(deg / 15) * 15;
-    rot = ((Math.round(deg) % 360) + 360) % 360;
-    doc.stylePicture(span, info, { ...look, rot });
-    updatePictureFrame();
-  };
-  const up = () => {
-    target.removeEventListener('pointermove', move);
-    target.removeEventListener('pointerup', up);
-    if (rot === look.rot) return;
-    changePicture((s) => doc.setPictureRotation(s, { rot, flipH: look.flipH, flipV: look.flipV }), `Picture rotated to ${rot}°`);
-  };
-  target.addEventListener('pointermove', move);
-  target.addEventListener('pointerup', up);
-}
-
-function applyCrop() {
-  const p = picturePanel;
-  const crop = { l: (Number(p.cropL) || 0) / 100, t: (Number(p.cropT) || 0) / 100, r: (Number(p.cropR) || 0) / 100, b: (Number(p.cropB) || 0) / 100 };
-  changePicture((s) => doc.setPictureCrop(s, crop), 'Picture cropped');
-}
-
-function applyRotation() {
-  const p = picturePanel;
-  changePicture((s) => doc.setPictureRotation(s, { rot: Number(p.rot) || 0, flipH: p.flipH, flipV: p.flipV }), `Picture rotated to ${((Math.round(Number(p.rot) || 0) % 360) + 360) % 360}°`);
-}
-
-function rotateBy(deg) {
-  picturePanel.rot = (((Number(picturePanel.rot) || 0) + deg) % 360 + 360) % 360;
-  applyRotation();
-}
-
-function flip(axis) {
-  picturePanel[axis] = !picturePanel[axis];
-  const p = picturePanel;
-  changePicture((s) => doc.setPictureRotation(s, { rot: Number(p.rot) || 0, flipH: p.flipH, flipV: p.flipV }), axis === 'flipH' ? 'Picture flipped horizontally' : 'Picture flipped vertically');
-}
-
-function applyEffects() {
-  const p = picturePanel;
-  const look = {
-    border: p.border === 'none' ? null : { color: p.borderColor.replace('#', ''), width: BORDERS[p.border] },
-    shadow: p.shadow, glow: p.glow ? 'FFC000' : null, softEdge: p.softEdge, reflection: p.reflection,
-    greyscale: p.colour === 'greyscale', brightness: (Number(p.brightness) || 0) / 100, contrast: (Number(p.contrast) || 0) / 100,
-  };
-  changePicture((s) => doc.setPictureEffects(s, look), 'Picture effects changed');
-}
-
-/** A picture style from Word's gallery: its shape, border, effects and 3-D format replace the picture's. */
-function applyStyle() {
-  const name = picturePanel.style;
-  if (!name) return;
-  const style = name === 'none' ? null : PICTURE_STYLES.find((st) => st.name === name);
-  changePicture((s) => doc.setPictureStyle(s, style), style ? `Picture style: ${style.name}` : 'Picture style taken off');
-}
-
-function applyShape() {
-  const label = SHAPES.find(([v]) => v === picturePanel.shape)?.[1] || picturePanel.shape;
-  changePicture((s) => doc.setPictureGeometry(s, picturePanel.shape), `Picture shape: ${label}`);
-}
-
-/**
- * The 3-D format and rotation from the panel, as Word's 3-D Format and 3-D Rotation set them. The
- * angles (X, Y, Z rotation, perspective) are written when changed (`how` 'angles') or already set;
- * a preset alone stays a preset.
- */
-function apply3D(how) {
-  const p = picturePanel;
-  const look = doc.pictureLookOf(picture.el);
-  const bevel = p.bevel ? { prst: p.bevel, w: Math.max(0, Number(p.bevelW) || 0) * 12700, h: Math.max(0, Number(p.bevelH) || 0) * 12700 } : null;
-  const angles = how === 'angles' || look.rotation3d;
-  const rotation = angles ? { x: Number(p.rotX) || 0, y: Number(p.rotY) || 0, z: Number(p.rotZ) || 0, perspective: Math.max(0, Number(p.perspective) || 0) } : null;
-  changePicture((s) => doc.setPicture3D(s, {
-    bevel, camera: p.camera || null, material: p.material || null, rotation,
-    light: { rig: p.lightRig || 'threePt', dir: look.light?.dir || 't', angle: Number(p.lightAngle) || 0 },
-  }), how === 'angles' ? '3-D rotation changed' : '3-D format changed');
-}
-
-/** A 3-D rotation preset: its angles replace any set by hand. */
-function applyCameraPreset() {
-  const p = picturePanel;
-  const look = doc.pictureLookOf(picture.el);
-  const bevel = p.bevel ? { prst: p.bevel, w: Math.max(0, Number(p.bevelW) || 0) * 12700, h: Math.max(0, Number(p.bevelH) || 0) * 12700 } : null;
-  const label = CAMERAS.find(([v]) => v === p.camera)?.[1];
-  changePicture((s) => doc.setPicture3D(s, {
-    bevel, camera: p.camera || null, material: p.material || null,
-    light: { rig: p.lightRig || 'threePt', dir: look.light?.dir || 't', angle: Number(p.lightAngle) || 0 },
-  }), label ? `3-D rotation: ${label}` : '3-D rotation taken off');
-}
-
-/** An artistic effect: the picture is drawn with it here (the original kept), or taken off. */
-async function applyArtistic() {
-  const span = picture.el;
-  const effect = picturePanel.artistic;
-  if (!span) return;
-  const label = ARTISTIC.find(([v]) => v === effect)?.[1];
-  if (!effect) {
-    changePicture((s) => doc.setPictureArtistic(s, null), 'Artistic effect taken off');
-    return;
-  }
-  picturePanel.drawing = true;
-  message.value = `Drawing ${label}…`;
-  try {
-    const amount = Number(picturePanel.amount) || 0;
-    const png = await renderArtistic(doc.pictureOriginal(span).url, effect, amount);
-    changePicture((s) => doc.setPictureArtistic(s, effect, png, amount), `Artistic effect: ${label}`);
-  } catch (err) {
-    message.value = err.message || 'The effect couldn’t be drawn';
-  } finally {
-    picturePanel.drawing = false;
-  }
-}
-
-function applyAlt() {
-  changePicture((s) => doc.setPictureDescription(s, picturePanel.alt.trim()), picturePanel.alt.trim() ? 'Alt text saved' : 'Alt text removed');
-}
 
 // ------------------------------------------------------------------ table layout
 
@@ -9487,6 +9060,8 @@ function onWindowKeydown(e) {
   }
   if (e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault(); // to the toolbar, as in Word and WAI-ARIA's toolbar pattern; Esc comes back
+    // where the caret is now: selectionchange, which keeps it, may not have come yet.
+    takeLiveSelection();
     toolbarNav?.focus();
     return;
   }
@@ -10046,6 +9621,7 @@ function setSkipReview(on) {
 async function save(action = 'download') {
   if (saving.value) return;
   saving.value = true;
+  let target = null; // the file written to, if any (see the failure's message)
   try {
     // The next version's name, where asked for (see versioning): the header's name follows it, so
     // the download after the next edits is the version after that.
@@ -10054,7 +9630,6 @@ async function save(action = 'download') {
     // A file renamed in the header is a new file: Save as…, where the browser can.
     if (action === 'save' && fileHandle.value.name !== name) action = canSaveAs ? 'saveAs' : 'download';
     // First, while the click still counts as asking: the file to write to, and leave to write it.
-    let target = null;
     if (action === 'saveAs') {
       target = await pickFileToSave(name, fileExt.value);
       if (!target) {
@@ -10093,8 +9668,11 @@ async function save(action = 'download') {
       + (doc.signatures ? (doc.signaturesRemoved ? ' – digital signature removed: it no longer matched the document' : ' – unchanged, so its digital signature is still valid') : '')
       + (passwordProtected.value ? ' – encrypted with its password' : '');
   } catch (e) {
+    // A write that fails part way (a full disk, a file taken away) is abandoned: the browser writes
+    // to a copy and puts it in the file's place only when it is whole (see writeFile), so the file is
+    // as it was. Nothing is marked saved, and the draft of the changes stays.
     console.error(e);
-    message.value = `Save failed: ${e.message}`;
+    message.value = `Not saved: ${e.message || e.name || 'the browser couldn’t write the file'} – ${target ? `${target.name} is as it was` : 'nothing was downloaded'}, and your changes are still here: try again, or Download a copy (▾)`;
   } finally {
     saving.value = false;
   }

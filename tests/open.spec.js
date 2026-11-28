@@ -38,7 +38,8 @@ test('the Open tile is a button: Tab reaches it and Enter opens the file picker'
   const picker = page.waitForEvent('filechooser');
   await page.goto('./');
   const open = page.getByRole('button', { name: 'Open a .docx file' });
-  await expect(open).toHaveAccessibleDescription(/drop a file anywhere here/);
+  // Named by all it shows (WCAG 2.5.3, label in name): what it does, and how.
+  await expect(open).toHaveAccessibleName(/^Open a \.docx file Click to browse, or drop a file anywhere here$/);
   await page.getByRole('button', { name: 'Blank document' }).focus();
   await page.keyboard.press('Tab');
   await expect(open).toBeFocused();

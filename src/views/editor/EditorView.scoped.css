@@ -8,7 +8,7 @@
   border: 1px solid transparent; border-radius: 4px; padding: 4px 6px;
 }
 .filename:hover, .filename:focus { border-color: rgb(255 255 255 / 50%); outline: none; background: rgb(255 255 255 / 10%); }
-.ext { opacity: .7; }
+.ext { opacity: .85; } /* 5.5:1 on the header's teal */
 /* The sensitivity label, as Office shows it beside the name: read-only. */
 .label-chip {
   display: inline-flex; align-items: center; gap: 5px; margin-left: 10px; padding: 2px 9px; min-width: 0; max-width: 40ch;
@@ -412,3 +412,9 @@
   .docx-sheet:has(.hf-tabs.header) .docx-page { --hf-header: 34px !important; }
   .docx-sheet:has(.hf-tabs.footer) .docx-page { --hf-footer: 34px !important; }
 }
+
+/* Symbols drawn as glyphs (x², Ω) are generated content: the button's name says what it does, and
+   the glyph isn't read as part of it (WCAG 2.5.3, label in name). */
+.glyph::before { content: attr(data-glyph); }
+/* A count beside a label, shown as generated content: the button's name says it ("Fill in placeholders (15)"). */
+.count-glyph::after { content: attr(data-count); }

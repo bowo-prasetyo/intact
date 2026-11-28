@@ -25,6 +25,11 @@ the application wrote it.
 | `libreoffice-report.docx` | LibreOffice Writer 24.2 (the report via ODT) | As the pandoc report, written the LibreOffice way | Generated |
 | `libreoffice-memo.docx` | LibreOffice Writer 24.2 (the memo re-saved) | As the python-docx memo, with every header and footer variant written out | Generated |
 | `libreoffice-letter.docx` | LibreOffice Writer 24.2 (the Word letter re-saved) | As the Word letter; LibreOffice puts the footer's picture and text box in one run | Generated from the anonymized letter |
+| `libreoffice-structures.docx` | LibreOffice Writer 24.2, through its UNO API (`sources/structures.py`) | An embedded chart (`word/charts/chart1.xml`), an embedded spreadsheet as an OLE object (`word/embeddings/oleObject1.xlsx`, with its EMF picture), a table nested in a table's cell, numbering in upper Roman from IV with letters in brackets below, a drawing shape with text (`mc:AlternateContent` with a VML fallback), three page styles with headers of their own (first page, body, a landscape annex) | Generated |
+| `python-docx-customxml.docx` | python-docx 1.2 (`sources/customxml.py`) | A custom XML part with its properties (`customXml/item2.xml`, as a records system adds metadata), and a content control bound to it (`w:dataBinding`) | Generated |
+
+Still wanted: SmartArt (Word writes its diagram parts, `word/diagrams/`, and no open tool does), and
+documents from Google Docs. A real file of either, anonymized, is welcome.
 
 ## Encrypted with a password (`encrypted/`)
 

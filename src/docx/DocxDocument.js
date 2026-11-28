@@ -49,7 +49,7 @@ import {
 import { fieldReview, referenceManager } from './fields.js';
 import { relsPathOf } from './links.js';
 import { formFieldInfo, formFieldTitle, setFormCheck, setFormDropdown } from './formFields.js';
-import { sniffFile, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
+import { sniffFile, damagedPackage, damagedPart, UnreadableFileError, readProtection, readWriteProtection, readSignatures, removeSignatures } from './package.js';
 import { PasswordError, decrypt, encrypt, keyForPassword } from './encryption.js';
 import {
   propertyPaths, readProperties, personalParts, anonymize, updateCore, readCore, setCore, setCustom, managedProperty, EDITABLE_CORE,
@@ -344,12 +344,27 @@ export class DocxDocument {
       const inner = sniffFile(bytes);
       if (inner) throw inner;
     } else if (unreadable) throw unreadable;
-    const zip = await JSZip.loadAsync(bytes);
+    // A damaged file is refused, with why, and never half-opened: a package cut short, contents that
+    // don't match their checksums (checked, so a changed byte can't come out as changed text and be
+    // saved so), or a part it reads that isn't well-formed XML (named).
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(bytes, { checkCRC32: true });
+    } catch {
+      throw damagedPackage(name);
+    }
     const doc = new DocxDocument(zip, name);
     doc.sourceBytes = bytes; // what was opened: downloaded as it is when a signed file is unchanged
     // { key (to encrypt it again), source (the encrypted file opened), changed (the password since) }, or null.
     doc.encryption = encryption;
-    await doc.init();
+    doc.partsRead = new Set();
+    try {
+      await doc.init();
+    } catch (e) {
+      if (/^Invalid XML/.test(e.message)) throw damagedPart(name, (await doc.malformedPart()) || 'one of its parts');
+      if (/corrupted zip|crc32|end of data|invalid signature/i.test(e.message)) throw damagedPackage(name);
+      throw e;
+    }
     return doc;
   }
 
@@ -403,7 +418,17 @@ export class DocxDocument {
 
   async text(path) {
     const f = this.zip.file(path);
+    this.partsRead?.add(path);
     return f ? f.async('string') : null;
+  }
+
+  /** The first part read while opening that isn't well-formed XML (its path), or null. */
+  async malformedPart() {
+    for (const path of this.partsRead || []) {
+      const text = await this.zip.file(path)?.async('string');
+      if (text != null && new DOMParser().parseFromString(text, 'application/xml').getElementsByTagName('parsererror').length) return path;
+    }
+    return null;
   }
 
   async init() {
@@ -412,7 +437,7 @@ export class DocxDocument {
     const main = [...pkgRels.values()].find((r) => r.type === MAIN_TYPE || r.type.endsWith('/officeDocument'));
     this.mainPath = main?.path || 'word/document.xml';
     const docXml = await this.text(this.mainPath);
-    if (!docXml) throw new Error('This file does not look like a Word document (no main document part).');
+    if (!docXml) throw new UnreadableFileError('not-docx', `${this.name} has no main document part: it is a ZIP package, but not a Word document's, or it is damaged. Nothing was opened, and the file is as it was.`);
     this.xml = parseXml(docXml);
     this.body = this.xml.getElementsByTagNameNS(W, 'body')[0];
     if (!this.body) throw new Error('The document has no body.');
@@ -2508,6 +2533,25 @@ export class DocxDocument {
         }
         span.append(img);
         break;
+      }
+      // A picture in a format browsers can't draw (EMF or WMF: Windows' own, as an embedded object's
+      // preview usually is): a box of its size saying what it is, in place of a gap; kept as it is.
+      if (!span.childNodes.length) {
+        const rid = blips[0].getAttributeNS(NS.r, 'embed') || blips[0].getAttributeNS(NS.r, 'id');
+        const format = this.rels.get(rid)?.path?.match(/\.(emf|wmf)$/i)?.[1]?.toUpperCase();
+        if (format) {
+          const what = describe(node);
+          span.classList.add('picture-placeholder');
+          span.dataset.format = format;
+          span.dataset.label = what;
+          span.title = `${what} – its picture is ${format}, which browsers can't show; kept as it is, edit it in Word`;
+          const extent = node.getElementsByTagNameNS(NS.wp, 'extent')[0];
+          const style = node.getElementsByTagNameNS(NS.v, 'shape')[0]?.getAttribute('style') || '';
+          const pt = (key) => Number(new RegExp(`(?:^|;)\\s*${key}:\\s*([\\d.]+)pt`).exec(style)?.[1]);
+          const [w, h] = extent ? [Number(extent.getAttribute('cx')) / 9525, Number(extent.getAttribute('cy')) / 9525] : [pt('width') * 4 / 3, pt('height') * 4 / 3];
+          if (w > 0 && h > 0) Object.assign(span.style, { width: `${w}px`, height: `${h}px` });
+          return span;
+        }
       }
       if (span.childNodes.length) {
         const info = local === 'r' && pictureInfo(node);

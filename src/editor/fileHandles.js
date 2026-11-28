@@ -84,7 +84,11 @@ export async function mayWrite(handle) {
   }
 }
 
-/** Writes `blob` into the file of `handle`, replacing what it held. */
+/**
+ * Writes `blob` into the file of `handle`, replacing what it held. The browser writes to a copy (a
+ * swap file) and puts it in the file's place only on close(): a write that fails part way is
+ * aborted, the copy thrown away, and the file is as it was.
+ */
 export async function writeFile(handle, blob) {
   const writable = await handle.createWritable();
   try {

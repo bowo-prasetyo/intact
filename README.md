@@ -1370,6 +1370,17 @@ network with no internet at all: it is static files with no server code and no e
      add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
    }
    ```
+5. Check what the server sends, from a copy of this repository (or with the script alone, Node 18
+   or later):
+
+   ```bash
+   node scripts/check-headers.mjs https://docs.example.org/intact/
+   ```
+
+   It prints `ok` or `FAIL` for each: a Content-Security-Policy header at least as strict as the page's
+   own (the `<meta>` in `index.html`), `frame-ancestors`, `X-Content-Type-Options: nosniff`,
+   `Referrer-Policy: no-referrer` and the manifest's type, and exits with 1 if any fails. It sends
+   nothing but the requests for the page and its manifest.
 
 **What the browser enforces.** The Content Security Policy (`vite.config.js`, put into the built
 `index.html`) lets the page load only Intact's own files and connect nowhere (`connect-src 'none'`):
@@ -1388,6 +1399,9 @@ The About page shows the version.
 
 ## Limitations
 
+- Pictures in Windows' own formats, EMF and WMF (an embedded spreadsheet's or document's preview
+  usually is one), can't be drawn by a browser: each is shown as a box of its size naming what it is
+  ("Embedded Excel spreadsheet (EMF picture)"), and kept as it is
 - After restoring a draft, the text you had changed while tracking shows as tracked changes kept from
   the file (accept or reject them; they can't be edited inside), and "Review your changes" lists only
   what changed since restoring. A draft is kept per browser: another browser or device doesn't see it
