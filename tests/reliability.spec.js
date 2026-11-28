@@ -1,7 +1,7 @@
 // P0 reliability regressions: large-document preservation and the local-only privacy contract.
 // These run against the production build in Chromium, Firefox and WebKit.
 import { test, expect } from '@playwright/test';
-import { buildDocx, openInEditor, download, canonicalize } from './helpers.js';
+import { buildDocx, openInEditor, download, canonicalize, documentXmlOf } from './helpers.js';
 
 test('a large document opens and saves with only the edited paragraph changed', async ({ page }) => {
   test.setTimeout(120_000);
@@ -20,7 +20,7 @@ test('a large document opens and saves with only the edited paragraph changed', 
   await page.keyboard.type(' [verified edit]');
 
   const { xml } = await download(page);
-  const before = await canonicalize(page, await (await import('./helpers.js')).documentXmlOf(source));
+  const before = await canonicalize(page, await documentXmlOf(source));
   const after = await canonicalize(page, xml);
 
   expect(after, 'no paragraph is lost or added').toHaveLength(before.length);
@@ -35,11 +35,11 @@ test('a large document opens and saves with only the edited paragraph changed', 
 
 test('opening and saving a local document makes no cross-origin requests', async ({ page }) => {
   const crossOriginRequests = [];
+  const appOrigin = new URL('http://localhost:4173').origin;
   page.on('request', (request) => {
     const requested = new URL(request.url());
-    const current = new URL(page.url());
     if (requested.protocol === 'http:' || requested.protocol === 'https:') {
-      if (requested.origin !== current.origin) crossOriginRequests.push(request.url());
+      if (requested.origin !== appOrigin) crossOriginRequests.push(request.url());
     }
   });
 
