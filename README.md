@@ -1370,6 +1370,17 @@ network with no internet at all: it is static files with no server code and no e
      add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
    }
    ```
+5. Check what the server sends, from a copy of this repository (or with the script alone, Node 18
+   or later):
+
+   ```bash
+   node scripts/check-headers.mjs https://docs.example.org/intact/
+   ```
+
+   It prints `ok` or `FAIL` for each: a Content-Security-Policy header at least as strict as the page's
+   own (the `<meta>` in `index.html`), `frame-ancestors`, `X-Content-Type-Options: nosniff`,
+   `Referrer-Policy: no-referrer` and the manifest's type, and exits with 1 if any fails. It sends
+   nothing but the requests for the page and its manifest.
 
 **What the browser enforces.** The Content Security Policy (`vite.config.js`, put into the built
 `index.html`) lets the page load only Intact's own files and connect nowhere (`connect-src 'none'`):
