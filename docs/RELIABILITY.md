@@ -28,8 +28,8 @@ Intact's primary contract is preservation: opening a document must not silently 
   the page can't send anything to another site; `tests/feedback.spec.js` that the feedback link
   sends nothing.
 - **Browsers:** every spec runs in Chromium, Firefox and WebKit, as parallel jobs in CI
-  (`.github/workflows/test.yml`); WebKit's pending specs are listed, each with why, in
-  `playwright.config.js`.
+  (`.github/workflows/test.yml`); a spec that doesn't pass in WebKit yet would be listed, with
+  why, in `playwright.config.js` (none is).
 
 ## Release gate
 

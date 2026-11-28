@@ -149,20 +149,30 @@ test('icon buttons get text labels where there is room, without the toolbar grow
   await expect(page.getByRole('button', { name: 'Find and replace' })).toBeVisible();
 
   // Common laptop widths (1366 the most common); at 1280 the toolbar is full, with no room for labels.
+  // How many fit there depends on the engine's fonts (WebKit's, wider here, fit none at 1366): what
+  // holds in every engine is that the labels shown leave the toolbar as tall as without them, and
+  // that no label left out would have fitted.
   for (const width of [1366, 1440]) {
     await page.setViewportSize({ width, height: 800 });
     // The labels are fitted again once the toolbar has its new width (a ResizeObserver, a moment
-    // after the resize): wait for that, then check that as many fit as leave it as tall as without.
+    // after the resize): wait for that, then check the fit.
     const fit = () => page.locator('.toolbar').evaluate((t) => {
       const shown = [...t.querySelectorAll('.with-label')];
       const withLabels = t.offsetHeight;
       shown.forEach((b) => b.classList.remove('with-label'));
       const without = t.offsetHeight;
       shown.forEach((b) => b.classList.add('with-label'));
-      return { count: shown.length, grows: withLabels > without };
+      // Each candidate left out, shown on its own beside the others: it would add a row.
+      const left = [...t.querySelectorAll('button')].filter((b) => b.querySelector(':scope > .short-label') && b.getClientRects().length && !b.classList.contains('with-label'));
+      const wouldFit = left.filter((b) => {
+        b.classList.add('with-label');
+        const grows = t.offsetHeight > withLabels;
+        b.classList.remove('with-label');
+        return !grows;
+      }).map((b) => b.getAttribute('aria-label') || b.title);
+      return { grows: withLabels > without, wouldFit };
     });
-    await expect.poll(fit).toEqual({ count: expect.any(Number), grows: false });
-    expect((await fit()).count).toBeGreaterThan(0);
+    await expect.poll(fit).toEqual({ grows: false, wouldFit: [] });
   }
 });
 

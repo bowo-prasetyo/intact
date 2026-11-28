@@ -224,8 +224,14 @@ test.describe('on a phone', () => {
     await openInEditor(page, await buildDocx(TEXT), 'Quarterly report.docx');
     await expect(page.locator('.app-header').getByRole('button', { name: 'Close' })).toBeVisible();
     await expect(page.locator('.app-header .close-doc .label')).toBeHidden();
-    const name = await page.locator('.app-header .filename').boundingBox();
-    expect(name.width).toBeGreaterThan(110); // was about 60 pixels: "Quart"
+    // Room for the name's first word, "Quarterly", in the name's own font (it once showed "Quart"):
+    // measured, as it depends on each engine's fonts (110px in Chromium, 107 in WebKit).
+    const { width, word } = await page.locator('.app-header .filename').evaluate((el) => {
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = getComputedStyle(el).font;
+      return { width: el.getBoundingClientRect().width, word: ctx.measureText('Quarterly').width };
+    });
+    expect(width).toBeGreaterThan(word);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   });
 });

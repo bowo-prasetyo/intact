@@ -135,8 +135,7 @@ promises does.
 - Test in Firefox ✔ (automated and by hand); output checked in Microsoft Word ✔ (by hand)
 - Add real-world fixture documents (a letter written in Word ✔; reports, memos and minutes written
   by LibreOffice, pandoc and python-docx ✔; Google Docs welcome), each edited in every kind of place
-  by the tests ✔; Safari's engine (WebKit) in CI ✔, the whole suite but two specs pending, with
-  why ✔
+  by the tests ✔; Safari's engine (WebKit) in CI ✔, the whole suite ✔
 - Reliability, before any new feature (what each must show: [docs/RELIABILITY.md](docs/RELIABILITY.md)):
   a damaged file (truncated, a bad checksum, malformed XML) refused with a plain reason, never
   half-opened; a save interrupted part way never leaves a broken file where the opened one was, and

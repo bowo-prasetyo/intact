@@ -1315,8 +1315,9 @@ What each promise must show to be called reliable, and the tests that carry it, 
 
 First run: `npx playwright install chromium firefox webkit`. To run one browser:
 `npm test -- --project=chromium` (or `firefox`, or `webkit`). WebKit, Safari's engine, runs the
-whole suite but the specs listed in `WEBKIT_PENDING` in `playwright.config.js`, each with why (a
-case in each that measures widths by WebKit's font metrics). A case is skipped in one engine
+whole suite, as Chromium and Firefox do; a spec that doesn't pass there yet would be listed in
+`WEBKIT_PENDING` in `playwright.config.js`, with why. Widths that depend on an engine's fonts are
+measured against the text they must hold, not against one engine's pixels. A case is skipped in one engine
 only for a capability it lacks, and says which (Playwright's WebKit for Linux takes no typing in a
 date input). Running it found what Safari did to documents and editing, now fixed: spaces written as
 no-break spaces, drafts not kept in a private window, the editor's own edits handled twice (WebKit
