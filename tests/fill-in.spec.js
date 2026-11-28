@@ -47,7 +47,8 @@ const dialog = (page) => page.getByRole('dialog', { name: 'Fill in placeholders'
 
 test('placeholders are listed once each, with where they are, and not citations or check boxes', async ({ page }) => {
   await openInEditor(page, await buildDocx(QUOTE));
-  await expect(fillButton(page)).toContainText('3');
+  // The count is in the button's name (and drawn beside its label).
+  await expect(fillButton(page)).toHaveAccessibleName('Fill in placeholders (3)');
   await fillButton(page).click();
   const d = dialog(page);
   await expect(d.locator('label')).toHaveText(['Client name', 'date', 'Amount']);
@@ -78,7 +79,7 @@ test('filling in replaces every place at once, as one undoable edit, and keeps t
   await expect(text).toContainText('Signed for Acme Ltd');
   await expect(text).toContainText('Locked: [Client name]'); // read-only, left as it is
   await expect(text).toContainText('As agreed [1], tick [x] and [sic] per [Smith 2020].');
-  await expect(fillButton(page)).toContainText('1');
+  await expect(fillButton(page)).toHaveAccessibleName('Fill in placeholders (1)');
 
   await d.getByRole('button', { name: 'Cancel' }).click();
   await expect(d).toHaveCount(0);
@@ -112,7 +113,7 @@ test('placeholders filled in while tracking are tracked changes', async ({ page 
 
 test('a document without placeholders says what they look like', async ({ page }) => {
   await openInEditor(page, await buildDocx(p(r('Nothing to fill in here [1].'))));
-  await expect(fillButton(page)).not.toContainText(/\d/);
+  await expect(fillButton(page)).toHaveAccessibleName('Fill in placeholders');
   await fillButton(page).click();
   await expect(dialog(page)).toContainText('No placeholders found. Placeholders are text in brackets, such as [Client name], {{date}}, «Amount» or <<Amount>>.');
   await page.keyboard.press('Escape');

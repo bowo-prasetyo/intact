@@ -50,8 +50,6 @@
           :class="{ over: dragOver }"
           type="button"
           :disabled="busy"
-          aria-labelledby="open-title"
-          aria-describedby="open-hint"
           @click="browse"
         >
           <svg class="tile-icon" viewBox="0 0 24 24" width="32" height="32" aria-hidden="true"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5h-7.2L10.5 5h-6A1.5 1.5 0 0 0 3 6.5z" /><path d="M12 16.5v-6M9.5 13 12 10.5l2.5 2.5" /></svg>
@@ -80,9 +78,10 @@
         <h2 :id="`starters-title-${group.id}`">{{ t(group.title) }}</h2>
         <ul>
           <li v-for="s in group.starters" :key="s.id">
-            <button type="button" class="starter" :disabled="busy" :aria-label="`${t(s.title)}: ${t(s.description)}`" @click="createFrom(s.id)">
+            <!-- Named by what it shows (WCAG 2.5.3): the title, a colon read but not shown, the description. -->
+            <button type="button" class="starter" :disabled="busy" @click="createFrom(s.id)">
               <svg class="starter-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path v-for="(d, i) in STARTER_ICONS[s.id]" :key="i" :d="d" /></svg>
-              <span class="starter-title">{{ t(s.title) }}</span>
+              <span class="starter-title">{{ t(s.title) }}<span class="read-only-colon">:</span></span>
               <span class="starter-sub">{{ t(s.description) }}</span>
             </button>
           </li>
@@ -355,6 +354,9 @@ const STARTER_ICONS = {
 </script>
 
 <style scoped>
+/* Read by screen readers, not shown: inline and of no size, so the name reads "Letter: A formal…"
+   (a box taken out of the flow would read "Letter : A formal…"). */
+.read-only-colon { font-size: 0; }
 .draft-open { color: var(--muted); font-size: .9em; font-style: italic; }
 .home { min-height: 100vh; display: flex; flex-direction: column; }
 .home-main { max-width: 760px; margin: 0 auto; padding: 48px 16px; text-align: center; }

@@ -131,8 +131,8 @@
       <button data-tab="home" type="button" :title="t('Italic (Ctrl+I)')" :aria-label="t('Italic')" :class="{ on: state.italic, ph: true }" :aria-pressed="state.italic" @click="exec('italic')"><i>I</i></button>
       <button data-tab="home" type="button" :title="t('Underline (Ctrl+U)')" :aria-label="t('Underline')" :class="{ on: state.underline, ph: true }" :aria-pressed="state.underline" @click="exec('underline')"><u>U</u></button>
       <button data-tab="home" type="button" :title="t('Strikethrough')" :aria-label="t('Strikethrough')" :class="{ on: state.strike }" :aria-pressed="state.strike" @click="exec('strikeThrough')"><s>S</s></button>
-      <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script">x<sup>2</sup></span></button>
-      <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script">x<sub>2</sub></span></button>
+      <button data-tab="home" type="button" :title="t('Superscript (Ctrl+Shift+=)')" :aria-label="t('Superscript')" :class="{ on: state.sup }" :aria-pressed="state.sup" @click="toggleVertAlign('superscript')"><span class="script" aria-hidden="true"><span class="glyph" data-glyph="x"></span><sup class="glyph" data-glyph="2"></sup></span></button>
+      <button data-tab="home" type="button" :title="t('Subscript (Ctrl+=)')" :aria-label="t('Subscript')" :class="{ on: state.sub }" :aria-pressed="state.sub" @click="toggleVertAlign('subscript')"><span class="script" aria-hidden="true"><span class="glyph" data-glyph="x"></span><sub class="glyph" data-glyph="2"></sub></span></button>
       <span data-tab="home" class="split ph">
         <button type="button" :title="`Highlight: ${colorLabel(highlightColor)} (Ctrl+Alt+H)`" :class="{ on: !!state.highlight }" @click="applyHighlight(highlightColor, true)">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 9.5l5.5-6 3 3-6 5.5h-2.5zM4 9.5l-1.5 2.5h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><rect x="1.5" y="13" width="13" height="2.2" :fill="HIGHLIGHT[highlightColor]" stroke="currentColor" stroke-width=".4" /></svg>
@@ -185,13 +185,13 @@
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="7.4" height="7.4" rx="1" stroke="currentColor" stroke-width="1.3" fill="none" /><path d="M3.4 6.4l1.5 1.5 2.8-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><rect x="6.8" y="7.6" width="7.4" height="6.6" rx="1" stroke="currentColor" stroke-width="1.3" fill="var(--surface)" /><path d="M6.8 9.9h7.4M9 6.6v2M12 6.6v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg><span class="short-label">{{ t('Insert') }}</span>
       </button>
       <button data-tab="insert" type="button" :title="t('Insert a symbol: ©, €, ✓, →, ½ and others, by group or name')" :aria-label="t('Insert symbol')" aria-haspopup="dialog" :aria-expanded="symbolOpen" @click="openSymbols">
-        <span class="symbol-icon" aria-hidden="true">Ω</span><span class="short-label">{{ t('Symbol') }}</span>
+        <span class="symbol-icon glyph" aria-hidden="true" data-glyph="Ω"></span><span class="short-label">{{ t('Symbol') }}</span>
       </button>
       <button data-tab="insert" type="button" class="ph" :title="t('Insert picture')" :aria-label="t('Insert picture')" @click="pickPicture">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none" /><circle cx="5.6" cy="6.3" r="1.3" fill="currentColor" /><path d="M2.5 12.3l3.8-3.8 2.8 2.8 2-2 2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Picture') }}</span>
       </button>
       <button data-tab="insert" type="button" class="ph" :title="t('Draw signature: sign with your finger, a pen or the mouse, and put it at the caret')" :aria-label="t('Draw signature')" aria-haspopup="dialog" :aria-expanded="signatureOpen" @click="openSignature">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Sign') }}</span>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1.5 11.5c1.6-3.6 3-5.6 3.9-5.2 1.2.5-1.6 5 .1 5.1 1.2.1 2.1-2.6 3.1-2.5.8.1.3 1.9 1.2 2 .6 0 1.1-.6 1.6-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M1.5 14h13" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" /><path d="M11.2 6.6l3-3-1.3-1.3-3 3-.4 1.7z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Signature') }}</span>
       </button>
       <input ref="pictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/bmp,image/svg+xml,.svg" multiple hidden @change="onPicturesPicked" />
       <button data-tab="insert" ref="tableButton" type="button" :title="t('Insert table')" :aria-label="t('Insert table')" aria-haspopup="dialog" :aria-expanded="tablePicker.open" @click="toggleTablePicker">
@@ -211,7 +211,7 @@
       </button>
       <span data-tab="layout" class="split">
         <button type="button" :title="t('Page number: in the header or footer at the caret, or a footer with the page number')" :aria-label="t('Page number')" @click="insertPageNumber()">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Page no.') }}</span>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 1.8h6.2l3 3v9.4h-9.2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none" /><path d="M7 9.3h2.4M6.6 11.2l.6-3.8M8.8 11.2l.6-3.8M6.4 7.8h3.2" stroke="currentColor" stroke-width="1" stroke-linecap="round" fill="none" /></svg><span class="short-label">{{ t('Page number') }}</span>
         </button>
         <button ref="pageNumberButton" type="button" class="arrow" :title="t('Page number at the top or bottom of the page; edit the header or footer')" :aria-label="t('Page number and header options')" aria-haspopup="menu" :aria-expanded="pageNumberMenu.open" @click="togglePageNumberMenu">▾</button>
       </span>
@@ -263,9 +263,9 @@
       <button data-tab="home" type="button" :title="t('Find and replace (Ctrl+F, Ctrl+H)')" :aria-label="t('Find and replace')" :class="{ on: findOpen }" :aria-pressed="findOpen" @click="findOpen ? closeFind() : openFind(false)">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" stroke="currentColor" stroke-width="1.6" fill="none" /><path d="M9.6 9.6L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg><span class="short-label">{{ t('Find') }}</span>
       </button>
-      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" :aria-label="t('Fill in placeholders')" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
+      <button data-tab="insert" ref="fillInButton" type="button" class="fill-in-toggle" :title="textLocked ? `Fill in placeholders – ${lockMessage}` : placeholderCount ? `Fill in placeholders (${placeholderCount}): [Client name], {{date}} and the like, each once for everywhere it appears` : 'Fill in placeholders: [Client name], {{date}} and the like, each once for everywhere it appears'" :aria-label="placeholderCount ? `${t('Fill in placeholders')} (${placeholderCount})` : t('Fill in placeholders')" aria-haspopup="dialog" :aria-expanded="fillIn.open" :class="{ on: fillIn.open }" :disabled="textLocked" @click="fillIn.open ? closeFillIn() : openFillIn()">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 3H2.5v10H4M12 3h1.5v10H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" /><path d="M5.5 10.5l4.8-4.8 1.2 1.2-4.8 4.8H5.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none" /></svg><span class="short-label">{{ t('Fill in') }}</span>
-        <span v-if="placeholderCount" class="badge">{{ placeholderCount }}</span>
+        <span v-if="placeholderCount" class="badge count-glyph" :data-count="placeholderCount" aria-hidden="true"></span>
       </button>
       <button data-tab="home view" type="button" class="marks-toggle" :title="t('Show formatting marks (Ctrl+Shift+8)')" :aria-label="t('Show formatting marks')" :class="{ on: showMarks }" :aria-pressed="showMarks" @click="toggleMarks">¶</button>
       <span class="sep" data-tab="review" />
@@ -390,6 +390,7 @@
             class="docx-page"
             :class="{ painting: painter.active }"
             contenteditable="true"
+            tabindex="0"
             spellcheck="true"
             :style="pageStyle"
             @beforeinput="onBeforeInput"
@@ -1249,7 +1250,7 @@
     <BookmarkDialog v-if="refDialog === 'bookmark'" :bookmarks="bookmarkList" :selection="bookmarkSelection" @close="closeRefDialog" @add="addBookmark" @goto="gotoBookmark" @remove="removeBookmark" />
 
     <footer class="statusbar">
-      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="t('Word count, length and readability')" @click="openWordCount">{{ t('{words} words · {chars} characters', { words: selectedWords != null ? t('{n} of {total}', { n: selectedWords, total: words }) : lengthTarget.words ? `${words} / ${lengthTarget.words}` : words, chars: selectedChars != null ? t('{n} of {total}', { n: selectedChars, total: chars.withSpaces }) : chars.withSpaces }) }}</button></span>
+      <span :title="`${chars.withSpaces} characters with spaces, ${chars.withoutSpaces} without`"><button type="button" class="word-count" :class="{ over: overTarget }" :aria-label="`${wordCountText} – ${t('Word count, length and readability')}`" @click="openWordCount">{{ wordCountText }}</button></span>
       <button v-if="lengthTarget.headline && headline" type="button" class="headline-count" :class="{ over: headline.chars > lengthTarget.headline }" :title="headlineTitle" @click="openWordCount">{{ t('Headline {chars} / {limit}', { chars: headline.chars, limit: lengthTarget.headline }) }}</button>
       <button type="button" class="nav-toggle" :aria-pressed="navOpen" :title="t('Headings: move around the document by its headings, as Word’s Navigation pane')" @click="toggleNav">{{ t('Headings') }}</button>
       <button v-if="pageCount" type="button" class="page-count" :aria-pressed="showPageBreaks" :title="pageCountTitle" :aria-label="`About ${pageCount} ${pageCount === 1 ? 'page' : 'pages'}: show where the pages break`" @click="togglePageBreaks">≈ {{ pageCount }} {{ pageCount === 1 ? t('page') : t('pages') }}</button>
@@ -1641,6 +1642,11 @@ function copyForWeb(kind, selection = false) {
 
 // ------------------------------------------------------------------ word count and length
 
+// What the status bar's word count shows, which starts its name too (the name holds what is seen).
+const wordCountText = computed(() => t('{words} words · {chars} characters', {
+  words: selectedWords.value != null ? t('{n} of {total}', { n: selectedWords.value, total: words.value }) : lengthTarget.words ? `${words.value} / ${lengthTarget.words}` : words.value,
+  chars: selectedChars.value != null ? t('{n} of {total}', { n: selectedChars.value, total: chars.withSpaces }) : chars.withSpaces,
+}));
 const overTarget = computed(() => selectedWords.value == null && !!lengthTarget.words && words.value > lengthTarget.words);
 const headlineTitle = computed(() => {
   const h = headline.value;
