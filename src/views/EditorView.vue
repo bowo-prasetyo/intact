@@ -1295,9 +1295,8 @@ import { t, lang } from '../i18n.js';
 import CompareDialog from '../components/CompareDialog.vue';
 import { nextVersionName, initialsOf } from '../editor/versionName.js';
 import { evaluateFormula, formatResult, formulaInstr, parseCellNumber, separators, FORMULA_FUNCTIONS } from '../docx/formulas.js';
-import { CASES, nextCase, changeCase, caseLabel } from '../editor/case.js';
+import { CASES } from '../editor/case.js';
 import { nameOf } from '../editor/symbols.js';
-import { elementChildren } from '../docx/xml.js';
 import { columnsWrapper } from '../docx/DocxDocument.js';
 import { wordDatePicture, dateFieldInstruction } from '../editor/dates.js';
 import { findPlaceholders } from '../editor/placeholders.js';
@@ -1310,7 +1309,6 @@ import ThesaurusDialog from '../components/ThesaurusDialog.vue';
 import AutoCorrectDialog from '../components/AutoCorrectDialog.vue';
 import { thesaurusLanguage, matchCase } from '../editor/thesaurus.js';
 import { participleAfter } from '../editor/inflect.js';
-import { loadAutoCorrect, saveAutoCorrect, autoCorrectWord } from '../editor/autoCorrectList.js';
 import { webContent, toHtml, toText, toMarkdown, frontMatter, copyFormats } from '../editor/webCopy.js';
 import { wordCount, readability, headlineOf, blockText, textRange } from '../editor/readability.js';
 import { currentDoc, setDocument } from '../store.js';
@@ -1327,6 +1325,9 @@ import {
 } from '../editor/protect.js';
 import { readOnlyAt, readOnlyMessage, isEditingKey, caretBeside } from '../editor/readonly.js';
 import { useTableSort } from './editor/tableSort.js';
+import { useFormatPainter } from './editor/formatPainter.js';
+import { useChangeCase } from './editor/changeCase.js';
+import { useAutoCorrect } from './editor/autoCorrect.js';
 import { useRedaction } from './editor/redaction.js';
 import { useCompare } from './editor/compare.js';
 import { ommlToLatex } from '../editor/mathOutput.js';
@@ -1594,100 +1595,15 @@ function replaceWithSynonym(word) {
 
 // ------------------------------------------------------------------ AutoCorrect entries
 
-// Word's AutoCorrect "Replace text as you type": your entries and common English typos, as the word
-// is ended by a space, punctuation or Enter (see editor/autoCorrectList.js). Kept in this browser.
-const autoCorrectSettings = ref(loadAutoCorrect());
-const autoCorrectDialog = ref(null); // { selected } while it is open
-const ENDS_WORD = /^[\s.,;:!?)\]}"'”’»]$/u;
-
-function openAutoCorrect() {
-  const range = selectionInPage() || savedRange;
-  const selected = range && !range.collapsed && page.value.contains(range.commonAncestorContainer) ? range.toString().replace(/\s+/g, ' ').trim().slice(0, 255) : '';
-  autoCorrectDialog.value = { selected };
-}
-
-function closeAutoCorrect() {
-  autoCorrectDialog.value = null;
-  refocus();
-}
-
-function saveAutoCorrectSettings(settings) {
-  autoCorrectSettings.value = settings;
-  const kept = saveAutoCorrect(settings);
-  autoCorrectDialog.value = null;
-  refocus();
-  const n = settings.entries.length;
-  message.value = !settings.on ? t('AutoCorrect is off: text is typed as it is')
-    : `${t(n === 1 ? 'AutoCorrect: 1 entry of yours' : 'AutoCorrect: {n} entries of yours', { n })}${kept ? '' : t(' – for this session only: the browser doesn’t keep them')}`;
-}
-
-/** The AutoCorrect replacement for the word just before the caret (`range`, collapsed), or null. */
-function correctionAt(range, typed = ' ') {
-  const node = range?.startContainer;
-  if (!range?.collapsed || node?.nodeType !== 3 || inPlainFieldQuiet()) return null;
-  if (node.parentElement.closest('a, .raw-inline, [data-raw], .field, [data-tc="del"]')) return null;
-  const block = closestBlock(node);
-  if (!block) return null;
-  const lead = document.createRange();
-  lead.setStart(block, 0);
-  lead.setEnd(node, range.startOffset);
-  const tag = node.parentElement.closest('[lang]')?.lang || doc.styles.language() || (lang.value === 'id' ? 'id' : 'en');
-  const hit = autoCorrectWord(lead.toString(), autoCorrectSettings.value, /^en\b/i.test(tag), typed);
-  // The word typed in one piece of text, as it is.
-  if (!hit || range.startOffset < hit.from.length || node.data.slice(range.startOffset - hit.from.length, range.startOffset) !== hit.from) return null;
-  // What goes after it: a quote typed is a curly one where AutoFormat makes them.
-  const quote = autoFormat.value && smartQuote(lead.toString(), typed, tag);
-  return { ...hit, after: quote || typed };
-}
-
-/** Replaces the word of `hit` (see correctionAt): `after` characters typed after it stay after the caret. */
-function applyCorrection(hit, after = '') {
-  const now = selectionInPage();
-  const at = now?.startContainer;
-  const typed = hit.from + after;
-  // Found again where it is now: typing the character after it may have moved it to another node.
-  if (!now?.collapsed || at?.nodeType !== 3 || at.data.slice(Math.max(0, now.startOffset - typed.length), now.startOffset) !== typed) return false;
-  const word = document.createRange();
-  word.setStart(at, now.startOffset - typed.length);
-  word.setEnd(at, now.startOffset - after.length);
-  selectRange(word);
-  typeText(hit.to);
-  // The caret goes back after what was typed after the word.
-  const sel = window.getSelection();
-  for (let i = 0; i < after.length; i++) sel.modify('move', 'forward', 'character');
-  undoStack.commit();
-  markDirty();
-  return true;
-}
-
-/**
- * A space or punctuation ending a word with an entry: the character is typed first, as an undo step
- * of its own, then the word replaced, so Ctrl+Z straight after gives back what was typed, as in Word.
- */
-function autoCorrectTyped(e) {
-  if (!ENDS_WORD.test(e.data)) return false;
-  const hit = correctionAt(selectionInPage(), e.data);
-  if (!hit) return false;
-  e.preventDefault();
-  typeText(hit.after);
-  undoStack.commit();
-  applyCorrection(hit, hit.after);
-  return true;
-}
-
-/** Enter after a word with an entry: the word is replaced (an undo step of its own), then the paragraph is split. */
-function autoCorrectEnter(e) {
-  const hit = correctionAt(selectionInPage(), '\n');
-  if (!hit) return false;
-  e.preventDefault();
-  undoStack.flush();
-  applyCorrection(hit);
-  // Then Enter, as it would have been: tracked while tracking.
-  const opts = trackedBy(selectionInPage()?.startContainer);
-  if (opts) pendingSplit = opts;
-  document.execCommand('insertParagraph'); // fires input
-  return true;
-}
+// AutoCorrect entries of your own and common typos replaced as you type, with Ctrl+Z straight after giving back what was typed, and the AutoCorrect dialog.: see editor/autoCorrect.js.
+const { autoCorrectDialog, autoCorrectSettings, openAutoCorrect, closeAutoCorrect, saveAutoCorrectSettings, autoCorrectEnter, autoCorrectTyped } = useAutoCorrect({
+  closestBlock, doc, inPlainFieldQuiet, markDirty, message, page, refocus, selectRange, selectionInPage, trackedBy, tracking, typeText,
+  get autoFormat() { return autoFormat; },
+  get pendingSplit() { return pendingSplit; }, set pendingSplit(v) { pendingSplit = v; },
+  get savedRange() { return savedRange; },
+  get undo() { return undo; },
+  get undoStack() { return undoStack; },
+});
 
 // ------------------------------------------------------------------ copy for the web
 
@@ -6188,238 +6104,19 @@ function clearCharacterFormatting() {
 
 // ------------------------------------------------------------------ change case
 
-const caseMenu = reactive({ open: false, x: 0, y: 0 });
-const caseMenuEl = ref(null);
-const caseButton = ref(null);
-let caseRange = null; // the text to change: the selection when the menu opened
-
-function toggleCaseMenu() {
-  if (caseMenu.open) return closeCaseMenu();
-  restoreSelection();
-  const range = selectionInPage();
-  if (!range) {
-    message.value = 'Select the text to change the case of';
-    return;
-  }
-  caseRange = range.cloneRange();
-  const rect = caseButton.value.getBoundingClientRect();
-  Object.assign(caseMenu, { open: true, x: Math.max(8, Math.min(rect.left, window.innerWidth - 220)), y: rect.bottom + 4 });
-  nextTick(() => {
-    keepInView(caseMenu, caseMenuEl.value);
-    caseMenuEl.value?.querySelector('button')?.focus();
-  });
-}
-
-function closeCaseMenu(refocusText = false) {
-  caseMenu.open = false;
-  if (refocusText) refocusAt(caseRange);
-}
-
-/** The word at a collapsed `range` (letters and digits around the caret), or null. */
-function wordAt(range) {
-  const node = range.startContainer;
-  if (node.nodeType !== 3) return null;
-  const isWord = (ch) => /[\p{L}\p{N}'’]/u.test(ch || '');
-  let start = range.startOffset;
-  let end = range.startOffset;
-  while (start > 0 && isWord(node.data[start - 1])) start--;
-  while (end < node.length && isWord(node.data[end])) end++;
-  if (start === end) return null;
-  const word = document.createRange();
-  word.setStart(node, start);
-  word.setEnd(node, end);
-  return word;
-}
-
-/**
- * Change Case, as Word's Aa menu and Shift+F3: the selected text (or the word at the caret) in
- * `kind`'s case (see editor/case.js), or, with `kind` null, the next in Shift+F3's cycle (UPPERCASE,
- * lowercase, Capitalize Each Word). Each run keeps its formatting. While tracking, each changed run
- * is a tracked deletion and insertion, as Word records a change of case. Deleted text isn't changed.
- */
-function changeCaseTo(kind) {
-  if (caseMenu.open) closeCaseMenu(true);
-  else restoreSelection();
-  if (textLocked.value) return explainLock();
-  let range = selectionInPage();
-  if (!range) return;
-  if (range.collapsed) {
-    range = wordAt(range);
-    if (!range) {
-      message.value = 'Select the text to change the case of, or put the caret in a word';
-      return;
-    }
-    selectRange(range);
-  }
-  const locked = readOnlySelection();
-  if (locked) return explainReadOnly(locked, true);
-  const pieces = portions(range).filter((p) => !p.node.parentElement.closest('[data-tc="del"]'));
-  if (!pieces.length) return;
-  const block = closestBlock(range.startContainer) || closestBlock(pieces[0].node);
-  const before = document.createRange();
-  if (block) {
-    before.setStart(block, 0);
-    before.setEnd(pieces[0].node, pieces[0].s);
-  }
-  const lang = pieces[0].node.parentElement.closest('[lang]')?.lang || doc.styles.language() || undefined;
-  const texts = pieces.map((p) => p.node.data.slice(p.s, p.e));
-  kind ||= nextCase(texts.join(''), lang);
-  if (!kind) return;
-  const changed = changeCase(texts, kind, block ? before.toString() : '', lang);
-  if (changed.every((t, i) => t === texts[i])) {
-    message.value = `The text is in ${caseLabel(kind)} already`;
-    return;
-  }
-  const tracked = trackedBy(range.startContainer);
-  if (tracked && refuseRemoving([range])) return;
-  undoStack.flush();
-  let first = null;
-  let last = null;
-  if (tracked) {
-    // From the last piece back, so that the pieces before keep their offsets.
-    const date = revisionDate();
-    for (let i = pieces.length - 1; i >= 0; i--) {
-      const { node, s, e } = pieces[i];
-      if (changed[i] === texts[i]) {
-        first = [node, s];
-        last ||= [node, e];
-        continue;
-      }
-      const r = document.createRange();
-      r.setStart(node, s);
-      r.setEnd(node, e);
-      const after = replaceTracked(r, changed[i], { ...tracked, date });
-      first = [after.node, after.offset - changed[i].length];
-      last ||= [after.node, after.offset];
-    }
-    refreshChanges();
-  } else {
-    for (let i = pieces.length - 1; i >= 0; i--) {
-      const { node, s, e } = pieces[i];
-      node.data = node.data.slice(0, s) + changed[i] + node.data.slice(e);
-      first = [node, s];
-      last ||= [node, s + changed[i].length];
-    }
-  }
-  const sel = document.createRange();
-  sel.setStart(...first);
-  sel.setEnd(...last);
-  selectRange(sel); // still selected, as in Word: Shift+F3 again goes on to the next case
-  undoStack.commit();
-  markDirty();
-  onSelectionChange();
-  message.value = `${caseLabel(kind)}${tracked ? ' (tracked)' : ''}`;
-}
+// Change Case (Shift+F3, and its menu): see editor/changeCase.js.
+const { caseButton, caseMenu, caseMenuEl, changeCaseTo, closeCaseMenu, toggleCaseMenu, wordAt } = useChangeCase({
+  closestBlock, doc, explainLock, explainReadOnly, keepInView, markDirty, message, onSelectionChange, readOnlySelection, refocusAt, refreshChanges, refuseRemoving, restoreSelection, selectRange, selectionInPage, textLocked, trackedBy, tracking,
+  get undoStack() { return undoStack; },
+});
 
 // ------------------------------------------------------------------ format painter
 
-// Word's Format Painter: a click copies the character formatting where the caret is (or of the
-// selection's first character) and paints it on the text selected next; a double-click keeps it on
-// for several places, until Esc or another click on it. Selecting whole paragraphs paints the
-// paragraph's style too. Ctrl+Shift+C and Ctrl+Shift+V copy and paint without the button.
-const painter = reactive({ active: false, sticky: false, copied: false, rPr: null, block: null });
-
-/** The text node whose formatting the selection (or the caret) has: the first selected, or beside the caret. */
-function formatSourceNode(range) {
-  const first = portions(range)[0];
-  if (first) return first.node;
-  let node = range.startContainer;
-  if (node.nodeType === 3) return node;
-  node = node.childNodes[range.startOffset - 1] || node.childNodes[range.startOffset] || node;
-  const walker = document.createTreeWalker(closestBlock(node) || node, NodeFilter.SHOW_TEXT);
-  return walker.nextNode();
-}
-
-/** Copies the formatting at the selection; `active`: and turns the painter on (`sticky`: until stopped). */
-function startPainter(sticky = false, keyboard = false) {
-  restoreSelection();
-  const range = selectionInPage() || savedRange;
-  const node = range && formatSourceNode(range);
-  if (!node || !page.value.contains(node)) {
-    message.value = 'Put the caret in the text whose formatting you want to copy';
-    return;
-  }
-  Object.assign(painter, { copied: true, rPr: doc.rPrOf(node), block: blockKind(closestBlock(node)) });
-  if (keyboard) {
-    message.value = 'Formatting copied – select text and press Ctrl+Shift+V to paint it on';
-    return;
-  }
-  Object.assign(painter, { active: true, sticky });
-  message.value = sticky
-    ? 'Format Painter: select (or click) each place to paint the formatting on – Esc when you’re done'
-    : 'Format Painter: select (or click) the text to paint the formatting on';
-  page.value.focus();
-}
-
-function stopPainterQuietly() {
-  painter.active = false;
-  painter.sticky = false;
-}
-
-function stopPainter() {
-  painter.active = false;
-  painter.sticky = false;
-  message.value = 'Format Painter off';
-}
-
-function togglePainter() {
-  if (painter.active) stopPainter();
-  else startPainter(false);
-}
-
-/** The paragraph style select's value for a block, as state.block reads it. */
-const blockKind = (block) => (block ? doc.blockValue(block.dataset.style) : null);
-
-/** After selecting with the painter on: paints the formatting on the selection (or the word clicked). */
-function onPageMouseup() {
-  if (!painter.active) return;
-  setTimeout(() => {
-    if (!painter.active) return;
-    let range = selectionInPage();
-    if (!range) return;
-    if (range.collapsed) {
-      range = wordAt(range);
-      if (!range) return;
-      selectRange(range);
-    }
-    paintSelection();
-    if (!painter.sticky) painter.active = false;
-  });
-}
-
-/**
- * Paints the copied formatting on the selection: its character formatting replaces the text's (a
- * tracked formatting change while tracking), and selecting whole paragraphs gives them the copied
- * paragraph style too.
- */
-function paintSelection() {
-  if (!painter.copied) return;
-  if (textLocked.value) return explainLock();
-  restoreSelection();
-  const range = selectionInPage();
-  if (!range || range.collapsed) {
-    message.value = 'Select the text to paint the formatting on';
-    return;
-  }
-  const blocks = selectedBlocks(range);
-  const whole = blocks.length && isAtBlockStart(range, blocks[0]) && atBlockEnd(range, blocks[blocks.length - 1]);
-  if (whole && painter.block && blocks.some((b) => blockKind(b) !== painter.block)) applyBlockStyle(painter.block);
-  const src = painter.rPr;
-  const painted = formatSelection((r) => restyle(doc, r, (rPr) => {
-    const change = elementChildren(rPr).find((c) => c.localName === 'rPrChange');
-    for (const c of elementChildren(rPr)) if (c !== change) rPr.removeChild(c);
-    for (const c of src ? elementChildren(src) : []) if (c.localName !== 'rPrChange') rPr.insertBefore(c.cloneNode(true), change || null);
-  }));
-  if (painted) message.value = painter.sticky ? 'Formatting painted – select the next place, or Esc when you’re done' : 'Formatting painted';
-}
-
-/** True if `range` ends at the end of `block`'s text. */
-function atBlockEnd(range, block) {
-  const rest = document.createRange();
-  rest.setStart(range.endContainer, range.endOffset);
-  rest.setEnd(block, block.childNodes.length);
-  return !rest.toString().replace(/​/g, '');
-}
+// Format Painter: see editor/formatPainter.js.
+const { onPageMouseup, painter, startPainter, togglePainter, paintSelection, stopPainter, stopPainterQuietly } = useFormatPainter({
+  applyBlockStyle, closestBlock, doc, explainLock, formatSelection, message, page, restoreSelection, selectRange, selectedBlocks, selectionInPage, state, textLocked, tracking, wordAt,
+  get savedRange() { return savedRange; },
+});
 
 // ------------------------------------------------------------------ the right-click menu
 
