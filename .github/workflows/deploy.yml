@@ -15,7 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Never publish a build that breaks the round-trip promise: every browser's tests first (test.yml).
+  test:
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,9 +29,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Never publish a build that breaks the round-trip promise.
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm test
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -7,10 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
 // it, as in Chromium and Firefox. A spec joins once it passes there; a case is never skipped in an
 // engine to get it in, only for a capability that engine lacks (and the case says which).
 const WEBKIT_PENDING = {
-  // The toolbar's text labels find no room for themselves: WebKit's font metrics.
-  'dates-labels': 'the toolbar labels\' room, by WebKit\'s font metrics',
-  // The header's file name measures 107px for the 110 it is held to: WebKit's font metrics.
-  'phone-share-insert': 'the phone header\'s widths, by WebKit\'s font metrics',
+  // None: every spec runs in WebKit. A spec that doesn't pass there goes here, with why.
 };
 
 export default defineConfig({

@@ -80,11 +80,14 @@ test('a paragraph kept together moves to the next page whole, with the one kept 
   await openInEditor(page, await buildDocx(lines(capacity - 3) + para('Lead in') + para(LONG)));
   const topOf = (text) => page.locator('.docx-page p', { hasText: text }).first().evaluate((p) => p.getBoundingClientRect().top);
   await expect(mark).toBeVisible();
+  // The marks are drawn again when the estimate changes, and for a moment there is none to measure:
+  // then the measure is "not yet" (Infinity), and the poll waits for the mark, rather than failing.
+  const markY = async () => (await mark.boundingBox())?.y ?? null;
   // At first the long step is split across the pages.
-  await expect.poll(async () => (await mark.boundingBox()).y - (await topOf('This step explains'))).toBeGreaterThan(10);
+  await expect.poll(async () => { const at = await markY(); return at == null ? -Infinity : at - (await topOf('This step explains')); }).toBeGreaterThan(10);
 
   // Measured together, as the page may scroll (Firefox scrolls the caret's paragraph into view).
-  const gap = async (text) => Math.abs((await mark.boundingBox()).y - (await topOf(text)));
+  const gap = async (text) => { const at = await markY(); return at == null ? Infinity : Math.abs(at - (await topOf(text))); };
 
   let dialog = await openDialog(page, 'This step explains');
   await dialog.getByLabel('Keep lines together').check();

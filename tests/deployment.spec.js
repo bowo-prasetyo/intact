@@ -23,8 +23,15 @@ test('the page carries the Content Security Policy: its own files only, no conne
   await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer');
 });
 
-test('a whole editing session breaks no rule of the policy', async ({ page }) => {
+test('a whole editing session breaks no rule of the policy, and asks nothing of another site', async ({ page }) => {
   const violations = await watchViolations(page);
+  // Every request the page makes, of any kind: none may go to another origin (the policy would
+  // refuse one, and a violation would show it, but the request itself is the promise).
+  const elsewhere = [];
+  page.on('request', (r) => {
+    const url = new URL(r.url());
+    if (/^https?:$/.test(url.protocol) && url.origin !== 'http://localhost:4173') elsewhere.push(r.url());
+  });
   await openInEditor(page, await buildDocx(KITCHEN_SINK));
   await page.locator('.docx-page p').first().click();
   await page.keyboard.type(' Edited');
@@ -33,6 +40,7 @@ test('a whole editing session breaks no rule of the policy', async ({ page }) =>
   await page.goto('./#/about');
   await expect(page.getByRole('heading', { name: 'About' })).toBeVisible();
   expect(await violations()).toEqual([]);
+  expect(elsewhere, 'no request to another origin while a document is opened, edited and saved').toEqual([]);
 });
 
 test('the page can’t send anything to another site', async ({ page }) => {

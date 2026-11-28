@@ -1309,10 +1309,15 @@ or note, pressing Enter or making a word bold changes only that block of that pa
 change where the document has Track Changes on), the typed text in the formatting around it; the
 saved package stays sound (well-formed XML, content types, relationship targets); and the page logs
 no errors. A `.docx` added there is tested automatically.
+What each promise must show to be called reliable, and the tests that carry it, is in
+[docs/RELIABILITY.md](docs/RELIABILITY.md). In CI the suite runs as parallel jobs, a browser each
+(`.github/workflows/test.yml`).
+
 First run: `npx playwright install chromium firefox webkit`. To run one browser:
 `npm test -- --project=chromium` (or `firefox`, or `webkit`). WebKit, Safari's engine, runs the
-whole suite but the specs listed in `WEBKIT_PENDING` in `playwright.config.js`, each with why (a
-case in each that measures widths by WebKit's font metrics). A case is skipped in one engine
+whole suite, as Chromium and Firefox do; a spec that doesn't pass there yet would be listed in
+`WEBKIT_PENDING` in `playwright.config.js`, with why. Widths that depend on an engine's fonts are
+measured against the text they must hold, not against one engine's pixels. A case is skipped in one engine
 only for a capability it lacks, and says which (Playwright's WebKit for Linux takes no typing in a
 date input). Running it found what Safari did to documents and editing, now fixed: spaces written as
 no-break spaces, drafts not kept in a private window, the editor's own edits handled twice (WebKit
