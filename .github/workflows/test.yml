@@ -1,0 +1,33 @@
+name: Tests
+
+# The whole suite against the production build, in Chromium, Firefox and WebKit (Safari's engine),
+# split into parallel jobs: a browser each, and WebKit, the slowest, in two shards. Called by CI (pull
+# requests), Deploy and Release, which publish nothing unless every job passes.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.project }}${{ matrix.shard != '1/1' && format(' ({0})', matrix.shard) || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { project: chromium, shard: 1/1 }
+          - { project: firefox, shard: 1/1 }
+          - { project: webkit, shard: 1/2 }
+          - { project: webkit, shard: 2/2 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.project }}
+      - run: npm test -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}

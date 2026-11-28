@@ -16,7 +16,12 @@ permissions:
   attestations: write
 
 jobs:
+  # The tests must pass in every browser first (test.yml).
+  test:
+    uses: ./.github/workflows/test.yml
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,8 +32,6 @@ jobs:
       - run: npm ci
       - name: The tag matches the package version
         run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm test
       - run: npm run build
       - name: Package
         run: |
